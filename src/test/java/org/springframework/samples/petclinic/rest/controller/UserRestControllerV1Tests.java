@@ -1,51 +1,33 @@
 package org.springframework.samples.petclinic.rest.controller;
 
-import org.springframework.samples.petclinic.rest.controller.v1.UserRestControllerV1;
 import tools.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.samples.petclinic.mapper.UserMapper;
 import org.springframework.samples.petclinic.model.User;
-import org.springframework.samples.petclinic.rest.advice.ExceptionControllerAdvice;
-import org.springframework.samples.petclinic.service.UserService;
-import org.springframework.samples.petclinic.service.clinicService.ApplicationTestConfig;
+import org.springframework.samples.petclinic.repository.UserRepository;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
-import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@SpringJUnitConfig(classes = ApplicationTestConfig.class)
-@ExtendWith(MockitoExtension.class)
-@WebAppConfiguration
+@AutoConfigureMockMvc
 class UserRestControllerV1Tests {
 
-    @Mock
-    private UserService userService;
+    @Autowired
+    private MockMvc mockMvc;
 
     @Autowired
     private UserMapper userMapper;
 
-    @Autowired
-    private UserRestControllerV1 userRestControllerV1;
-
-    private MockMvc mockMvc;
-
-    @BeforeEach
-    void initVets() {
-        this.mockMvc = MockMvcBuilders.standaloneSetup(userRestControllerV1)
-            .setControllerAdvice(new ExceptionControllerAdvice()).build();
-    }
+    @MockitoBean
+    private UserRepository userRepository;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -56,9 +38,9 @@ class UserRestControllerV1Tests {
         user.setEnabled(true);
         user.addRole("OWNER_ADMIN");
         ObjectMapper mapper = new ObjectMapper();
-        String newVetAsJSON = mapper.writeValueAsString(userMapper.toUserDto(user));
-        this.mockMvc.perform(post("/api/users")
-            .content(newVetAsJSON).accept(MediaType.APPLICATION_JSON_VALUE).contentType(MediaType.APPLICATION_JSON_VALUE))
+        String newUserAsJSON = mapper.writeValueAsString(userMapper.toUserDto(user));
+        mockMvc.perform(post("/api/users")
+                .content(newUserAsJSON).accept(MediaType.APPLICATION_JSON_VALUE).contentType(MediaType.APPLICATION_JSON_VALUE))
             .andExpect(status().isCreated());
     }
 
@@ -66,13 +48,13 @@ class UserRestControllerV1Tests {
     @WithMockUser(roles = "ADMIN")
     void testCreateUserError() throws Exception {
         User user = new User();
-        user.setUsername(""); // set empty username to force 400 error
+        user.setUsername(""); // empty username forces 400
         user.setPassword("password");
         user.setEnabled(true);
         ObjectMapper mapper = new ObjectMapper();
-        String newVetAsJSON = mapper.writeValueAsString(userMapper.toUserDto(user));
-        this.mockMvc.perform(post("/api/users")
-            .content(newVetAsJSON).accept(MediaType.APPLICATION_JSON_VALUE).contentType(MediaType.APPLICATION_JSON_VALUE))
+        String newUserAsJSON = mapper.writeValueAsString(userMapper.toUserDto(user));
+        mockMvc.perform(post("/api/users")
+                .content(newUserAsJSON).accept(MediaType.APPLICATION_JSON_VALUE).contentType(MediaType.APPLICATION_JSON_VALUE))
             .andExpect(status().isBadRequest());
     }
 }
