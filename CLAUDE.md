@@ -5,11 +5,10 @@ Guidance for working in this repository.
 ## Project
 
 Spring PetClinic REST, converted from Spring `@RestController` classes to
-**OfficeFloor function injection** (see commit "Conversion to OfficeFloor YAML
-end point function injection"). Spring's DI, security, persistence and DTOs are
+**OfficeFloor function injection**. Spring's DI, security, persistence and DTOs are
 unchanged; only the request handling is now explicit function orchestration.
 
-- OfficeFloor version: `4.0.2`, starter `net.officefloor.springboot:officefloor-rest-spring-boot-4-starter`.
+- Starter: `net.officefloor.springboot:officefloor-rest-spring-boot-4-starter`.
 - Docs: https://officefloor.net — tutorials at https://officefloor.net/tutorials/index.html
   (Spring REST series: `SpringRestFunctionHttpServer`, `SpringRestOrchestrationReference`,
   `SpringRestGovernanceHttpServer`, `SpringRestExceptionHttpServer`, `SpringRestVariableHttpServer`,
@@ -39,7 +38,7 @@ Keys: `class` (function impl), `next` (next step), `outputs` (named conditional
 branches → steps), `govern` (list of governances), `composition.authorize`
 (file-wide security). A single-step endpoint just names one `class`.
 
-### Functions — `src/main/java/.../rest/function/**`
+### Functions
 Each has a `service(...)` method. Parameters are resolved by role:
 - `@PathVariable(name="ownerId") Integer id` — from the URL
 - `@RequestBody Xxx dto` — HTTP request body (only ONE function per pipeline may bind it)
@@ -58,9 +57,8 @@ appear only at the edges (request-body entry, response exit); models flow in bet
 
 ### Governance — `govern: [ transaction | readonly-transaction ]`
 Wraps a function's lifecycle (begin / commit-on-success / rollback-on-escalation).
-`transaction` and `readonly-transaction` are provided by the Spring integration
-(no `officefloor/govern/` dir in this project). Custom governances would live in
-`src/main/resources/officefloor/govern/`.
+`transaction` and `readonly-transaction` are provided by the Spring integration.
+Custom governances live in `src/main/resources/officefloor/govern/`.
 
 ### Escalations (exceptions) — `src/main/resources/officefloor/escalation/**`
 Functions throw checked exceptions; handlers are wired by filename = fully
@@ -69,10 +67,8 @@ qualified exception class + `.yml`:
 handle:
   class: ...escalation.NotFoundExceptionHandler
 ```
-Global handlers here cover `NotFoundException`, `DataIntegrityViolationException`,
-`MethodArgumentNotValidException`, `AuthorizationDeniedException`, and a catch-all
-`java.lang.Exception`. Precedence: method (on a step) > composition (file-wide) >
-global (these files) > fall through to Spring `@ControllerAdvice`.
+Precedence: method (on a step) > composition (file-wide) > global (these files) >
+fall through to Spring `@ControllerAdvice`.
 
 ## Testing
 
