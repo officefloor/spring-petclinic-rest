@@ -73,3 +73,9 @@ Global handlers here cover `NotFoundException`, `DataIntegrityViolationException
 `MethodArgumentNotValidException`, `AuthorizationDeniedException`, and a catch-all
 `java.lang.Exception`. Precedence: method (on a step) > composition (file-wide) >
 global (these files) > fall through to Spring `@ControllerAdvice`.
+
+## Testing
+
+When changing behavior, grep for and update the tests that asserted the old
+behavior — the same contract is often enforced at more than one level, so fix
+every test that encodes it, not just the first one found.
