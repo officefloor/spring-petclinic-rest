@@ -73,8 +73,3 @@ Global handlers here cover `NotFoundException`, `DataIntegrityViolationException
 `MethodArgumentNotValidException`, `AuthorizationDeniedException`, and a catch-all
 `java.lang.Exception`. Precedence: method (on a step) > composition (file-wide) >
 global (these files) > fall through to Spring `@ControllerAdvice`.
-
-## Testing
-Functions are plain classes — unit-tested directly (see
-`src/test/java/.../rest/function/**`). `@SpringBootTest` boots an
-OfficeFloor-backed context for integration tests.
