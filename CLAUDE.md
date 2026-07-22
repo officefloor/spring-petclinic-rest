@@ -8,70 +8,98 @@ Spring PetClinic REST, converted from Spring `@RestController` classes to
 **OfficeFloor function injection**. Spring's DI, security, persistence and DTOs are
 unchanged; only the request handling is now explicit function orchestration.
 
-- Starter: `net.officefloor.springboot:officefloor-rest-spring-boot-4-starter`.
-- Docs: https://officefloor.net — tutorials at https://officefloor.net/tutorials/index.html
-  (Spring REST series: `SpringRestFunctionHttpServer`, `SpringRestOrchestrationReference`,
-  `SpringRestGovernanceHttpServer`, `SpringRestExceptionHttpServer`, `SpringRestVariableHttpServer`,
-  `SpringRestConversionReference`). Fetch these when the primer below is insufficient — OfficeFloor
-  is niche, so read the source/tutorials rather than assuming.
+## REST endpoints
 
-## OfficeFloor primer (how this codebase works)
+This project uses OfficeFloor Function Injection.
 
-A REST request is a **pipeline of small single-responsibility functions**, wired
-declaratively in YAML. No controllers, no central route table.
+- Requires the OfficeFloor Spring Boot starter in the build:
+  `officefloor-rest-spring-boot-4-starter` (Spring Boot 4.x) or
+  `officefloor-rest-spring-boot-3-starter` (Spring Boot 3.x). Without it these
+  YAML files are inert.
+- Define each endpoint as a YAML file under
+  `src/main/resources/officefloor/rest/`, named `<path>.<METHOD>.yml`
+  (e.g. `owners/{ownerId}.PUT.yml` → `PUT /owners/{ownerId}`).
+- One small function class per step; compose with `next:` and `outputs:`.
+- Do NOT generate `@RestController`, `@GetMapping` or `@PostMapping`.
+- Transactions: `govern: [ transaction ]` on steps, not `@Transactional`.
+- Errors: a handler YAML in `officefloor/escalation/`, not `@ControllerAdvice`.
 
-### Endpoint YAML — `src/main/resources/officefloor/rest/**`
-The **filename encodes the route**: `api/owners/{ownerId}.GET.yml` → `GET /api/owners/{ownerId}`.
-Each file declares named steps:
-```yaml
-composition:
-  authorize: "hasRole('OWNER_ADMIN')"   # Spring Security SpEL, applies to whole file
-load:
-  class: ...function.owner.LoadOwner
-  govern: [ readonly-transaction ]      # governance wrapping this step
-  next: respond                         # unconditional next step
-respond:
-  class: ...function.owner.RespondWithOwner
-  govern: [ readonly-transaction ]
-```
-Keys: `class` (function impl), `next` (next step), `outputs` (named conditional
-branches → steps), `govern` (list of governances), `composition.authorize`
-(file-wide security). A single-step endpoint just names one `class`.
+### Step wiring
 
-### Functions
-Each has a `service(...)` method. Parameters are resolved by role:
-- `@PathVariable(name="ownerId") Integer id` — from the URL
-- `@RequestBody Xxx dto` — HTTP request body (only ONE function per pipeline may bind it)
-- Spring beans (`OwnerRepository`, `OwnerMapper`, …) — injected normally
-- `Out<T> loaded` (`net.officefloor.plugin.variable.Out`) — **publishes** a value downstream
-- `@Val T value` (`net.officefloor.plugin.variable.Val`) — **consumes** a published value
-- `ObjectResponse<Dto> response` (`net.officefloor.web.ObjectResponse`) — sends the response body
+Each top-level YAML entry is a developer-chosen step name; the first is the entry
+point. `class:` names the function. **Give each function class exactly one public
+method** — several public methods fail at start-up unless every reference adds
+`method:`.
 
-So data flows between steps via `Out<T>` → `@Val T`, not return values. DTOs
-appear only at the edges (request-body entry, response exit); models flow in between.
+- `next: <step>` — run that step afterwards. This step's return value arrives there
+  as `@Parameter T`.
+- `outputs: { <name>: <step> }` — conditional branches. Declare a
+  `@FunctionalInterface` parameter annotated `@Flow("<name>")` and call it to take
+  the branch; not calling it short-circuits.
 
-### Naming conventions (function classes)
-`Load<E>` (fetch by path var) · `Build<E>` (construct from body) · `Validate<E>` ·
-`Apply<E>` (mutate) · `Save<E>` (persist) · `Delete<E>` · `List<E>` ·
+### Function parameters
+
+Declare only what the step needs; they resolve by role:
+
+- `@PathVariable`, `@RequestParam`, `@RequestBody` — Spring MVC annotations work.
+- Spring beans (repositories, mappers, services) — injected by type as normal.
+- `ObjectResponse<T>` (`net.officefloor.web.ObjectResponse`) — send the response with
+  `response.send(dto)`. This is how a step responds; wrap as
+  `ObjectResponse<ResponseEntity<T>>` to set status explicitly.
+- `@Parameter T` (`net.officefloor.plugin.section.clazz.Parameter`) — the previous
+  step's return value, a `@Flow` argument, or a thrown escalation.
+
+### Passing state between steps — `Out<T>` / `@Val`
+
+Steps do not call each other. Beyond the single `@Parameter` hand-off, publish state
+into a variable (`net.officefloor.plugin.variable`):
+
+- Producer declares `Out<T>` and calls `set(...)`; consumer declares `@Val T`.
+- Matching is **by type** — two variables of the same type in one pipeline need a
+  `@Qualifier` annotation to disambiguate.
+- `@Val` yields the same object the producer stored, **not a copy** — so an `Apply`
+  step mutates the entity in place and later steps see the change.
+
+### Naming
+
+Verb plus entity: `Load<E>` (fetch by path variable, publishes `Out<E>`, throws when
+absent) · `Build<E>` (construct from body) · `Validate<E>` (bind and validate the
+body, publish it) · `Apply<E>` (mutate) · `Save<E>` · `Delete<E>` ·
 `RespondWith<E>` (200) · `RespondWith<E>Created` (201) · `RespondWithNoContent` (204).
 
-### Governance — `govern: [ transaction | readonly-transaction ]`
-Wraps a function's lifecycle (begin / commit-on-success / rollback-on-escalation).
-`transaction` and `readonly-transaction` are provided by the Spring integration.
-Custom governances live in `src/main/resources/officefloor/govern/`.
+Keep DTOs at the edges — request body in at the first step, response DTO out at the
+responder. Steps in between work with entities.
 
-### Escalations (exceptions) — `src/main/resources/officefloor/escalation/**`
-Functions throw checked exceptions; handlers are wired by filename = fully
-qualified exception class + `.yml`:
+### Request body and validation
+
+- The HTTP body can be read only once: **only one step per pipeline may bind
+  `@RequestBody`**. A second binding fails at runtime. When later steps need it, the
+  first step publishes it as a variable.
+- `@Valid` runs before that step's method body, so step order decides when validation
+  happens. Put the validating step first — otherwise a missing id returns 404 before
+  an invalid body can return 400.
+
+### Transactions
+
+`govern: [ transaction ]` for writes, `govern: [ readonly-transaction ]` for reads,
+listed on **every** step it covers. Both are provided by the starter. Governance spans
+the pipeline, so the request commits once at the end.
+
+### Errors
+
+Functions throw; handlers respond. The exception must be **checked** (`extends
+Exception`) so it appears in the `throws` clause. Put the handler in
+`officefloor/escalation/<fully.qualified.ExceptionClass>.yml`, taking the exception as
+`@Parameter` and responding via `ObjectResponse`. Matching is most-specific-first;
+anything unmatched falls through to Spring `@RestControllerAdvice`.
+
+### Security
+
+Guard a whole endpoint file with a Spring Security SpEL expression:
+
 ```yaml
-handle:
-  class: ...escalation.NotFoundExceptionHandler
+composition:
+  authorize: "hasRole('OWNER_ADMIN')"
 ```
-Precedence: method (on a step) > composition (file-wide) > global (these files) >
-fall through to Spring `@ControllerAdvice`.
 
-## Testing
-
-When changing behavior, grep for and update the tests that asserted the old
-behavior — the same contract is often enforced at more than one level, so fix
-every test that encodes it, not just the first one found.
+- Full reference: https://officefloor.net/llms.txt
