@@ -20,8 +20,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration tests for the /api/pettypes endpoints, driven against the OfficeFloor REST YAML
- * pipelines rather than a Spring MVC controller.
+ * Integration tests for the /api/pettypes endpoints, driven end-to-end
+ * through the running application against real repositories.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -163,9 +163,11 @@ class PetTypeRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void updatePetTypeForbiddenForOwnerAdmin() throws Exception {
         PetType type = newPetType("dog-" + System.nanoTime());
+        // Body must be valid, otherwise the assertion depends on whether validation or
+        // authorization runs first rather than on the role check under test.
         String body = """
-            {"name":"dog I"}
-            """;
+            {"id":%d,"name":"dog I"}
+            """.formatted(type.getId());
         mvc.perform(put("/api/pettypes/" + type.getId()).content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isForbidden());

@@ -12,8 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration test for the context-root redirect, driven against the OfficeFloor REST YAML
- * pipeline rather than a Spring MVC controller.
+ * Integration test for the context-root redirect, driven end-to-end
+ * through the running application against real repositories.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,6 +29,9 @@ class RootRestControllerV1Tests {
         // authentication on every request regardless of this endpoint's own (lack of) authorize rule.
         mvc.perform(get("/"))
             .andExpect(status().isFound())
-            .andExpect(header().string("Location", "swagger-ui/index.html"));
+            // Matched by suffix: whether the Location is context-relative or absolute is an
+            // implementation detail, not part of the endpoint's contract.
+            .andExpect(header().string("Location",
+                org.hamcrest.Matchers.endsWith("swagger-ui/index.html")));
     }
 }

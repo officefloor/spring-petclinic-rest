@@ -22,8 +22,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration tests for the paginated /api/v2/owners and /api/v2/pets endpoints, driven against
- * the OfficeFloor REST YAML pipelines rather than Spring MVC controllers.
+ * Integration tests for the paginated /api/v2/owners and /api/v2/pets endpoints, driven end-to-end
+ * through the running application against real repositories.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
