@@ -23,6 +23,7 @@ import org.springframework.samples.petclinic.mapper.VetMapper;
 import org.springframework.samples.petclinic.model.Specialty;
 import org.springframework.samples.petclinic.model.Vet;
 import org.springframework.samples.petclinic.rest.api.VetsApi;
+import org.springframework.samples.petclinic.rest.dto.SpecialtyDto;
 import org.springframework.samples.petclinic.rest.dto.VetDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -32,6 +33,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import jakarta.transaction.Transactional;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -97,12 +99,14 @@ public class VetRestControllerV1 implements VetsApi {
         currentVet.setFirstName(vetDto.getFirstName());
         currentVet.setLastName(vetDto.getLastName());
         currentVet.clearSpecialties();
-        for (Specialty spec : specialtyMapper.toSpecialtys(vetDto.getSpecialties())) {
-            currentVet.addSpecialty(spec);
-        }
-        if(currentVet.getNrOfSpecialties() > 0){
-            List<Specialty> vetSpecialities = this.clinicService.findSpecialtiesByNameIn(currentVet.getSpecialties().stream().map(Specialty::getName).collect(Collectors.toSet()));
-            currentVet.setSpecialties(vetSpecialities);
+        // Resolve the requested specialties by name straight from the DTO. Attaching transient
+        // Specialty instances mapped from the DTO to the already-persistent Vet first would
+        // trigger a Hibernate auto-flush on the lookup query below, which fails because those
+        // instances are not yet saved.
+        Set<String> specialtyNames = vetDto.getSpecialties() == null ? Set.of()
+            : vetDto.getSpecialties().stream().map(SpecialtyDto::getName).collect(Collectors.toSet());
+        if (!specialtyNames.isEmpty()) {
+            currentVet.setSpecialties(this.clinicService.findSpecialtiesByNameIn(specialtyNames));
         }
         this.clinicService.saveVet(currentVet);
         return new ResponseEntity<>(vetMapper.toVetDto(currentVet), HttpStatus.NO_CONTENT);

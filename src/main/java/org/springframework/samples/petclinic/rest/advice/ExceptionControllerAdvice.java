@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -68,6 +69,20 @@ public class ExceptionControllerAdvice {
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
+    }
+
+    /**
+     * Re-throws {@link AccessDeniedException} so Spring Security's {@code ExceptionTranslationFilter}
+     * translates it as it normally would - 403 for an authenticated user lacking the required role,
+     * or the configured entry point for an anonymous one. Without this, {@link #handleGeneralException}
+     * would catch it and report an authorization failure as a 500.
+     *
+     * @param e The {@link AccessDeniedException} to propagate
+     * @throws AccessDeniedException always
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public void handleAccessDeniedException(AccessDeniedException e) throws AccessDeniedException {
+        throw e;
     }
 
     /**
