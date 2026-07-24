@@ -9,9 +9,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * <p> Base class for {@link UserRepository} integration tests. The role-prefixing logic that
- * used to live in UserServiceImpl.saveUser now lives in the {@code SaveUser} REST function (see
- * SaveUserTest) - this exercises persistence of an already-valid object graph only, which is why
- * the back-reference is set explicitly here rather than relied upon. </p>
+ * used to live in UserServiceImpl.saveUser now lives in the {@code SaveUser} REST function, whose
+ * behaviour is exercised end-to-end by {@code UserRestControllerV1Tests}. This test exercises
+ * persistence of an already-valid object graph only, which is why the back-reference is set
+ * explicitly here rather than relied upon. </p>
  */
 public abstract class AbstractUserRepositoryTests {
 
