@@ -129,6 +129,44 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerConflictWhenSameLastNameAndTelephone() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Different first name, address and city, but same last name and telephone: still a conflict.
+        String duplicate = """
+            {"firstName":"Georgina","lastName":"Testerson","address":"1 Other St.","city":"Elsewhere","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(duplicate)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSuccessWhenSameLastNameDifferentTelephone() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Same last name but a different telephone is allowed.
+        String other = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"9998887777"}
+            """;
+        mvc.perform(post("/api/owners").content(other)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}

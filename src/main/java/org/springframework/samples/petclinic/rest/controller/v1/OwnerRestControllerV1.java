@@ -206,19 +206,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether an owner identical to the given one already exists, i.e. one sharing the same
-     * first name, last name, address, city and telephone.
+     * Determines whether an owner already exists that shares the same last name and telephone
+     * number as the given candidate.
      *
      * @param owner the candidate owner to check
-     * @return {@code true} if an identical owner already exists in the data store
+     * @return {@code true} if an owner with the same last name and telephone already exists
      */
     private boolean isDuplicateOwner(Owner owner) {
         return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
             .anyMatch(existing ->
-                Objects.equals(existing.getFirstName(), owner.getFirstName())
-                    && Objects.equals(existing.getLastName(), owner.getLastName())
-                    && Objects.equals(existing.getAddress(), owner.getAddress())
-                    && Objects.equals(existing.getCity(), owner.getCity())
+                Objects.equals(existing.getLastName(), owner.getLastName())
                     && Objects.equals(existing.getTelephone(), owner.getTelephone()));
     }
 }
