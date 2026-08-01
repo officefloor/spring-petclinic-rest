@@ -121,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipTier(this.clinicService.findAllOwners().size() < 100 ? "FOUNDING" : "STANDARD");
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+        owner.setSharesHousehold(sharesHousehold(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -303,6 +304,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> Objects.equals(existing.getLastName(), lastName))
             .count();
+    }
+
+    /**
+     * Determines whether, at the moment the owner is being created, another owner already shares
+     * the same household &mdash; that is, an existing owner has both the same address and the same
+     * city. Address and city are compared for exact equality, using the values resolved for the
+     * owner being created (which has not yet been persisted).
+     *
+     * @param owner the candidate owner to check
+     * @return {@code true} if an existing owner already has the same address and city
+     */
+    private boolean sharesHousehold(Owner owner) {
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> Objects.equals(existing.getAddress(), owner.getAddress())
+                && Objects.equals(existing.getCity(), owner.getCity()));
     }
 
     /**
