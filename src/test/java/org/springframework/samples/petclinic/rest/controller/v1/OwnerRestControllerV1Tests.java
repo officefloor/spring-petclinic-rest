@@ -346,4 +346,28 @@ class OwnerRestControllerV1Tests {
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.description").value("rabies shot"));
     }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // Fill up today's quota of 20 owners (all registered today).
+        for (int i = 0; i < 20; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Quota");
+            owner.setLastName("Owner-" + System.nanoTime() + "-" + i);
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity("Madison");
+            owner.setTelephone("60800000" + String.format("%02d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+
+        // The 21st owner created today is rejected with 400.
+        String body = """
+            {"firstName":"George","lastName":"Overflow","address":"110 W. Liberty St.","city":"Madison","telephone":"7085559999"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
 }
