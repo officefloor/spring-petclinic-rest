@@ -1,0 +1,108 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 43af33d..2d8070c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -101,7 +101,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        if (this.clinicService.existsIdenticalOwner(owner)) {
++        if (this.clinicService.existsIdenticalOwner(owner)
++            || this.clinicService.existsOwnerWithTelephone(owner.getTelephone())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index 57e0794..4623364 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -69,6 +69,15 @@ public interface ClinicService {
+ 	 */
+ 	boolean existsIdenticalOwner(Owner owner) throws DataAccessException;
+ 
++	/**
++	 * Determine whether any owner already uses the given telephone number.
++	 *
++	 * @param telephone the telephone number to check
++	 * @return {@code true} if an owner with the given telephone number already exists,
++	 *         {@code false} otherwise
++	 */
++	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
++
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+ 	Collection<PetType> findPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 05a340f..b2b53cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -250,6 +250,16 @@ public class ClinicServiceImpl implements ClinicService {
+             .anyMatch(existing -> isSameIdentity(existing, owner));
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean existsOwnerWithTelephone(String telephone) throws DataAccessException {
++        if (telephone == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
++    }
++
+     private boolean isSameIdentity(Owner existing, Owner candidate) {
+         return Objects.equals(existing.getLastName(), candidate.getLastName())
+             && Objects.equals(existing.getTelephone(), candidate.getTelephone());
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index dbe2d45..d2d1578 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -69,6 +69,15 @@ class OwnerRestControllerV1Tests {
+         return sb.toString();
+     }
+ 
++    /**
++     * Builds a unique, exactly-10-digit telephone number (the telephone Bean Validation pattern
++     * requires 10 digits) that starts with '7' so it never collides with the '608555...' seed data
++     * or with other tests.
++     */
++    private String uniqueTelephone() {
++        return String.format("7%09d", Math.abs(System.nanoTime()) % 1_000_000_000L);
++    }
++
+     private PetType dogType() {
+         PetType type = new PetType();
+         type.setName("dog-" + System.nanoTime());
+@@ -115,9 +124,10 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String uniqueLastName = uniqueName("Franklin");
++        String uniqueTelephone = uniqueTelephone();
+         String body = """
+-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+-            """.formatted(uniqueLastName);
++            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
++            """.formatted(uniqueLastName, uniqueTelephone);
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isCreated())
+@@ -125,6 +135,19 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateTelephoneConflict() throws Exception {
++        // George Franklin from the seed data already uses telephone 6085551023, so a new
++        // owner reusing that number must be rejected even though every other field differs.
++        String body = """
++            {"firstName":"Georgina","lastName":"%s","address":"1 Elsewhere Rd.","city":"Verona","telephone":"6085551023"}
++            """.formatted(uniqueName("Elsewhere"));
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateConflict() throws Exception {

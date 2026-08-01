@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e..43af33d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -101,6 +101,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (this.clinicService.existsIdenticalOwner(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+index a6fae5b..57e0794 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java
+@@ -60,6 +60,15 @@ public interface ClinicService {
+ 	void deleteOwner(Owner owner) throws DataAccessException;
+ 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+ 
++	/**
++	 * Determine whether an owner identical to the given one already exists in the data store,
++	 * i.e. one with the same first name, last name, address, city and telephone.
++	 *
++	 * @param owner the candidate owner to check
++	 * @return {@code true} if a matching owner already exists, {@code false} otherwise
++	 */
++	boolean existsIdenticalOwner(Owner owner) throws DataAccessException;
++
+ 	PetType findPetTypeById(int petTypeId);
+ 	Collection<PetType> findAllPetTypes() throws DataAccessException;
+ 	Collection<PetType> findPetTypes() throws DataAccessException;
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 873eed0..03044a0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
+ 
+@@ -242,6 +243,21 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findByLastName(lastName);
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public boolean existsIdenticalOwner(Owner owner) throws DataAccessException {
++        return ownerRepository.findByLastName(owner.getLastName()).stream()
++            .anyMatch(existing -> isSameIdentity(existing, owner));
++    }
++
++    private boolean isSameIdentity(Owner existing, Owner candidate) {
++        return Objects.equals(existing.getFirstName(), candidate.getFirstName())
++            && Objects.equals(existing.getLastName(), candidate.getLastName())
++            && Objects.equals(existing.getAddress(), candidate.getAddress())
++            && Objects.equals(existing.getCity(), candidate.getCity())
++            && Objects.equals(existing.getTelephone(), candidate.getTelephone());
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public Collection<Visit> findVisitsByPetId(int petId) {
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 999c951..dbe2d45 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -57,6 +57,18 @@ class OwnerRestControllerV1Tests {
+         return owner;
+     }
+ 
++    /**
++     * Builds a unique, letters-only name (the owner name Bean Validation pattern rejects digits),
++     * so tests can create distinct owners that do not collide with each other or the seed data.
++     */
++    private String uniqueName(String prefix) {
++        StringBuilder sb = new StringBuilder(prefix);
++        for (char c : Long.toString(System.nanoTime()).toCharArray()) {
++            sb.append((char) ('a' + (c - '0')));
++        }
++        return sb.toString();
++    }
++
+     private PetType dogType() {
+         PetType type = new PetType();
+         type.setName("dog-" + System.nanoTime());
+@@ -102,9 +114,10 @@ class OwnerRestControllerV1Tests {
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
++        String uniqueLastName = uniqueName("Franklin");
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+-            """;
++            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            """.formatted(uniqueLastName);
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isCreated())
+@@ -112,6 +125,19 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateConflict() throws Exception {
++        String uniqueLastName = uniqueName("Franklin");
++        newOwner(uniqueLastName);
++        String body = """
++            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            """.formatted(uniqueLastName);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
