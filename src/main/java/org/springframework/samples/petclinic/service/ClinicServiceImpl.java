@@ -246,6 +246,7 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
         }
@@ -264,6 +265,48 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> Objects.equals(normalize(existing.getCity()), normalize(city)))
             .count();
         return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), existingInCity + 1);
+    }
+
+    /**
+     * Resolves the city to store for a newly registered owner. If another owner already
+     * lives in the same city (ignoring letter case and surrounding/repeated whitespace),
+     * that owner's exact spelling of the city name is reused so a city is stored
+     * consistently. Otherwise the supplied city is title-cased, i.e. each word is
+     * capitalized and the remaining letters lower-cased (e.g. {@code "new york"} becomes
+     * {@code "New York"}). Returns {@code null} for a {@code null} input.
+     */
+    private String resolveCity(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return null;
+        }
+        String normalized = normalize(city);
+        return ownerRepository.findAll().stream()
+            .map(Owner::getCity)
+            .filter(existing -> Objects.equals(normalize(existing), normalized))
+            .findFirst()
+            .orElseGet(() -> toTitleCase(city));
+    }
+
+    /**
+     * Title-cases a value by trimming and collapsing whitespace, then capitalizing the
+     * first letter of each whitespace-separated word and lower-casing the rest
+     * (e.g. {@code "  new   YORK "} becomes {@code "New York"}).
+     */
+    private static String toTitleCase(String value) {
+        String collapsed = value.trim().replaceAll("\\s+", " ");
+        if (collapsed.isEmpty()) {
+            return collapsed;
+        }
+        StringBuilder result = new StringBuilder(collapsed.length());
+        for (String word : collapsed.split(" ")) {
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0)))
+                .append(word.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return result.toString();
     }
 
     private boolean hasIdenticalOwner(Owner owner) {

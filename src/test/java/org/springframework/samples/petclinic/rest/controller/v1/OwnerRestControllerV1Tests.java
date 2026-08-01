@@ -196,6 +196,54 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCity() throws Exception {
+        // No owner lives in this city yet, so the supplied spelling is simply title-cased.
+        String body = """
+            {"firstName":"Ada","lastName":"Lovelace","address":"1 Analytical Way","city":"lower  NAZARETH","telephone":"6085559001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Lower Nazareth"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // First owner establishes the canonical spelling for the city.
+        String first = """
+            {"firstName":"Grace","lastName":"Hopper","address":"2 Compiler Ct.","city":"Cape Town","telephone":"6085559002"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Cape Town"));
+
+        // Second owner supplies a different casing; the existing spelling must be reused.
+        String second = """
+            {"firstName":"Alan","lastName":"Turing","address":"3 Enigma Rd.","city":"cape TOWN","telephone":"6085559003"}
+            """;
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Cape Town"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesSeededCitySpelling() throws Exception {
+        // George Franklin lives in "Madison" in the seed data; a differently-cased input reuses it.
+        String body = """
+            {"firstName":"Betty","lastName":"Davis","address":"638 Cardinal Ave.","city":"MADISON","telephone":"6085559004"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Madison"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """
