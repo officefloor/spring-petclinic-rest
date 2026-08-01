@@ -103,13 +103,32 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"Wolfgang","lastName":"Steinbeck","address":"42 Nowhere Rd.","city":"Madison","telephone":"6085551099"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
-            .andExpect(jsonPath("$.firstName").value("George"));
+            .andExpect(jsonPath("$.firstName").value("Wolfgang"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateConflict() throws Exception {
+        Owner existing = new Owner();
+        existing.setFirstName("Wolfgang");
+        existing.setLastName("Steinberg");
+        existing.setAddress("42 Nowhere Rd.");
+        existing.setCity("Madison");
+        existing.setTelephone("6085551099");
+        ownerRepository.save(existing);
+
+        String body = """
+            {"firstName":"Wolfgang","lastName":"Steinberg","address":"42 Nowhere Rd.","city":"Madison","telephone":"6085551099"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test
