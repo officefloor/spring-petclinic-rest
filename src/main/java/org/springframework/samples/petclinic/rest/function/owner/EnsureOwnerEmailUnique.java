@@ -18,11 +18,12 @@ public class EnsureOwnerEmailUnique {
         if (email == null || email.isBlank()) {
             return; // email is optional
         }
+        String normalizedEmail = normalize(email);
         for (Owner existing : ownerRepository.findAll()) {
             if (isSameOwner(owner, existing)) {
                 continue;
             }
-            if (Objects.equals(email, existing.getEmail())) {
+            if (Objects.equals(normalizedEmail, normalize(existing.getEmail()))) {
                 throw new DuplicateOwnerException(
                         "An owner with the same email already exists");
             }
@@ -31,5 +32,17 @@ public class EnsureOwnerEmailUnique {
 
     private static boolean isSameOwner(Owner a, Owner b) {
         return a.getId() != null && Objects.equals(a.getId(), b.getId());
+    }
+
+    /**
+     * Normalizes a value for duplicate comparison: letter case is ignored and
+     * surrounding or repeated whitespace is collapsed, so {@code "  john   smith "}
+     * and {@code "John Smith"} compare equal.
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
