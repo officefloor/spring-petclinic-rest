@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             || this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
