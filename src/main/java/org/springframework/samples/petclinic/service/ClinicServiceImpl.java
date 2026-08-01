@@ -235,6 +235,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (owner.isNew()) {
             if (hasIdenticalOwner(owner)) {
                 throw new DuplicateOwnerException();
@@ -271,7 +272,20 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isSameOwner(Owner existing, Owner owner) {
-        return Objects.equals(normalize(existing.getTelephone()), normalize(owner.getTelephone()));
+        return Objects.equals(normalizeTelephone(existing.getTelephone()), normalizeTelephone(owner.getTelephone()));
+    }
+
+    /**
+     * Normalizes a telephone number for storage and duplicate detection by stripping
+     * everything except digits (e.g. spaces, dashes and parentheses), so that
+     * {@code "(613) 555-0100"} and {@code "6135550100"} are treated as the same number.
+     * Returns {@code null} for a {@code null} input.
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[^0-9]", "");
     }
 
     private boolean hasOwnerWithSameEmail(Owner owner) {
