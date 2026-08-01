@@ -103,6 +103,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -126,7 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -238,6 +239,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+    }
+
+    /**
+     * Normalizes a telephone number to digits only by stripping spaces, dashes and parentheses, so
+     * that a value such as {@code "(613) 555-0100"} is stored and compared as {@code "6135550100"}.
+     * This is applied before an owner is stored and before the telephone-uniqueness check, so two
+     * differently formatted representations of the same number are treated as duplicates. A
+     * {@code null} value is returned unchanged.
+     *
+     * @param telephone the raw telephone number, may be {@code null}
+     * @return the digits-only telephone number, or {@code null} if the input was {@code null}
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[\\s()-]", "");
     }
 
     /**
