@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -232,8 +233,24 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.isNew() && hasIdenticalOwner(owner)) {
+            throw new DuplicateOwnerException();
+        }
         ownerRepository.save(owner);
 
+    }
+
+    private boolean hasIdenticalOwner(Owner owner) {
+        return ownerRepository.findByLastName(owner.getLastName()).stream()
+            .anyMatch(existing -> isSameOwner(existing, owner));
+    }
+
+    private boolean isSameOwner(Owner existing, Owner owner) {
+        return Objects.equals(existing.getFirstName(), owner.getFirstName())
+            && Objects.equals(existing.getLastName(), owner.getLastName())
+            && Objects.equals(existing.getAddress(), owner.getAddress())
+            && Objects.equals(existing.getCity(), owner.getCity())
+            && Objects.equals(existing.getTelephone(), owner.getTelephone());
     }
 
     @Override
