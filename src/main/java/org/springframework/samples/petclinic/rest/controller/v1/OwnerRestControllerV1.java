@@ -135,6 +135,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(String.format("%s-%04d",
             owner.getCity().toUpperCase(Locale.ROOT), ownersInCity + 1));
+        boolean sharesHousehold = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> existing.getAddress() != null
+                && existing.getAddress().equals(owner.getAddress())
+                && existing.getCity() != null
+                && existing.getCity().equalsIgnoreCase(owner.getCity()));
+        owner.setSharesHousehold(sharesHousehold);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
