@@ -106,6 +106,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        long ownersRegisteredToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> LocalDate.now().equals(existing.getRegistrationDate()))
+            .count();
+        if (ownersRegisteredToday >= 20) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (this.clinicService.existsIdenticalOwner(owner)
             || this.clinicService.existsOwnerWithTelephone(owner.getTelephone())
             || this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
