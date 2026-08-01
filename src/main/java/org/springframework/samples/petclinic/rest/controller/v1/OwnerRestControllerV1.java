@@ -120,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setMembershipTier(this.clinicService.findAllOwners().size() < 100 ? "FOUNDING" : "STANDARD");
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -288,6 +289,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
         return city.toUpperCase() + "-" + String.format("%04d", ownersInCity + 1);
+    }
+
+    /**
+     * Counts how many existing owners share the given last name at this moment. The count is taken
+     * over the owners already registered (excluding the owner currently being created, which has not
+     * yet been persisted); last names are compared for exact equality.
+     *
+     * @param lastName the last name of the owner being created
+     * @return the number of other owners that currently share the given last name
+     */
+    private int countNamesakes(String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(existing.getLastName(), lastName))
+            .count();
     }
 
     /**

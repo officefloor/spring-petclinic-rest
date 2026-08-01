@@ -221,6 +221,30 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReturnsNamesakeCount() throws Exception {
+        String uniqueLastName = "Namesaketestington";
+
+        // The first owner with this last name has no namesakes yet.
+        String first = """
+            {"firstName":"George","lastName":"%s","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+            """.formatted(uniqueLastName);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(0));
+
+        // A second owner sharing the same last name sees one namesake.
+        String second = """
+            {"firstName":"Georgina","lastName":"%s","address":"1 Other St.","city":"Testville","telephone":"9998887777"}
+            """.formatted(uniqueLastName);
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(1));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
         // 20 owners have already been registered today.
         LocalDate today = LocalDate.now();
