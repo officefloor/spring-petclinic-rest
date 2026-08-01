@@ -246,7 +246,7 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional(readOnly = true)
     public boolean existsIdenticalOwner(Owner owner) throws DataAccessException {
-        return ownerRepository.findByLastName(owner.getLastName()).stream()
+        return ownerRepository.findAll().stream()
             .anyMatch(existing -> isSameIdentity(existing, owner));
     }
 
@@ -271,8 +271,23 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isSameIdentity(Owner existing, Owner candidate) {
-        return Objects.equals(existing.getLastName(), candidate.getLastName())
+        return Objects.equals(normalizeName(existing.getLastName()), normalizeName(candidate.getLastName()))
             && Objects.equals(existing.getTelephone(), candidate.getTelephone());
+    }
+
+    /**
+     * Normalises a name for duplicate detection so that comparisons ignore letter
+     * case as well as surrounding and repeated whitespace. For example
+     * {@code "  john   smith "} and {@code "John Smith"} normalise to the same value.
+     *
+     * @param name the raw name value (may be {@code null})
+     * @return the normalised name, or {@code null} if {@code name} is {@code null}
+     */
+    private String normalizeName(String name) {
+        if (name == null) {
+            return null;
+        }
+        return name.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     @Override
