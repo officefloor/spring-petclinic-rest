@@ -256,6 +256,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
             owner.setMembershipTier(resolveMembershipTier());
+            owner.setNamesakeCount(countNamesakes(owner));
         }
         ownerRepository.save(owner);
 
@@ -329,6 +330,18 @@ public class ClinicServiceImpl implements ClinicService {
      */
     private String resolveMembershipTier() {
         return ownerRepository.findAll().size() < FOUNDING_TIER_LIMIT ? "FOUNDING" : "STANDARD";
+    }
+
+    /**
+     * Counts how many other owners already share the newly registered owner's last name,
+     * ignoring letter case and surrounding/repeated whitespace. Invoked before the owner
+     * is persisted, so it reflects the number of namesakes existing at creation time.
+     */
+    private int countNamesakes(Owner owner) {
+        String lastName = normalize(owner.getLastName());
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> Objects.equals(normalize(existing.getLastName()), lastName))
+            .count();
     }
 
     /**
