@@ -7,8 +7,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
 
 /**
  * Rejects creating an owner whose email address is already used by another owner,
- * responding 409 via {@link DuplicateOwnerException}. Email is optional: when the request
- * supplies no email the check is skipped. Runs after {@code build} and before {@code save}.
+ * responding 409 via {@link DuplicateOwnerException}. The comparison ignores letter case and
+ * surrounding or repeated whitespace. Email is optional: when the request supplies no email the
+ * check is skipped. Runs after {@code build} and before {@code save}.
  */
 public class RejectDuplicateOwnerEmail {
 
@@ -18,7 +19,7 @@ public class RejectDuplicateOwnerEmail {
             return; // email is optional
         }
         for (Owner existing : ownerRepository.findAll()) {
-            if (email.equalsIgnoreCase(existing.getEmail())) {
+            if (DuplicateMatching.sameValue(email, existing.getEmail())) {
                 throw new DuplicateOwnerException("An owner with the same email already exists");
             }
         }
