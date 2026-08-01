@@ -13,12 +13,12 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
 public class CheckDuplicateOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
-        String telephone = DuplicateKey.normalize(owner.getTelephone());
+        String telephone = DuplicateKey.telephone(owner.getTelephone());
         if (telephone == null) {
             return;
         }
         for (Owner existing : ownerRepository.findAll()) {
-            if (telephone.equals(DuplicateKey.normalize(existing.getTelephone()))) {
+            if (telephone.equals(DuplicateKey.telephone(existing.getTelephone()))) {
                 throw new DuplicateOwnerException("An owner with the same telephone already exists");
             }
         }

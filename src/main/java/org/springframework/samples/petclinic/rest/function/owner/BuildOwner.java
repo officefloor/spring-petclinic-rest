@@ -15,6 +15,7 @@ public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
+        owner.setTelephone(DuplicateKey.telephone(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
