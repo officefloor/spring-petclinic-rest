@@ -162,6 +162,48 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCity() throws Exception {
+        // A brand-new city (unique suffix) no other owner uses, supplied with mixed casing;
+        // it should be stored and returned title-cased.
+        String rand = uniqueName("");
+        String cityInput = "nORth " + rand;
+        String expectedCity = "North " + Character.toUpperCase(rand.charAt(0)) + rand.substring(1);
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Franklin"), cityInput, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value(expectedCity));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // An owner already lives in the city with a deliberately odd spelling; a new owner
+        // supplying the same city (different casing) should adopt that exact spelling.
+        String suffix = Long.toString(Math.abs(System.nanoTime()));
+        String existingSpelling = "gOtHaM" + suffix;
+        Owner existing = new Owner();
+        existing.setFirstName("Bruce");
+        existing.setLastName(uniqueName("Wayne"));
+        existing.setAddress("1007 Mountain Drive");
+        existing.setCity(existingSpelling);
+        existing.setTelephone(uniqueTelephone());
+        ownerRepository.save(existing);
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Franklin"), "GOTHAM" + suffix, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value(existingSpelling));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateTelephoneConflict() throws Exception {
         // George Franklin from the seed data already uses telephone 6085551023, so a new
         // owner reusing that number must be rejected even though every other field differs.

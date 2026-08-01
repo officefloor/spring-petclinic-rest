@@ -112,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCity(resolveCityName(owner.getCity()));
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(owner.getCity()))
@@ -123,6 +124,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Resolves the city name to store for a newly created owner. If another owner already
+     * lives in the same city (compared case-insensitively), that owner's exact spelling of
+     * the city is reused so a city keeps a single canonical spelling. Otherwise the supplied
+     * city is title-cased (each word capitalised, remaining letters lower-cased).
+     *
+     * @param city the raw city supplied for the new owner (may be {@code null})
+     * @return the city name to store, or {@code null} if {@code city} is {@code null}
+     */
+    private String resolveCityName(String city) {
+        if (city == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> toTitleCase(city));
+    }
+
+    /**
+     * Title-cases a city name: the first letter of every whitespace-separated word is
+     * upper-cased and the remaining letters are lower-cased, e.g. {@code "new  YORK"}
+     * becomes {@code "New  York"}. Whitespace is preserved as-is.
+     *
+     * @param city the city name to title-case
+     * @return the title-cased city name
+     */
+    private static String toTitleCase(String city) {
+        StringBuilder result = new StringBuilder(city.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < city.length(); i++) {
+            char c = city.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                result.append(c);
+            } else {
+                result.append(startOfWord
+                    ? Character.toTitleCase(c)
+                    : Character.toLowerCase(c));
+                startOfWord = false;
+            }
+        }
+        return result.toString();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
