@@ -102,11 +102,12 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
-        // Unique address so the payload is not identical to an existing owner (seed
-        // owner #1 is George Franklin at 110 W. Liberty St.), which would be a 409.
+        // Unique telephone so the payload does not collide with an existing owner
+        // (seed owner #1 is George Franklin, telephone 6085551023), which would be a
+        // 409 under the same-last-name-and-telephone rule.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"%d W. Liberty St.","city":"Madison","telephone":"6085551023"}
-            """.formatted(System.nanoTime());
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"%010d"}
+            """.formatted(System.nanoTime() % 10_000_000_000L);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
