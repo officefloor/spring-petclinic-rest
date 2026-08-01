@@ -1,0 +1,85 @@
+{
+  "checkpoint": 1,
+  "checkpoint_id": "exact-duplicate",
+  "phase": "Start",
+  "request": {
+    "spec": "Reject creating an owner when an identical owner already exists (same first name, last name, address, city and telephone). Respond with 409.",
+    "prompt": "Implement the following change to the application so that it fully satisfies\nthe specification and all existing and new tests pass. Run the test suite and\nmake it green before finishing.\n\nReject creating an owner when an identical owner already exists (same first name, last name, address, city and telephone). Respond with 409.\n"
+  },
+  "commit_sha": "07c496b7e0776e724358c5ce17ac9ad94468bf40",
+  "reset_sha": "a7b1c949001e4e94a362597f3d44e60fbac3cc75",
+  "preagent_sha": "0d535ed14d5111365682190203f02f32443b3b9a",
+  "prev_sha": "0c5469c4dcf7a71dc3f7248d9846bc5e81c6bf18",
+  "base_sha": "0c5469c4dcf7a71dc3f7248d9846bc5e81c6bf18",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5093895,
+    "input_tokens": 48,
+    "output_tokens": 13857,
+    "cache_read_tokens": 1092859,
+    "cache_creation_tokens": 61562,
+    "num_turns": 39,
+    "duration_ms": 351085,
+    "duration_api_ms": 204561,
+    "model": "claude-opus-4-8",
+    "session_id": "accd10f3-c5a7-4a03-9fbd-12c0b776d7d2",
+    "stop_reason": "success",
+    "result_text": "All 255 tests pass. The change is complete.\n\n## Summary\n\nImplemented rejection of identical-owner creation (HTTP 409) on `POST /api/owners`, following the OfficeFloor function-injection pattern.\n\n**New files:**\n- `EnsureOwnerUnique.java` (function) \u2014 reads the built `Owner`, queries `OwnerRepository.findByLastName(...)`, and throws `DuplicateOwnerException` if any existing owner matches on all five fields (firstName, lastName, address, city, telephone).\n- `DuplicateOwnerException.java` \u2014 checked exception (extends `Exception`) so it surfaces in the `throws` clause for OfficeFloor escalation.\n- `DuplicateOwnerExceptionHandler.java` \u2014 escalation handler responding `409 Conflict` with a `ProblemDetail` body (matching the existing handler style).\n- `org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException.yml` \u2014 wires the exception to its handler.\n\n**Modified:**\n- `owners.POST.yml` \u2014 inserted the `ensureUnique` step between `build` and `save`, under `govern: [ transaction ]`.\n- `OwnerRestControllerV1Tests.createOwnerSuccess` \u2014 its payload was byte-identical to seed owner #1 (George Franklin, 110 W. Liberty St.), so under the new rule it now legitimately conflicts. Made the address unique so the test still verifies successful `201` creation without violating the new business rule.\n\nThe new `Cp01Tests` (409 on identical owner, 2xx on distinct owners) and all 255 existing tests pass.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.5093895,
+        "input_tokens": 48,
+        "output_tokens": 13857,
+        "cache_read_tokens": 1092859,
+        "cache_creation_tokens": 61562,
+        "num_turns": 39,
+        "duration_ms": 351085,
+        "duration_api_ms": 204561,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": "cp01.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 2,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#functionalityAllowsTwoDistinctOwners": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsIdenticalOwner": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#functionalityAllowsTwoDistinctOwners",
+        "passed": true,
+        "skipped": false,
+        "time": 0.797,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#coreRejectsIdenticalOwner",
+        "passed": true,
+        "skipped": false,
+        "time": 0.037,
+        "failure": null
+      }
+    ],
+    "error": ""
+  },
+  "probe": {
+    "probe_cost_usd": 0.651391,
+    "probe_input_tokens": 19,
+    "probe_cache_read_tokens": 286210,
+    "probe_recall": 0.23076923076923078,
+    "probe_text": "Read complete. Here is the full ordered pipeline for `POST /api/owners`, as wired in `src/main/resources/officefloor/rest/api/owners.POST.yml` and its function classes.\n\n## Validations & side-effects, in order\n\n**0. Authorization gate** (`composition.authorize`)\n- Requires `hasRole('OWNER_ADMIN')`. If the caller lacks the role, an `AuthorizationDeniedException` is raised and handled by its escalation before any step runs.\n\n**1. `build` \u2192 `BuildOwner`** (`govern: [ transaction ]`)\n- Binds the JSON body to `OwnerFieldsDto` and runs Bean Validation (`@Valid @RequestBody`, class is `@Validated`). Per-field constraints (from the generated DTO):\n  - `firstName` \u2014 `@NotNull`, `@Size(1..30)`, `@Pattern ^[\\p{L}]+([ '-][\\p{L}]+){0,2}$` (letters, up to 3 words separated by space/apostrophe/hyphen)\n  - `lastName` \u2014 `@NotNull`, `@Size(1..30)`, `@Pattern ^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$` (as above, optional trailing dot)\n  - `address` \u2014 `@NotNull`, `@Size(1..255)`\n  - `city` \u2014 `@NotNull`, `@Size(1..80)`\n  - `telephone` \u2014 `@NotNull`, `@Size(1..20)`, `@Pattern ^[0-9]*$` (digits only)\n- A validation failure throws `MethodArgumentNotValidException` \u2192 `ValidationExceptionHandler` \u2192 **400 Bad Request** with a `ProblemDetail` listing each field error.\n- Side-effect (in memory): maps the DTO to a new `Owner` via MapStruct (`OwnerMapper.toOwner`), with `id` and `pets` ignored; publishes it as `Out<Owner>`.\n\n**2. `ensureUnique` \u2192 `EnsureOwnerUnique`** (`govern: [ transaction ]`)\n- Business-rule validation: loads existing owners via `ownerRepository.findByLastName(...)` and rejects if any is *identical* on **all** of firstName, lastName, address, city, and telephone.\n- On a match, throws `DuplicateOwnerException` \u2192 `DuplicateOwnerExceptionHandler` \u2192 **409 Conflict** (`ProblemDetail`, message \"An identical owner already exists\").\n\n**3. `save` \u2192 `SaveOwner`** (`govern: [ transaction ]`)\n- Side-effect (persistence): `ownerRepository.save(owner)` \u2014 inserts the new owner and populates its generated `id`.\n\n**4. `respond` \u2192 `RespondWithOwnerCreated`** (`govern: [ transaction ]`)\n- Side-effect (response): maps the saved `Owner` to `OwnerDto` and sends **201 Created** with `Location: /api/owners/{id}` and the DTO as the body.\n\n**Transaction governance:** every step carries `govern: [ transaction ]`, so all four steps run in one transaction that commits once at the end of the pipeline (a failure in any step rolls the whole thing back).\n\nOne note: there's also a `ValidateOwner` class in the same package, but it is **not** part of this POST pipeline \u2014 validation here is performed by `BuildOwner`. (`ValidateOwner` is for the PUT-style flows where validation must precede a load.)"
+  },
+  "pinned_touched": [],
+  "acceptance_touched": []
+}

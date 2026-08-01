@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
+index a240228..78b09ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
+@@ -1,9 +1,9 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown when creating an owner that is identical to one already stored (same first
+- * name, last name, address, city and telephone). Handled globally by
+- * {@link DuplicateOwnerExceptionHandler}, which responds 409 Conflict.
++ * Thrown when creating an owner that has the same last name and telephone number as
++ * one already stored. Handled globally by {@link DuplicateOwnerExceptionHandler},
++ * which responds 409 Conflict.
+  */
+ public class DuplicateOwnerException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+index 9fba7b6..857f30b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+@@ -8,24 +8,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
+ 
+ /**
+- * Rejects creation of an owner that is identical to one already stored (same first
+- * name, last name, address, city and telephone).
++ * Rejects creation of an owner when another owner already has the same last name and
++ * the same telephone number.
+  */
+ public class EnsureOwnerUnique {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
+         for (Owner existing : ownerRepository.findByLastName(owner.getLastName())) {
+-            if (isIdentical(owner, existing)) {
+-                throw new DuplicateOwnerException("An identical owner already exists");
++            if (isDuplicate(owner, existing)) {
++                throw new DuplicateOwnerException(
++                        "An owner with the same last name and telephone already exists");
+             }
+         }
+     }
+ 
+-    private static boolean isIdentical(Owner a, Owner b) {
+-        return Objects.equals(a.getFirstName(), b.getFirstName())
+-                && Objects.equals(a.getLastName(), b.getLastName())
+-                && Objects.equals(a.getAddress(), b.getAddress())
+-                && Objects.equals(a.getCity(), b.getCity())
++    private static boolean isDuplicate(Owner a, Owner b) {
++        return Objects.equals(a.getLastName(), b.getLastName())
+                 && Objects.equals(a.getTelephone(), b.getTelephone());
+     }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index ed43d92..de979e9 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -102,11 +102,12 @@ class OwnerRestControllerV1Tests {
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+-        // Unique address so the payload is not identical to an existing owner (seed
+-        // owner #1 is George Franklin at 110 W. Liberty St.), which would be a 409.
++        // Unique telephone so the payload does not collide with an existing owner
++        // (seed owner #1 is George Franklin, telephone 6085551023), which would be a
++        // 409 under the same-last-name-and-telephone rule.
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"%d W. Liberty St.","city":"Madison","telephone":"6085551023"}
+-            """.formatted(System.nanoTime());
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"%010d"}
++            """.formatted(System.nanoTime() % 10_000_000_000L);
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isCreated())

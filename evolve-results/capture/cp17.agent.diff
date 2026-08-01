@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1b8a736..e618336 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "shares_household")
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -145,6 +148,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 635d9b0..1f68ae8 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index e554118..07ef194 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 807e89c..7e6e836 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INT(4),
++  shares_household BIT(1),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6a87433..81b6a88 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number INT,
+                                       customer_code TEXT,
+                                       membership_tier TEXT,
+-                                      namesake_count INT
++                                      namesake_count INT,
++                                      shares_household BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 1d4c3de..f417a67 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -54,6 +54,11 @@ assignMembershipTier:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerNamesakeCount
+   govern: [ transaction ]
++  next: assignSharesHousehold
++
++assignSharesHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerSharesHousehold
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5216e8a..d4f6ce5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2105,6 +2105,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether another owner already had the same address and city at the moment the owner was created.
++              type: boolean
++              example: true
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
