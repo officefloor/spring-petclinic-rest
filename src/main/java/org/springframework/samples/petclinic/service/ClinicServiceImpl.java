@@ -246,10 +246,7 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isSameOwner(Owner existing, Owner owner) {
-        return Objects.equals(existing.getFirstName(), owner.getFirstName())
-            && Objects.equals(existing.getLastName(), owner.getLastName())
-            && Objects.equals(existing.getAddress(), owner.getAddress())
-            && Objects.equals(existing.getCity(), owner.getCity())
+        return Objects.equals(existing.getLastName(), owner.getLastName())
             && Objects.equals(existing.getTelephone(), owner.getTelephone());
     }
 
