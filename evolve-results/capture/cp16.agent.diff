@@ -1,0 +1,120 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ca4a028..996e3b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,9 @@ public class Owner extends Person {
+     @Column(name = "membership_tier")
+     private String membershipTier;
+ 
++    @Transient
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -143,6 +146,14 @@ public class Owner extends Person {
+         this.membershipTier = membershipTier;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 66fbbe7..7b6d74e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -114,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         owner.setCity(resolveCity(owner.getCity()));
+         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+         owner.setMembershipNumber(membershipNumber);
+@@ -323,6 +324,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return result.toString();
+     }
+ 
++    /**
++     * Counts how many existing owners share the given last name. Last names are matched using
++     * {@link #normalize(String)}, so the count ignores letter case and any surrounding or repeated
++     * whitespace. This is evaluated against the owners present at the moment the new owner is
++     * created, before the new owner is persisted, so the new owner does not count itself.
++     *
++     * @param lastName the last name of the new owner, may be {@code null}
++     * @return the number of existing owners sharing the same last name
++     */
++    private int countNamesakes(String lastName) {
++        String normalized = normalize(lastName);
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalized.equals(normalize(existing.getLastName())))
++            .count();
++    }
++
+     /**
+      * Determines whether the given telephone number is already used by any other owner.
+      *
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index aab83c0..508fb64 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,6 +2099,14 @@ components:
+               type: string
+               example: 'FOUNDING'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that shared the same last name at the moment this owner was created.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 2
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 5255b7d..a446a28 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -259,6 +259,32 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReturnsNamesakeCountForSharedLastName() throws Exception {
++        // Two seed owners already have the last name "Davis" (Betty and Harold).
++        String body = """
++            {"firstName":"Sammy","lastName":"Davis","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085550030"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.namesakeCount").value(2));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReturnsZeroNamesakeCountForUniqueLastName() throws Exception {
++        // No seed owner has the last name "Washington".
++        String body = """
++            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Boston","telephone":"6085550031"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.namesakeCount").value(0));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

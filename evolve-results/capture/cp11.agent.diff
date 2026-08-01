@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b97684a..db52dfc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,6 +103,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -126,7 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+@@ -240,6 +241,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+     }
+ 
++    /**
++     * Normalizes a telephone number to digits only by stripping spaces, dashes and parentheses, so
++     * that a value such as {@code "(613) 555-0100"} is stored and compared as {@code "6135550100"}.
++     * This is applied before an owner is stored and before the telephone-uniqueness check, so two
++     * differently formatted representations of the same number are treated as duplicates. A
++     * {@code null} value is returned unchanged.
++     *
++     * @param telephone the raw telephone number, may be {@code null}
++     * @return the digits-only telephone number, or {@code null} if the input was {@code null}
++     */
++    private static String normalizeTelephone(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        return telephone.replaceAll("[\\s()-]", "");
++    }
++
+     /**
+      * Normalizes free-form text for duplicate detection so that comparisons ignore letter case and
+      * surrounding or repeated whitespace: the value is trimmed, runs of internal whitespace are
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 51b4c71..df73e2c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,7 +2029,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[0-9 ()-]*$'
+           example: '6085551023'
+         email:
+           title: Email address

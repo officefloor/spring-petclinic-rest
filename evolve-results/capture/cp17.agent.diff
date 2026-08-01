@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 996e3b3..5b61845 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Transient
+     private Integer namesakeCount;
+ 
++    @Transient
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -154,6 +157,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7b6d74e..463fafd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
++        owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+         owner.setCity(resolveCity(owner.getCity()));
+         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+         owner.setMembershipNumber(membershipNumber);
+@@ -340,6 +341,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether the new owner shares a household with an existing owner, meaning another
++     * owner already has the same address and city. Both the address and the city are matched using
++     * {@link #normalize(String)}, so the comparison ignores letter case and any surrounding or
++     * repeated whitespace. This is evaluated against the owners present at the moment the new owner
++     * is created, before the new owner is persisted, so the new owner does not count itself.
++     *
++     * @param address the address of the new owner, may be {@code null}
++     * @param city    the city of the new owner, may be {@code null}
++     * @return {@code true} if an existing owner already has the same address and city
++     */
++    private boolean sharesHousehold(String address, String city) {
++        String normalizedAddress = normalize(address);
++        String normalizedCity = normalize(city);
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> normalizedAddress.equals(normalize(existing.getAddress()))
++                && normalizedCity.equals(normalize(existing.getCity())));
++    }
++
+     /**
+      * Determines whether the given telephone number is already used by any other owner.
+      *
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 508fb64..c8cfed2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2107,6 +2107,12 @@ components:
+               minimum: 0
+               example: 2
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether another owner already had the same address and city at the moment this owner was created.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

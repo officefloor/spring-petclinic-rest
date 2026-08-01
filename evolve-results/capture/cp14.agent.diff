@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8691d2d..9988611 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (hasReachedDailyRegistrationLimit()) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (hasReachedCityOwnerLimit(owner.getCity())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -222,6 +225,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return registeredToday >= MAX_DAILY_REGISTRATIONS;
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered in any single city.
++     */
++    private static final long MAX_OWNERS_PER_CITY = 8;
++
++    /**
++     * Determines whether the given city has already reached its owner limit. Owners are matched to
++     * the city using {@link #normalize(String)}, so the count ignores letter case and any
++     * surrounding or repeated whitespace. Once {@value #MAX_OWNERS_PER_CITY} owners live in a city,
++     * no further owners may be created there.
++     *
++     * @param city the city of the new owner, may be {@code null}
++     * @return {@code true} if the city already contains {@value #MAX_OWNERS_PER_CITY} owners
++     */
++    private boolean hasReachedCityOwnerLimit(String city) {
++        String normalized = normalize(city);
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> Objects.equals(normalize(existing.getCity()), normalized))
++            .count();
++        return ownersInCity >= MAX_OWNERS_PER_CITY;
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted as
+      * {@code '<UPPERCASE_CITY>-<NNNN>'} where {@code NNNN} is one more than the number of owners
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 93d9717..5255b7d 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -480,12 +480,14 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+         // 20 owners already registered today: the 21st creation must be rejected with 400.
++        // Each is registered in a distinct city so this exercises only the daily-registration
++        // limit and not the per-city owner cap.
+         for (int i = 0; i < 20; i++) {
+             Owner owner = new Owner();
+             owner.setFirstName("Daily");
+             owner.setLastName("Limit-" + System.nanoTime());
+             owner.setAddress("110 W. Liberty St.");
+-            owner.setCity("Madison");
++            owner.setCity("DailyCity-" + i);
+             owner.setTelephone("6085551023");
+             owner.setRegistrationDate(LocalDate.now());
+             ownerRepository.save(owner);
+@@ -502,12 +504,14 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerAllowedBelowDailyLimit() throws Exception {
+         // 19 owners registered today: another creation is still allowed.
++        // Each is registered in a distinct city so this exercises only the daily-registration
++        // limit and not the per-city owner cap.
+         for (int i = 0; i < 19; i++) {
+             Owner owner = new Owner();
+             owner.setFirstName("Daily");
+             owner.setLastName("Limit-" + System.nanoTime());
+             owner.setAddress("110 W. Liberty St.");
+-            owner.setCity("Madison");
++            owner.setCity("DailyCity-" + i);
+             owner.setTelephone("6085551023");
+             owner.setRegistrationDate(LocalDate.now());
+             ownerRepository.save(owner);
+@@ -519,4 +523,46 @@ class OwnerRestControllerV1Tests {
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isCreated());
+     }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenCityFull() throws Exception {
++        // A city that already contains 8 owners cannot accept any more: the 9th is rejected with 400.
++        for (int i = 0; i < 8; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("City");
++            owner.setLastName("Cap-" + System.nanoTime());
++            owner.setAddress("110 W. Liberty St.");
++            owner.setCity("Springfield");
++            owner.setTelephone("6085551023");
++            ownerRepository.save(owner);
++        }
++        String body = """
++            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Springfield","telephone":"6085550000"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedBelowCityLimit() throws Exception {
++        // A city with only 7 owners can still accept the 8th.
++        for (int i = 0; i < 7; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("City");
++            owner.setLastName("Cap-" + System.nanoTime());
++            owner.setAddress("110 W. Liberty St.");
++            owner.setCity("Springfield");
++            owner.setTelephone("6085551023");
++            ownerRepository.save(owner);
++        }
++        String body = """
++            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Springfield","telephone":"6085550000"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
+ }
