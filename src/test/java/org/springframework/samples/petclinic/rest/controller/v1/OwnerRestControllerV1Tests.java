@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklinson","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Franklinson","address":"110 W. Liberty St.","city":"Madison","telephone":"7085551023"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -116,7 +116,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createDuplicateOwnerReturnsConflict() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Duplicatus","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Duplicatus","address":"110 W. Liberty St.","city":"Madison","telephone":"7085552023"}
             """;
 
         // First create succeeds.
