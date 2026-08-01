@@ -8,22 +8,24 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * Rejects creation of an owner when another owner already has the same last name and
- * the same telephone number.
+ * Rejects creation of an owner when another owner already uses the same telephone
+ * number. Telephone must be unique across all owners.
  */
 public class EnsureOwnerUnique {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
-        for (Owner existing : ownerRepository.findByLastName(owner.getLastName())) {
-            if (isDuplicate(owner, existing)) {
+        for (Owner existing : ownerRepository.findAll()) {
+            if (isSameOwner(owner, existing)) {
+                continue;
+            }
+            if (Objects.equals(owner.getTelephone(), existing.getTelephone())) {
                 throw new DuplicateOwnerException(
-                        "An owner with the same last name and telephone already exists");
+                        "An owner with the same telephone already exists");
             }
         }
     }
 
-    private static boolean isDuplicate(Owner a, Owner b) {
-        return Objects.equals(a.getLastName(), b.getLastName())
-                && Objects.equals(a.getTelephone(), b.getTelephone());
+    private static boolean isSameOwner(Owner a, Owner b) {
+        return a.getId() != null && Objects.equals(a.getId(), b.getId());
     }
 }
