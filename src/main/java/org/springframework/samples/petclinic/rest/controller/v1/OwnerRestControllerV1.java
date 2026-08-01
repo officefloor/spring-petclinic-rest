@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -141,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(owner.getCity()));
         owner.setSharesHousehold(sharesHousehold);
+        owner.setLocality(isMostCommonCity(owner.getCity()) ? "local" : "remote");
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -192,6 +195,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Determines whether the supplied city is the single most common city among the owners that
+     * already exist. Cities are compared case-insensitively. A city qualifies only when strictly
+     * more existing owners live there than in any other city; if the city is absent, tied for the
+     * lead, or there are no existing owners at all, it is not the single most common city.
+     *
+     * @param city the (already canonicalised) city of the owner being created (may be {@code null})
+     * @return {@code true} if {@code city} is uniquely the most common existing city
+     */
+    private boolean isMostCommonCity(String city) {
+        if (city == null) {
+            return false;
+        }
+        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null)
+            .collect(Collectors.groupingBy(c -> c.toLowerCase(Locale.ROOT), Collectors.counting()));
+        long max = countsByCity.values().stream().mapToLong(Long::longValue).max().orElse(0L);
+        if (max == 0L) {
+            return false;
+        }
+        long numberOfCitiesWithMax = countsByCity.values().stream()
+            .filter(count -> count == max)
+            .count();
+        if (numberOfCitiesWithMax != 1L) {
+            return false;
+        }
+        Long cityCount = countsByCity.get(city.toLowerCase(Locale.ROOT));
+        return cityCount != null && cityCount == max;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

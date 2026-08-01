@@ -251,6 +251,46 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerInSingleMostCommonCityIsLocal() throws Exception {
+        // Populate a brand-new city with five owners so it becomes the single most common city
+        // (more populous than any seed city). A new owner registered there is therefore 'local'.
+        String city = uniqueName("Localville");
+        for (int i = 0; i < 5; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("George");
+            owner.setLastName(uniqueName("Resident"));
+            owner.setAddress(i + " Main St.");
+            owner.setCity(city);
+            owner.setTelephone(uniqueTelephone());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Newcomer"), city, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("local"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerInUncommonCityIsRemote() throws Exception {
+        // A brand-new city no other owner uses is not the most common city, so a new owner
+        // registered there is 'remote'.
+        String city = uniqueName("Remoteville");
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Newcomer"), city, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("remote"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateTelephoneConflict() throws Exception {
         // George Franklin from the seed data already uses telephone 6085551023, so a new
         // owner reusing that number must be rejected even though every other field differs.
