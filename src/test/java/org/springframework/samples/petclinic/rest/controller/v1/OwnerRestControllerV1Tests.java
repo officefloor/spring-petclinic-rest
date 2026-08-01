@@ -137,6 +137,31 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAssignsCustomerCode() throws Exception {
+        // A city no other owner uses, so the first owner created there is numbered 0001 and
+        // the second 0002, both prefixed with the upper-cased city name.
+        String city = uniqueName("Metropolis");
+        String upperCity = city.toUpperCase(java.util.Locale.ROOT);
+
+        String firstBody = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("First"), city, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(firstBody)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value(upperCity + "-0001"));
+
+        String secondBody = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Second"), city, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(secondBody)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value(upperCity + "-0002"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateTelephoneConflict() throws Exception {
         // George Franklin from the seed data already uses telephone 6085551023, so a new
         // owner reusing that number must be rejected even though every other field differs.

@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -111,6 +112,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null
+                && existing.getCity().equalsIgnoreCase(owner.getCity()))
+            .count();
+        owner.setCustomerCode(String.format("%s-%04d",
+            owner.getCity().toUpperCase(Locale.ROOT), ownersInCity + 1));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
