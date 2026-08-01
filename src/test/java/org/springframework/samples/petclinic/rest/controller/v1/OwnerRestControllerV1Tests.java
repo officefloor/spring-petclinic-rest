@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -127,6 +127,19 @@ class OwnerRestControllerV1Tests {
             {"firstName":"%s","lastName":"%s","address":"%s","city":"%s","telephone":"%s"}
             """, existing.getFirstName(), existing.getLastName(), existing.getAddress(),
             existing.getCity(), existing.getTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateTelephoneDifferentLastNameConflict() throws Exception {
+        // Reuse a telephone already held by a seeded owner (George Franklin, 6085551023) but with a
+        // completely different last name: the telephone alone must trigger the 409.
+        String body = """
+            {"firstName":"Unrelated","lastName":"Newfamily","address":"1 New St.","city":"Madison","telephone":"6085551023"}
+            """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isConflict());
