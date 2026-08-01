@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
@@ -205,18 +206,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether the given email address is already used by any other owner. An owner
-     * without an email address is never considered a duplicate on this criterion.
+     * without an email address is never considered a duplicate on this criterion. Email addresses
+     * are compared using {@link #normalize(String)} so the check ignores letter case and any
+     * surrounding or repeated whitespace.
      *
      * @param owner the candidate owner
      * @return {@code true} if the owner provides an email already used by an existing owner
      */
     private boolean isDuplicateEmail(Owner owner) {
-        String email = owner.getEmail();
-        if (email == null || email.isBlank()) {
+        String email = normalize(owner.getEmail());
+        if (email.isEmpty()) {
             return false;
         }
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> email.equalsIgnoreCase(existing.getEmail()));
+            .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+    }
+
+    /**
+     * Normalizes free-form text for duplicate detection so that comparisons ignore letter case and
+     * surrounding or repeated whitespace: the value is trimmed, runs of internal whitespace are
+     * collapsed to a single space and the result is lower-cased. This is what makes
+     * {@code "  john   smith "} and {@code "John Smith"} count as the same value when detecting
+     * duplicates. A {@code null} value normalizes to the empty string.
+     *
+     * @param value the raw value, may be {@code null}
+     * @return the normalized value, never {@code null}
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
