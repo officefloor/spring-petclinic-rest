@@ -103,6 +103,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -129,7 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -230,16 +231,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether an owner already exists that uses the same telephone number as the
-     * given candidate. The comparison ignores letter case and surrounding or repeated
-     * whitespace.
+     * given candidate. Telephone numbers are compared digits-only, so formatting characters
+     * such as spaces, dashes and parentheses are ignored.
      *
      * @param owner the candidate owner to check
      * @return {@code true} if an owner with the same telephone number already exists
      */
     private boolean isDuplicateOwner(Owner owner) {
-        String telephone = normalize(owner.getTelephone());
+        String telephone = normalizeTelephone(owner.getTelephone());
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
+            .anyMatch(existing -> Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
     }
 
     /**
@@ -274,5 +275,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return value.strip().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Normalizes a telephone number to digits only by stripping every non-digit character
+     * (such as spaces, dashes and parentheses). This is used both to store telephone numbers
+     * in a canonical form and to compare them for uniqueness, so that {@code "(613) 555-0100"}
+     * and {@code "6135550100"} are treated as the same number.
+     *
+     * @param value the telephone number to normalize, may be {@code null}
+     * @return the digits-only telephone number, or {@code null} if {@code value} is {@code null}
+     */
+    private static String normalizeTelephone(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("\\D", "");
     }
 }
