@@ -16,12 +16,12 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown when an attempt is made to create an <code>Owner</code> that has the same last name and
- * telephone number as one that already exists.
+ * Thrown when an attempt is made to create an <code>Owner</code> whose telephone number is already
+ * used by another owner.
  */
 public class DuplicateOwnerException extends RuntimeException {
 
     public DuplicateOwnerException() {
-        super("An owner with the same last name and telephone already exists");
+        super("An owner with the same telephone number already exists");
     }
 }

@@ -241,13 +241,12 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean hasIdenticalOwner(Owner owner) {
-        return ownerRepository.findByLastName(owner.getLastName()).stream()
+        return ownerRepository.findAll().stream()
             .anyMatch(existing -> isSameOwner(existing, owner));
     }
 
     private boolean isSameOwner(Owner existing, Owner owner) {
-        return Objects.equals(existing.getLastName(), owner.getLastName())
-            && Objects.equals(existing.getTelephone(), owner.getTelephone());
+        return Objects.equals(existing.getTelephone(), owner.getTelephone());
     }
 
     @Override
