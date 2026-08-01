@@ -117,6 +117,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             || this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        long namesakeCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getLastName() != null
+                && existing.getLastName().equals(owner.getLastName()))
+            .count();
+        owner.setNamesakeCount((int) namesakeCount);
         int ownersBefore = this.clinicService.findAllOwners().size();
         owner.setMembershipNumber(ownersBefore + 1);
         owner.setMembershipTier(ownersBefore < 100 ? "FOUNDING" : "STANDARD");
