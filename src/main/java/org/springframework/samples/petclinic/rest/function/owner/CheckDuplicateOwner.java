@@ -8,25 +8,22 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * Rejects creating an owner that is identical to an existing one (same first name,
- * last name, address, city and telephone) by throwing {@link DuplicateOwnerException},
- * which is handled as a 409 Conflict.
+ * Rejects creating an owner when another owner already has the same last name and
+ * the same telephone number, by throwing {@link DuplicateOwnerException}, which is
+ * handled as a 409 Conflict.
  */
 public class CheckDuplicateOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
         for (Owner existing : ownerRepository.findByLastName(owner.getLastName())) {
-            if (isIdentical(existing, owner)) {
-                throw new DuplicateOwnerException("An identical owner already exists");
+            if (isDuplicate(existing, owner)) {
+                throw new DuplicateOwnerException("An owner with the same last name and telephone already exists");
             }
         }
     }
 
-    private static boolean isIdentical(Owner existing, Owner candidate) {
-        return Objects.equals(existing.getFirstName(), candidate.getFirstName())
-                && Objects.equals(existing.getLastName(), candidate.getLastName())
-                && Objects.equals(existing.getAddress(), candidate.getAddress())
-                && Objects.equals(existing.getCity(), candidate.getCity())
+    private static boolean isDuplicate(Owner existing, Owner candidate) {
+        return Objects.equals(existing.getLastName(), candidate.getLastName())
                 && Objects.equals(existing.getTelephone(), candidate.getTelephone());
     }
 }

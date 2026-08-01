@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when creating an owner that is identical to an existing one (same first name,
- * last name, address, city and telephone). Handled globally by
+ * Thrown when creating an owner that duplicates an existing one (same last name and
+ * telephone). Handled globally by
  * {@link DuplicateOwnerExceptionHandler}, which responds 409 Conflict.
  */
 public class DuplicateOwnerException extends Exception {
