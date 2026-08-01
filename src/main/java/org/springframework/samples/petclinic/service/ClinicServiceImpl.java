@@ -255,6 +255,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
+            owner.setMembershipTier(resolveMembershipTier());
         }
         ownerRepository.save(owner);
 
@@ -313,6 +314,21 @@ public class ClinicServiceImpl implements ClinicService {
                 .append(word.substring(1).toLowerCase(Locale.ROOT));
         }
         return result.toString();
+    }
+
+    /**
+     * The number of owners that receive the founding membership tier. The first
+     * {@link #FOUNDING_TIER_LIMIT} owners ever created are {@code FOUNDING}; all later
+     * owners are {@code STANDARD}.
+     */
+    private static final long FOUNDING_TIER_LIMIT = 100;
+
+    /**
+     * Resolves the membership tier for a newly registered owner: {@code FOUNDING} while
+     * fewer than {@link #FOUNDING_TIER_LIMIT} owners exist beforehand, otherwise {@code STANDARD}.
+     */
+    private String resolveMembershipTier() {
+        return ownerRepository.findAll().size() < FOUNDING_TIER_LIMIT ? "FOUNDING" : "STANDARD";
     }
 
     /**
