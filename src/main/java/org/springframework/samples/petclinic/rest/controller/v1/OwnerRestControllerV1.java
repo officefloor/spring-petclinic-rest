@@ -115,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+        owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
         owner.setCity(resolveCity(owner.getCity()));
         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
         owner.setMembershipNumber(membershipNumber);
@@ -338,6 +339,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalized.equals(normalize(existing.getLastName())))
             .count();
+    }
+
+    /**
+     * Determines whether the new owner shares a household with an existing owner, meaning another
+     * owner already has the same address and city. Both the address and the city are matched using
+     * {@link #normalize(String)}, so the comparison ignores letter case and any surrounding or
+     * repeated whitespace. This is evaluated against the owners present at the moment the new owner
+     * is created, before the new owner is persisted, so the new owner does not count itself.
+     *
+     * @param address the address of the new owner, may be {@code null}
+     * @param city    the city of the new owner, may be {@code null}
+     * @return {@code true} if an existing owner already has the same address and city
+     */
+    private boolean sharesHousehold(String address, String city) {
+        String normalizedAddress = normalize(address);
+        String normalizedCity = normalize(city);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizedAddress.equals(normalize(existing.getAddress()))
+                && normalizedCity.equals(normalize(existing.getCity())));
     }
 
     /**
