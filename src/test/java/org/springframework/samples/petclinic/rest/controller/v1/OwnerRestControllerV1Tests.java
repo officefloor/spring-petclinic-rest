@@ -244,6 +244,34 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerInMostCommonCityIsLocal() throws Exception {
+        // In the seed data Madison (owners 1, 5, 8, 9) is the single most common city,
+        // so a new owner registering there is 'local'.
+        String body = """
+            {"firstName":"Ada","lastName":"Byron","address":"5 Locality Ln.","city":"Madison","telephone":"6085552010"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("local"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerOutsideMostCommonCityIsRemote() throws Exception {
+        // Sun Prairie has a single seed owner, so it is not the most common city and the
+        // new owner is 'remote'.
+        String body = """
+            {"firstName":"Alan","lastName":"Byron","address":"6 Locality Ln.","city":"Sun Prairie","telephone":"6085552011"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("remote"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """

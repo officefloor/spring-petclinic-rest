@@ -27,11 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -258,6 +261,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setMembershipTier(resolveMembershipTier());
             owner.setNamesakeCount(countNamesakes(owner));
             owner.setSharesHousehold(sharesHousehold(owner));
+            owner.setLocality(resolveLocality(owner));
         }
         ownerRepository.save(owner);
 
@@ -357,6 +361,33 @@ public class ClinicServiceImpl implements ClinicService {
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
                 && Objects.equals(normalize(existing.getCity()), city));
+    }
+
+    /**
+     * Resolves the locality of a newly registered owner: {@code "local"} if this owner's city
+     * is the single most common city among the owners that existed beforehand, otherwise
+     * {@code "remote"}. Cities are compared ignoring letter case and surrounding/repeated
+     * whitespace. If there are no existing owners, or if two or more cities are tied for the
+     * highest count (so there is no single most common city), the owner is {@code "remote"}.
+     * Invoked before the owner is persisted, so it reflects the state at creation time.
+     */
+    private String resolveLocality(Owner owner) {
+        String city = normalize(owner.getCity());
+        Map<String, Long> cityCounts = ownerRepository.findAll().stream()
+            .map(existing -> normalize(existing.getCity()))
+            .filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(c -> c, Collectors.counting()));
+        if (cityCounts.isEmpty()) {
+            return "remote";
+        }
+        long highestCount = Collections.max(cityCounts.values());
+        List<String> mostCommonCities = cityCounts.entrySet().stream()
+            .filter(entry -> entry.getValue() == highestCount)
+            .map(Map.Entry::getKey)
+            .toList();
+        boolean isSingleMostCommon = mostCommonCities.size() == 1
+            && Objects.equals(mostCommonCities.get(0), city);
+        return isSingleMostCommon ? "local" : "remote";
     }
 
     /**
