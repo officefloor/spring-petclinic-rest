@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 87baf8e..63167d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "shares_household")
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -143,6 +146,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 841bc13..852eb5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -121,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipTier(this.clinicService.findAllOwners().size() < 100 ? "FOUNDING" : "STANDARD");
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
++        owner.setSharesHousehold(sharesHousehold(owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -305,6 +306,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether, at the moment the owner is being created, another owner already shares
++     * the same household &mdash; that is, an existing owner has both the same address and the same
++     * city. Address and city are compared for exact equality, using the values resolved for the
++     * owner being created (which has not yet been persisted).
++     *
++     * @param owner the candidate owner to check
++     * @return {@code true} if an existing owner already has the same address and city
++     */
++    private boolean sharesHousehold(Owner owner) {
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> Objects.equals(existing.getAddress(), owner.getAddress())
++                && Objects.equals(existing.getCity(), owner.getCity()));
++    }
++
+     /**
+      * Determines whether the maximum number of owners that may be registered on a single day has
+      * already been reached. At most 20 owners may be created per day; the count is taken over the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 635d9b0..1f68ae8 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index e554118..07ef194 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 807e89c..7e6e836 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INT(4),
++  shares_household BIT(1),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 29c0465..6040b75 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number INTEGER,
+                                       customer_code VARCHAR(90),
+                                       membership_tier VARCHAR(20),
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      shares_household BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3865140..dd236a5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2116,6 +2116,13 @@ components:
+               format: int32
+               example: 3
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether, at the moment the owner was created, another owner
++                already had the same address and city.
++              type: boolean
++              example: true
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:

@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 32a8024..40b3146 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,9 +24,13 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.stream.Collectors;
+ 
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.core.context.SecurityContextHolder;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -58,6 +62,9 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /** Dedicated audit logger recording successful owner creations. */
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -127,6 +134,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setSharesHousehold(sharesHousehold(owner));
+         owner.setLocality(determineLocality(owner.getCity()));
+         this.clinicService.saveOwner(owner);
++        AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
++            currentUsername(), owner.getId(), owner.getMembershipNumber());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -226,6 +235,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /**
++     * Returns the name of the currently authenticated user, or {@code "anonymous"} if there is
++     * no authentication in the current security context.
++     *
++     * @return the authenticated user name for audit logging
++     */
++    private static String currentUsername() {
++        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
++        if (authentication == null || authentication.getName() == null) {
++            return "anonymous";
++        }
++        return authentication.getName();
++    }
++
+     /**
+      * Resolves the city name to use for a newly created owner. The supplied city is
+      * title-cased (each whitespace-separated word starts with an upper-case letter and the

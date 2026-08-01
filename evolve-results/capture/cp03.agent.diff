@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 10569f0..37c96b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -206,16 +206,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether an owner already exists that shares the same last name and telephone
+-     * number as the given candidate.
++     * Determines whether an owner already exists that uses the same telephone number as the
++     * given candidate.
+      *
+      * @param owner the candidate owner to check
+-     * @return {@code true} if an owner with the same last name and telephone already exists
++     * @return {@code true} if an owner with the same telephone number already exists
+      */
+     private boolean isDuplicateOwner(Owner owner) {
+-        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
+-            .anyMatch(existing ->
+-                Objects.equals(existing.getLastName(), owner.getLastName())
+-                    && Objects.equals(existing.getTelephone(), owner.getTelephone()));
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+     }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 4f4ed1d..3e04cd2 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -146,6 +146,25 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerConflictWhenSameTelephoneDifferentLastName() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Completely different owner, but the telephone is already used: conflict.
++        String duplicate = """
++            {"firstName":"Sally","lastName":"Different","address":"1 Other St.","city":"Elsewhere","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(duplicate)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccessWhenSameLastNameDifferentTelephone() throws Exception {

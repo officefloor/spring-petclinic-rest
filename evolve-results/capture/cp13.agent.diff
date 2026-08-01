@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 112275a..681ba46 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (isDailyRegistrationLimitReached()) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -283,6 +286,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return city.toUpperCase() + "-" + String.format("%04d", ownersInCity + 1);
+     }
+ 
++    /**
++     * Determines whether the maximum number of owners that may be registered on a single day has
++     * already been reached. At most 20 owners may be created per day; the count is taken over the
++     * owners whose registration date is today.
++     *
++     * @return {@code true} if 20 or more owners have already been registered today
++     */
++    private boolean isDailyRegistrationLimitReached() {
++        LocalDate today = LocalDate.now();
++        long ownersToday = this.clinicService.findAllOwners().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        return ownersToday >= 20;
++    }
++
+     /**
+      * Determines whether an owner already exists that uses the same telephone number as the
+      * given candidate. Telephone numbers are compared digits-only, so formatting characters
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 3031244..756a00a 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -219,6 +219,55 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        // 20 owners have already been registered today.
++        LocalDate today = LocalDate.now();
++        for (int i = 0; i < 20; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Daily");
++            owner.setLastName("Limit-" + i + "-" + System.nanoTime());
++            owner.setAddress("1 Cap St.");
++            owner.setCity("Captown");
++            owner.setTelephone(String.format("70000000%02d", i));
++            owner.setRegistrationDate(today);
++            ownerRepository.save(owner);
++        }
++
++        // The 21st registration for today is rejected with 400.
++        String body = """
++            {"firstName":"George","lastName":"Overflow","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedWhenBelowDailyLimit() throws Exception {
++        // Only 19 owners registered today leaves room for one more.
++        LocalDate today = LocalDate.now();
++        for (int i = 0; i < 19; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Daily");
++            owner.setLastName("Below-" + i + "-" + System.nanoTime());
++            owner.setAddress("1 Cap St.");
++            owner.setCity("Captown");
++            owner.setTelephone(String.format("71000000%02d", i));
++            owner.setRegistrationDate(today);
++            ownerRepository.save(owner);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Below","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

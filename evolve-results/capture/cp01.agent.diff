@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e..b0bfce3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -101,6 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (isDuplicateOwner(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -200,4 +204,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
++
++    /**
++     * Determines whether an owner identical to the given one already exists, i.e. one sharing the same
++     * first name, last name, address, city and telephone.
++     *
++     * @param owner the candidate owner to check
++     * @return {@code true} if an identical owner already exists in the data store
++     */
++    private boolean isDuplicateOwner(Owner owner) {
++        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
++            .anyMatch(existing ->
++                Objects.equals(existing.getFirstName(), owner.getFirstName())
++                    && Objects.equals(existing.getLastName(), owner.getLastName())
++                    && Objects.equals(existing.getAddress(), owner.getAddress())
++                    && Objects.equals(existing.getCity(), owner.getCity())
++                    && Objects.equals(existing.getTelephone(), owner.getTelephone()));
++    }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 999c951..91ff166 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -112,6 +112,21 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerConflictWhenIdentical() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

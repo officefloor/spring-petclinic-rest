@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cf479fc..b01a323 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private Integer membershipNumber;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e71a7ec..4288f91 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
++        owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -210,6 +211,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /**
++     * Builds the customer code for a newly created owner, formatted as
++     * {@code '<UPPERCASE_CITY>-<NNNN>'} where {@code NNNN} is one more than the number of
++     * owners already registered in that city, zero-padded to four digits (e.g.
++     * {@code 'LONDON-0007'}). Cities are matched ignoring letter case so the sequence is
++     * consistent with the upper-cased prefix.
++     *
++     * @param city the city of the owner being created
++     * @return the assigned customer code
++     */
++    private String nextCustomerCode(String city) {
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        return city.toUpperCase() + "-" + String.format("%04d", ownersInCity + 1);
++    }
++
+     /**
+      * Determines whether an owner already exists that uses the same telephone number as the
+      * given candidate. The comparison ignores letter case and surrounding or repeated
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a710323..e130f68 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 970a156..ff415d4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index b32dd43..5214275 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INT(4),
++  customer_code VARCHAR(90),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 841a953..6bdaf06 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      membership_number INTEGER
++                                      membership_number INTEGER,
++                                      customer_code VARCHAR(90)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f7528ad..067a3ff 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,14 @@ components:
+               format: date
+               example: '2013-01-01'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: The owner's customer code, assigned at creation and formatted
++                as '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than the number of
++                owners already in that city, zero-padded to four digits.
++              type: string
++              example: 'LONDON-0007'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:

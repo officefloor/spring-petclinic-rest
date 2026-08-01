@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8fcdbed..112275a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
++        owner.setCity(resolveCity(owner.getCity()));
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -212,6 +213,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /**
++     * Resolves the city name to use for a newly created owner. The supplied city is
++     * title-cased (each whitespace-separated word starts with an upper-case letter and the
++     * remaining letters are lower-cased), for example {@code "new york"} becomes
++     * {@code "New York"}. However, if an owner already exists in that city (matched ignoring
++     * letter case), the existing owner's exact spelling of the city name is reused instead, so
++     * that all owners in a city share a single canonical spelling.
++     *
++     * @param city the city supplied for the owner being created, may be {@code null}
++     * @return the city name to store and return for the owner
++     */
++    private String resolveCity(String city) {
++        if (city == null) {
++            return null;
++        }
++        String existingCity = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCity)
++            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
++            .findFirst()
++            .orElse(null);
++        if (existingCity != null) {
++            return existingCity;
++        }
++        return toTitleCase(city);
++    }
++
++    /**
++     * Title-cases the given text so that each whitespace-separated word starts with an
++     * upper-case letter and the remaining letters are lower-cased, for example
++     * {@code "new york"} and {@code "NEW YORK"} both become {@code "New York"}. The original
++     * spacing between words is preserved.
++     *
++     * @param value the text to title-case
++     * @return the title-cased text
++     */
++    private static String toTitleCase(String value) {
++        StringBuilder result = new StringBuilder(value.length());
++        boolean startOfWord = true;
++        for (int i = 0; i < value.length(); i++) {
++            char ch = value.charAt(i);
++            if (Character.isWhitespace(ch)) {
++                startOfWord = true;
++                result.append(ch);
++            } else if (startOfWord) {
++                result.append(Character.toUpperCase(ch));
++                startOfWord = false;
++            } else {
++                result.append(Character.toLowerCase(ch));
++            }
++        }
++        return result.toString();
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted as
+      * {@code '<UPPERCASE_CITY>-<NNNN>'} where {@code NNNN} is one more than the number of
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 3e04cd2..3031244 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -112,6 +112,41 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerTitleCasesCity() throws Exception {
++        // A brand-new city is title-cased and returned in the 'city' field.
++        String body = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"west sacramento","telephone":"2015550123"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.city").value("West Sacramento"));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReusesExistingCitySpelling() throws Exception {
++        // An owner already exists in this city with a distinctive spelling.
++        Owner existing = new Owner();
++        existing.setFirstName("Ada");
++        existing.setLastName("Existing-" + System.nanoTime());
++        existing.setAddress("1 First St.");
++        existing.setCity("OldePortville");
++        existing.setTelephone("2015559911");
++        ownerRepository.save(existing);
++
++        // Creating another owner in the same city (spelled differently) reuses the existing spelling.
++        String body = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"oldeportville","telephone":"2015550124"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.city").value("OldePortville"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerConflictWhenIdentical() throws Exception {

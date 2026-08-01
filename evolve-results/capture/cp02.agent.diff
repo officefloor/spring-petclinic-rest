@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b0bfce3..10569f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -206,19 +206,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether an owner identical to the given one already exists, i.e. one sharing the same
+-     * first name, last name, address, city and telephone.
++     * Determines whether an owner already exists that shares the same last name and telephone
++     * number as the given candidate.
+      *
+      * @param owner the candidate owner to check
+-     * @return {@code true} if an identical owner already exists in the data store
++     * @return {@code true} if an owner with the same last name and telephone already exists
+      */
+     private boolean isDuplicateOwner(Owner owner) {
+         return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
+             .anyMatch(existing ->
+-                Objects.equals(existing.getFirstName(), owner.getFirstName())
+-                    && Objects.equals(existing.getLastName(), owner.getLastName())
+-                    && Objects.equals(existing.getAddress(), owner.getAddress())
+-                    && Objects.equals(existing.getCity(), owner.getCity())
++                Objects.equals(existing.getLastName(), owner.getLastName())
+                     && Objects.equals(existing.getTelephone(), owner.getTelephone()));
+     }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 91ff166..4f4ed1d 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -127,6 +127,44 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerConflictWhenSameLastNameAndTelephone() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Different first name, address and city, but same last name and telephone: still a conflict.
++        String duplicate = """
++            {"firstName":"Georgina","lastName":"Testerson","address":"1 Other St.","city":"Elsewhere","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(duplicate)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerSuccessWhenSameLastNameDifferentTelephone() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Same last name but a different telephone is allowed.
++        String other = """
++            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"9998887777"}
++            """;
++        mvc.perform(post("/api/owners").content(other)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

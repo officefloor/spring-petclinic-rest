@@ -1,0 +1,203 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 63167d7..e4605b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "shares_household")
+     private Boolean sharesHousehold;
+ 
++    @Column(name = "locality")
++    private String locality;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -154,6 +157,14 @@ public class Owner extends Person {
+         this.sharesHousehold = sharesHousehold;
+     }
+ 
++    public String getLocality() {
++        return this.locality;
++    }
++
++    public void setLocality(String locality) {
++        this.locality = locality;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 852eb5e..32a8024 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,8 +18,11 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Collections;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Objects;
++import java.util.stream.Collectors;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -122,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         owner.setSharesHousehold(sharesHousehold(owner));
++        owner.setLocality(determineLocality(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -321,6 +325,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 && Objects.equals(existing.getCity(), owner.getCity()));
+     }
+ 
++    /**
++     * Determines the locality of the owner being created, based on the given city. The city is
++     * {@code "local"} if it is the single most common city among the existing owners at this moment
++     * (before the owner being created is persisted); otherwise it is {@code "remote"}. Cities are
++     * compared ignoring letter case. If there are no existing owners, or if two or more cities are
++     * tied for the most common, there is no single most common city and the result is
++     * {@code "remote"}.
++     *
++     * @param city the city of the owner being created, may be {@code null}
++     * @return {@code "local"} or {@code "remote"}
++     */
++    private String determineLocality(String city) {
++        if (city == null) {
++            return "remote";
++        }
++        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCity)
++            .filter(Objects::nonNull)
++            .collect(Collectors.groupingBy(existing -> existing.toLowerCase(), Collectors.counting()));
++        if (countsByCity.isEmpty()) {
++            return "remote";
++        }
++        long max = Collections.max(countsByCity.values());
++        List<String> mostCommon = countsByCity.entrySet().stream()
++            .filter(entry -> entry.getValue() == max)
++            .map(Map.Entry::getKey)
++            .toList();
++        if (mostCommon.size() == 1 && mostCommon.get(0).equals(city.toLowerCase())) {
++            return "local";
++        }
++        return "remote";
++    }
++
+     /**
+      * Determines whether the maximum number of owners that may be registered on a single day has
+      * already been reached. At most 20 owners may be created per day; the count is taken over the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 1f68ae8..c00e801 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 07ef194..4624d68 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 7e6e836..0772a8b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_tier VARCHAR(20),
+   namesake_count INT(4),
+   shares_household BIT(1),
++  locality VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6040b75..af62c29 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code VARCHAR(90),
+                                       membership_tier VARCHAR(20),
+                                       namesake_count INTEGER,
+-                                      shares_household BOOLEAN
++                                      shares_household BOOLEAN,
++                                      locality VARCHAR(20)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dd236a5..9dc4656 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,6 +2123,14 @@ components:
+               type: boolean
+               example: true
+               readOnly: true
++            locality:
++              title: Locality
++              description: The owner's locality, assigned at creation. 'local' if the
++                owner's city was the single most common city among existing owners at
++                that time, otherwise 'remote'.
++              type: string
++              example: 'local'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 1530918..f6675ec 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -243,6 +243,32 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.namesakeCount").value(1));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerLocalWhenCityIsSingleMostCommon() throws Exception {
++        // In the seeded data, Madison is the single most common city among existing owners.
++        String body = """
++            {"firstName":"George","lastName":"Localton","address":"999 Test Ave.","city":"Madison","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.locality").value("local"));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRemoteWhenCityIsNotMostCommon() throws Exception {
++        // Testville is not the single most common city (Madison is), so the owner is remote.
++        String body = """
++            {"firstName":"George","lastName":"Remoteton","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.locality").value("remote"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
