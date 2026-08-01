@@ -20,7 +20,9 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -116,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+        owner.setLocality(resolveLocality(owner.getCity()));
         owner.setCity(resolveCity(owner.getCity()));
         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
         owner.setMembershipNumber(membershipNumber);
@@ -323,6 +326,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Resolves the locality of a newly created owner relative to the owners present at the moment
+     * it is created. The value is {@code "local"} when the new owner's city is the single most
+     * common city among the existing owners, and {@code "remote"} otherwise. Cities are matched
+     * using {@link #normalize(String)}, so the comparison ignores letter case and any surrounding
+     * or repeated whitespace. When there are no existing owners, or when two or more cities tie for
+     * the highest owner count, no city is the sole most common one and the result is
+     * {@code "remote"}.
+     *
+     * @param city the city supplied for the new owner, may be {@code null}
+     * @return {@code "local"} if the city is the single most common city, otherwise {@code "remote"}
+     */
+    private String resolveLocality(String city) {
+        String normalized = normalize(city);
+        Map<String, Long> ownersPerCity = this.clinicService.findAllOwners().stream()
+            .map(existing -> normalize(existing.getCity()))
+            .filter(normalizedCity -> !normalizedCity.isEmpty())
+            .collect(Collectors.groupingBy(normalizedCity -> normalizedCity, Collectors.counting()));
+        long highestCount = ownersPerCity.values().stream()
+            .mapToLong(Long::longValue)
+            .max()
+            .orElse(0L);
+        if (highestCount == 0L) {
+            return "remote";
+        }
+        List<String> mostCommonCities = ownersPerCity.entrySet().stream()
+            .filter(entry -> entry.getValue() == highestCount)
+            .map(Map.Entry::getKey)
+            .toList();
+        boolean isSingleMostCommon = mostCommonCities.size() == 1
+            && mostCommonCities.get(0).equals(normalized);
+        return isSingleMostCommon ? "local" : "remote";
     }
 
     /**
