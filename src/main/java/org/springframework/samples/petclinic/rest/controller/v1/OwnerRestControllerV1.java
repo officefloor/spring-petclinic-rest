@@ -114,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setCity(resolveCity(owner.getCity()));
         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
         owner.setMembershipNumber(membershipNumber);
@@ -321,6 +322,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Counts how many existing owners share the given last name. Last names are matched using
+     * {@link #normalize(String)}, so the count ignores letter case and any surrounding or repeated
+     * whitespace. This is evaluated against the owners present at the moment the new owner is
+     * created, before the new owner is persisted, so the new owner does not count itself.
+     *
+     * @param lastName the last name of the new owner, may be {@code null}
+     * @return the number of existing owners sharing the same last name
+     */
+    private int countNamesakes(String lastName) {
+        String normalized = normalize(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalized.equals(normalize(existing.getLastName())))
+            .count();
     }
 
     /**

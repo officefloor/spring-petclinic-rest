@@ -261,6 +261,32 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReturnsNamesakeCountForSharedLastName() throws Exception {
+        // Two seed owners already have the last name "Davis" (Betty and Harold).
+        String body = """
+            {"firstName":"Sammy","lastName":"Davis","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085550030"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReturnsZeroNamesakeCountForUniqueLastName() throws Exception {
+        // No seed owner has the last name "Washington".
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Boston","telephone":"6085550031"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
