@@ -155,6 +155,45 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCityForNewCity() throws Exception {
+        // No owner lives in Springfield yet, so the supplied city is title-cased.
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"sPRINGfield","telephone":"6085550020"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Springfield"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesMultiWordCity() throws Exception {
+        // A multi-word city not yet used has each word title-cased.
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"new york","telephone":"6085550021"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("New York"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // Seed owners live in "Madison"; a differently-cased spelling reuses the existing one.
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"MADISON","telephone":"6085550022"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("Madison"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateEmailConflict() throws Exception {
         String first = """
             {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550002","email":"shared.owner@example.com"}

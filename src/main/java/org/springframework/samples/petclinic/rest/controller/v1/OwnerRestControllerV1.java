@@ -107,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setCity(resolveCity(owner.getCity()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
@@ -210,6 +211,57 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 normalize(existing.getCity()), normalize(city)))
             .count();
         return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), ownersInCity + 1);
+    }
+
+    /**
+     * Resolves the city to store for a newly created owner. The city is title-cased (so
+     * {@code "new york"} becomes {@code "New York"}), unless an owner already lives in that
+     * city, in which case the existing owner's exact spelling of the city name is reused. Cities
+     * are matched using {@link #normalize(String)}, so the match ignores letter case and any
+     * surrounding or repeated whitespace.
+     *
+     * @param city the city supplied for the new owner, may be {@code null}
+     * @return the city to store, or {@code null} if the input was {@code null}
+     */
+    private String resolveCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        String normalized = normalize(city);
+        if (!normalized.isEmpty()) {
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (normalized.equals(normalize(existing.getCity()))) {
+                    return existing.getCity();
+                }
+            }
+        }
+        return toTitleCase(city);
+    }
+
+    /**
+     * Title-cases free-form text by upper-casing the first letter of each whitespace-separated word
+     * and lower-casing the remaining letters, preserving the original whitespace. For example
+     * {@code "new  YORK"} becomes {@code "New  York"}.
+     *
+     * @param value the raw value, never {@code null}
+     * @return the title-cased value
+     */
+    private static String toTitleCase(String value) {
+        StringBuilder result = new StringBuilder(value.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                result.append(c);
+            } else if (startOfWord) {
+                result.append(Character.toTitleCase(c));
+                startOfWord = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
     }
 
     /**
