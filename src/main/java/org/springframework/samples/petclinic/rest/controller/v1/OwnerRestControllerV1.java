@@ -111,6 +111,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (hasReachedDailyRegistrationLimit(owner.getRegistrationDate())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCity(normalizeCity(owner.getCity()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity()));
@@ -119,6 +122,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The maximum number of owners that may be registered on any single day.
+     */
+    private static final long MAX_OWNERS_PER_DAY = 20;
+
+    /**
+     * Determines whether the number of owners already registered on the given date has reached the
+     * daily registration limit. When 20 owners share the same registration date, no further owner may
+     * be created for that day.
+     */
+    private boolean hasReachedDailyRegistrationLimit(LocalDate registrationDate) {
+        long ownersRegisteredOnDate = this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(existing.getRegistrationDate(), registrationDate))
+            .count();
+        return ownersRegisteredOnDate >= MAX_OWNERS_PER_DAY;
     }
 
     /**

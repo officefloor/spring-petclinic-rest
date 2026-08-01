@@ -466,6 +466,28 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily");
+            owner.setLastName("Limit-" + System.nanoTime());
+            owner.setAddress("1 Limit St.");
+            owner.setCity("Capacity" + System.nanoTime());
+            owner.setTelephone(String.format("70000%05d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"Overflow","lastName":"Late","address":"2 Limit St.","city":"Nowhere","telephone":"7999900001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createVisitSuccess() throws Exception {
         Owner owner = newOwner("VisitOwner-" + System.nanoTime());
         PetType type = dogType();
