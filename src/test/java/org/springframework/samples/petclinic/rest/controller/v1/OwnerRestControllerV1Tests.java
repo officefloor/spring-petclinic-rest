@@ -245,6 +245,32 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerLocalWhenCityIsSingleMostCommon() throws Exception {
+        // In the seeded data, Madison is the single most common city among existing owners.
+        String body = """
+            {"firstName":"George","lastName":"Localton","address":"999 Test Ave.","city":"Madison","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("local"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRemoteWhenCityIsNotMostCommon() throws Exception {
+        // Testville is not the single most common city (Madison is), so the owner is remote.
+        String body = """
+            {"firstName":"George","lastName":"Remoteton","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("remote"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
         // 20 owners have already been registered today.
         LocalDate today = LocalDate.now();

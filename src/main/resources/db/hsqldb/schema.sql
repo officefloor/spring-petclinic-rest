@@ -48,7 +48,8 @@ CREATE TABLE owners (
   customer_code VARCHAR(90),
   membership_tier VARCHAR(20),
   namesake_count INTEGER,
-  shares_household BOOLEAN
+  shares_household BOOLEAN,
+  locality VARCHAR(20)
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
