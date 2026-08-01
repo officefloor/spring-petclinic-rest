@@ -150,11 +150,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && existing.getCity().equalsIgnoreCase(owner.getCity()));
         owner.setSharesHousehold(sharesHousehold);
         owner.setLocality(isMostCommonCity(owner.getCity()) ? "local" : "remote");
+        String areaCode = telephoneAreaCode(owner.getTelephone());
+        long ownersSharingAreaCode = areaCode == null ? 0L
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing -> areaCode.equals(telephoneAreaCode(existing.getTelephone())))
+                .count();
         this.clinicService.saveOwner(owner);
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String user = authentication != null ? authentication.getName() : "anonymous";
         AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
             user, owner.getId(), owner.getMembershipNumber());
+        if (ownersSharingAreaCode >= 5) {
+            AUDIT.warn("Possible bulk signup: area code={} shared by {} existing owners ownerId={}",
+                areaCode, ownersSharingAreaCode, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -236,6 +245,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         Long cityCount = countsByCity.get(city.toLowerCase(Locale.ROOT));
         return cityCount != null && cityCount == max;
+    }
+
+    /**
+     * Extracts the area code — the first three digits — of a telephone number. Returns
+     * {@code null} when the telephone is absent or holds fewer than three digits, in which
+     * case no area code can be determined.
+     *
+     * @param telephone the telephone number (may be {@code null})
+     * @return the first three digits of {@code telephone}, or {@code null}
+     */
+    private static String telephoneAreaCode(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        StringBuilder digits = new StringBuilder(3);
+        for (int i = 0; i < telephone.length() && digits.length() < 3; i++) {
+            char c = telephone.charAt(i);
+            if (Character.isDigit(c)) {
+                digits.append(c);
+            }
+        }
+        return digits.length() == 3 ? digits.toString() : null;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
