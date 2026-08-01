@@ -102,8 +102,9 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        // Telephone not used by any existing owner, so creation is allowed.
         String body = """
-            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -130,6 +131,18 @@ class OwnerRestControllerV1Tests {
         // Matches George Franklin (seed) on last name and telephone only; other fields differ.
         String body = """
             {"firstName":"Benjamin","lastName":"Franklin","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085551023"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDifferentLastNameSameTelephoneConflict() throws Exception {
+        // Telephone already used by George Franklin (seed); a different owner reusing it must be rejected.
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
