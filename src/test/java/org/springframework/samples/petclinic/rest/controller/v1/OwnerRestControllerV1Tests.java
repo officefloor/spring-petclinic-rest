@@ -114,6 +114,33 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesNewCity() throws Exception {
+        // No owner lives in this city, so the supplied casing is title-cased on the way in.
+        String body = """
+            {"firstName":"Nora","lastName":"Newcity","address":"1 First Ave.","city":"san francisco","telephone":"6081112222"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("San Francisco"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // A seeded owner already lives in "McFarland"; a differently-cased "mcfarland" must
+        // reuse that exact spelling rather than the plain title-cased "Mcfarland".
+        String body = """
+            {"firstName":"Rita","lastName":"Returning","address":"2 Second Ave.","city":"mcfarland","telephone":"6083334444"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("McFarland"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateConflict() throws Exception {
         Owner existing = new Owner();
         existing.setFirstName("Harold");
