@@ -133,9 +133,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber);
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         owner.setMembershipTier(membershipNumber <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
+        long sharedAreaCodeCount = countOwnersSharingAreaCode(owner.getTelephone());
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
             currentUsername(), owner.getId(), owner.getMembershipNumber());
+        if (sharedAreaCodeCount >= MIN_AREA_CODE_BULK_SIGNUP) {
+            AUDIT.warn("Possible bulk signup: owner ownerId={} telephone={} shares area code={} with {} existing owners",
+                owner.getId(), owner.getTelephone(), areaCode(owner.getTelephone()), sharedAreaCodeCount);
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -446,6 +451,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+    }
+
+    /**
+     * The minimum number of existing owners that must share a new owner's area code before the
+     * creation is flagged as a possible bulk signup. When {@value #MIN_AREA_CODE_BULK_SIGNUP} or
+     * more existing owners already share the area code, a WARN is emitted to the audit log.
+     */
+    private static final int MIN_AREA_CODE_BULK_SIGNUP = 5;
+
+    /**
+     * Extracts the area code (the first three digits) from an already
+     * {@link #normalizeTelephone(String) normalized} telephone number. A telephone that is
+     * {@code null} or has fewer than three digits has no area code.
+     *
+     * @param telephone the digits-only telephone number, may be {@code null}
+     * @return the three-digit area code, or {@code null} if none can be determined
+     */
+    private static String areaCode(String telephone) {
+        if (telephone == null || telephone.length() < 3) {
+            return null;
+        }
+        return telephone.substring(0, 3);
+    }
+
+    /**
+     * Counts how many existing owners share the given telephone's area code (its first three
+     * digits). This is evaluated against the owners present at the moment the new owner is created,
+     * before the new owner is persisted, so the new owner does not count itself. Owners whose
+     * telephone has no determinable area code are ignored, and a candidate telephone without an area
+     * code matches no one.
+     *
+     * @param telephone the normalized telephone number of the new owner, may be {@code null}
+     * @return the number of existing owners sharing the same area code
+     */
+    private long countOwnersSharingAreaCode(String telephone) {
+        String areaCode = areaCode(telephone);
+        if (areaCode == null) {
+            return 0L;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> areaCode.equals(areaCode(normalizeTelephone(existing.getTelephone()))))
+            .count();
     }
 
     /**
