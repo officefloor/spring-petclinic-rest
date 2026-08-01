@@ -118,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setMembershipTier(this.clinicService.findAllOwners().size() < 100 ? "FOUNDING" : "STANDARD");
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
