@@ -114,6 +114,32 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateLastNameAndTelephoneReturnsConflict() throws Exception {
+        String lastName = "Conflictus";
+        newOwner(lastName); // telephone 6085551023
+        String body = """
+            {"firstName":"Different","lastName":"%s","address":"999 Other St.","city":"Elsewhere","telephone":"6085551023"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSameLastNameDifferentTelephoneSucceeds() throws Exception {
+        String lastName = "Samenamius";
+        newOwner(lastName); // telephone 6085551023
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
