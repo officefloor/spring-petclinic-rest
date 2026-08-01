@@ -18,9 +18,12 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -119,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setSharesHousehold(sharesHousehold(owner));
+        owner.setLocality(determineLocality(owner.getCity()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setMembershipTier(determineMembershipTier(owner.getMembershipNumber()));
         owner.setCity(normalizeCity(owner.getCity()));
@@ -196,6 +200,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
                 && Objects.equals(normalize(existing.getCity()), city));
+    }
+
+    /**
+     * Determines the locality of a newly created owner based on its city. The owner is 'local'
+     * when its city is the single most common city among the owners that already exist at the
+     * moment of creation; otherwise it is 'remote'. When no city is the sole most common one
+     * (for example because two cities are tied for the highest count, or no owners yet exist),
+     * every newly created owner is 'remote'. Cities are compared ignoring letter case.
+     */
+    private String determineLocality(String city) {
+        if (city == null) {
+            return "REMOTE";
+        }
+        Map<String, Long> cityCounts = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null)
+            .collect(Collectors.groupingBy(existing -> existing.toLowerCase(Locale.ROOT), Collectors.counting()));
+        if (cityCounts.isEmpty()) {
+            return "REMOTE";
+        }
+        long maxCount = Collections.max(cityCounts.values());
+        List<String> mostCommonCities = cityCounts.entrySet().stream()
+            .filter(entry -> entry.getValue() == maxCount)
+            .map(Map.Entry::getKey)
+            .toList();
+        if (mostCommonCities.size() != 1) {
+            return "REMOTE";
+        }
+        return mostCommonCities.get(0).equals(city.toLowerCase(Locale.ROOT)) ? "LOCAL" : "REMOTE";
     }
 
     /**
