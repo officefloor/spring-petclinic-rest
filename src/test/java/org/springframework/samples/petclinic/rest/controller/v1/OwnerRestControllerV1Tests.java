@@ -69,6 +69,15 @@ class OwnerRestControllerV1Tests {
         return sb.toString();
     }
 
+    /**
+     * Builds a unique, exactly-10-digit telephone number (the telephone Bean Validation pattern
+     * requires 10 digits) that starts with '7' so it never collides with the '608555...' seed data
+     * or with other tests.
+     */
+    private String uniqueTelephone() {
+        return String.format("7%09d", Math.abs(System.nanoTime()) % 1_000_000_000L);
+    }
+
     private PetType dogType() {
         PetType type = new PetType();
         type.setName("dog-" + System.nanoTime());
@@ -115,14 +124,28 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String uniqueLastName = uniqueName("Franklin");
+        String uniqueTelephone = uniqueTelephone();
         String body = """
-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
-            """.formatted(uniqueLastName);
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
+            """.formatted(uniqueLastName, uniqueTelephone);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateTelephoneConflict() throws Exception {
+        // George Franklin from the seed data already uses telephone 6085551023, so a new
+        // owner reusing that number must be rejected even though every other field differs.
+        String body = """
+            {"firstName":"Georgina","lastName":"%s","address":"1 Elsewhere Rd.","city":"Verona","telephone":"6085551023"}
+            """.formatted(uniqueName("Elsewhere"));
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test

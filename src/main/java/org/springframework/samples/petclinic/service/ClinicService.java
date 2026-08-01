@@ -69,6 +69,15 @@ public interface ClinicService {
 	 */
 	boolean existsIdenticalOwner(Owner owner) throws DataAccessException;
 
+	/**
+	 * Determine whether any owner already uses the given telephone number.
+	 *
+	 * @param telephone the telephone number to check
+	 * @return {@code true} if an owner with the given telephone number already exists,
+	 *         {@code false} otherwise
+	 */
+	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
