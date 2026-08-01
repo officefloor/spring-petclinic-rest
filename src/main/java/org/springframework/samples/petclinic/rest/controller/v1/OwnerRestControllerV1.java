@@ -207,29 +207,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether an owner already exists that uses the same telephone number as the
-     * given candidate.
+     * given candidate. The comparison ignores letter case and surrounding or repeated
+     * whitespace.
      *
      * @param owner the candidate owner to check
      * @return {@code true} if an owner with the same telephone number already exists
      */
     private boolean isDuplicateOwner(Owner owner) {
+        String telephone = normalize(owner.getTelephone());
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
     }
 
     /**
      * Determines whether an owner already exists that uses the same email address as the
      * given candidate. Owners without an email address are never considered duplicates.
+     * The comparison ignores letter case and surrounding or repeated whitespace.
      *
      * @param owner the candidate owner to check
      * @return {@code true} if an owner with the same email address already exists
      */
     private boolean isDuplicateEmail(Owner owner) {
-        String email = owner.getEmail();
-        if (email == null || email.isBlank()) {
+        String email = normalize(owner.getEmail());
+        if (email == null || email.isEmpty()) {
             return false;
         }
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(existing.getEmail(), email));
+            .anyMatch(existing -> Objects.equals(normalize(existing.getEmail()), email));
+    }
+
+    /**
+     * Normalizes a value for duplicate detection so that comparisons ignore letter case and
+     * surrounding or repeated whitespace. Leading and trailing whitespace is stripped, any run
+     * of internal whitespace collapses to a single space, and the result is lower-cased. For
+     * example {@code "  John   Smith "} and {@code "John Smith"} both normalize to
+     * {@code "john smith"}.
+     *
+     * @param value the value to normalize, may be {@code null}
+     * @return the normalized value, or {@code null} if {@code value} is {@code null}
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase();
     }
 }
