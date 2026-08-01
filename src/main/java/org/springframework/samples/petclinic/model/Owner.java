@@ -157,6 +157,18 @@ public class Owner extends Person {
         return this.getLastName() + ", " + this.getFirstName();
     }
 
+    /**
+     * Return the initials of this owner, being the first letter of the first and
+     * last name, upper-cased and dot-separated with a trailing dot, e.g. 'J.S.'.
+     *
+     * @return the formatted initials
+     */
+    @Transient
+    public String getInitials() {
+        return Character.toUpperCase(this.getFirstName().charAt(0)) + "."
+            + Character.toUpperCase(this.getLastName().charAt(0)) + ".";
+    }
+
     @Override
     public String toString() {
         return new ToStringCreator(this)
