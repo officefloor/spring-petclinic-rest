@@ -16,12 +16,16 @@
 package org.springframework.samples.petclinic.service;
 
 /**
- * Thrown when an attempt is made to create an <code>Owner</code> whose telephone number is already
- * used by another owner.
+ * Thrown when an attempt is made to create an <code>Owner</code> whose telephone number or email
+ * address is already used by another owner.
  */
 public class DuplicateOwnerException extends RuntimeException {
 
     public DuplicateOwnerException() {
         super("An owner with the same telephone number already exists");
+    }
+
+    public DuplicateOwnerException(String message) {
+        super(message);
     }
 }
