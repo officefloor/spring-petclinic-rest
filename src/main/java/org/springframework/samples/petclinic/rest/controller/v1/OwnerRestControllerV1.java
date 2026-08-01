@@ -25,9 +25,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -58,6 +62,11 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Dedicated audit logger recording successful owner creations.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -128,10 +137,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCity(normalizeCity(owner.getCity()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
+        AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
+            currentUsername(), owner.getId(), owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Returns the name of the currently authenticated user, or {@code "anonymous"}
+     * when no authentication is present in the security context.
+     */
+    private static String currentUsername() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "anonymous";
     }
 
     /**
