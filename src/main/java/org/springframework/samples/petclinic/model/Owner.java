@@ -86,7 +86,22 @@ public class Owner extends Person {
     }
 
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        this.telephone = normalizeTelephone(telephone);
+    }
+
+    /**
+     * Normalises a telephone number to digits only by stripping spaces, dashes
+     * and parentheses, so that formatted inputs such as {@code "(613) 555-0100"}
+     * and {@code "6135550100"} are stored and compared identically.
+     *
+     * @param telephone the raw telephone value (may be {@code null})
+     * @return the digits-only value, or {@code null} if {@code telephone} is {@code null}
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[\\s()-]", "");
     }
 
     public String getEmail() {
