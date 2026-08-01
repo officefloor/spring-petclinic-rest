@@ -31,14 +31,14 @@ public class EnsureOwnerUnique {
     }
 
     /**
-     * Normalizes a value for duplicate comparison: letter case is ignored and
-     * surrounding or repeated whitespace is collapsed, so {@code "  john   smith "}
-     * and {@code "John Smith"} compare equal.
+     * Normalizes a telephone for duplicate comparison by stripping every non-digit
+     * character (spaces, dashes, parentheses), so {@code "(613) 555-0100"} and
+     * {@code "6135550100"} compare equal.
      */
     private static String normalize(String value) {
         if (value == null) {
             return null;
         }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return value.replaceAll("[^0-9]", "");
     }
 }

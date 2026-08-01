@@ -86,7 +86,9 @@ public class Owner extends Person {
     }
 
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        // Store digits only: strip spaces, dashes, parentheses (and any other
+        // non-digit punctuation) so the persisted value is canonical.
+        this.telephone = telephone == null ? null : telephone.replaceAll("[^0-9]", "");
     }
 
     public String getEmail() {
