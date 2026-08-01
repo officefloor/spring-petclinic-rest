@@ -133,6 +133,42 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithEmailSuccess() throws Exception {
+        String email = "wolfgang-" + System.nanoTime() + "@example.com";
+        String body = """
+            {"firstName":"Wolfgang","lastName":"Steinbeck","address":"42 Nowhere Rd.","city":"Madison","telephone":"6085552001","email":"%s"}
+            """.formatted(email);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.firstName").value("Wolfgang"))
+            .andExpect(jsonPath("$.email").value(email));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailConflict() throws Exception {
+        String email = "duplicate-" + System.nanoTime() + "@example.com";
+        Owner existing = new Owner();
+        existing.setFirstName("Wolfgang");
+        existing.setLastName("Steinberg");
+        existing.setAddress("42 Nowhere Rd.");
+        existing.setCity("Madison");
+        existing.setTelephone("6085552002");
+        existing.setEmail(email);
+        ownerRepository.save(existing);
+
+        // Different telephone, but the same email must still be rejected as a conflict.
+        String body = """
+            {"firstName":"Amadeus","lastName":"Mozart","address":"1 Symphony Rd.","city":"Vienna","telephone":"6085552003","email":"%s"}
+            """.formatted(email);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}

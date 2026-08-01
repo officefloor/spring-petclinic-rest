@@ -15,11 +15,18 @@ public class EnsureOwnerUnique {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws OwnerAlreadyExistsException {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         for (Owner existing : ownerRepository.findAll()) {
-            if (isDifferentOwner(existing, owner)
-                    && Objects.equals(existing.getTelephone(), owner.getTelephone())) {
+            if (!isDifferentOwner(existing, owner)) {
+                continue;
+            }
+            if (Objects.equals(existing.getTelephone(), owner.getTelephone())) {
                 throw new OwnerAlreadyExistsException(
                         "An owner with the same telephone already exists");
+            }
+            if (hasEmail && Objects.equals(existing.getEmail(), owner.getEmail())) {
+                throw new OwnerAlreadyExistsException(
+                        "An owner with the same email already exists");
             }
         }
     }
