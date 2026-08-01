@@ -1,0 +1,146 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b56d8b5..0657ee3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "shares_household")
+     private Boolean sharesHousehold;
+ 
++    @Transient
++    private String locality;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -154,6 +157,14 @@ public class Owner extends Person {
+         this.sharesHousehold = sharesHousehold;
+     }
+ 
++    public String getLocality() {
++        return this.locality;
++    }
++
++    public void setLocality(String locality) {
++        this.locality = locality;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 63f0c0a..2d2c140 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -27,11 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Mostly used as a facade for all Petclinic controllers
+@@ -258,6 +261,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setMembershipTier(resolveMembershipTier());
+             owner.setNamesakeCount(countNamesakes(owner));
+             owner.setSharesHousehold(sharesHousehold(owner));
++            owner.setLocality(resolveLocality(owner));
+         }
+         ownerRepository.save(owner);
+ 
+@@ -359,6 +363,33 @@ public class ClinicServiceImpl implements ClinicService {
+                 && Objects.equals(normalize(existing.getCity()), city));
+     }
+ 
++    /**
++     * Resolves the locality of a newly registered owner: {@code "local"} if this owner's city
++     * is the single most common city among the owners that existed beforehand, otherwise
++     * {@code "remote"}. Cities are compared ignoring letter case and surrounding/repeated
++     * whitespace. If there are no existing owners, or if two or more cities are tied for the
++     * highest count (so there is no single most common city), the owner is {@code "remote"}.
++     * Invoked before the owner is persisted, so it reflects the state at creation time.
++     */
++    private String resolveLocality(Owner owner) {
++        String city = normalize(owner.getCity());
++        Map<String, Long> cityCounts = ownerRepository.findAll().stream()
++            .map(existing -> normalize(existing.getCity()))
++            .filter(Objects::nonNull)
++            .collect(Collectors.groupingBy(c -> c, Collectors.counting()));
++        if (cityCounts.isEmpty()) {
++            return "remote";
++        }
++        long highestCount = Collections.max(cityCounts.values());
++        List<String> mostCommonCities = cityCounts.entrySet().stream()
++            .filter(entry -> entry.getValue() == highestCount)
++            .map(Map.Entry::getKey)
++            .toList();
++        boolean isSingleMostCommon = mostCommonCities.size() == 1
++            && Objects.equals(mostCommonCities.get(0), city);
++        return isSingleMostCommon ? "local" : "remote";
++    }
++
+     /**
+      * The maximum number of owners that may be registered on a single day (by registration date).
+      */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5412aa5..e1c30a3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,6 +2112,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            locality:
++              title: Locality
++              description: "'local' if, at the moment of registration, this owner's city was the single most common city among the owners that existed beforehand; otherwise 'remote'."
++              type: string
++              example: 'local'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 5c45ed1..d2a93f6 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -242,6 +242,34 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.city").value("Madison"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerInMostCommonCityIsLocal() throws Exception {
++        // In the seed data Madison (owners 1, 5, 8, 9) is the single most common city,
++        // so a new owner registering there is 'local'.
++        String body = """
++            {"firstName":"Ada","lastName":"Byron","address":"5 Locality Ln.","city":"Madison","telephone":"6085552010"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.locality").value("local"));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerOutsideMostCommonCityIsRemote() throws Exception {
++        // Sun Prairie has a single seed owner, so it is not the most common city and the
++        // new owner is 'remote'.
++        String body = """
++            {"firstName":"Alan","lastName":"Byron","address":"6 Locality Ln.","city":"Sun Prairie","telephone":"6085552011"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.locality").value("remote"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

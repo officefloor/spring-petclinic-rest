@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index aa75399..f0ffd3c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.DailyOwnerRegistrationLimitExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -143,6 +144,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyOwnerRegistrationLimitExceededException} thrown when attempting to create
++     * an owner once the maximum number of owners allowed to be registered today has been reached.
++     * Returns a 400 Bad Request status.
++     *
++     * @param e The {@link DailyOwnerRegistrationLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(DailyOwnerRegistrationLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyOwnerRegistrationLimitExceededException(DailyOwnerRegistrationLimitExceededException e, HttpServletRequest request) {
++        logger.warn("Daily owner registration limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index ce80544..fad06f7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -243,6 +243,9 @@ public class ClinicServiceImpl implements ClinicService {
+             if (hasOwnerWithSameEmail(owner)) {
+                 throw new DuplicateOwnerException("An owner with the same email address already exists");
+             }
++            if (hasReachedDailyRegistrationLimit()) {
++                throw new DailyOwnerRegistrationLimitExceededException();
++            }
+             if (owner.getRegistrationDate() == null) {
+                 owner.setRegistrationDate(LocalDate.now());
+             }
+@@ -309,6 +312,23 @@ public class ClinicServiceImpl implements ClinicService {
+         return result.toString();
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered on a single day (by registration date).
++     */
++    private static final long MAX_OWNERS_PER_DAY = 20;
++
++    /**
++     * Returns {@code true} if the number of owners already registered today (by registration date)
++     * has reached {@link #MAX_OWNERS_PER_DAY}, so that no further owner may be created today.
++     */
++    private boolean hasReachedDailyRegistrationLimit() {
++        LocalDate today = LocalDate.now();
++        long registeredToday = ownerRepository.findAll().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        return registeredToday >= MAX_OWNERS_PER_DAY;
++    }
++
+     private boolean hasIdenticalOwner(Owner owner) {
+         return ownerRepository.findAll().stream()
+             .anyMatch(existing -> isSameOwner(existing, owner));

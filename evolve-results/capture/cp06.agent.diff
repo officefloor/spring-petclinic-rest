@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 97bddad..928ba2c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -147,6 +147,16 @@ public class Owner extends Person {
+         return getPetsInternal().stream().filter(p -> p.getId().equals(petId)).findFirst().orElse(null);
+     }
+ 
++    /**
++     * Return the display name of this owner, formatted as 'LastName, FirstName'.
++     *
++     * @return the formatted display name
++     */
++    @Transient
++    public String getDisplayName() {
++        return this.getLastName() + ", " + this.getFirstName();
++    }
++
+     @Override
+     public String toString() {
+         return new ToStringCreator(this)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 44a0af4..1c908ad 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2059,6 +2059,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            displayName:
++              title: Display name
++              description: The display name of the pet owner, formatted as 'LastName, FirstName'.
++              type: string
++              example: 'Franklin, George'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index e7dfe10..3d572db 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -112,6 +112,18 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReturnsDisplayName() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551025"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.displayName").value("Franklin, George"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateConflict() throws Exception {

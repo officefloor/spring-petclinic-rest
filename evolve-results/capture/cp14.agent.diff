@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index f0ffd3c..6d13a1f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.CityOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.service.DailyOwnerRegistrationLimitExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -165,6 +166,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityOwnerLimitExceededException} thrown when attempting to create an owner once
++     * the maximum number of owners allowed to live in a single city has been reached.
++     * Returns a 400 Bad Request status.
++     *
++     * @param e The {@link CityOwnerLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(CityOwnerLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityOwnerLimitExceededException(CityOwnerLimitExceededException e, HttpServletRequest request) {
++        logger.warn("City owner limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index fad06f7..9eb1b1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -246,6 +246,9 @@ public class ClinicServiceImpl implements ClinicService {
+             if (hasReachedDailyRegistrationLimit()) {
+                 throw new DailyOwnerRegistrationLimitExceededException();
+             }
++            if (hasReachedCityLimit(owner)) {
++                throw new CityOwnerLimitExceededException();
++            }
+             if (owner.getRegistrationDate() == null) {
+                 owner.setRegistrationDate(LocalDate.now());
+             }
+@@ -329,6 +332,27 @@ public class ClinicServiceImpl implements ClinicService {
+         return registeredToday >= MAX_OWNERS_PER_DAY;
+     }
+ 
++    /**
++     * The maximum number of owners that may live in a single city.
++     */
++    private static final long MAX_OWNERS_PER_CITY = 8;
++
++    /**
++     * Returns {@code true} if the owner's city (compared ignoring letter case and surrounding/repeated
++     * whitespace) already contains {@link #MAX_OWNERS_PER_CITY} owners, so that no further owner may be
++     * registered in that city.
++     */
++    private boolean hasReachedCityLimit(Owner owner) {
++        String city = normalize(owner.getCity());
++        if (city == null) {
++            return false;
++        }
++        long ownersInCity = ownerRepository.findAll().stream()
++            .filter(existing -> Objects.equals(normalize(existing.getCity()), city))
++            .count();
++        return ownersInCity >= MAX_OWNERS_PER_CITY;
++    }
++
+     private boolean hasIdenticalOwner(Owner owner) {
+         return ownerRepository.findAll().stream()
+             .anyMatch(existing -> isSameOwner(existing, owner));

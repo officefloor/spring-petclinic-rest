@@ -1,0 +1,133 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 62cab68..abf9ecf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,9 @@ public class Owner extends Person {
+     @Column(name = "membership_tier")
+     private String membershipTier;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -132,6 +135,14 @@ public class Owner extends Person {
+         this.membershipTier = membershipTier;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index ba6d949..3062dda 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -256,6 +256,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+             owner.setCustomerCode(generateCustomerCode(owner));
+             owner.setMembershipTier(resolveMembershipTier());
++            owner.setNamesakeCount(countNamesakes(owner));
+         }
+         ownerRepository.save(owner);
+ 
+@@ -331,6 +332,18 @@ public class ClinicServiceImpl implements ClinicService {
+         return ownerRepository.findAll().size() < FOUNDING_TIER_LIMIT ? "FOUNDING" : "STANDARD";
+     }
+ 
++    /**
++     * Counts how many other owners already share the newly registered owner's last name,
++     * ignoring letter case and surrounding/repeated whitespace. Invoked before the owner
++     * is persisted, so it reflects the number of namesakes existing at creation time.
++     */
++    private int countNamesakes(Owner owner) {
++        String lastName = normalize(owner.getLastName());
++        return (int) ownerRepository.findAll().stream()
++            .filter(existing -> Objects.equals(normalize(existing.getLastName()), lastName))
++            .count();
++    }
++
+     /**
+      * The maximum number of owners that may be registered on a single day (by registration date).
+      */
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 32dd855..635d9b0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0e82971..e554118 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index f61bb33..974085f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INT,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
++  namesake_count INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 4d73400..6a87433 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       membership_number INT,
+                                       customer_code TEXT,
+-                                      membership_tier TEXT
++                                      membership_tier TEXT,
++                                      namesake_count INT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d32c92b..f98da4e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2098,6 +2098,14 @@ components:
+               type: string
+               example: 'FOUNDING'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that shared this owner's last name at the moment of registration.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

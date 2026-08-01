@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 77d8862..32e7f5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.time.LocalDate;
+ import java.util.*;
+ 
+ /**
+@@ -52,6 +53,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "registration_date", columnDefinition = "DATE")
++    private LocalDate registrationDate;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -87,6 +91,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++
++    public void setRegistrationDate(LocalDate registrationDate) {
++        this.registrationDate = registrationDate;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index a9e1654..35569a3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
+@@ -241,6 +242,9 @@ public class ClinicServiceImpl implements ClinicService {
+             if (hasOwnerWithSameEmail(owner)) {
+                 throw new DuplicateOwnerException("An owner with the same email address already exists");
+             }
++            if (owner.getRegistrationDate() == null) {
++                owner.setRegistrationDate(LocalDate.now());
++            }
+         }
+         ownerRepository.save(owner);
+ 
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 33bc0c8..77bb122 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+-  email VARCHAR(255)
++  email VARCHAR(255),
++  registration_date DATE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 005b04d..4a76772 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+-  email      VARCHAR(255)
++  email      VARCHAR(255),
++  registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e2082e0..4e5bc62 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  registration_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c1e01cc..a363d74 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       address    TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+-                                      email      TEXT
++                                      email      TEXT,
++                                      registration_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0707e69..d113e75 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2071,6 +2071,13 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            registrationDate:
++              title: Registration date
++              description: The date on which the pet owner was registered, in ISO format (YYYY-MM-DD).
++              type: string
++              format: date
++              example: '2013-01-01'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 3d572db..bf807da 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -124,6 +124,18 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.displayName").value("Franklin, George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerSetsRegistrationDateToToday() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551026"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.registrationDate").value(LocalDate.now().toString()));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateConflict() throws Exception {
