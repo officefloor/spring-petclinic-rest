@@ -1,0 +1,54 @@
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index df3a816..a44eaef 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: normalizeCity
++
++normalizeCity:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeCity
++  govern: [ transaction ]
+   next: rejectDuplicate
+ 
+ rejectDuplicate:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index ae2b699..e5d46dc 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -112,6 +112,33 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerTitleCasesNewCity() throws Exception {
++        // No owner lives in this city, so the supplied casing is title-cased on the way in.
++        String body = """
++            {"firstName":"Nora","lastName":"Newcity","address":"1 First Ave.","city":"san francisco","telephone":"6081112222"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.city").value("San Francisco"));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReusesExistingCitySpelling() throws Exception {
++        // A seeded owner already lives in "McFarland"; a differently-cased "mcfarland" must
++        // reuse that exact spelling rather than the plain title-cased "Mcfarland".
++        String body = """
++            {"firstName":"Rita","lastName":"Returning","address":"2 Second Ave.","city":"mcfarland","telephone":"6083334444"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.city").value("McFarland"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateConflict() throws Exception {

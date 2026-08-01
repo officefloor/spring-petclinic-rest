@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
+index 7b963df..e0a6518 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerException.java
+@@ -1,9 +1,9 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown when attempting to create an <code>Owner</code> that is identical to one that already
+- * exists (same first name, last name, address, city and telephone). Handled globally by
+- * {@link DuplicateOwnerExceptionHandler}, which responds 409 Conflict.
++ * Thrown when attempting to create an <code>Owner</code> whose telephone number is already used
++ * by another owner. Handled globally by {@link DuplicateOwnerExceptionHandler}, which responds
++ * 409 Conflict.
+  */
+ public class DuplicateOwnerException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
+index b38a02a..89578dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwner.java
+@@ -8,22 +8,27 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
+ 
+ /**
+- * Rejects creating an owner when another owner already has the same last name and the same
+- * telephone number, by throwing a {@link DuplicateOwnerException}, handled as 409.
++ * Rejects creating an owner whose telephone number is already used by any other owner, by
++ * throwing a {@link DuplicateOwnerException}, handled as 409.
+  */
+ public class RejectDuplicateOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
+-        for (Owner existing : ownerRepository.findByLastName(owner.getLastName())) {
+-            if (isDuplicate(existing, owner)) {
++        if (owner.getTelephone() == null) {
++            return;
++        }
++        for (Owner existing : ownerRepository.findAll()) {
++            if (isSameOwner(existing, owner)) {
++                continue;
++            }
++            if (Objects.equals(existing.getTelephone(), owner.getTelephone())) {
+                 throw new DuplicateOwnerException(
+-                    "An owner with the same last name and telephone already exists");
++                    "An owner with the same telephone number already exists");
+             }
+         }
+     }
+ 
+-    private static boolean isDuplicate(Owner existing, Owner candidate) {
+-        return Objects.equals(existing.getLastName(), candidate.getLastName())
+-            && Objects.equals(existing.getTelephone(), candidate.getTelephone());
++    private static boolean isSameOwner(Owner existing, Owner candidate) {
++        return existing.getId() != null && existing.getId().equals(candidate.getId());
+     }
+ }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 45a5fd2..ae2b699 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -132,6 +132,19 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateTelephoneDifferentLastNameConflict() throws Exception {
++        // Reuse a telephone already held by a seeded owner (George Franklin, 6085551023) but with a
++        // completely different last name: the telephone alone must trigger the 409.
++        String body = """
++            {"firstName":"Unrelated","lastName":"Newfamily","address":"1 New St.","city":"Madison","telephone":"6085551023"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
