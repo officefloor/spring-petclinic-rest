@@ -148,6 +148,25 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerConflictWhenSameTelephoneDifferentLastName() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Completely different owner, but the telephone is already used: conflict.
+        String duplicate = """
+            {"firstName":"Sally","lastName":"Different","address":"1 Other St.","city":"Elsewhere","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(duplicate)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccessWhenSameLastNameDifferentTelephone() throws Exception {
         String first = """
             {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
