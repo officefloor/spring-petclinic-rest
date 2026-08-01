@@ -15,6 +15,9 @@ public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
+        // Store the telephone as digits only, so the uniqueness check that follows and
+        // the value read back both use the normalized form.
+        owner.setTelephone(TelephoneNormalizer.digitsOnly(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
