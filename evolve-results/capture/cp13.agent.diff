@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 94557a7..9842d5d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -111,6 +111,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        if (hasReachedDailyRegistrationLimit(owner.getRegistrationDate())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+         owner.setCity(normalizeCity(owner.getCity()));
+         owner.setCustomerCode(generateCustomerCode(owner.getCity()));
+@@ -121,6 +124,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered on any single day.
++     */
++    private static final long MAX_OWNERS_PER_DAY = 20;
++
++    /**
++     * Determines whether the number of owners already registered on the given date has reached the
++     * daily registration limit. When 20 owners share the same registration date, no further owner may
++     * be created for that day.
++     */
++    private boolean hasReachedDailyRegistrationLimit(LocalDate registrationDate) {
++        long ownersRegisteredOnDate = this.clinicService.findAllOwners().stream()
++            .filter(existing -> Objects.equals(existing.getRegistrationDate(), registrationDate))
++            .count();
++        return ownersRegisteredOnDate >= MAX_OWNERS_PER_DAY;
++    }
++
+     /**
+      * Generates the customer code for a newly created owner. The code is formatted as
+      * '&lt;UPPERCASE_CITY&gt;-&lt;NNNN&gt;' where NNNN is one more than the number of owners that
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index f028bb5..250fbc8 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -464,6 +464,28 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isNotFound());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        for (int i = 0; i < 20; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Daily");
++            owner.setLastName("Limit-" + System.nanoTime());
++            owner.setAddress("1 Limit St.");
++            owner.setCity("Capacity" + System.nanoTime());
++            owner.setTelephone(String.format("70000%05d", i));
++            owner.setRegistrationDate(LocalDate.now());
++            ownerRepository.save(owner);
++        }
++
++        String body = """
++            {"firstName":"Overflow","lastName":"Late","address":"2 Limit St.","city":"Nowhere","telephone":"7999900001"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createVisitSuccess() throws Exception {

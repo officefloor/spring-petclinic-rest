@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 87baf8e..63167d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "shares_household")
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -143,6 +146,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 118ba33..cff2e11 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -118,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
++        owner.setSharesHousehold(sharesHousehold(owner));
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+         owner.setMembershipTier(determineMembershipTier(owner.getMembershipNumber()));
+         owner.setCity(normalizeCity(owner.getCity()));
+@@ -180,6 +181,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether the given owner shares a household with an owner that already exists,
++     * meaning another owner already has the same address and city. Addresses and cities are
++     * compared ignoring letter case and any surrounding or repeated whitespace. The newly created
++     * owner itself is not yet persisted and so is never matched against.
++     */
++    private boolean sharesHousehold(Owner owner) {
++        String address = normalize(owner.getAddress());
++        String city = normalize(owner.getCity());
++        if (address == null || city == null) {
++            return false;
++        }
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
++                && Objects.equals(normalize(existing.getCity()), city));
++    }
++
+     /**
+      * The number of owners that receive the founding membership tier. The first 100 owners ever
+      * created are 'FOUNDING'; every owner created thereafter is 'STANDARD'.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f1033ed..054d958 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(40),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index b670e15..f55918c 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(40),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 263dc00..11c9380 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(40),
+   membership_tier VARCHAR(20),
+   namesake_count INT(4),
++  shares_household BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6a87433..81b6a88 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number INT,
+                                       customer_code TEXT,
+                                       membership_tier TEXT,
+-                                      namesake_count INT
++                                      namesake_count INT,
++                                      shares_household BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d146187..a0b3ef6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,6 +2108,12 @@ components:
+               minimum: 0
+               example: 0
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether another owner already had the same address and city at the moment this pet owner was created.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

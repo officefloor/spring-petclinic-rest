@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c11d880..caaba80 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -25,9 +25,13 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.stream.Collectors;
+ 
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.core.context.SecurityContextHolder;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -59,6 +63,11 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /**
++     * Dedicated audit logger recording successful owner creations.
++     */
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -128,12 +137,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCity(normalizeCity(owner.getCity()));
+         owner.setCustomerCode(generateCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
++        AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
++            currentUsername(), owner.getId(), owner.getMembershipNumber());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Returns the name of the currently authenticated user, or {@code "anonymous"}
++     * when no authentication is present in the security context.
++     */
++    private static String currentUsername() {
++        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
++        return authentication != null ? authentication.getName() : "anonymous";
++    }
++
+     /**
+      * The maximum number of owners that may be registered on any single day.
+      */

@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e..a809b8e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -101,6 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (isDuplicateOwner(owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -108,6 +112,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Determines whether an owner identical to the given one already exists, matching
++     * on first name, last name, address, city and telephone.
++     */
++    private boolean isDuplicateOwner(Owner owner) {
++        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
++            .anyMatch(existing ->
++                Objects.equals(existing.getFirstName(), owner.getFirstName())
++                    && Objects.equals(existing.getLastName(), owner.getLastName())
++                    && Objects.equals(existing.getAddress(), owner.getAddress())
++                    && Objects.equals(existing.getCity(), owner.getCity())
++                    && Objects.equals(existing.getTelephone(), owner.getTelephone()));
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 999c951..aaa4815 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Newman","address":"1 New St.","city":"Springfield","telephone":"6085559999"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
