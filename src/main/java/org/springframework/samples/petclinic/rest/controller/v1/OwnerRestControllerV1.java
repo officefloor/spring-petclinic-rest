@@ -115,8 +115,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCity(resolveCity(owner.getCity()));
-        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+        owner.setMembershipNumber(membershipNumber);
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+        owner.setMembershipTier(membershipNumber <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -203,6 +205,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(visitDto, headers, HttpStatus.CREATED);
     }
 
+
+    /**
+     * The number of owners at the head of the registration sequence that receive the
+     * {@code 'FOUNDING'} membership tier. The first {@value #MAX_FOUNDING_OWNERS} owners ever
+     * created are {@code 'FOUNDING'}; all later owners are {@code 'STANDARD'}.
+     */
+    private static final int MAX_FOUNDING_OWNERS = 100;
 
     /**
      * The maximum number of owners that may be registered on any single calendar day.
