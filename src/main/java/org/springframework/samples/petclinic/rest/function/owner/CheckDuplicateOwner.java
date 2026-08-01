@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Objects;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -15,15 +13,14 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
 public class CheckDuplicateOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateOwnerException {
+        String telephone = DuplicateKey.normalize(owner.getTelephone());
+        if (telephone == null) {
+            return;
+        }
         for (Owner existing : ownerRepository.findAll()) {
-            if (isDuplicateTelephone(existing, owner)) {
+            if (telephone.equals(DuplicateKey.normalize(existing.getTelephone()))) {
                 throw new DuplicateOwnerException("An owner with the same telephone already exists");
             }
         }
-    }
-
-    private static boolean isDuplicateTelephone(Owner existing, Owner candidate) {
-        return existing.getTelephone() != null
-                && Objects.equals(existing.getTelephone(), candidate.getTelephone());
     }
 }
