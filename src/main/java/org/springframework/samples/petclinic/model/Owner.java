@@ -62,6 +62,9 @@ public class Owner extends Person {
     @Transient
     private String customerCode;
 
+    @Transient
+    private String membershipTier;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -119,6 +122,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public String getMembershipTier() {
+        return this.membershipTier;
+    }
+
+    public void setMembershipTier(String membershipTier) {
+        this.membershipTier = membershipTier;
     }
 
     protected Set<Pet> getPetsInternal() {
