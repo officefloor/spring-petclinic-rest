@@ -243,6 +243,9 @@ public class ClinicServiceImpl implements ClinicService {
             if (hasOwnerWithSameEmail(owner)) {
                 throw new DuplicateOwnerException("An owner with the same email address already exists");
             }
+            if (hasReachedDailyRegistrationLimit()) {
+                throw new DailyOwnerRegistrationLimitExceededException();
+            }
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
@@ -307,6 +310,23 @@ public class ClinicServiceImpl implements ClinicService {
                 .append(word.substring(1).toLowerCase(Locale.ROOT));
         }
         return result.toString();
+    }
+
+    /**
+     * The maximum number of owners that may be registered on a single day (by registration date).
+     */
+    private static final long MAX_OWNERS_PER_DAY = 20;
+
+    /**
+     * Returns {@code true} if the number of owners already registered today (by registration date)
+     * has reached {@link #MAX_OWNERS_PER_DAY}, so that no further owner may be created today.
+     */
+    private boolean hasReachedDailyRegistrationLimit() {
+        LocalDate today = LocalDate.now();
+        long registeredToday = ownerRepository.findAll().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        return registeredToday >= MAX_OWNERS_PER_DAY;
     }
 
     private boolean hasIdenticalOwner(Owner owner) {
