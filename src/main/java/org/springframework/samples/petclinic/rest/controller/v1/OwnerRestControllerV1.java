@@ -117,7 +117,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             || this.clinicService.existsOwnerWithEmail(owner.getEmail())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        int ownersBefore = this.clinicService.findAllOwners().size();
+        owner.setMembershipNumber(ownersBefore + 1);
+        owner.setMembershipTier(ownersBefore < 100 ? "FOUNDING" : "STANDARD");
         owner.setCity(resolveCityName(owner.getCity()));
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
