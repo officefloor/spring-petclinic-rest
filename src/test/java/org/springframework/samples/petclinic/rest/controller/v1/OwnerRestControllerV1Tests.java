@@ -204,6 +204,53 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenCityFull() throws Exception {
+        // A city already home to eight owners is full, so a ninth owner supplying that city
+        // (even with different casing) must be rejected with 400.
+        String city = uniqueName("Fullville");
+        for (int i = 0; i < 8; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("George");
+            owner.setLastName(uniqueName("Resident"));
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity(city);
+            owner.setTelephone(uniqueTelephone());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Ninth"), city.toUpperCase(java.util.Locale.ROOT), uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenCityHasRoom() throws Exception {
+        // Seven owners in a city leaves room for one more, which must be accepted as the eighth.
+        String city = uniqueName("Roomyville");
+        for (int i = 0; i < 7; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("George");
+            owner.setLastName(uniqueName("Resident"));
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity(city);
+            owner.setTelephone(uniqueTelephone());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Eighth"), city, uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateTelephoneConflict() throws Exception {
         // George Franklin from the seed data already uses telephone 6085551023, so a new
         // owner reusing that number must be rejected even though every other field differs.
@@ -278,21 +325,22 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
         // Twenty owners already registered today exhausts the daily allowance, so the next
-        // creation must be rejected with 400.
+        // creation must be rejected with 400. Each is placed in its own city so the rejection
+        // is driven by the daily allowance rather than the per-city capacity limit.
         for (int i = 0; i < 20; i++) {
             Owner owner = new Owner();
             owner.setFirstName("George");
             owner.setLastName(uniqueName("Daily"));
             owner.setAddress("110 W. Liberty St.");
-            owner.setCity("Madison");
+            owner.setCity(uniqueName("Dailyville"));
             owner.setTelephone(uniqueTelephone());
             owner.setRegistrationDate(LocalDate.now());
             ownerRepository.save(owner);
         }
 
         String body = """
-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
-            """.formatted(uniqueName("Overflow"), uniqueTelephone());
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Overflow"), uniqueName("Overflowville"), uniqueTelephone());
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isBadRequest());
@@ -301,21 +349,22 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerAllowedWhenBelowDailyLimit() throws Exception {
-        // Nineteen owners registered today leaves room for one more, which must succeed.
+        // Nineteen owners registered today leaves room for one more, which must succeed. Each is
+        // placed in its own city so the per-city capacity limit never interferes with this check.
         for (int i = 0; i < 19; i++) {
             Owner owner = new Owner();
             owner.setFirstName("George");
             owner.setLastName(uniqueName("Below"));
             owner.setAddress("110 W. Liberty St.");
-            owner.setCity("Madison");
+            owner.setCity(uniqueName("Belowville"));
             owner.setTelephone(uniqueTelephone());
             owner.setRegistrationDate(LocalDate.now());
             ownerRepository.save(owner);
         }
 
         String body = """
-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
-            """.formatted(uniqueName("Twentieth"), uniqueTelephone());
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+            """.formatted(uniqueName("Twentieth"), uniqueName("Twentyville"), uniqueTelephone());
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated());

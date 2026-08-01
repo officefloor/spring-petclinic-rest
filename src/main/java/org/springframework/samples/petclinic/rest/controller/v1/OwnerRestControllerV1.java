@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(owner.getCity()))
             .count();
+        if (ownersInCity >= 8) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         owner.setCustomerCode(String.format("%s-%04d",
             owner.getCity().toUpperCase(Locale.ROOT), ownersInCity + 1));
         this.clinicService.saveOwner(owner);
