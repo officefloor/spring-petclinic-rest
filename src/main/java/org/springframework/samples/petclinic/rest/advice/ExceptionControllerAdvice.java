@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.service.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.service.DailyOwnerRegistrationLimitExceededException;
 import org.springframework.samples.petclinic.service.DuplicateOwnerException;
 import org.springframework.security.access.AccessDeniedException;
@@ -157,6 +158,27 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDailyOwnerRegistrationLimitExceededException(DailyOwnerRegistrationLimitExceededException e, HttpServletRequest request) {
         logger.warn("Daily owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityOwnerLimitExceededException} thrown when attempting to create an owner once
+     * the maximum number of owners allowed to live in a single city has been reached.
+     * Returns a 400 Bad Request status.
+     *
+     * @param e The {@link CityOwnerLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(CityOwnerLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityOwnerLimitExceededException(CityOwnerLimitExceededException e, HttpServletRequest request) {
+        logger.warn("City owner limit reached at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

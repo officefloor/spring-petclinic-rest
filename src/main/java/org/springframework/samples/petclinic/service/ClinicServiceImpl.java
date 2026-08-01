@@ -246,6 +246,9 @@ public class ClinicServiceImpl implements ClinicService {
             if (hasReachedDailyRegistrationLimit()) {
                 throw new DailyOwnerRegistrationLimitExceededException();
             }
+            if (hasReachedCityLimit(owner)) {
+                throw new CityOwnerLimitExceededException();
+            }
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
@@ -327,6 +330,27 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
         return registeredToday >= MAX_OWNERS_PER_DAY;
+    }
+
+    /**
+     * The maximum number of owners that may live in a single city.
+     */
+    private static final long MAX_OWNERS_PER_CITY = 8;
+
+    /**
+     * Returns {@code true} if the owner's city (compared ignoring letter case and surrounding/repeated
+     * whitespace) already contains {@link #MAX_OWNERS_PER_CITY} owners, so that no further owner may be
+     * registered in that city.
+     */
+    private boolean hasReachedCityLimit(Owner owner) {
+        String city = normalize(owner.getCity());
+        if (city == null) {
+            return false;
+        }
+        long ownersInCity = ownerRepository.findAll().stream()
+            .filter(existing -> Objects.equals(normalize(existing.getCity()), city))
+            .count();
+        return ownersInCity >= MAX_OWNERS_PER_CITY;
     }
 
     private boolean hasIdenticalOwner(Owner owner) {
