@@ -111,11 +111,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCustomerCode(generateCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Generates the customer code for a newly created owner. The code is formatted as
+     * '&lt;UPPERCASE_CITY&gt;-&lt;NNNN&gt;' where NNNN is one more than the number of owners that
+     * already exist in that city, zero-padded to four digits (for example 'LONDON-0007').
+     * Cities are matched ignoring letter case.
+     */
+    private String generateCustomerCode(String city) {
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+            .count();
+        return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), ownersInCity + 1);
     }
 
     /**

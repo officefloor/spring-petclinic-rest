@@ -115,6 +115,40 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAssignsCustomerCodeForNewCity() throws Exception {
+        String city = "Metropolis" + System.nanoTime();
+        String body = """
+            {"firstName":"Clark","lastName":"Kent","address":"1 Daily St.","city":"%s","telephone":"6085557777"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value(city.toUpperCase() + "-0001"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerIncrementsCustomerCodeWithinSameCity() throws Exception {
+        String city = "Gotham" + System.nanoTime();
+        String first = """
+            {"firstName":"Bruce","lastName":"Wayne","address":"1 Manor Rd.","city":"%s","telephone":"6085557001"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value(city.toUpperCase() + "-0001"));
+
+        String second = """
+            {"firstName":"Selina","lastName":"Kyle","address":"2 Alley Rd.","city":"%s","telephone":"6085557002"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value(city.toUpperCase() + "-0002"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateLastNameAndTelephoneReturnsConflict() throws Exception {
         String lastName = "Conflictus";
         newOwner(lastName); // telephone 6085551023
