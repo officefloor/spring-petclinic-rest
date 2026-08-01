@@ -126,6 +126,30 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSameLastNameAndTelephoneConflict() throws Exception {
+        // Matches George Franklin (seed) on last name and telephone only; other fields differ.
+        String body = """
+            {"firstName":"Benjamin","lastName":"Franklin","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085551023"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSameLastNameDifferentTelephoneSuccess() throws Exception {
+        // Same last name as the seed owner but a different telephone must be allowed.
+        String body = """
+            {"firstName":"Benjamin","lastName":"Franklin","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085559999"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
