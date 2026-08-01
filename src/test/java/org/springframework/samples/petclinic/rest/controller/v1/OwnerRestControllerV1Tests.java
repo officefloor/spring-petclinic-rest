@@ -105,6 +105,7 @@ class OwnerRestControllerV1Tests {
         // Use a last name and telephone absent from the seed data so this is not
         // rejected as a duplicate (409); seed owner #1 is George Franklin with
         // telephone 6085551023, and telephone must be unique across all owners.
+        int expectedMembershipNumber = ownerRepository.findAll().size() + 1;
         String body = """
             {"firstName":"George","lastName":"Frankston","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551099"}
             """;
@@ -112,7 +113,8 @@ class OwnerRestControllerV1Tests {
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
-            .andExpect(jsonPath("$.firstName").value("George"));
+            .andExpect(jsonPath("$.firstName").value("George"))
+            .andExpect(jsonPath("$.membershipNumber").value(expectedMembershipNumber));
     }
 
     @Test
