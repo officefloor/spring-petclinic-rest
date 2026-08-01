@@ -245,6 +245,7 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
         }
         ownerRepository.save(owner);
 
