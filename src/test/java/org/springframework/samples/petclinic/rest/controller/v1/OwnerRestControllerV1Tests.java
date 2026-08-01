@@ -149,6 +149,40 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCityForNewCity() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String body = """
+            {"firstName":"Ariel","lastName":"Waters","address":"1 Coral Rd.","city":"north %s","telephone":"6085556001"}
+            """.formatted(suffix);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("North " + suffix));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        String city = "Rivertown" + System.nanoTime();
+        String first = """
+            {"firstName":"Bruce","lastName":"Rivers","address":"1 First Rd.","city":"%s","telephone":"6085556101"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value(city));
+
+        String second = """
+            {"firstName":"Clark","lastName":"Streams","address":"2 Second Rd.","city":"%s","telephone":"6085556102"}
+            """.formatted(city.toUpperCase());
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value(city));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateLastNameAndTelephoneReturnsConflict() throws Exception {
         String lastName = "Conflictus";
         newOwner(lastName); // telephone 6085551023

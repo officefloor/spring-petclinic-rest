@@ -112,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCity(normalizeCity(owner.getCity()));
         owner.setCustomerCode(generateCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -131,6 +132,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
         return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), ownersInCity + 1);
+    }
+
+    /**
+     * Normalizes the city of a newly created owner. If an owner already exists in the same
+     * city (matched ignoring letter case), that existing owner's exact spelling of the city is
+     * reused so that all owners in a city share one canonical spelling. Otherwise the supplied
+     * city is title-cased, capitalizing the first letter of each whitespace-separated word and
+     * lowercasing the rest, so for example "new york" becomes "New York".
+     */
+    private String normalizeCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> toTitleCase(city));
+    }
+
+    /**
+     * Title-cases the given value by capitalizing the first letter of each whitespace-separated
+     * word and lowercasing the remaining letters, preserving the original whitespace: for example
+     * "new  YORK" becomes "New  York".
+     */
+    private static String toTitleCase(String value) {
+        StringBuilder result = new StringBuilder(value.length());
+        boolean capitalizeNext = true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                capitalizeNext = true;
+                result.append(c);
+            } else if (capitalizeNext) {
+                result.append(Character.toTitleCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
     }
 
     /**
