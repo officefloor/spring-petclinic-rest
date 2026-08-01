@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -138,9 +139,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * comparison ignores letter case and any surrounding or repeated whitespace.
      */
     private boolean isDuplicateOwner(Owner owner) {
-        String telephone = normalize(owner.getTelephone());
+        String telephone = normalizeTelephone(owner.getTelephone());
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
+            .anyMatch(existing -> Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
+    }
+
+    /**
+     * Normalizes a telephone number for storage and comparison by stripping spaces, dashes
+     * and parentheses so that only digits remain: for example "(613) 555-0100" becomes
+     * "6135550100". This lets differently punctuated forms of the same number be treated as
+     * equal for the uniqueness check and stored in a single canonical form.
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[\\s()-]", "");
     }
 
     /**
@@ -181,7 +195,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
