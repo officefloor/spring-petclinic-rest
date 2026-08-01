@@ -147,6 +147,16 @@ public class Owner extends Person {
         return getPetsInternal().stream().filter(p -> p.getId().equals(petId)).findFirst().orElse(null);
     }
 
+    /**
+     * Return the display name of this owner, formatted as 'LastName, FirstName'.
+     *
+     * @return the formatted display name
+     */
+    @Transient
+    public String getDisplayName() {
+        return this.getLastName() + ", " + this.getFirstName();
+    }
+
     @Override
     public String toString() {
         return new ToStringCreator(this)
