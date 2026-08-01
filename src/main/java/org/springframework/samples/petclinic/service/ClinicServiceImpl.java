@@ -246,9 +246,23 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setRegistrationDate(LocalDate.now());
             }
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+            owner.setCustomerCode(generateCustomerCode(owner));
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Generates a customer code for a newly registered owner, formatted as
+     * {@code <UPPERCASE_CITY>-<NNNN>} where {@code NNNN} is one more than the number
+     * of owners already in that city, zero-padded to four digits (e.g. {@code LONDON-0007}).
+     */
+    private String generateCustomerCode(Owner owner) {
+        String city = owner.getCity();
+        long existingInCity = ownerRepository.findAll().stream()
+            .filter(existing -> Objects.equals(normalize(existing.getCity()), normalize(city)))
+            .count();
+        return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), existingInCity + 1);
     }
 
     private boolean hasIdenticalOwner(Owner owner) {
