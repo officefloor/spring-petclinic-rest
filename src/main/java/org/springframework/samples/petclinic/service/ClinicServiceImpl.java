@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -251,16 +252,30 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isSameOwner(Owner existing, Owner owner) {
-        return Objects.equals(existing.getTelephone(), owner.getTelephone());
+        return Objects.equals(normalize(existing.getTelephone()), normalize(owner.getTelephone()));
     }
 
     private boolean hasOwnerWithSameEmail(Owner owner) {
-        String email = owner.getEmail();
-        if (email == null || email.isBlank()) {
+        String email = normalize(owner.getEmail());
+        if (email == null || email.isEmpty()) {
             return false;
         }
         return ownerRepository.findAll().stream()
-            .anyMatch(existing -> email.equals(existing.getEmail()));
+            .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+    }
+
+    /**
+     * Normalizes a value for duplicate detection so that values differing only in
+     * letter case or in surrounding/repeated whitespace compare as equal. Surrounding
+     * whitespace is trimmed, internal whitespace runs are collapsed to a single space,
+     * and the result is lower-cased (e.g. {@code "  john   smith "} and {@code "John Smith"}
+     * both normalize to {@code "john smith"}). Returns {@code null} for a {@code null} input.
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @Override
