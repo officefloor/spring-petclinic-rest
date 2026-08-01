@@ -114,6 +114,41 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCity() throws Exception {
+        // A brand-new city is title-cased and returned in the 'city' field.
+        String body = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"west sacramento","telephone":"2015550123"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("West Sacramento"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // An owner already exists in this city with a distinctive spelling.
+        Owner existing = new Owner();
+        existing.setFirstName("Ada");
+        existing.setLastName("Existing-" + System.nanoTime());
+        existing.setAddress("1 First St.");
+        existing.setCity("OldePortville");
+        existing.setTelephone("2015559911");
+        ownerRepository.save(existing);
+
+        // Creating another owner in the same city (spelled differently) reuses the existing spelling.
+        String body = """
+            {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"oldeportville","telephone":"2015550124"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("OldePortville"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerConflictWhenIdentical() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Testerson","address":"999 Test Ave.","city":"Testville","telephone":"1112223333"}
