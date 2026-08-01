@@ -126,6 +126,18 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSetsRegistrationDateToToday() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551026"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.registrationDate").value(LocalDate.now().toString()));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateConflict() throws Exception {
         // George Franklin is present in the seed data; creating an identical owner must be rejected.
         String body = """
