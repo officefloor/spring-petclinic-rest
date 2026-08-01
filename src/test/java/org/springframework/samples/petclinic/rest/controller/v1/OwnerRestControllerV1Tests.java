@@ -475,4 +475,48 @@ class OwnerRestControllerV1Tests {
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.description").value("rabies shot"));
     }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // 20 owners already registered today: the 21st creation must be rejected with 400.
+        for (int i = 0; i < 20; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily");
+            owner.setLastName("Limit-" + System.nanoTime());
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity("Madison");
+            owner.setTelephone("6085551023");
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedBelowDailyLimit() throws Exception {
+        // 19 owners registered today: another creation is still allowed.
+        for (int i = 0; i < 19; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily");
+            owner.setLastName("Limit-" + System.nanoTime());
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity("Madison");
+            owner.setTelephone("6085551023");
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
 }

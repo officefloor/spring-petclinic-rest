@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -104,6 +105,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        if (hasReachedDailyRegistrationLimit()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -196,6 +200,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(visitDto, headers, HttpStatus.CREATED);
     }
 
+
+    /**
+     * The maximum number of owners that may be registered on any single calendar day.
+     */
+    private static final long MAX_DAILY_REGISTRATIONS = 20;
+
+    /**
+     * Determines whether the daily owner-registration limit has already been reached. Owners are
+     * counted by their {@link Owner#getRegistrationDate() registration date}, so once
+     * {@value #MAX_DAILY_REGISTRATIONS} owners have been registered with today's date, no further
+     * owners may be created today.
+     *
+     * @return {@code true} if today's registration limit has been reached
+     */
+    private boolean hasReachedDailyRegistrationLimit() {
+        LocalDate today = LocalDate.now();
+        long registeredToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        return registeredToday >= MAX_DAILY_REGISTRATIONS;
+    }
 
     /**
      * Builds the customer code for a newly created owner, formatted as
