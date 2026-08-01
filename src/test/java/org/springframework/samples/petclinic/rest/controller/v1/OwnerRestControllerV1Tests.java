@@ -270,6 +270,51 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenCityFull() throws Exception {
+        // 8 owners already live in the city (matched ignoring letter case).
+        for (int i = 0; i < 8; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Resident");
+            owner.setLastName("Full-" + i + "-" + System.nanoTime());
+            owner.setAddress("1 Cap St.");
+            owner.setCity("Fullville");
+            owner.setTelephone(String.format("72000000%02d", i));
+            ownerRepository.save(owner);
+        }
+
+        // A 9th owner in the same city (spelled differently) is rejected with 400.
+        String body = """
+            {"firstName":"George","lastName":"Overflow","address":"999 Test Ave.","city":"fullville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenCityBelowCapacity() throws Exception {
+        // Only 7 owners live in the city, leaving room for one more.
+        for (int i = 0; i < 7; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Resident");
+            owner.setLastName("Room-" + i + "-" + System.nanoTime());
+            owner.setAddress("1 Cap St.");
+            owner.setCity("Roomville");
+            owner.setTelephone(String.format("73000000%02d", i));
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"Room","address":"999 Test Ave.","city":"Roomville","telephone":"1112223333"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
