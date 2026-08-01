@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Objects;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -21,7 +19,7 @@ public class RejectDuplicateOwner {
             if (isSameOwner(existing, owner)) {
                 continue;
             }
-            if (Objects.equals(existing.getTelephone(), owner.getTelephone())) {
+            if (DuplicateMatching.matches(existing.getTelephone(), owner.getTelephone())) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone number already exists");
             }
