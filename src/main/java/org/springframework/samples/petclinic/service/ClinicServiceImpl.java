@@ -260,6 +260,16 @@ public class ClinicServiceImpl implements ClinicService {
             .anyMatch(existing -> telephone.equals(existing.getTelephone()));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnerWithEmail(String email) throws DataAccessException {
+        if (email == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> email.equals(existing.getEmail()));
+    }
+
     private boolean isSameIdentity(Owner existing, Owner candidate) {
         return Objects.equals(existing.getLastName(), candidate.getLastName())
             && Objects.equals(existing.getTelephone(), candidate.getTelephone());

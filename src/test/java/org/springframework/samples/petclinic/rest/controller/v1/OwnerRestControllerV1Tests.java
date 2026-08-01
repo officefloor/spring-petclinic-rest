@@ -150,6 +150,52 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithEmailStoresAndReturnsEmail() throws Exception {
+        String uniqueLastName = uniqueName("Emailer");
+        String uniqueTelephone = uniqueTelephone();
+        String email = "george." + System.nanoTime() + "@example.com";
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s","email":"%s"}
+            """.formatted(uniqueLastName, uniqueTelephone, email);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.email").value(email));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailConflict() throws Exception {
+        String email = "shared." + System.nanoTime() + "@example.com";
+        String firstBody = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s","email":"%s"}
+            """.formatted(uniqueName("First"), uniqueTelephone(), email);
+        mvc.perform(post("/api/owners").content(firstBody)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // A second owner reusing the same email must be rejected even though every other field differs.
+        String secondBody = """
+            {"firstName":"Georgina","lastName":"%s","address":"1 Elsewhere Rd.","city":"Verona","telephone":"%s","email":"%s"}
+            """.formatted(uniqueName("Second"), uniqueTelephone(), email);
+        mvc.perform(post("/api/owners").content(secondBody)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithoutEmailSucceeds() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
+            """.formatted(uniqueName("NoEmail"), uniqueTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateConflict() throws Exception {
         String uniqueLastName = uniqueName("Franklin");
         newOwner(uniqueLastName);

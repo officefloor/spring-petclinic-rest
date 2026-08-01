@@ -78,6 +78,15 @@ public interface ClinicService {
 	 */
 	boolean existsOwnerWithTelephone(String telephone) throws DataAccessException;
 
+	/**
+	 * Determine whether any owner already uses the given email address.
+	 *
+	 * @param email the email address to check
+	 * @return {@code true} if an owner with the given email address already exists,
+	 *         {@code false} otherwise
+	 */
+	boolean existsOwnerWithEmail(String email) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
