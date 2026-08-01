@@ -57,6 +57,18 @@ class OwnerRestControllerV1Tests {
         return owner;
     }
 
+    /**
+     * Builds a unique, letters-only name (the owner name Bean Validation pattern rejects digits),
+     * so tests can create distinct owners that do not collide with each other or the seed data.
+     */
+    private String uniqueName(String prefix) {
+        StringBuilder sb = new StringBuilder(prefix);
+        for (char c : Long.toString(System.nanoTime()).toCharArray()) {
+            sb.append((char) ('a' + (c - '0')));
+        }
+        return sb.toString();
+    }
+
     private PetType dogType() {
         PetType type = new PetType();
         type.setName("dog-" + System.nanoTime());
@@ -102,14 +114,28 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        String uniqueLastName = uniqueName("Franklin");
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
-            """;
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            """.formatted(uniqueLastName);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateConflict() throws Exception {
+        String uniqueLastName = uniqueName("Franklin");
+        newOwner(uniqueLastName);
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            """.formatted(uniqueLastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test

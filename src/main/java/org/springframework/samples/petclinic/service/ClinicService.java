@@ -60,6 +60,15 @@ public interface ClinicService {
 	void deleteOwner(Owner owner) throws DataAccessException;
 	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
 
+	/**
+	 * Determine whether an owner identical to the given one already exists in the data store,
+	 * i.e. one with the same first name, last name, address, city and telephone.
+	 *
+	 * @param owner the candidate owner to check
+	 * @return {@code true} if a matching owner already exists, {@code false} otherwise
+	 */
+	boolean existsIdenticalOwner(Owner owner) throws DataAccessException;
+
 	PetType findPetTypeById(int petTypeId);
 	Collection<PetType> findAllPetTypes() throws DataAccessException;
 	Collection<PetType> findPetTypes() throws DataAccessException;
