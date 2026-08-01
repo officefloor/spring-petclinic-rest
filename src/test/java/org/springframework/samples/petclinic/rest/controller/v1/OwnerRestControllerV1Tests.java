@@ -115,6 +115,38 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithEmailSuccess() throws Exception {
+        // Unique telephone and email, so creation is allowed and the email is echoed back.
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550001","email":"george.washington@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.email").value("george.washington@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailConflict() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550002","email":"shared.owner@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Different telephone but same email as the owner created above must be rejected.
+        String second = """
+            {"firstName":"Thomas","lastName":"Jefferson","address":"1 Elsewhere Rd.","city":"Boston","telephone":"6085550003","email":"shared.owner@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateConflict() throws Exception {
         // George Franklin already exists in the seed data; an identical owner must be rejected.
         String body = """

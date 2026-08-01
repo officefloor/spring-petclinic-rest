@@ -102,7 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (isDuplicateOwner(owner)) {
+        if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.clinicService.saveOwner(owner);
@@ -201,6 +201,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isDuplicateOwner(Owner owner) {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+    }
+
+    /**
+     * Determines whether the given email address is already used by any other owner. An owner
+     * without an email address is never considered a duplicate on this criterion.
+     *
+     * @param owner the candidate owner
+     * @return {@code true} if the owner provides an email already used by an existing owner
+     */
+    private boolean isDuplicateEmail(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> email.equalsIgnoreCase(existing.getEmail()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
