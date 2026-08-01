@@ -480,12 +480,14 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
         // 20 owners already registered today: the 21st creation must be rejected with 400.
+        // Each is registered in a distinct city so this exercises only the daily-registration
+        // limit and not the per-city owner cap.
         for (int i = 0; i < 20; i++) {
             Owner owner = new Owner();
             owner.setFirstName("Daily");
             owner.setLastName("Limit-" + System.nanoTime());
             owner.setAddress("110 W. Liberty St.");
-            owner.setCity("Madison");
+            owner.setCity("DailyCity-" + i);
             owner.setTelephone("6085551023");
             owner.setRegistrationDate(LocalDate.now());
             ownerRepository.save(owner);
@@ -502,18 +504,62 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerAllowedBelowDailyLimit() throws Exception {
         // 19 owners registered today: another creation is still allowed.
+        // Each is registered in a distinct city so this exercises only the daily-registration
+        // limit and not the per-city owner cap.
         for (int i = 0; i < 19; i++) {
             Owner owner = new Owner();
             owner.setFirstName("Daily");
             owner.setLastName("Limit-" + System.nanoTime());
             owner.setAddress("110 W. Liberty St.");
-            owner.setCity("Madison");
+            owner.setCity("DailyCity-" + i);
             owner.setTelephone("6085551023");
             owner.setRegistrationDate(LocalDate.now());
             ownerRepository.save(owner);
         }
         String body = """
             {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenCityFull() throws Exception {
+        // A city that already contains 8 owners cannot accept any more: the 9th is rejected with 400.
+        for (int i = 0; i < 8; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("City");
+            owner.setLastName("Cap-" + System.nanoTime());
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity("Springfield");
+            owner.setTelephone("6085551023");
+            ownerRepository.save(owner);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Springfield","telephone":"6085550000"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedBelowCityLimit() throws Exception {
+        // A city with only 7 owners can still accept the 8th.
+        for (int i = 0; i < 7; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("City");
+            owner.setLastName("Cap-" + System.nanoTime());
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity("Springfield");
+            owner.setTelephone("6085551023");
+            ownerRepository.save(owner);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Springfield","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))

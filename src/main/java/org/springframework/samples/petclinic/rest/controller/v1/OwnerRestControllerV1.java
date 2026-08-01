@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (hasReachedDailyRegistrationLimit()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (hasReachedCityOwnerLimit(owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -220,6 +223,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
         return registeredToday >= MAX_DAILY_REGISTRATIONS;
+    }
+
+    /**
+     * The maximum number of owners that may be registered in any single city.
+     */
+    private static final long MAX_OWNERS_PER_CITY = 8;
+
+    /**
+     * Determines whether the given city has already reached its owner limit. Owners are matched to
+     * the city using {@link #normalize(String)}, so the count ignores letter case and any
+     * surrounding or repeated whitespace. Once {@value #MAX_OWNERS_PER_CITY} owners live in a city,
+     * no further owners may be created there.
+     *
+     * @param city the city of the new owner, may be {@code null}
+     * @return {@code true} if the city already contains {@value #MAX_OWNERS_PER_CITY} owners
+     */
+    private boolean hasReachedCityOwnerLimit(String city) {
+        String normalized = normalize(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(normalize(existing.getCity()), normalized))
+            .count();
+        return ownersInCity >= MAX_OWNERS_PER_CITY;
     }
 
     /**
