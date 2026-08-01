@@ -23,9 +23,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -56,6 +60,8 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -145,6 +151,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setSharesHousehold(sharesHousehold);
         owner.setLocality(isMostCommonCity(owner.getCity()) ? "local" : "remote");
         this.clinicService.saveOwner(owner);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String user = authentication != null ? authentication.getName() : "anonymous";
+        AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
+            user, owner.getId(), owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
