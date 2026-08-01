@@ -127,6 +127,18 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateTelephoneDifferentLastNameReturnsConflict() throws Exception {
+        newOwner("Existingus"); // telephone 6085551023
+        String body = """
+            {"firstName":"George","lastName":"Differentus","address":"999 Other St.","city":"Elsewhere","telephone":"6085551023"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSameLastNameDifferentTelephoneSucceeds() throws Exception {
         String lastName = "Samenamius";
         newOwner(lastName); // telephone 6085551023
