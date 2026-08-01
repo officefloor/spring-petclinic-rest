@@ -257,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setCustomerCode(generateCustomerCode(owner));
             owner.setMembershipTier(resolveMembershipTier());
             owner.setNamesakeCount(countNamesakes(owner));
+            owner.setSharesHousehold(sharesHousehold(owner));
         }
         ownerRepository.save(owner);
 
@@ -342,6 +343,20 @@ public class ClinicServiceImpl implements ClinicService {
         return (int) ownerRepository.findAll().stream()
             .filter(existing -> Objects.equals(normalize(existing.getLastName()), lastName))
             .count();
+    }
+
+    /**
+     * Determines whether the newly registered owner shares a household with an existing owner,
+     * i.e. another owner already has the same address and city (each compared ignoring letter
+     * case and surrounding/repeated whitespace). Invoked before the owner is persisted, so it
+     * reflects the state at creation time.
+     */
+    private boolean sharesHousehold(Owner owner) {
+        String address = normalize(owner.getAddress());
+        String city = normalize(owner.getCity());
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
+                && Objects.equals(normalize(existing.getCity()), city));
     }
 
     /**
