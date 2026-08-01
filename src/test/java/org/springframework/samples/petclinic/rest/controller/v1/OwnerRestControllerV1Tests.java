@@ -221,6 +221,42 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReturnsZeroNamesakeCountForUniqueLastName() throws Exception {
+        String lastName = "Solitarius";
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"1 New St.","city":"Springfield","telephone":"6085552301"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerCountsExistingOwnersWithSameLastName() throws Exception {
+        String lastName = "Namesakius";
+        newOwner(lastName); // one existing owner with this last name
+
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"1 New St.","city":"Springfield","telephone":"6085552302"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(1));
+
+        String third = """
+            {"firstName":"Second","lastName":"%s","address":"2 New St.","city":"Springfield","telephone":"6085552303"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(third)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerWithEmailStoresAndReturnsEmail() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Emailer","address":"1 New St.","city":"Springfield","telephone":"6085558001","email":"george.emailer@example.com"}

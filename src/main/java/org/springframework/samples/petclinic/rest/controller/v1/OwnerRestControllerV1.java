@@ -117,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (hasReachedCityCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setMembershipTier(determineMembershipTier(owner.getMembershipNumber()));
         owner.setCity(normalizeCity(owner.getCity()));
@@ -163,6 +164,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
         return ownersInCity >= MAX_OWNERS_PER_CITY;
+    }
+
+    /**
+     * Counts how many existing owners share the given last name at the moment a new owner is
+     * created. The newly created owner itself is not yet persisted and so is never included in
+     * the count. Last names are compared exactly.
+     */
+    private int countNamesakes(String lastName) {
+        if (lastName == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(existing.getLastName(), lastName))
+            .count();
     }
 
     /**
