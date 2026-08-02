@@ -103,13 +103,29 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Wilkinson","address":"742 Evergreen Terrace","city":"Springfield","telephone":"6085551099"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateReturnsConflict() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"Duplicant","address":"12 Conflict Rd.","city":"Madison","telephone":"6085551077"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Posting an identical owner (same first name, last name, address, city and telephone) is rejected.
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test

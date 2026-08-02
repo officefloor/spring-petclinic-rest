@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -101,11 +102,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (ownerAlreadyExists(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Determines whether an owner identical to the given one already exists, matching on first name,
+     * last name, address, city and telephone.
+     *
+     * @param owner the candidate owner to check
+     * @return {@code true} if an identical owner is already stored
+     */
+    private boolean ownerAlreadyExists(Owner owner) {
+        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
+            .anyMatch(existing ->
+                Objects.equals(existing.getFirstName(), owner.getFirstName())
+                    && Objects.equals(existing.getLastName(), owner.getLastName())
+                    && Objects.equals(existing.getAddress(), owner.getAddress())
+                    && Objects.equals(existing.getCity(), owner.getCity())
+                    && Objects.equals(existing.getTelephone(), owner.getTelephone()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
