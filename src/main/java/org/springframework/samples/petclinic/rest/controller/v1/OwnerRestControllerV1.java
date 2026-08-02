@@ -122,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber);
         owner.setCustomerCode(customerCode(owner));
         owner.setMembershipTier(membershipNumber <= 100 ? "FOUNDING" : "STANDARD");
+        owner.setNamesakeCount(namesakeCount(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -237,6 +238,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the owner being created
      * @return the customer code for the owner
      */
+    /**
+     * Counts how many other owners already share the given owner's last name at the moment of
+     * creation. The owner being created is not yet persisted and so is not included in the count.
+     *
+     * @param owner the owner being created
+     * @return the number of existing owners with the same last name
+     */
+    private int namesakeCount(Owner owner) {
+        String lastName = owner.getLastName();
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(existing.getLastName(), lastName))
+            .count();
+    }
+
     private String customerCode(Owner owner) {
         String city = owner.getCity();
         long existingInCity = this.clinicService.findAllOwners().stream()

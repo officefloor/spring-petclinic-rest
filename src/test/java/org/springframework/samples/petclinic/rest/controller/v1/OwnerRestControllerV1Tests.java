@@ -115,6 +115,37 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReportsNamesakeCount() throws Exception {
+        // A unique last name means no existing namesakes for the first owner; each subsequent owner
+        // created with the same last name sees the count of the ones already registered.
+        String lastName = "Namesaketestowner";
+        String first = String.format("""
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"9995550101"}
+            """, lastName);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(0));
+
+        String second = String.format("""
+            {"firstName":"Jane","lastName":"%s","address":"200 Main St.","city":"Madison","telephone":"9995550102"}
+            """, lastName);
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(1));
+
+        String third = String.format("""
+            {"firstName":"Jack","lastName":"%s","address":"300 Oak St.","city":"Madison","telephone":"9995550103"}
+            """, lastName);
+        mvc.perform(post("/api/owners").content(third)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateConflict() throws Exception {
         String lastName = "Duplicateowner";
         newOwner(lastName);
