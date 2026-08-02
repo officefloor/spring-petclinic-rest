@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1df3816..4fa1475 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -85,8 +85,13 @@ public class Owner extends Person {
+         return this.telephone;
+     }
+ 
++    /**
++     * Store the telephone number as digits only, stripping any spaces, dashes
++     * and parentheses so that, e.g., "(613) 555-0100" and "6135550100" are kept
++     * as the same value.
++     */
+     public void setTelephone(String telephone) {
+-        this.telephone = telephone;
++        this.telephone = telephone == null ? null : telephone.replaceAll("[^0-9]", "");
+     }
+ 
+     public String getEmail() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index d8819d6..c24428d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -271,10 +271,23 @@ public class ClinicServiceImpl implements ClinicService {
+     }
+ 
+     private boolean isDuplicateTelephone(Owner owner) {
+-        String telephone = normalize(owner.getTelephone());
++        String telephone = normalizeTelephone(owner.getTelephone());
+         return ownerRepository.findAll().stream()
+             .anyMatch(existing -> !existing.getId().equals(owner.getId())
+-                && Objects.equals(normalize(existing.getTelephone()), telephone));
++                && Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
++    }
++
++    /**
++     * Normalize a telephone number for duplicate detection by stripping every
++     * character that is not a digit (spaces, dashes and parentheses), so that
++     * "(613) 555-0100" and "6135550100" are treated as the same number. A
++     * {@code null} value stays {@code null}.
++     */
++    private static String normalizeTelephone(String value) {
++        if (value == null) {
++            return null;
++        }
++        return value.replaceAll("[^0-9]", "");
+     }
+ 
+     private boolean isDuplicateEmail(Owner owner) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 45e49a8..57ff2bb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,7 +2029,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[0-9 ()-]*$'
+           example: '6085551023'
+         email:
+           title: Email address

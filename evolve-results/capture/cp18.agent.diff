@@ -1,0 +1,195 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 446da3c..9caf376 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "shares_household")
+     private Boolean sharesHousehold;
+ 
++    @Column(name = "locality")
++    private String locality;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -159,6 +162,14 @@ public class Owner extends Person {
+         this.sharesHousehold = sharesHousehold;
+     }
+ 
++    public String getLocality() {
++        return this.locality;
++    }
++
++    public void setLocality(String locality) {
++        this.locality = locality;
++    }
++
+     /**
+      * The owner's display name, formatted as 'LastName, FirstName'.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 1aae189..93e9a55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -29,9 +29,11 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Supplier;
++import java.util.stream.Collectors;
+ 
+ /**
+  * Mostly used as a facade for all Petclinic controllers
+@@ -259,6 +261,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setCustomerCode(generateCustomerCode(owner));
+             owner.setNamesakeCount(countNamesakes(owner));
+             owner.setSharesHousehold(sharesHousehold(owner));
++            owner.setLocality(resolveLocality(owner));
+             if (isDuplicateTelephone(owner)) {
+                 throw new DuplicateOwnerException(
+                     "An owner with the same telephone already exists");
+@@ -307,6 +310,39 @@ public class ClinicServiceImpl implements ClinicService {
+                 && city.equalsIgnoreCase(existing.getCity()));
+     }
+ 
++    /**
++     * Determine a newly created owner's locality at the moment of creation.
++     * Returns {@code "local"} when the owner's city is the single most common
++     * city among the existing owners (compared case-insensitively); that is,
++     * exactly one city occurs more often than every other and it is this
++     * owner's city. In every other case (no existing owners, a tie for the most
++     * common city, or a different city being the most common) the owner is
++     * {@code "remote"}. The owner being created is not yet persisted and is
++     * therefore never counted.
++     */
++    private String resolveLocality(Owner owner) {
++        String city = owner.getCity();
++        if (city == null) {
++            return "remote";
++        }
++        Map<String, Long> countsByCity = ownerRepository.findAll().stream()
++            .filter(existing -> !existing.getId().equals(owner.getId()))
++            .filter(existing -> existing.getCity() != null)
++            .collect(Collectors.groupingBy(
++                existing -> existing.getCity().toLowerCase(Locale.ROOT),
++                Collectors.counting()));
++        if (countsByCity.isEmpty()) {
++            return "remote";
++        }
++        long max = countsByCity.values().stream().mapToLong(Long::longValue).max().orElse(0L);
++        long citiesAtMax = countsByCity.values().stream().filter(count -> count == max).count();
++        if (citiesAtMax != 1) {
++            return "remote";
++        }
++        long ownerCityCount = countsByCity.getOrDefault(city.toLowerCase(Locale.ROOT), 0L);
++        return ownerCityCount == max ? "local" : "remote";
++    }
++
+     /**
+      * Build a customer code for a newly created owner, formatted as
+      * {@code <UPPERCASE_CITY>-<NNNN>} where NNNN is one more than the number of
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 1f68ae8..c00e801 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index d1a95db..a6fbfdc 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001', 'FOUNDING', 1, FALSE);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004', 'FOUNDING', 0, FALSE);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001', 'FOUNDING', 0, FALSE);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001', 'FOUNDING', 1, FALSE, 'remote');
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003', 'FOUNDING', 0, FALSE, 'remote');
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004', 'FOUNDING', 0, FALSE, 'local');
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001', 'FOUNDING', 0, FALSE, 'remote');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 07ef194..4624d68 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d825d43..c209693 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_tier VARCHAR(20),
+   namesake_count INT(4),
+   shares_household BIT,
++  locality VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 2a234d6..3502173 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_tier TEXT,
+                                       namesake_count INTEGER,
+-                                      shares_household BOOLEAN
++                                      shares_household BOOLEAN,
++                                      locality TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5747c26..22d5fb3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2113,6 +2113,12 @@ components:
+               type: boolean
+               readOnly: true
+               example: false
++            locality:
++              title: Locality
++              description: The owner's locality, assigned at creation. 'local' when the owner's city was the single most common city among existing owners at that moment; otherwise 'remote'.
++              type: string
++              readOnly: true
++              example: 'local'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

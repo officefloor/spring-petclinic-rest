@@ -1,0 +1,167 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 04b345c..92a8e02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,9 @@ public class Owner extends Person {
+     @Column(name = "membership_tier")
+     private String membershipTier;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -137,6 +140,14 @@ public class Owner extends Person {
+         this.membershipTier = membershipTier;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     /**
+      * The owner's display name, formatted as 'LastName, FirstName'.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 034a827..97188fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -257,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
+             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+             owner.setMembershipTier(owner.getMembershipNumber() <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
+             owner.setCustomerCode(generateCustomerCode(owner));
++            owner.setNamesakeCount(countNamesakes(owner));
+             if (isDuplicateTelephone(owner)) {
+                 throw new DuplicateOwnerException(
+                     "An owner with the same telephone already exists");
+@@ -270,6 +271,22 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     }
+ 
++    /**
++     * Count how many other owners already share this owner's last name at the
++     * moment of creation (compared case-insensitively). The owner being created
++     * is not yet persisted and is therefore never included in the count.
++     */
++    private int countNamesakes(Owner owner) {
++        String lastName = owner.getLastName();
++        if (lastName == null) {
++            return 0;
++        }
++        return (int) ownerRepository.findAll().stream()
++            .filter(existing -> !existing.getId().equals(owner.getId()))
++            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
++            .count();
++    }
++
+     /**
+      * Build a customer code for a newly created owner, formatted as
+      * {@code <UPPERCASE_CITY>-<NNNN>} where NNNN is one more than the number of
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 32dd855..635d9b0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index e46ed44..dda3ee9 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001', 'FOUNDING');
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001', 'FOUNDING');
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001', 'FOUNDING');
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001', 'FOUNDING');
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002', 'FOUNDING');
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001', 'FOUNDING');
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002', 'FOUNDING');
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003', 'FOUNDING');
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004', 'FOUNDING');
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001', 'FOUNDING');
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001', 'FOUNDING', 0);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001', 'FOUNDING', 0);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001', 'FOUNDING', 0);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001', 'FOUNDING', 1);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002', 'FOUNDING', 0);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001', 'FOUNDING', 0);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002', 'FOUNDING', 0);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003', 'FOUNDING', 0);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004', 'FOUNDING', 0);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001', 'FOUNDING', 0);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0e82971..e554118 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d7ca9e2..807e89c 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INT(4),
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
++  namesake_count INT(4),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 287f3a8..3d9df14 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       membership_number INTEGER,
+                                       customer_code TEXT,
+-                                      membership_tier TEXT
++                                      membership_tier TEXT,
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 63f51c0..241ee0a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2100,6 +2100,13 @@ components:
+                 - STANDARD
+               readOnly: true
+               example: 'FOUNDING'
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that shared this owner's last name at the moment of creation.
++              type: integer
++              format: int32
++              readOnly: true
++              example: 0
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

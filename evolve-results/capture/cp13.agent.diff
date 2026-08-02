@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 297e8dd..f81b95a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
++import org.springframework.samples.petclinic.service.OwnerRegistrationLimitException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+@@ -143,6 +144,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link OwnerRegistrationLimitException} which indicates an attempt to create an owner once the
++     * maximum number of owners allowed to register on a single day has already been reached. This method
++     * returns a 400 Bad Request status.
++     *
++     * @param e The {@link OwnerRegistrationLimitException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(OwnerRegistrationLimitException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleOwnerRegistrationLimitException(OwnerRegistrationLimitException e, HttpServletRequest request) {
++        logger.warn("Owner registration limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 3f093dd..0874362 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -239,6 +239,10 @@ public class ClinicServiceImpl implements ClinicService {
+             if (owner.getRegistrationDate() == null) {
+                 owner.setRegistrationDate(LocalDate.now());
+             }
++            if (isDailyRegistrationLimitReached(owner)) {
++                throw new OwnerRegistrationLimitException(
++                    "The maximum number of owners that can be registered today has been reached");
++            }
+             owner.setCity(resolveCity(owner));
+             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+             owner.setCustomerCode(generateCustomerCode(owner));
+@@ -319,6 +323,29 @@ public class ClinicServiceImpl implements ClinicService {
+         return result.toString();
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered on any single day (by registration date).
++     */
++    private static final int MAX_OWNERS_PER_DAY = 20;
++
++    /**
++     * Determine whether the daily registration limit has already been reached for the day the given
++     * owner is being registered on. Counts the existing owners whose registration date matches the new
++     * owner's registration date and returns {@code true} once that count has reached
++     * {@link #MAX_OWNERS_PER_DAY}.
++     */
++    private boolean isDailyRegistrationLimitReached(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return false;
++        }
++        long registeredToday = ownerRepository.findAll().stream()
++            .filter(existing -> !existing.getId().equals(owner.getId()))
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++        return registeredToday >= MAX_OWNERS_PER_DAY;
++    }
++
+     private boolean isDuplicateTelephone(Owner owner) {
+         String telephone = normalizeTelephone(owner.getTelephone());
+         return ownerRepository.findAll().stream()
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 9a57e44..6bbd533 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -180,6 +180,64 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    private void saveOwnerRegisteredOn(String telephone, LocalDate registrationDate) {
++        Owner owner = new Owner();
++        owner.setFirstName("Daily");
++        owner.setLastName("Limit");
++        owner.setAddress("110 W. Liberty St.");
++        owner.setCity("Madison");
++        owner.setTelephone(telephone);
++        owner.setRegistrationDate(registrationDate);
++        ownerRepository.save(owner);
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        LocalDate today = LocalDate.now();
++        for (int i = 0; i < 20; i++) {
++            saveOwnerRegisteredOn(String.format("70000000%02d", i), today);
++        }
++        String body = """
++            {"firstName":"George","lastName":"Overflow","address":"110 W. Liberty St.","city":"Madison","telephone":"6085558888"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerSucceedsWhenDailyLimitNotReached() throws Exception {
++        LocalDate today = LocalDate.now();
++        // 19 owners already registered today leaves room for one more.
++        for (int i = 0; i < 19; i++) {
++            saveOwnerRegisteredOn(String.format("71000000%02d", i), today);
++        }
++        String body = """
++            {"firstName":"George","lastName":"Twentieth","address":"110 W. Liberty St.","city":"Madison","telephone":"6085557777"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerSucceedsWhenDailyLimitReachedOnAnotherDay() throws Exception {
++        LocalDate yesterday = LocalDate.now().minusDays(1);
++        // 20 owners registered yesterday must not block today's registrations.
++        for (int i = 0; i < 20; i++) {
++            saveOwnerRegisteredOn(String.format("72000000%02d", i), yesterday);
++        }
++        String body = """
++            {"firstName":"George","lastName":"Fresh","address":"110 W. Liberty St.","city":"Madison","telephone":"6085556666"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

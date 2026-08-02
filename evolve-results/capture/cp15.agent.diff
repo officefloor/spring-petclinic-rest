@@ -1,0 +1,159 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 4fa1475..04b345c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -62,6 +62,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "membership_tier")
++    private String membershipTier;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -126,6 +129,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getMembershipTier() {
++        return this.membershipTier;
++    }
++
++    public void setMembershipTier(String membershipTier) {
++        this.membershipTier = membershipTier;
++    }
++
+     /**
+      * The owner's display name, formatted as 'LastName, FirstName'.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index bc9d624..034a827 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -232,6 +232,12 @@ public class ClinicServiceImpl implements ClinicService {
+         return vetRepository.findAll();
+     }
+ 
++    /**
++     * The number of owners, counted from the very first one ever created, that receive the
++     * {@code FOUNDING} membership tier. Every owner created after this threshold is {@code STANDARD}.
++     */
++    private static final int MAX_FOUNDING_OWNERS = 100;
++
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+@@ -249,6 +255,7 @@ public class ClinicServiceImpl implements ClinicService {
+             }
+             owner.setCity(resolveCity(owner));
+             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
++            owner.setMembershipTier(owner.getMembershipNumber() <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
+             owner.setCustomerCode(generateCustomerCode(owner));
+             if (isDuplicateTelephone(owner)) {
+                 throw new DuplicateOwnerException(
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index e130f68..32dd855 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INTEGER,
+-  customer_code VARCHAR(90)
++  customer_code VARCHAR(90),
++  membership_tier VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 7a26f13..e46ed44 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001');
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001');
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001');
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001');
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002');
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001');
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002');
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003');
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004');
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001');
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001', 'FOUNDING');
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001', 'FOUNDING');
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001', 'FOUNDING');
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001', 'FOUNDING');
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002', 'FOUNDING');
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001', 'FOUNDING');
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002', 'FOUNDING');
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003', 'FOUNDING');
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004', 'FOUNDING');
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001', 'FOUNDING');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ff415d4..0e82971 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   membership_number INTEGER,
+-  customer_code VARCHAR(90)
++  customer_code VARCHAR(90),
++  membership_tier VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 5214275..d7ca9e2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   membership_number INT(4),
+   customer_code VARCHAR(90),
++  membership_tier VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 907e80e..287f3a8 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       membership_number INTEGER,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      membership_tier TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 57ff2bb..63f51c0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2091,6 +2091,15 @@ components:
+               type: string
+               readOnly: true
+               example: 'LONDON-0007'
++            membershipTier:
++              title: Membership tier
++              description: The owner's membership tier, assigned at creation. The first 100 owners ever created are 'FOUNDING'; all later owners are 'STANDARD'.
++              type: string
++              enum:
++                - FOUNDING
++                - STANDARD
++              readOnly: true
++              example: 'FOUNDING'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

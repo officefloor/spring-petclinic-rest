@@ -1,0 +1,166 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ff1ebb8..1df3816 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private Integer membershipNumber;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     /**
+      * The owner's display name, formatted as 'LastName, FirstName'.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 415dd31..d8819d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -240,6 +240,7 @@ public class ClinicServiceImpl implements ClinicService {
+                 owner.setRegistrationDate(LocalDate.now());
+             }
+             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
++            owner.setCustomerCode(generateCustomerCode(owner));
+             if (isDuplicateTelephone(owner)) {
+                 throw new DuplicateOwnerException(
+                     "An owner with the same telephone already exists");
+@@ -253,6 +254,22 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     }
+ 
++    /**
++     * Build a customer code for a newly created owner, formatted as
++     * {@code <UPPERCASE_CITY>-<NNNN>} where NNNN is one more than the number of
++     * owners already registered in that city, zero-padded to four digits
++     * (e.g. {@code LONDON-0007}).
++     */
++    private String generateCustomerCode(Owner owner) {
++        String city = owner.getCity();
++        long existingInCity = ownerRepository.findAll().stream()
++            .filter(existing -> !existing.getId().equals(owner.getId()))
++            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        String prefix = city == null ? "" : city.toUpperCase(Locale.ROOT);
++        return String.format("%s-%04d", prefix, existingInCity + 1);
++    }
++
+     private boolean isDuplicateTelephone(Owner owner) {
+         String telephone = normalize(owner.getTelephone());
+         return ownerRepository.findAll().stream()
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a710323..e130f68 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index a599648..7a26f13 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2013-01-01', 1, 'MADISON-0001');
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2013-01-01', 2, 'SUN PRAIRIE-0001');
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2013-01-01', 3, 'MCFARLAND-0001');
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2013-01-01', 4, 'WINDSOR-0001');
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2013-01-01', 5, 'MADISON-0002');
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2013-01-01', 6, 'MONONA-0001');
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2013-01-01', 7, 'MONONA-0002');
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2013-01-01', 8, 'MADISON-0003');
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2013-01-01', 9, 'MADISON-0004');
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2013-01-01', 10, 'WAUNAKEE-0001');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 970a156..ff415d4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index b32dd43..5214275 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INT(4),
++  customer_code VARCHAR(90),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 841a953..907e80e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      membership_number INTEGER
++                                      membership_number INTEGER,
++                                      customer_code TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a306b3d..45e49a8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2085,6 +2085,12 @@ components:
+               format: int32
+               readOnly: true
+               example: 11
++            customerCode:
++              title: Customer code
++              description: The owner's customer code, assigned at creation as '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than the number of owners already in that city, zero-padded to four digits.
++              type: string
++              readOnly: true
++              example: 'LONDON-0007'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
