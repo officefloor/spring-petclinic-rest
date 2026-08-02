@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setCity(resolveCity(owner.getCity()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
@@ -117,6 +118,54 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Resolves the city to store for a newly created owner. If another owner is already stored in
+     * the same city (compared ignoring letter case), that existing owner's exact spelling of the
+     * city name is reused so that a single city is always represented consistently. Otherwise the
+     * supplied city is title-cased (see {@link #titleCase(String)}) before being stored.
+     *
+     * @param city the raw city supplied for the owner being created, may be {@code null}
+     * @return the city to store, or {@code null} if {@code city} is {@code null}
+     */
+    private String resolveCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> titleCase(city));
+    }
+
+    /**
+     * Title-cases a value so that the first letter of every whitespace-separated word is
+     * upper-cased and every other letter is lower-cased, preserving the original whitespace. For
+     * example {@code "new  york"} becomes {@code "New  York"} and {@code "LONDON"} becomes
+     * {@code "London"}.
+     *
+     * @param value the raw value, may be {@code null}
+     * @return the title-cased value, or {@code null} if {@code value} is {@code null}
+     */
+    private static String titleCase(String value) {
+        if (value == null) {
+            return null;
+        }
+        StringBuilder result = new StringBuilder(value.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                result.append(c);
+            } else {
+                result.append(startOfWord ? Character.toUpperCase(c) : Character.toLowerCase(c));
+                startOfWord = false;
+            }
+        }
+        return result.toString();
     }
 
     /**

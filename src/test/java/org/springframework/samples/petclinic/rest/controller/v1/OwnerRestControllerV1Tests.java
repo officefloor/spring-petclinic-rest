@@ -136,6 +136,32 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerTitleCasesCityWhenNoOwnerExistsInThatCity() throws Exception {
+        // No owner exists in this city, so the supplied spelling is title-cased for storage.
+        String body = """
+            {"firstName":"Grace","lastName":"Hopper","address":"5 Navy Yard","city":"new  YORK","telephone":"6085553001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("New  York"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReusesExistingCitySpelling() throws Exception {
+        // An owner already exists in "McFarland" (seed data), whose spelling is not plain title-case.
+        String body = """
+            {"firstName":"Katherine","lastName":"Johnson","address":"7 Orbit Rd.","city":"mcfarland","telephone":"6085553002"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.city").value("McFarland"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateReturnsConflict() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Duplicant","address":"12 Conflict Rd.","city":"Madison","telephone":"6085551077"}
