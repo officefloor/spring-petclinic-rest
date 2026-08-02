@@ -20,12 +20,29 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(OwnerMapper.initials(owner))")
+    @Mapping(target = "membershipNumber", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
     static String initials(Owner owner) {
         return (owner.getFirstName().substring(0, 1) + "." + owner.getLastName().substring(0, 1) + ".")
                 .toUpperCase();
+    }
+
+    /**
+     * The sequential membership number for the owner: one more than the number of owners that existed
+     * before this one. Computed as the count of owners whose id is not greater than this owner's id.
+     * Because a newly created owner always has the largest id, this equals the total owner count at
+     * registration and stays stable when read back later.
+     */
+    static Integer membershipNumber(Owner owner, Collection<Owner> allOwners) {
+        Integer id = owner.getId();
+        if (id == null) {
+            return null;
+        }
+        return (int) allOwners.stream()
+                .filter(o -> o.getId() != null && o.getId() <= id)
+                .count();
     }
 
     Owner toOwner(OwnerDto ownerDto);
