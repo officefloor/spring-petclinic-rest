@@ -6,20 +6,55 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Records every successful owner creation to the dedicated {@code AUDIT} logger,
  * capturing the authenticated user together with the new owner's id and
- * membership number.
+ * membership number. When the new owner's telephone area code (first three
+ * digits) is shared by five or more existing owners, an additional WARN flags a
+ * possible bulk signup.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
-    public void service(@Val Owner owner) {
+    /** Length of the telephone prefix treated as the area code. */
+    private static final int AREA_CODE_LENGTH = 3;
+
+    /** Minimum number of existing owners sharing an area code to raise a WARN. */
+    private static final int BULK_SIGNUP_THRESHOLD = 5;
+
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String user = authentication != null ? authentication.getName() : "anonymous";
         AUDIT.info("owner created by user={} id={} membershipNumber={}", user, owner.getId(),
                 owner.getMembershipNumber());
+
+        String areaCode = areaCode(owner.getTelephone());
+        if (areaCode == null) {
+            return;
+        }
+        long existingSharing = ownerRepository.findAll().stream()
+                .filter(existing -> existing.getId() == null || !existing.getId().equals(owner.getId()))
+                .map(existing -> areaCode(existing.getTelephone()))
+                .filter(areaCode::equals)
+                .count();
+        if (existingSharing >= BULK_SIGNUP_THRESHOLD) {
+            AUDIT.warn("possible bulk signup: owner id={} area code={} shared by {} existing owners",
+                    owner.getId(), areaCode, existingSharing);
+        }
+    }
+
+    /**
+     * Returns the area code (first {@value #AREA_CODE_LENGTH} digits) of the given
+     * telephone, or {@code null} when it has fewer digits.
+     */
+    private static String areaCode(String telephone) {
+        String digits = OwnerTelephones.digitsOnly(telephone);
+        if (digits == null || digits.length() < AREA_CODE_LENGTH) {
+            return null;
+        }
+        return digits.substring(0, AREA_CODE_LENGTH);
     }
 }
