@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
@@ -120,30 +121,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether any other owner already uses the candidate's telephone number.
+     * The comparison ignores letter case and surrounding or repeated whitespace.
      *
      * @param candidate the owner about to be created
      * @return {@code true} if an owner with the same telephone is already present in the data store
      */
     private boolean isDuplicateTelephone(Owner candidate) {
+        String telephone = normalize(candidate.getTelephone());
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing ->
-                Objects.equals(existing.getTelephone(), candidate.getTelephone()));
+            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
     }
 
     /**
      * Determines whether any other owner already uses the candidate's email address.
-     * An absent or blank email is never considered a duplicate.
+     * An absent or blank email is never considered a duplicate. The comparison ignores
+     * letter case and surrounding or repeated whitespace.
      *
      * @param candidate the owner about to be created
      * @return {@code true} if an owner with the same email is already present in the data store
      */
     private boolean isDuplicateEmail(Owner candidate) {
-        String email = candidate.getEmail();
+        String email = normalize(candidate.getEmail());
         if (email == null || email.isBlank()) {
             return false;
         }
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(existing.getEmail(), email));
+            .anyMatch(existing -> Objects.equals(normalize(existing.getEmail()), email));
+    }
+
+    /**
+     * Canonicalises a value for duplicate detection so that comparisons ignore letter
+     * case and surrounding or repeated whitespace. Surrounding whitespace is stripped,
+     * any run of internal whitespace is collapsed to a single space, and the result is
+     * lower-cased. For example {@code "  john   smith "} and {@code "John Smith"} both
+     * normalise to {@code "john smith"}.
+     *
+     * @param value the raw value, possibly {@code null}
+     * @return the normalised value, or {@code null} if {@code value} was {@code null}
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
