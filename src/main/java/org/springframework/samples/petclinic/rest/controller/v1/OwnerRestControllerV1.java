@@ -102,11 +102,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCustomerCode(buildCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Build the customer code for a newly created owner, formatted as
+     * '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than the number of owners
+     * that already exist in that city, zero-padded to four digits.
+     */
+    private String buildCustomerCode(String city) {
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+            .count();
+        return String.format("%s-%04d", city.toUpperCase(), ownersInCity + 1);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

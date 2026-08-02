@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       telephone  TEXT,
                                       email      TEXT,
                                       registration_date DATE,
-                                      membership_number INTEGER
+                                      membership_number INTEGER,
+                                      customer_code VARCHAR(90)
 );
 CREATE INDEX ON owners (last_name);
 
