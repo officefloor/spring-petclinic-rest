@@ -105,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        owner.setCity(canonicalCity(owner.getCity()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -234,6 +235,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> Objects.equals(existing.getCity(), city))
             .count();
         return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), existingInCity + 1);
+    }
+
+    /**
+     * Determines the canonical spelling of the city for a newly created owner. If another owner
+     * already lives in the same city (matched case- and whitespace-insensitively), that owner's exact
+     * spelling of the city name is reused so that all owners in a city share a consistent value.
+     * Otherwise the supplied city is title-cased (e.g. {@code "new york"} becomes {@code "New York"}).
+     *
+     * @param city the raw city as supplied when creating the owner, may be {@code null}
+     * @return the canonical city spelling, or {@code null} if {@code city} was {@code null}
+     */
+    private String canonicalCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        String normalized = normalize(city);
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.getCity() != null && normalized.equals(normalize(existing.getCity()))) {
+                return existing.getCity();
+            }
+        }
+        return titleCase(city);
+    }
+
+    /**
+     * Title-cases a value by upper-casing the first letter of every whitespace-separated word and
+     * lower-casing the rest, collapsing any run of internal whitespace to a single space (e.g.
+     * {@code "new  YORK city"} becomes {@code "New York City"}).
+     *
+     * @param value the value to title-case
+     * @return the title-cased value
+     */
+    private static String titleCase(String value) {
+        StringBuilder result = new StringBuilder();
+        for (String word : value.strip().split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0)))
+                .append(word.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return result.toString();
     }
 
     private boolean isDuplicateOwner(Owner owner) {
