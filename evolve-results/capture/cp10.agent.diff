@@ -1,0 +1,168 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 433e69e..60224c0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private Integer membershipNumber;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 92c23b4..91596fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
++        owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -117,6 +118,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Builds the customer code for a newly created owner in the given city, formatted as
++     * {@code <UPPERCASE_CITY>-<NNNN>} where {@code NNNN} is one more than the number of owners
++     * already stored in that city, zero-padded to four digits (e.g. {@code LONDON-0007}). The
++     * count of existing owners in the city ignores letter case.
++     *
++     * @param city the city of the owner being created
++     * @return the assigned customer code
++     */
++    private String nextCustomerCode(String city) {
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        return String.format("%s-%04d", city.toUpperCase(), ownersInCity + 1);
++    }
++
+     /**
+      * Determines whether an owner already exists using the same telephone number.
+      * Comparison ignores letter case and surrounding or repeated whitespace.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a710323..e130f68 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 970a156..ff415d4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(90)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 34cb5d8..d2dddc0 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INT,
++  customer_code VARCHAR(90),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9cddf75..6c48bb7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      membership_number INT
++                                      membership_number INT,
++                                      customer_code VARCHAR(90)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2534694..0cacd0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2085,6 +2085,12 @@ components:
+               minimum: 1
+               example: 11
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: The owner's customer code, assigned on creation as '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than the number of owners already in that city, zero-padded to four digits.
++              type: string
++              example: 'LONDON-0007'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 4d70835..fd0c44d 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -112,6 +112,28 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAssignsCustomerCodeSequentialPerCity() throws Exception {
++        // A city with no existing owners: the first created owner gets suffix 0001.
++        String body1 = """
++            {"firstName":"Ada","lastName":"Lovelace","address":"1 Newport Rd.","city":"Cardiff","telephone":"6085552001"}
++            """;
++        mvc.perform(post("/api/owners").content(body1)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.customerCode").value("CARDIFF-0001"));
++
++        // A second owner in the same city (case-insensitive) gets the next suffix.
++        String body2 = """
++            {"firstName":"Alan","lastName":"Turing","address":"2 Bute St.","city":"cardiff","telephone":"6085552002"}
++            """;
++        mvc.perform(post("/api/owners").content(body2)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.customerCode").value("CARDIFF-0002"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateReturnsConflict() throws Exception {

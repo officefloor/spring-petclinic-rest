@@ -1,0 +1,137 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9c28d28..871a23b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,6 +68,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "shares_household")
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -143,6 +146,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 748c6c5..81aa140 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -122,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         owner.setMembershipTier(membershipTierFor(membershipNumber));
+         owner.setNamesakeCount(namesakeCount(owner.getLastName()));
++        owner.setSharesHousehold(sharesHousehold(owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -270,6 +271,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether another owner already shares a household with the owner being created,
++     * meaning an existing owner already has the same address and city. Both address and city are
++     * compared ignoring letter case and surrounding or repeated whitespace (see
++     * {@link #normalize(String)}). This is evaluated before the new owner is stored, so it reflects
++     * only owners that already existed.
++     *
++     * @param owner the candidate owner to check
++     * @return {@code true} if a stored owner already has the same address and city
++     */
++    private boolean sharesHousehold(Owner owner) {
++        String address = normalize(owner.getAddress());
++        String city = normalize(owner.getCity());
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
++                && Objects.equals(normalize(existing.getCity()), city));
++    }
++
+     /**
+      * Determines whether an owner already exists using the same telephone number.
+      * Comparison ignores letter case and surrounding or repeated whitespace.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 635d9b0..1f68ae8 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index e554118..07ef194 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  shares_household BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 974085f..5b017a2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
+   namesake_count INT,
++  shares_household BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 99ed078..96e05c0 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number INT,
+                                       customer_code VARCHAR(90),
+                                       membership_tier VARCHAR(20),
+-                                      namesake_count INT
++                                      namesake_count INT,
++                                      shares_household BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b03d2ff..ba4d11f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,6 +2108,12 @@ components:
+               minimum: 0
+               example: 3
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether, at the moment this owner was created, another owner already had the same address and city.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

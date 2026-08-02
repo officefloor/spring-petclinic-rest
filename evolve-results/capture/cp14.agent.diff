@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ac868ac..f9c75cc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,6 +110,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (dailyRegistrationLimitReached()) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (cityAtCapacity(owner.getCity())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -143,6 +146,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return registeredToday >= MAX_OWNERS_PER_DAY;
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered in any single city.
++     */
++    private static final long MAX_OWNERS_PER_CITY = 8;
++
++    /**
++     * Determines whether the given city has already reached its capacity of
++     * {@value #MAX_OWNERS_PER_CITY} owners. Owners are counted per city ignoring letter case, so
++     * once a city holds {@value #MAX_OWNERS_PER_CITY} owners no further owners may be created there.
++     *
++     * @param city the raw city supplied for the owner being created, may be {@code null}
++     * @return {@code true} if the city already contains the maximum number of owners
++     */
++    private boolean cityAtCapacity(String city) {
++        if (city == null) {
++            return false;
++        }
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        return ownersInCity >= MAX_OWNERS_PER_CITY;
++    }
++
+     /**
+      * Resolves the city to store for a newly created owner. If another owner is already stored in
+      * the same city (compared ignoring letter case), that existing owner's exact spelling of the

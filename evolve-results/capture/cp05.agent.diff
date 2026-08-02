@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5c1b915..d0d04a3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -114,29 +114,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Determines whether an owner already exists using the same telephone number.
++     * Comparison ignores letter case and surrounding or repeated whitespace.
+      *
+      * @param owner the candidate owner to check
+      * @return {@code true} if any other owner with the same telephone is already stored
+      */
+     private boolean ownerAlreadyExists(Owner owner) {
++        String telephone = normalize(owner.getTelephone());
+         return this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
++            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
+     }
+ 
+     /**
+      * Determines whether another owner already uses the same email address.
+      * Owners without an email are ignored, so a missing email never conflicts.
++     * Comparison ignores letter case and surrounding or repeated whitespace.
+      *
+      * @param owner the candidate owner to check
+      * @return {@code true} if the candidate supplies an email already used by a stored owner
+      */
+     private boolean emailAlreadyExists(Owner owner) {
+-        String email = owner.getEmail();
+-        if (email == null || email.isBlank()) {
++        String email = normalize(owner.getEmail());
++        if (email == null || email.isEmpty()) {
+             return false;
+         }
+         return this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> Objects.equals(existing.getEmail(), email));
++            .anyMatch(existing -> Objects.equals(normalize(existing.getEmail()), email));
++    }
++
++    /**
++     * Normalizes a value for duplicate detection so that comparisons ignore letter
++     * case and surrounding or repeated whitespace. Leading and trailing whitespace is
++     * trimmed, any run of internal whitespace is collapsed to a single space, and the
++     * result is lower-cased. For example {@code "  john   smith "} and {@code "John Smith"}
++     * both normalize to {@code "john smith"}.
++     *
++     * @param value the raw value, may be {@code null}
++     * @return the normalized value, or {@code null} if {@code value} is {@code null}
++     */
++    private static String normalize(String value) {
++        if (value == null) {
++            return null;
++        }
++        return value.strip().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

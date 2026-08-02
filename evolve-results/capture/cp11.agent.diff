@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 91596fb..2b7a6d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,6 +103,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         if (ownerAlreadyExists(owner) || emailAlreadyExists(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -142,9 +143,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return {@code true} if any other owner with the same telephone is already stored
+      */
+     private boolean ownerAlreadyExists(Owner owner) {
+-        String telephone = normalize(owner.getTelephone());
++        String telephone = normalizeTelephone(owner.getTelephone());
+         return this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
++            .anyMatch(existing -> Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
++    }
++
++    /**
++     * Normalizes a telephone number to digits only, stripping spaces, dashes and
++     * parentheses (any non-digit character). This is the canonical stored form and is
++     * used for the telephone-uniqueness check, so {@code "(613) 555-0100"} and
++     * {@code "6135550100"} are treated as the same number.
++     *
++     * @param telephone the raw telephone value, may be {@code null}
++     * @return the digits-only value, or {@code null} if {@code telephone} is {@code null}
++     */
++    private static String normalizeTelephone(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        return telephone.replaceAll("[^0-9]", "");
+     }
+ 
+     /**
+@@ -192,7 +209,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0cacd0f..dbde8e2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,7 +2029,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[0-9 ()-]*$'
+           example: '6085551023'
+         email:
+           title: Email address
