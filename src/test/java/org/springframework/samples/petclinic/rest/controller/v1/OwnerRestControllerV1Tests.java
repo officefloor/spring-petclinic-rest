@@ -57,6 +57,14 @@ class OwnerRestControllerV1Tests {
         return owner;
     }
 
+    private String uniqueLastName(String base) {
+        StringBuilder suffix = new StringBuilder();
+        for (char c : Long.toString(System.nanoTime()).toCharArray()) {
+            suffix.append((char) ('a' + (c - '0')));
+        }
+        return base + suffix;
+    }
+
     private PetType dogType() {
         PetType type = new PetType();
         type.setName("dog-" + System.nanoTime());
@@ -102,14 +110,29 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        String uniqueLastName = uniqueLastName("Franklin");
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
-            """;
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            """.formatted(uniqueLastName);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerConflictWhenIdenticalOwnerExists() throws Exception {
+        String uniqueLastName = uniqueLastName("Franklin");
+        Owner existing = newOwner(uniqueLastName);
+        String body = """
+            {"firstName":"%s","lastName":"%s","address":"%s","city":"%s","telephone":"%s"}
+            """.formatted(existing.getFirstName(), existing.getLastName(), existing.getAddress(),
+                existing.getCity(), existing.getTelephone());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test
