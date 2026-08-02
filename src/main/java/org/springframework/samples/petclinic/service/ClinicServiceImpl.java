@@ -29,9 +29,11 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Mostly used as a facade for all Petclinic controllers
@@ -259,6 +261,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setCustomerCode(generateCustomerCode(owner));
             owner.setNamesakeCount(countNamesakes(owner));
             owner.setSharesHousehold(sharesHousehold(owner));
+            owner.setLocality(resolveLocality(owner));
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
@@ -305,6 +308,39 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> !existing.getId().equals(owner.getId()))
             .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
                 && city.equalsIgnoreCase(existing.getCity()));
+    }
+
+    /**
+     * Determine a newly created owner's locality at the moment of creation.
+     * Returns {@code "local"} when the owner's city is the single most common
+     * city among the existing owners (compared case-insensitively); that is,
+     * exactly one city occurs more often than every other and it is this
+     * owner's city. In every other case (no existing owners, a tie for the most
+     * common city, or a different city being the most common) the owner is
+     * {@code "remote"}. The owner being created is not yet persisted and is
+     * therefore never counted.
+     */
+    private String resolveLocality(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return "remote";
+        }
+        Map<String, Long> countsByCity = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .filter(existing -> existing.getCity() != null)
+            .collect(Collectors.groupingBy(
+                existing -> existing.getCity().toLowerCase(Locale.ROOT),
+                Collectors.counting()));
+        if (countsByCity.isEmpty()) {
+            return "remote";
+        }
+        long max = countsByCity.values().stream().mapToLong(Long::longValue).max().orElse(0L);
+        long citiesAtMax = countsByCity.values().stream().filter(count -> count == max).count();
+        if (citiesAtMax != 1) {
+            return "remote";
+        }
+        long ownerCityCount = countsByCity.getOrDefault(city.toLowerCase(Locale.ROOT), 0L);
+        return ownerCityCount == max ? "local" : "remote";
     }
 
     /**
