@@ -239,6 +239,7 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
             if (isDuplicateTelephone(owner)) {
@@ -268,6 +269,54 @@ public class ClinicServiceImpl implements ClinicService {
             .count();
         String prefix = city == null ? "" : city.toUpperCase(Locale.ROOT);
         return String.format("%s-%04d", prefix, existingInCity + 1);
+    }
+
+    /**
+     * Determine the city to store for a newly created owner. If another owner is
+     * already registered in the same city (compared case-insensitively), reuse
+     * that owner's exact spelling of the city name so the whole clinic agrees on
+     * one canonical form. Otherwise the supplied city is title-cased (each
+     * whitespace-separated word capitalised, e.g. "new york" becomes
+     * "New York"). A {@code null} city stays {@code null}.
+     */
+    private String resolveCity(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return null;
+        }
+        return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .map(Owner::getCity)
+            .filter(existingCity -> existingCity != null && existingCity.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> toTitleCase(city));
+    }
+
+    /**
+     * Title-case a value by upper-casing the first letter of every
+     * whitespace-separated word and lower-casing the remaining letters, while
+     * preserving the original whitespace. A {@code null} value stays
+     * {@code null}.
+     */
+    private static String toTitleCase(String value) {
+        if (value == null) {
+            return null;
+        }
+        StringBuilder result = new StringBuilder(value.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                result.append(c);
+            } else if (startOfWord) {
+                result.append(Character.toTitleCase(Character.toLowerCase(c)));
+                startOfWord = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
