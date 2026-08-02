@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -244,6 +245,9 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && isDuplicateOwner(owner)) {
             throw new DuplicateOwnerException(
                 "An owner with the same last name and telephone already exists");
+        }
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
         }
         ownerRepository.save(owner);
 
