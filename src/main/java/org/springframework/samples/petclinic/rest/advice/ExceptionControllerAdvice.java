@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.service.DuplicateOwnerException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -119,6 +120,26 @@ public class ExceptionControllerAdvice {
         logger.debug("Data integrity violation stacktrace", e);
         HttpStatus status = HttpStatus.NOT_FOUND;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerException} which indicates an attempt to create an owner that is identical
+     * to one that already exists. This method returns a 409 Conflict status.
+     *
+     * @param e The {@link DuplicateOwnerException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+     */
+    @ExceptionHandler(DuplicateOwnerException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
+        logger.warn("Duplicate owner at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
 

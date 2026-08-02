@@ -103,13 +103,39 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Washington","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createDuplicateOwnerReturnsConflict() throws Exception {
+        newOwner("Zimmerman");
+        // Identical to the owner created above (same first name, last name, address, city and telephone).
+        String body = """
+            {"firstName":"George","lastName":"Zimmerman","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createNonDuplicateOwnerSucceeds() throws Exception {
+        newOwner("Zimmerman");
+        // Differs in telephone, so it is not an identical owner.
+        String body = """
+            {"firstName":"George","lastName":"Zimmerman","address":"110 W. Liberty St.","city":"Madison","telephone":"6085559999"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
     }
 
     @Test
