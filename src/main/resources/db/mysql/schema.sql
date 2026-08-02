@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(255),
   membership_tier VARCHAR(20),
   namesake_count INTEGER,
+  shares_household BOOLEAN,
   INDEX(last_name)
 ) engine=InnoDB;
 
