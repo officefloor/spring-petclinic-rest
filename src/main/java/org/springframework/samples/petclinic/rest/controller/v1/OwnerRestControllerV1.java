@@ -103,9 +103,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (isDuplicateOwner(owner)) {
-            throw new DuplicateOwnerException("An owner with the same last name and "
-                + "telephone already exists");
+        if (isDuplicateTelephone(owner)) {
+            throw new DuplicateOwnerException("An owner with telephone "
+                + owner.getTelephone() + " already exists");
         }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -115,16 +115,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether an owner with the same last name and telephone already exists.
+     * Determines whether any other owner already uses the candidate's telephone number.
      *
      * @param candidate the owner about to be created
-     * @return {@code true} if a matching owner is already present in the data store
+     * @return {@code true} if an owner with the same telephone is already present in the data store
      */
-    private boolean isDuplicateOwner(Owner candidate) {
-        return this.clinicService.findOwnerByLastName(candidate.getLastName()).stream()
+    private boolean isDuplicateTelephone(Owner candidate) {
+        return this.clinicService.findAllOwners().stream()
             .anyMatch(existing ->
-                Objects.equals(existing.getLastName(), candidate.getLastName())
-                    && Objects.equals(existing.getTelephone(), candidate.getTelephone()));
+                Objects.equals(existing.getTelephone(), candidate.getTelephone()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
