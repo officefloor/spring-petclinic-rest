@@ -246,6 +246,10 @@ public class ClinicServiceImpl implements ClinicService {
             throw new DuplicateOwnerException(
                 "An owner with the same last name and telephone already exists");
         }
+        if (owner.isNew() && cityOwnerLimitReached(owner)) {
+            throw new CityOwnerLimitExceededException(
+                "The maximum number of owners that can be registered in this city has been reached");
+        }
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -291,6 +295,24 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return registeredOnDay >= MAX_OWNERS_PER_DAY;
+    }
+
+    /**
+     * The maximum number of owners that may reside in a single city. Once a city already contains
+     * this many owners, attempts to register a further owner in that city are rejected.
+     */
+    private static final long MAX_OWNERS_PER_CITY = 8;
+
+    private boolean cityOwnerLimitReached(Owner owner) {
+        if (owner.getCity() == null) {
+            return false;
+        }
+        String city = normalizeKey(owner.getCity());
+        long ownersInCity = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId())
+                && Objects.equals(normalizeKey(existing.getCity()), city))
+            .count();
+        return ownersInCity >= MAX_OWNERS_PER_CITY;
     }
 
     private boolean isDuplicateOwner(Owner owner) {

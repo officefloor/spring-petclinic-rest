@@ -162,11 +162,13 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
         // The first 20 owners registered today are accepted. Last names use only letters (per the
-        // Owner last-name constraint) and telephones are unique 10-digit numbers.
+        // Owner last-name constraint) and telephones are unique 10-digit numbers. Each owner is
+        // registered in its own city so the per-city owner limit is never reached, keeping this test
+        // focused on the daily registration limit.
         for (int i = 0; i < 20; i++) {
             String body = """
-                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"Madison","telephone":"93000000%02d"}
-                """.formatted((char) ('a' + i), i);
+                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"DailyLimitCity%c","telephone":"93000000%02d"}
+                """.formatted((char) ('a' + i), (char) ('a' + i), i);
             mvc.perform(post("/api/owners").content(body)
                     .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated());
@@ -174,8 +176,31 @@ class OwnerRestControllerV1Tests {
 
         // The 21st owner in the same day is rejected with 400 Bad Request.
         String body = """
-            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"Madison","telephone":"9300000099"}
+            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"DailyLimitCityz","telephone":"9300000099"}
             """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenCityAlreadyHasEightOwners() throws Exception {
+        // Use a city with no seeded owners so exactly the first 8 owners fill it.
+        String city = "CityLimitville";
+        for (int i = 0; i < 8; i++) {
+            String body = """
+                {"firstName":"George","lastName":"CityLimitOwner%c","address":"110 W. Liberty St.","city":"%s","telephone":"92000000%02d"}
+                """.formatted((char) ('a' + i), city, i);
+            mvc.perform(post("/api/owners").content(body)
+                    .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated());
+        }
+
+        // The 9th owner in a city that already holds 8 owners is rejected with 400 Bad Request.
+        String body = """
+            {"firstName":"George","lastName":"CityLimitOwnerz","address":"110 W. Liberty St.","city":"%s","telephone":"9200000099"}
+            """.formatted(city);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isBadRequest());
