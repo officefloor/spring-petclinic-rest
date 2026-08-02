@@ -14,19 +14,21 @@ import org.springframework.util.StringUtils;
  * already used by another owner, or (when an email address is provided) when that
  * email is already used by another owner.
  *
- * <p>Duplicate detection is insensitive to letter case and to surrounding or
+ * <p>Email duplicate detection is insensitive to letter case and to surrounding or
  * repeated whitespace: values are {@link #normalize(String) normalized} before
  * comparison, so {@code "  john   smith "} and {@code "John Smith"} are treated as
- * the same value.
+ * the same value. Telephone duplicate detection compares
+ * {@link OwnerTelephones#digitsOnly(String) digits only}, so {@code "(613) 555-0100"}
+ * and {@code "6135550100"} are treated as the same number.
  */
 public class EnsureOwnerUnique {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws OwnerConflictException {
-        String telephone = normalize(owner.getTelephone());
+        String telephone = OwnerTelephones.digitsOnly(owner.getTelephone());
         String email = normalize(owner.getEmail());
         boolean hasEmail = StringUtils.hasText(email);
         for (Owner existing : ownerRepository.findAll()) {
-            if (Objects.equals(normalize(existing.getTelephone()), telephone)) {
+            if (Objects.equals(OwnerTelephones.digitsOnly(existing.getTelephone()), telephone)) {
                 throw new OwnerConflictException(
                         "An owner with the same telephone already exists");
             }
