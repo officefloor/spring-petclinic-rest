@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       membership_number INTEGER,
                                       customer_code VARCHAR(80),
                                       membership_tier VARCHAR(20),
-                                      namesake_count INTEGER
+                                      namesake_count INTEGER,
+                                      shares_household BOOLEAN
 );
 CREATE INDEX ON owners (last_name);
 
