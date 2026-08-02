@@ -114,6 +114,28 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAssignsCustomerCodeSequentialPerCity() throws Exception {
+        // A city with no existing owners: the first created owner gets suffix 0001.
+        String body1 = """
+            {"firstName":"Ada","lastName":"Lovelace","address":"1 Newport Rd.","city":"Cardiff","telephone":"6085552001"}
+            """;
+        mvc.perform(post("/api/owners").content(body1)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value("CARDIFF-0001"));
+
+        // A second owner in the same city (case-insensitive) gets the next suffix.
+        String body2 = """
+            {"firstName":"Alan","lastName":"Turing","address":"2 Bute St.","city":"cardiff","telephone":"6085552002"}
+            """;
+        mvc.perform(post("/api/owners").content(body2)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.customerCode").value("CARDIFF-0002"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateReturnsConflict() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Duplicant","address":"12 Conflict Rd.","city":"Madison","telephone":"6085551077"}
