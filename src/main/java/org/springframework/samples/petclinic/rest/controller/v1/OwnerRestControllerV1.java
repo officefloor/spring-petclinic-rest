@@ -72,6 +72,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int MAX_OWNERS_PER_CITY = 8;
 
+    /**
+     * The number of owners, counted from the very first ever created, that receive the
+     * {@code FOUNDING} membership tier. Owners created once this many already exist receive
+     * the {@code STANDARD} tier instead.
+     */
+    private static final int FOUNDING_MEMBERSHIP_LIMIT = 100;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -141,7 +148,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new CityOwnerLimitException("The city " + owner.getCity()
                 + " already contains the maximum of " + MAX_OWNERS_PER_CITY + " owners");
         }
-        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+        owner.setMembershipNumber(membershipNumber);
+        owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
         owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
