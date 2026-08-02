@@ -112,10 +112,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String user = authentication != null ? authentication.getName() : "anonymous";
         auditLogger.info("Owner created by user={} ownerId={} membershipNumber={}",
             user, owner.getId(), owner.getMembershipNumber());
+        warnIfBulkAreaCodeSignup(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits a WARN to the AUDIT logger when the newly created owner's telephone
+     * area code (first three digits) is already shared by five or more existing
+     * owners, flagging a possible bulk signup.
+     */
+    private void warnIfBulkAreaCodeSignup(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || telephone.length() < 3) {
+            return;
+        }
+        String areaCode = telephone.substring(0, 3);
+        long sharing = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .map(Owner::getTelephone)
+            .filter(t -> t != null && t.length() >= 3 && t.substring(0, 3).equals(areaCode))
+            .count();
+        if (sharing >= 5) {
+            auditLogger.warn("Possible bulk signup: area code={} shared by {} existing owners; new ownerId={}",
+                areaCode, sharing, owner.getId());
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
