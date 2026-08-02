@@ -24,4 +24,17 @@ final class OwnerFieldNormalizer {
         }
         return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
+
+    /**
+     * Normalizes a telephone number to digits only, stripping spaces, dashes and
+     * parentheses. This is both the value stored for the number and the comparison
+     * key for telephone-uniqueness, so {@code "(613) 555-0100"} and {@code "6135550100"}
+     * are treated as the same number. {@code null} in yields {@code null} out.
+     */
+    static String normalizeTelephone(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("[\\s()-]", "");
+    }
 }
