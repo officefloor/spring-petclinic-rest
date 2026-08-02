@@ -118,8 +118,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+        owner.setMembershipNumber(membershipNumber);
         owner.setCustomerCode(customerCode(owner));
+        owner.setMembershipTier(membershipNumber <= 100 ? "FOUNDING" : "STANDARD");
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
