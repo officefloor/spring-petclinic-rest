@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       registration_date DATE,
                                       membership_number INT,
                                       customer_code VARCHAR(90),
-                                      membership_tier VARCHAR(20)
+                                      membership_tier VARCHAR(20),
+                                      namesake_count INT
 );
 CREATE INDEX ON owners (last_name);
 
