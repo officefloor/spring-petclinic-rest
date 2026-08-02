@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3226069..b2e9ba7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -134,9 +134,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(namesakeCount(owner));
+         owner.setSharesHousehold(sharesHousehold(owner));
+         owner.setLocality(locality(owner));
++        long sharedAreaCodeCount = sharedAreaCodeCount(owner);
+         this.clinicService.saveOwner(owner);
+         auditLogger.info("Owner created by user={} ownerId={} membershipNumber={}",
+             currentUsername(), owner.getId(), owner.getMembershipNumber());
++        if (sharedAreaCodeCount >= 5) {
++            auditLogger.warn("Possible bulk signup: owner={} telephone area code {} shared with {} existing owners",
++                owner.getId(), areaCode(owner.getTelephone()), sharedAreaCodeCount);
++        }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -406,6 +411,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return authentication != null ? authentication.getName() : "anonymous";
+     }
+ 
++    /**
++     * Counts how many existing owners share the given owner's telephone area code (the first three
++     * digits of the normalised, digits-only telephone number). The owner being created is not yet
++     * persisted and so is not included in the count. Owners whose telephone has fewer than three
++     * digits (or no area code) never match.
++     *
++     * @param owner the owner being created
++     * @return the number of existing owners sharing the owner's telephone area code
++     */
++    private long sharedAreaCodeCount(Owner owner) {
++        String areaCode = areaCode(owner.getTelephone());
++        if (areaCode == null) {
++            return 0;
++        }
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> areaCode.equals(areaCode(existing.getTelephone())))
++            .count();
++    }
++
++    /**
++     * Extracts the area code (first three digits) of a normalised, digits-only telephone number.
++     *
++     * @param telephone the telephone number, may be {@code null}
++     * @return the first three digits, or {@code null} if the number is {@code null} or has fewer than
++     *         three digits
++     */
++    private static String areaCode(String telephone) {
++        if (telephone == null || telephone.length() < 3) {
++            return null;
++        }
++        return telephone.substring(0, 3);
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         return this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index e31257b..cc5a179 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -1,8 +1,13 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.time.LocalDate;
++import java.util.List;
+ 
++import ch.qos.logback.classic.Level;
++import ch.qos.logback.classic.spi.ILoggingEvent;
++import ch.qos.logback.core.read.ListAppender;
+ import org.junit.jupiter.api.Test;
++import org.slf4j.LoggerFactory;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.boot.test.context.SpringBootTest;
+ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+@@ -57,6 +62,26 @@ class OwnerRestControllerV1Tests {
+         return owner;
+     }
+ 
++    private Owner ownerWithTelephone(String city, String telephone) {
++        Owner owner = new Owner();
++        owner.setFirstName("George");
++        owner.setLastName("AreaCode-" + System.nanoTime());
++        owner.setAddress("110 W. Liberty St.");
++        owner.setCity(city);
++        owner.setTelephone(telephone);
++        ownerRepository.save(owner);
++        return owner;
++    }
++
++    private ListAppender<ILoggingEvent> attachAuditAppender() {
++        ch.qos.logback.classic.Logger auditLogger =
++            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("AUDIT");
++        ListAppender<ILoggingEvent> appender = new ListAppender<>();
++        appender.start();
++        auditLogger.addAppender(appender);
++        return appender;
++    }
++
+     private PetType dogType() {
+         PetType type = new PetType();
+         type.setName("dog-" + System.nanoTime());
+@@ -450,4 +475,52 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated())
+             .andExpect(jsonPath("$.description").value("rabies shot"));
+     }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerWarnsOnBulkSignupWhenAreaCodeShared() throws Exception {
++        // Five existing owners already share the 770 area code.
++        String city = "BulkTown-" + System.nanoTime();
++        for (int i = 1; i <= 5; i++) {
++            ownerWithTelephone(city, "770555000" + i);
++        }
++        ListAppender<ILoggingEvent> appender = attachAuditAppender();
++
++        String body = """
++            {"firstName":"George","lastName":"Bulk","address":"1 Main St.","city":"%s","telephone":"7705550006"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        List<ILoggingEvent> warnings = appender.list.stream()
++            .filter(event -> event.getLevel() == Level.WARN)
++            .filter(event -> event.getFormattedMessage().toLowerCase().contains("bulk signup"))
++            .toList();
++        org.assertj.core.api.Assertions.assertThat(warnings).hasSize(1);
++        org.assertj.core.api.Assertions.assertThat(warnings.get(0).getFormattedMessage()).contains("770");
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDoesNotWarnWhenAreaCodeNotShared() throws Exception {
++        // Only four existing owners share the 771 area code, below the threshold of five.
++        String city = "QuietTown-" + System.nanoTime();
++        for (int i = 1; i <= 4; i++) {
++            ownerWithTelephone(city, "771555000" + i);
++        }
++        ListAppender<ILoggingEvent> appender = attachAuditAppender();
++
++        String body = """
++            {"firstName":"George","lastName":"Quiet","address":"1 Main St.","city":"%s","telephone":"7715550005"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        boolean warned = appender.list.stream()
++            .filter(event -> event.getLevel() == Level.WARN)
++            .anyMatch(event -> event.getFormattedMessage().toLowerCase().contains("bulk signup"));
++        org.assertj.core.api.Assertions.assertThat(warned).isFalse();
++    }
+ }

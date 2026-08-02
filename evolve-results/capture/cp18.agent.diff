@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 63167d7..e4605b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -71,6 +71,9 @@ public class Owner extends Person {
+     @Column(name = "shares_household")
+     private Boolean sharesHousehold;
+ 
++    @Column(name = "locality")
++    private String locality;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -154,6 +157,14 @@ public class Owner extends Person {
+         this.sharesHousehold = sharesHousehold;
+     }
+ 
++    public String getLocality() {
++        return this.locality;
++    }
++
++    public void setLocality(String locality) {
++        this.locality = locality;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 77c9d04..d68aea7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,9 +18,12 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.time.LocalDate;
+ import java.util.Collection;
++import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Objects;
++import java.util.stream.Collectors;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -124,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipTier(membershipNumber <= 100 ? "FOUNDING" : "STANDARD");
+         owner.setNamesakeCount(namesakeCount(owner));
+         owner.setSharesHousehold(sharesHousehold(owner));
++        owner.setLocality(locality(owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -262,6 +266,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 && Objects.equals(city, normalize(existing.getCity())));
+     }
+ 
++    /**
++     * Determines the locality of a newly created owner. The owner is {@code "local"} if their city
++     * is the single most common city among the owners that already exist at the moment of creation
++     * (i.e. strictly more owners live there than in any other city); otherwise the owner is
++     * {@code "remote"}. When no owners yet exist, or when several cities are tied for most common,
++     * the owner is {@code "remote"}. Cities are matched case- and whitespace-insensitively.
++     *
++     * @param owner the owner being created
++     * @return {@code "local"} or {@code "remote"}
++     */
++    private String locality(Owner owner) {
++        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
++            .map(existing -> normalize(existing.getCity()))
++            .filter(Objects::nonNull)
++            .collect(Collectors.groupingBy(city -> city, Collectors.counting()));
++        if (countsByCity.isEmpty()) {
++            return "remote";
++        }
++        long max = Collections.max(countsByCity.values());
++        List<String> mostCommon = countsByCity.entrySet().stream()
++            .filter(entry -> entry.getValue() == max)
++            .map(Map.Entry::getKey)
++            .toList();
++        if (mostCommon.size() == 1 && mostCommon.get(0).equals(normalize(owner.getCity()))) {
++            return "local";
++        }
++        return "remote";
++    }
++
+     private int namesakeCount(Owner owner) {
+         String lastName = owner.getLastName();
+         return (int) this.clinicService.findAllOwners().stream()
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index cf9a4ef..4dbba29 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(255),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 315bc63..2c0c0ec 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(255),
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+-  shares_household BOOLEAN
++  shares_household BOOLEAN,
++  locality VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 59c5d4f..64087da 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_tier VARCHAR(20),
+   namesake_count INTEGER,
+   shares_household BOOLEAN,
++  locality VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index cbccb03..d8aa7e6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       membership_tier VARCHAR(20),
+                                       namesake_count INTEGER,
+-                                      shares_household BOOLEAN
++                                      shares_household BOOLEAN,
++                                      locality VARCHAR(20)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0b1d913..3312326 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2117,6 +2117,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            locality:
++              title: Locality
++              description: "'local' if the owner's city was the single most common city among existing owners at the moment this owner was created; otherwise 'remote'."
++              type: string
++              example: 'local'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

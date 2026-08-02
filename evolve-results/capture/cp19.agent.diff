@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d68aea7..3226069 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -25,6 +25,8 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.stream.Collectors;
+ 
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+@@ -43,6 +45,8 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.core.context.SecurityContextHolder;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -59,6 +63,8 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    private static final Logger auditLogger = LoggerFactory.getLogger("AUDIT");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -129,6 +135,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setSharesHousehold(sharesHousehold(owner));
+         owner.setLocality(locality(owner));
+         this.clinicService.saveOwner(owner);
++        auditLogger.info("Owner created by user={} ownerId={} membershipNumber={}",
++            currentUsername(), owner.getId(), owner.getMembershipNumber());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -387,6 +395,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return existingInCity >= 8;
+     }
+ 
++    /**
++     * Returns the name of the currently authenticated user, or {@code "anonymous"} when there is no
++     * authentication in the security context.
++     *
++     * @return the authenticated user's name
++     */
++    private static String currentUsername() {
++        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
++        return authentication != null ? authentication.getName() : "anonymous";
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         return this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));

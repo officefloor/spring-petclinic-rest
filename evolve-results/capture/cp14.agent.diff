@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 10fc4fc..fae8212 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -112,6 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isDailyRegistrationLimitReached()) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (isCityCapacityReached(owner.getCity())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -300,6 +303,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return registeredToday >= 20;
+     }
+ 
++    /**
++     * Determines whether the city of a newly created owner has already reached its capacity. At most
++     * 8 owners may live in a single city; once a city already contains 8 owners, further registrations
++     * for that city are rejected. Cities are matched case- and whitespace-insensitively so that
++     * differing spellings of the same city name count towards the same limit.
++     *
++     * @param city the canonical city of the owner being created, may be {@code null}
++     * @return {@code true} if the city already contains 8 or more owners, {@code false} otherwise
++     */
++    private boolean isCityCapacityReached(String city) {
++        String normalized = normalize(city);
++        long existingInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> Objects.equals(normalized, normalize(existing.getCity())))
++            .count();
++        return existingInCity >= 8;
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         return this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 29c89cd..116cc93 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -181,6 +181,28 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isBadRequest());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerCityCapacityReached() throws Exception {
++        // Once a city already contains 8 owners, further registrations for that city are rejected.
++        String city = "Capacityville-" + System.nanoTime();
++        for (int i = 0; i < 8; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("George");
++            owner.setLastName("Cityowner-" + System.nanoTime());
++            owner.setAddress("110 W. Liberty St.");
++            owner.setCity(city);
++            owner.setTelephone(String.format("71055%05d", i));
++            ownerRepository.save(owner);
++        }
++        String body = String.format("""
++            {"firstName":"George","lastName":"Overcityowner","address":"110 W. Liberty St.","city":"%s","telephone":"9995558888"}
++            """, city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

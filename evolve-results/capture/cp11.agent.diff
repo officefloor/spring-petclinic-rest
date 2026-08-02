@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 65f8494..aaea8bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -130,7 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+@@ -240,6 +241,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+     }
+ 
++    /**
++     * Normalises a telephone number to digits only by stripping spaces, dashes and parentheses (and
++     * any other non-digit characters). This is applied before storing the number and before the
++     * telephone-uniqueness check, so that e.g. {@code "(613) 555-0100"} and {@code "6135550100"} are
++     * stored identically and treated as the same number.
++     *
++     * @param telephone the raw telephone number, may be {@code null}
++     * @return the digits-only telephone number, or {@code null} if {@code telephone} was {@code null}
++     */
++    private static String normalizeTelephone(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        return telephone.replaceAll("[^0-9]", "");
++    }
++
+     /**
+      * Determines whether the given owner's email address is already used by another owner. An owner
+      * without an email address never conflicts. The comparison is case-insensitive and ignores
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5049cba..16424bc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,12 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: The telephone number of the pet owner. Spaces, dashes and
++            parentheses are accepted and stripped; the stored value is digits only.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[0-9 ()-]*$'
+           example: '6085551023'
+         email:
+           title: Email address
