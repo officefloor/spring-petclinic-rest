@@ -235,7 +235,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && isDuplicateOwner(owner)) {
             throw new DuplicateOwnerException(
-                "An owner with the same first name, last name, address, city and telephone already exists");
+                "An owner with the same last name and telephone already exists");
         }
         ownerRepository.save(owner);
 
@@ -247,10 +247,7 @@ public class ClinicServiceImpl implements ClinicService {
         }
         return ownerRepository.findByLastName(owner.getLastName()).stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getFirstName(), owner.getFirstName())
                 && Objects.equals(existing.getLastName(), owner.getLastName())
-                && Objects.equals(existing.getAddress(), owner.getAddress())
-                && Objects.equals(existing.getCity(), owner.getCity())
                 && Objects.equals(existing.getTelephone(), owner.getTelephone()));
     }
 
