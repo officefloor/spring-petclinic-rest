@@ -20,7 +20,7 @@ public class EnsureOwnerUnique {
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws OwnerAlreadyExistsException {
         String name = normalizeName(owner);
-        String telephone = normalize(owner.getTelephone());
+        String telephone = normalizeTelephone(owner.getTelephone());
         String email = normalize(owner.getEmail());
         boolean hasEmail = email != null && !email.isEmpty();
         for (Owner existing : ownerRepository.findAll()) {
@@ -28,11 +28,11 @@ public class EnsureOwnerUnique {
                 continue;
             }
             if (name != null && name.equals(normalizeName(existing))
-                    && telephone != null && telephone.equals(normalize(existing.getTelephone()))) {
+                    && telephone != null && telephone.equals(normalizeTelephone(existing.getTelephone()))) {
                 throw new OwnerAlreadyExistsException(
                         "An owner with the same name and telephone already exists");
             }
-            if (telephone != null && telephone.equals(normalize(existing.getTelephone()))) {
+            if (telephone != null && telephone.equals(normalizeTelephone(existing.getTelephone()))) {
                 throw new OwnerAlreadyExistsException(
                         "An owner with the same telephone already exists");
             }
@@ -55,6 +55,19 @@ public class EnsureOwnerUnique {
 
     private static String orEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * Reduces a telephone to digits only so differently punctuated spellings of the
+     * same number (e.g. {@code "(613) 555-0100"} and {@code "6135550100"}) compare
+     * equal. Returns {@code null} when blank.
+     */
+    private static String normalizeTelephone(String value) {
+        if (value == null) {
+            return null;
+        }
+        String digits = value.replaceAll("[^0-9]", "");
+        return digits.isEmpty() ? null : digits;
     }
 
     /**
