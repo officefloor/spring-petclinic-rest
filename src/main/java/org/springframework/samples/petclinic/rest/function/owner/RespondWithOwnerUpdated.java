@@ -18,6 +18,7 @@ public class RespondWithOwnerUpdated {
         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
         dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
+        dto.setSharesHousehold(OwnerMapper.sharesHousehold(owner, allOwners));
         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
     }
 }

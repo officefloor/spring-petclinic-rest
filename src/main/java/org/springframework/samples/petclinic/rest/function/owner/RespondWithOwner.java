@@ -17,6 +17,7 @@ public class RespondWithOwner {
         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
         dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
         dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
+        dto.setSharesHousehold(OwnerMapper.sharesHousehold(owner, allOwners));
         response.send(dto);
     }
 }

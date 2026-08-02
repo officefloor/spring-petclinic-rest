@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "membershipTier", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
@@ -96,6 +97,25 @@ public interface OwnerMapper {
         return (int) allOwners.stream()
                 .filter(o -> o.getId() != null && o.getId() < id && lastName.equalsIgnoreCase(o.getLastName()))
                 .count();
+    }
+
+    /**
+     * Whether, at registration, another owner already had the same address and city. Computed as
+     * whether any owner with a smaller id shares this owner's address and city (both matched
+     * case-insensitively). Because a newly created owner always has the largest id, this reflects the
+     * owners that existed before this one and stays stable when read back later.
+     */
+    static Boolean sharesHousehold(Owner owner, Collection<Owner> allOwners) {
+        Integer id = owner.getId();
+        String address = owner.getAddress();
+        String city = owner.getCity();
+        if (id == null || address == null || city == null) {
+            return false;
+        }
+        return allOwners.stream()
+                .anyMatch(o -> o.getId() != null && o.getId() < id
+                        && address.equalsIgnoreCase(o.getAddress())
+                        && city.equalsIgnoreCase(o.getCity()));
     }
 
     Owner toOwner(OwnerDto ownerDto);
