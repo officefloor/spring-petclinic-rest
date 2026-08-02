@@ -17,6 +17,7 @@ public class RespondWithOwnerUpdated {
         java.util.Collection<Owner> allOwners = ownerRepository.findAll();
         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
+        dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
     }
 }

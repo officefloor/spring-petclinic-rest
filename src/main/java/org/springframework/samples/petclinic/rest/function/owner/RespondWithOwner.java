@@ -16,6 +16,7 @@ public class RespondWithOwner {
         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
         dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
+        dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
         response.send(dto);
     }
 }

@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "membershipTier", ignore = true)
+    @Mapping(target = "namesakeCount", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
@@ -78,6 +79,23 @@ public interface OwnerMapper {
             return null;
         }
         return number <= 100 ? "FOUNDING" : "STANDARD";
+    }
+
+    /**
+     * The number of other owners that shared this owner's last name at the moment of registration.
+     * Computed as the count of owners, excluding this one, whose id is smaller than this owner's id and
+     * whose last name matches (case-insensitively). Because a newly created owner always has the largest
+     * id, this equals the number of existing namesakes at registration and stays stable when read back later.
+     */
+    static Integer namesakeCount(Owner owner, Collection<Owner> allOwners) {
+        Integer id = owner.getId();
+        String lastName = owner.getLastName();
+        if (id == null || lastName == null) {
+            return null;
+        }
+        return (int) allOwners.stream()
+                .filter(o -> o.getId() != null && o.getId() < id && lastName.equalsIgnoreCase(o.getLastName()))
+                .count();
     }
 
     Owner toOwner(OwnerDto ownerDto);
