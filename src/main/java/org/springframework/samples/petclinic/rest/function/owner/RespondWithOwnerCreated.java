@@ -15,7 +15,9 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, ownerRepository.findAll()));
+        java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+        dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+        dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

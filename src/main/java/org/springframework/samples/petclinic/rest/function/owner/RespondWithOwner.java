@@ -12,7 +12,9 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, ownerRepository.findAll()));
+        java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+        dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+        dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
         response.send(dto);
     }
 }

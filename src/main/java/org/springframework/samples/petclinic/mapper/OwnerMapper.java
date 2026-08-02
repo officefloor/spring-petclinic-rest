@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(OwnerMapper.initials(owner))")
     @Mapping(target = "membershipNumber", ignore = true)
+    @Mapping(target = "customerCode", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
@@ -43,6 +44,26 @@ public interface OwnerMapper {
         return (int) allOwners.stream()
                 .filter(o -> o.getId() != null && o.getId() <= id)
                 .count();
+    }
+
+    /**
+     * The per-city customer code for the owner, formatted {@code "<UPPERCASE_CITY>-<NNNN>"} where NNNN
+     * is one more than the number of owners already in that city, zero-padded to four digits (e.g.
+     * "LONDON-0007"). Computed as the count of owners in the same city (case-insensitive) whose id is
+     * not greater than this owner's id. Because a newly created owner always has the largest id, this
+     * equals the number already in that city plus one at registration and stays stable when read back
+     * later.
+     */
+    static String customerCode(Owner owner, Collection<Owner> allOwners) {
+        Integer id = owner.getId();
+        String city = owner.getCity();
+        if (id == null || city == null) {
+            return null;
+        }
+        long sequence = allOwners.stream()
+                .filter(o -> o.getId() != null && o.getId() <= id && city.equalsIgnoreCase(o.getCity()))
+                .count();
+        return String.format("%s-%04d", city.toUpperCase(), sequence);
     }
 
     Owner toOwner(OwnerDto ownerDto);
