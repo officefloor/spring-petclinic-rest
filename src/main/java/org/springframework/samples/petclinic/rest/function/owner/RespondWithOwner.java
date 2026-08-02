@@ -15,6 +15,7 @@ public class RespondWithOwner {
         java.util.Collection<Owner> allOwners = ownerRepository.findAll();
         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
+        dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
         response.send(dto);
     }
 }

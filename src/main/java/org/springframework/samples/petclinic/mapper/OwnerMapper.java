@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(OwnerMapper.initials(owner))")
     @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "membershipTier", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
@@ -64,6 +65,19 @@ public interface OwnerMapper {
                 .filter(o -> o.getId() != null && o.getId() <= id && city.equalsIgnoreCase(o.getCity()))
                 .count();
         return String.format("%s-%04d", city.toUpperCase(), sequence);
+    }
+
+    /**
+     * The membership tier assigned to the owner at registration: {@code "FOUNDING"} for the first 100
+     * owners ever created and {@code "STANDARD"} for all later owners. Derived from the sequential
+     * {@link #membershipNumber(Owner, Collection) membership number}, so it is stable when read back later.
+     */
+    static String membershipTier(Owner owner, Collection<Owner> allOwners) {
+        Integer number = membershipNumber(owner, allOwners);
+        if (number == null) {
+            return null;
+        }
+        return number <= 100 ? "FOUNDING" : "STANDARD";
     }
 
     Owner toOwner(OwnerDto ownerDto);
