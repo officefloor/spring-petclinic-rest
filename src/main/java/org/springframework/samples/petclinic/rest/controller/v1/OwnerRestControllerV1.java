@@ -117,8 +117,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCity(resolveCity(owner.getCity()));
-        owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+        owner.setMembershipNumber(membershipNumber);
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+        owner.setMembershipTier(membershipTierFor(membershipNumber));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -231,6 +233,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
             .count();
         return String.format("%s-%04d", city.toUpperCase(), ownersInCity + 1);
+    }
+
+    /**
+     * The maximum membership number that still qualifies an owner for the founding tier. The
+     * first {@value #MAX_FOUNDING_MEMBERS} owners ever created are founding members.
+     */
+    private static final int MAX_FOUNDING_MEMBERS = 100;
+
+    /**
+     * Resolves the membership tier for a newly created owner from its sequential membership
+     * number. The first {@value #MAX_FOUNDING_MEMBERS} owners ever created are {@code FOUNDING};
+     * every later owner is {@code STANDARD}.
+     *
+     * @param membershipNumber the owner's sequential membership number
+     * @return {@code "FOUNDING"} or {@code "STANDARD"}
+     */
+    private static String membershipTierFor(int membershipNumber) {
+        return membershipNumber <= MAX_FOUNDING_MEMBERS ? "FOUNDING" : "STANDARD";
     }
 
     /**
