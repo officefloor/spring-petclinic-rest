@@ -85,8 +85,13 @@ public class Owner extends Person {
         return this.telephone;
     }
 
+    /**
+     * Store the telephone number as digits only, stripping any spaces, dashes
+     * and parentheses so that, e.g., "(613) 555-0100" and "6135550100" are kept
+     * as the same value.
+     */
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        this.telephone = telephone == null ? null : telephone.replaceAll("[^0-9]", "");
     }
 
     public String getEmail() {

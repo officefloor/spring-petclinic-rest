@@ -271,10 +271,23 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
-        String telephone = normalize(owner.getTelephone());
+        String telephone = normalizeTelephone(owner.getTelephone());
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(normalize(existing.getTelephone()), telephone));
+                && Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
+    }
+
+    /**
+     * Normalize a telephone number for duplicate detection by stripping every
+     * character that is not a digit (spaces, dashes and parentheses), so that
+     * "(613) 555-0100" and "6135550100" are treated as the same number. A
+     * {@code null} value stays {@code null}.
+     */
+    private static String normalizeTelephone(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("[^0-9]", "");
     }
 
     private boolean isDuplicateEmail(Owner owner) {
