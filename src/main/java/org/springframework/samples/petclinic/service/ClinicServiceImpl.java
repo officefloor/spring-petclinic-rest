@@ -25,6 +25,7 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -235,6 +236,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew()) {
+            if (owner.getRegistrationDate() == null) {
+                owner.setRegistrationDate(LocalDate.now());
+            }
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
