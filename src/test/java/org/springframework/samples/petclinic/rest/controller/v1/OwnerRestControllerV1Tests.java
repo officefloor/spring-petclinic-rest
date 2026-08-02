@@ -310,6 +310,46 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerReportsZeroNamesakesForNovelLastName() throws Exception {
+        // No existing owner (seed or otherwise) carries this last name, so no namesakes exist.
+        String body = """
+            {"firstName":"George","lastName":"Wobblesworth","address":"111 W. Liberty St.","city":"Namesakeville","telephone":"6085557001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerCountsExistingNamesakes() throws Exception {
+        // Two owners already share this last name (matched ignoring case); the newly created
+        // owner must report a namesake count of two, excluding itself.
+        saveNamesake("Wobblesworth", 1);
+        saveNamesake("WOBBLESWORTH", 2);
+        String body = """
+            {"firstName":"Jane","lastName":"Wobblesworth","address":"999 Other St.","city":"Namesaketown","telephone":"6085557003"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.namesakeCount").value(2));
+    }
+
+    private void saveNamesake(String lastName, int index) {
+        Owner owner = new Owner();
+        owner.setFirstName("Existing");
+        owner.setLastName(lastName);
+        owner.setAddress("1 Namesake Way");
+        // Distinct city per owner so this fixture never trips the per-city owner limit.
+        owner.setCity("NamesakeCity" + index);
+        owner.setTelephone(String.format("60855570%02d", 10 + index));
+        ownerRepository.save(owner);
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """
