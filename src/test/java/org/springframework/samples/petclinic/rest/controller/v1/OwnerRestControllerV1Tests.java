@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Testowner","address":"110 W. Liberty St.","city":"Madison","telephone":"9995550001"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -120,6 +120,19 @@ class OwnerRestControllerV1Tests {
         String body = """
             {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
             """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateTelephoneConflict() throws Exception {
+        // A different last name but a telephone already used by another owner must be rejected.
+        Owner existing = newOwner("Existingowner-" + System.nanoTime());
+        String body = """
+            {"firstName":"George","lastName":"Differentowner","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
+            """.formatted(existing.getTelephone());
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isConflict());
