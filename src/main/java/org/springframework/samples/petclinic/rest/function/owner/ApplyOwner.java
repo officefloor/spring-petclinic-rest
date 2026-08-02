@@ -11,6 +11,6 @@ public class ApplyOwner {
         owner.setCity(request.getCity());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());
-        owner.setTelephone(request.getTelephone());
+        owner.setTelephone(Telephone.normalize(request.getTelephone()));
     }
 }
