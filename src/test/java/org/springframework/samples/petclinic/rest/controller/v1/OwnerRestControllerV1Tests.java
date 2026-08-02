@@ -140,19 +140,21 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
-        // 20 owners may be registered today; the 21st is a 400.
+        // 20 owners may be registered today; the 21st is a 400. Each owner is placed
+        // in its own city so the per-city cap never trips - only the daily limit does.
         for (int i = 0; i < 20; i++) {
             String telephone = String.format("70000000%02d", i);
+            String city = String.format("DailyLimitCity%02d", i);
             String body = String.format("""
-                {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
-                """, telephone);
+                {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"%s","telephone":"%s"}
+                """, city, telephone);
             mvc.perform(post("/api/owners").content(body)
                     .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated());
         }
 
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"7000009999"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"DailyLimitCityXX","telephone":"7000009999"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
