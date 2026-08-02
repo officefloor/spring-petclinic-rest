@@ -65,6 +65,14 @@ class OwnerRestControllerV1Tests {
         return base + suffix;
     }
 
+    private String uniqueTelephone() {
+        // Exactly 10 digits (per the Owner telephone constraint), starting with 9 so it never
+        // collides with the seeded 608-prefixed numbers.
+        String nanos = Long.toString(System.nanoTime());
+        String last9 = nanos.length() >= 9 ? nanos.substring(nanos.length() - 9) : nanos;
+        return "9" + String.format("%09d", Long.parseLong(last9));
+    }
+
     private PetType dogType() {
         PetType type = new PetType();
         type.setName("dog-" + System.nanoTime());
@@ -111,9 +119,10 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String uniqueLastName = uniqueLastName("Franklin");
+        String uniqueTelephone = uniqueTelephone();
         String body = """
-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
-            """.formatted(uniqueLastName);
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
+            """.formatted(uniqueLastName, uniqueTelephone);
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
