@@ -172,6 +172,50 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithEmailSucceedsAndReturnsEmail() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551088","email":"george.new@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.email").value("george.new@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailReturnsConflict() throws Exception {
+        Owner existing = newOwner("Emailton-" + System.nanoTime());
+        existing.setTelephone("6085551200");
+        existing.setEmail("taken@example.com");
+        ownerRepository.save(existing);
+        // Distinct telephone so only the shared email can trigger the conflict.
+        String body = """
+            {"firstName":"Jane","lastName":"Quinnelle","address":"999 Other St.","city":"Springfield","telephone":"6085551201","email":"taken@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithoutEmailSucceeds() throws Exception {
+        Owner existing = newOwner("NoEmail-" + System.nanoTime());
+        existing.setTelephone("6085551300");
+        existing.setEmail("someone@example.com");
+        ownerRepository.save(existing);
+        // No email supplied: the email uniqueness rule must not apply.
+        String body = """
+            {"firstName":"Jane","lastName":"Quinnelle","address":"999 Other St.","city":"Springfield","telephone":"6085551301"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """

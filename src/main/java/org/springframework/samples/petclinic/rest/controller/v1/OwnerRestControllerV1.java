@@ -107,6 +107,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateOwnerException("An owner with telephone "
                 + owner.getTelephone() + " already exists");
         }
+        if (isDuplicateEmail(owner)) {
+            throw new DuplicateOwnerException("An owner with email "
+                + owner.getEmail() + " already exists");
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -124,6 +128,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing ->
                 Objects.equals(existing.getTelephone(), candidate.getTelephone()));
+    }
+
+    /**
+     * Determines whether any other owner already uses the candidate's email address.
+     * An absent or blank email is never considered a duplicate.
+     *
+     * @param candidate the owner about to be created
+     * @return {@code true} if an owner with the same email is already present in the data store
+     */
+    private boolean isDuplicateEmail(Owner candidate) {
+        String email = candidate.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> Objects.equals(existing.getEmail(), email));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
