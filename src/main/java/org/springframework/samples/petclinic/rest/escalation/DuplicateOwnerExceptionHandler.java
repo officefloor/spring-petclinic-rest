@@ -11,7 +11,7 @@ public class DuplicateOwnerExceptionHandler {
     public void handle(@Parameter DuplicateOwnerException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "An identical owner already exists");
+                "An owner with the same last name and telephone already exists");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
