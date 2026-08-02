@@ -19,7 +19,14 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "initials", expression = "java(OwnerMapper.initials(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
+    static String initials(Owner owner) {
+        return (owner.getFirstName().substring(0, 1) + "." + owner.getLastName().substring(0, 1) + ".")
+                .toUpperCase();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
