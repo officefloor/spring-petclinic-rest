@@ -162,6 +162,33 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerInSingleMostCommonCityIsLocal() throws Exception {
+        // "Madison" is the single most common city among the seed owners (four owners),
+        // so a new owner created there is 'local'. The comparison ignores letter case.
+        String body = """
+            {"firstName":"Grace","lastName":"Hopper","address":"5 Navy Yard","city":"madison","telephone":"6085554001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("local"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerOutsideMostCommonCityIsRemote() throws Exception {
+        // No owner exists in "Cardiff", which is not the most common city, so the owner is 'remote'.
+        String body = """
+            {"firstName":"Ada","lastName":"Lovelace","address":"1 Newport Rd.","city":"Cardiff","telephone":"6085554002"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("remote"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateReturnsConflict() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Duplicant","address":"12 Conflict Rd.","city":"Madison","telephone":"6085551077"}

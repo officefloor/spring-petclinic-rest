@@ -18,8 +18,11 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -123,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipTier(membershipTierFor(membershipNumber));
         owner.setNamesakeCount(namesakeCount(owner.getLastName()));
         owner.setSharesHousehold(sharesHousehold(owner));
+        owner.setLocality(localityFor(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -287,6 +291,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(normalize(existing.getAddress()), address)
                 && Objects.equals(normalize(existing.getCity()), city));
+    }
+
+    /**
+     * The locality assigned to an owner whose city is the single most common city among the
+     * existing owners at the moment of creation.
+     */
+    private static final String LOCALITY_LOCAL = "local";
+
+    /**
+     * The locality assigned to an owner whose city is not the single most common city among the
+     * existing owners at the moment of creation.
+     */
+    private static final String LOCALITY_REMOTE = "remote";
+
+    /**
+     * Resolves the locality for a newly created owner. The owner is {@code "local"} when their city
+     * is the single most common city among the owners that already exist (compared ignoring letter
+     * case and surrounding or repeated whitespace, see {@link #normalize(String)}); otherwise they
+     * are {@code "remote"}. If there is no existing owner, or the most common city is shared by a
+     * tie, or the owner's city is not that single most common city, the owner is {@code "remote"}.
+     * This is evaluated before the new owner is stored, so it reflects only owners that already
+     * existed.
+     *
+     * @param city the city of the owner being created, may be {@code null}
+     * @return {@code "local"} or {@code "remote"}
+     */
+    private String localityFor(String city) {
+        if (city == null) {
+            return LOCALITY_REMOTE;
+        }
+        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(OwnerRestControllerV1::normalize, Collectors.counting()));
+        if (countsByCity.isEmpty()) {
+            return LOCALITY_REMOTE;
+        }
+        long max = Collections.max(countsByCity.values());
+        List<String> mostCommon = countsByCity.entrySet().stream()
+            .filter(entry -> entry.getValue() == max)
+            .map(Map.Entry::getKey)
+            .toList();
+        if (mostCommon.size() != 1) {
+            return LOCALITY_REMOTE;
+        }
+        return mostCommon.get(0).equals(normalize(city)) ? LOCALITY_LOCAL : LOCALITY_REMOTE;
     }
 
     /**
