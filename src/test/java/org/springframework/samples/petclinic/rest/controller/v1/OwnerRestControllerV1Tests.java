@@ -160,6 +160,29 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // The first 20 owners registered today are accepted. Last names use only letters (per the
+        // Owner last-name constraint) and telephones are unique 10-digit numbers.
+        for (int i = 0; i < 20; i++) {
+            String body = """
+                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"Madison","telephone":"93000000%02d"}
+                """.formatted((char) ('a' + i), i);
+            mvc.perform(post("/api/owners").content(body)
+                    .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isCreated());
+        }
+
+        // The 21st owner in the same day is rejected with 400 Bad Request.
+        String body = """
+            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"Madison","telephone":"9300000099"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """
