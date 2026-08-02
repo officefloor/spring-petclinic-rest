@@ -233,6 +233,10 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.isNew() && isDuplicateEmail(owner)) {
+            throw new DuplicateOwnerException(
+                "An owner with the same email already exists");
+        }
         if (owner.isNew() && isDuplicateTelephone(owner)) {
             throw new DuplicateOwnerException(
                 "An owner with the same telephone already exists");
@@ -243,6 +247,15 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
 
+    }
+
+    private boolean isDuplicateEmail(Owner owner) {
+        if (owner.getEmail() == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .anyMatch(existing -> !existing.getId().equals(owner.getId())
+                && Objects.equals(existing.getEmail(), owner.getEmail()));
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
