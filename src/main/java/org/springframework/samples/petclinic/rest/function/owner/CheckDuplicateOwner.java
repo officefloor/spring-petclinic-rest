@@ -15,11 +15,19 @@ public class CheckDuplicateOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DuplicateOwnerException {
+        String email = owner.getEmail();
+        boolean hasEmail = (email != null) && !email.isBlank();
         for (Owner existing : ownerRepository.findAll()) {
-            if (!Objects.equals(existing.getId(), owner.getId())
-                    && Objects.equals(existing.getTelephone(), owner.getTelephone())) {
+            if (Objects.equals(existing.getId(), owner.getId())) {
+                continue;
+            }
+            if (Objects.equals(existing.getTelephone(), owner.getTelephone())) {
                 throw new DuplicateOwnerException(
                         "An owner with the same telephone already exists");
+            }
+            if (hasEmail && Objects.equals(existing.getEmail(), email)) {
+                throw new DuplicateOwnerException(
+                        "An owner with the same email already exists");
             }
         }
     }
