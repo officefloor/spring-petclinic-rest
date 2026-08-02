@@ -44,7 +44,8 @@ CREATE TABLE owners (
   telephone  VARCHAR(20),
   email      VARCHAR(255),
   registration_date DATE,
-  membership_number INTEGER
+  membership_number INTEGER,
+  customer_code VARCHAR(100)
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
