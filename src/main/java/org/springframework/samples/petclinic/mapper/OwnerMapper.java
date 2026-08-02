@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipTier", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "sharesHousehold", ignore = true)
+    @Mapping(target = "locality", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
@@ -116,6 +117,31 @@ public interface OwnerMapper {
                 .anyMatch(o -> o.getId() != null && o.getId() < id
                         && address.equalsIgnoreCase(o.getAddress())
                         && city.equalsIgnoreCase(o.getCity()));
+    }
+
+    /**
+     * The locality classification assigned to the owner at registration: {@code "local"} when this
+     * owner's city is the single most common city among the owners that existed at registration, and
+     * {@code "remote"} otherwise. The population considered is the owners whose id is not greater than
+     * this owner's id (cities matched case-insensitively); because a newly created owner always has the
+     * largest id, this reflects the owners present at registration and stays stable when read back later.
+     * A tie for the most common city yields {@code "remote"}, since there is then no single most common city.
+     */
+    static String locality(Owner owner, Collection<Owner> allOwners) {
+        Integer id = owner.getId();
+        String city = owner.getCity();
+        if (id == null || city == null) {
+            return null;
+        }
+        String cityKey = city.toLowerCase();
+        java.util.Map<String, Long> counts = allOwners.stream()
+                .filter(o -> o.getId() != null && o.getId() <= id && o.getCity() != null)
+                .collect(java.util.stream.Collectors.groupingBy(o -> o.getCity().toLowerCase(),
+                        java.util.stream.Collectors.counting()));
+        long ownerCityCount = counts.getOrDefault(cityKey, 0L);
+        boolean singleMostCommon = counts.entrySet().stream()
+                .noneMatch(e -> !e.getKey().equals(cityKey) && e.getValue() >= ownerCityCount);
+        return singleMostCommon ? "local" : "remote";
     }
 
     Owner toOwner(OwnerDto ownerDto);

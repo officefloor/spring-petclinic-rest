@@ -21,6 +21,7 @@ public class RespondWithOwnerCreated {
         dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
         dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
         dto.setSharesHousehold(OwnerMapper.sharesHousehold(owner, allOwners));
+        dto.setLocality(OwnerMapper.locality(owner, allOwners));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
