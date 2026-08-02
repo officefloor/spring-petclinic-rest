@@ -21,7 +21,25 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String user = (authentication != null) ? authentication.getName() : "anonymous";
-        Integer membershipNumber = OwnerMapper.membershipNumber(owner, ownerRepository.findAll());
+        java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+        Integer membershipNumber = OwnerMapper.membershipNumber(owner, allOwners);
         AUDIT.info("owner created user={} id={} membershipNumber={}", user, owner.getId(), membershipNumber);
+
+        String areaCode = areaCode(owner.getTelephone());
+        if (areaCode != null) {
+            long existingSharing = allOwners.stream()
+                    .filter(o -> o.getId() == null || !o.getId().equals(owner.getId()))
+                    .filter(o -> areaCode.equals(areaCode(o.getTelephone())))
+                    .count();
+            if (existingSharing >= 5) {
+                AUDIT.warn("possible bulk signup user={} id={} areaCode={} existingSharing={}",
+                        user, owner.getId(), areaCode, existingSharing);
+            }
+        }
+    }
+
+    /** First three digits of a telephone number, or {@code null} if unavailable. */
+    private static String areaCode(String telephone) {
+        return (telephone != null && telephone.length() >= 3) ? telephone.substring(0, 3) : null;
     }
 }
