@@ -118,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 + owner.getEmail() + " already exists");
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -181,6 +182,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param city the city of the owner about to be created
      * @return the formatted customer code
      */
+    /**
+     * Resolves the city name to store for a newly created owner. The supplied city is
+     * normalised to title case (each word's first letter upper-cased, the rest lower-cased),
+     * so that {@code "new york"} and {@code "NEW YORK"} both become {@code "New York"}.
+     * However, if an owner already exists in that city (matched ignoring letter case), that
+     * existing owner's exact spelling of the city is reused instead, so a single canonical
+     * spelling is kept per city (for example an existing {@code "McFarland"} is preserved
+     * rather than being flattened to {@code "Mcfarland"}).
+     *
+     * @param city the raw city supplied for the owner about to be created
+     * @return the existing owner's spelling if the city is already known, otherwise the
+     *         title-cased city; {@code null} if {@code city} was {@code null}
+     */
+    private String resolveCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> titleCase(city));
+    }
+
+    /**
+     * Converts a city name to title case: each whitespace-separated word has its first letter
+     * upper-cased and its remaining letters lower-cased, while the original whitespace is left
+     * untouched. For example {@code "san   FRANCISCO"} becomes {@code "San   Francisco"}.
+     *
+     * @param city the city to title-case
+     * @return the title-cased city
+     */
+    private static String titleCase(String city) {
+        StringBuilder result = new StringBuilder(city.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < city.length(); i++) {
+            char c = city.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                result.append(c);
+            } else if (startOfWord) {
+                result.append(Character.toTitleCase(c));
+                startOfWord = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
+    }
+
     private String nextCustomerCode(String city) {
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
