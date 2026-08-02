@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCity(resolveCity(owner.getCity()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
+        owner.setMembershipTier(resolveMembershipTier());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -147,6 +148,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * The number of owners that, once created, are granted the 'FOUNDING'
+     * membership tier. Owners created after this threshold receive 'STANDARD'.
+     */
+    private static final int FOUNDING_MEMBERSHIP_LIMIT = 100;
+
+    /**
+     * Resolve the membership tier for a newly created owner: the first
+     * {@link #FOUNDING_MEMBERSHIP_LIMIT} owners ever created are 'FOUNDING' and
+     * all later owners are 'STANDARD'.
+     */
+    private String resolveMembershipTier() {
+        long existingOwners = this.clinicService.findAllOwners().size();
+        return existingOwners < FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD";
     }
 
     /**
