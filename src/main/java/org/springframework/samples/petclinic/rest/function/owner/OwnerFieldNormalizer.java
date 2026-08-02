@@ -37,4 +37,29 @@ final class OwnerFieldNormalizer {
         }
         return value.replaceAll("[\\s()-]", "");
     }
+
+    /**
+     * Title-cases a value: surrounding whitespace removed, internal whitespace runs
+     * collapsed to a single space, and each word given an upper-case first letter with
+     * the remainder lower-cased. For example {@code "  new  YORK "} becomes
+     * {@code "New York"}. {@code null} in yields {@code null} out.
+     */
+    static String titleCase(String value) {
+        if (value == null) {
+            return null;
+        }
+        String collapsed = value.strip().replaceAll("\\s+", " ");
+        StringBuilder result = new StringBuilder(collapsed.length());
+        for (String word : collapsed.split(" ")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0)))
+                .append(word.substring(1).toLowerCase(Locale.ROOT));
+        }
+        return result.toString();
+    }
 }
