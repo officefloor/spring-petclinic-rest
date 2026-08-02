@@ -239,6 +239,10 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            if (isDailyRegistrationLimitReached(owner)) {
+                throw new OwnerRegistrationLimitException(
+                    "The maximum number of owners that can be registered today has been reached");
+            }
             owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -317,6 +321,29 @@ public class ClinicServiceImpl implements ClinicService {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * The maximum number of owners that may be registered on any single day (by registration date).
+     */
+    private static final int MAX_OWNERS_PER_DAY = 20;
+
+    /**
+     * Determine whether the daily registration limit has already been reached for the day the given
+     * owner is being registered on. Counts the existing owners whose registration date matches the new
+     * owner's registration date and returns {@code true} once that count has reached
+     * {@link #MAX_OWNERS_PER_DAY}.
+     */
+    private boolean isDailyRegistrationLimitReached(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return false;
+        }
+        long registeredToday = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return registeredToday >= MAX_OWNERS_PER_DAY;
     }
 
     private boolean isDuplicateTelephone(Owner owner) {

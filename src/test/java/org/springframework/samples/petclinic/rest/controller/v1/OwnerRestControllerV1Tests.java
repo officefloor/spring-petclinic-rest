@@ -180,6 +180,64 @@ class OwnerRestControllerV1Tests {
             .andExpect(status().isCreated());
     }
 
+    private void saveOwnerRegisteredOn(String telephone, LocalDate registrationDate) {
+        Owner owner = new Owner();
+        owner.setFirstName("Daily");
+        owner.setLastName("Limit");
+        owner.setAddress("110 W. Liberty St.");
+        owner.setCity("Madison");
+        owner.setTelephone(telephone);
+        owner.setRegistrationDate(registrationDate);
+        ownerRepository.save(owner);
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        LocalDate today = LocalDate.now();
+        for (int i = 0; i < 20; i++) {
+            saveOwnerRegisteredOn(String.format("70000000%02d", i), today);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Overflow","address":"110 W. Liberty St.","city":"Madison","telephone":"6085558888"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSucceedsWhenDailyLimitNotReached() throws Exception {
+        LocalDate today = LocalDate.now();
+        // 19 owners already registered today leaves room for one more.
+        for (int i = 0; i < 19; i++) {
+            saveOwnerRegisteredOn(String.format("71000000%02d", i), today);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Twentieth","address":"110 W. Liberty St.","city":"Madison","telephone":"6085557777"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSucceedsWhenDailyLimitReachedOnAnotherDay() throws Exception {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        // 20 owners registered yesterday must not block today's registrations.
+        for (int i = 0; i < 20; i++) {
+            saveOwnerRegisteredOn(String.format("72000000%02d", i), yesterday);
+        }
+        String body = """
+            {"firstName":"George","lastName":"Fresh","address":"110 W. Liberty St.","city":"Madison","telephone":"6085556666"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {

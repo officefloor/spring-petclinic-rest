@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+import org.springframework.samples.petclinic.service.OwnerRegistrationLimitException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -139,6 +140,27 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link OwnerRegistrationLimitException} which indicates an attempt to create an owner once the
+     * maximum number of owners allowed to register on a single day has already been reached. This method
+     * returns a 400 Bad Request status.
+     *
+     * @param e The {@link OwnerRegistrationLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(OwnerRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerRegistrationLimitException(OwnerRegistrationLimitException e, HttpServletRequest request) {
+        logger.warn("Owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
