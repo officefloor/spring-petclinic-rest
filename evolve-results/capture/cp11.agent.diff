@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index 79256be..23649b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -11,6 +11,6 @@ public class ApplyOwner {
+         owner.setCity(request.getCity());
+         owner.setFirstName(request.getFirstName());
+         owner.setLastName(request.getLastName());
+-        owner.setTelephone(request.getTelephone());
++        owner.setTelephone(Telephones.digitsOnly(request.getTelephone()));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 9efeac1..175177b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -15,6 +15,7 @@ public class BuildOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
++        owner.setTelephone(Telephones.digitsOnly(owner.getTelephone()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+index 1b85410..d1e32fd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+@@ -20,7 +20,7 @@ public class EnsureOwnerUnique {
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws OwnerAlreadyExistsException {
+         String name = normalizeName(owner);
+-        String telephone = normalize(owner.getTelephone());
++        String telephone = normalizeTelephone(owner.getTelephone());
+         String email = normalize(owner.getEmail());
+         boolean hasEmail = email != null && !email.isEmpty();
+         for (Owner existing : ownerRepository.findAll()) {
+@@ -28,11 +28,11 @@ public class EnsureOwnerUnique {
+                 continue;
+             }
+             if (name != null && name.equals(normalizeName(existing))
+-                    && telephone != null && telephone.equals(normalize(existing.getTelephone()))) {
++                    && telephone != null && telephone.equals(normalizeTelephone(existing.getTelephone()))) {
+                 throw new OwnerAlreadyExistsException(
+                         "An owner with the same name and telephone already exists");
+             }
+-            if (telephone != null && telephone.equals(normalize(existing.getTelephone()))) {
++            if (telephone != null && telephone.equals(normalizeTelephone(existing.getTelephone()))) {
+                 throw new OwnerAlreadyExistsException(
+                         "An owner with the same telephone already exists");
+             }
+@@ -57,6 +57,19 @@ public class EnsureOwnerUnique {
+         return value == null ? "" : value;
+     }
+ 
++    /**
++     * Reduces a telephone to digits only so differently punctuated spellings of the
++     * same number (e.g. {@code "(613) 555-0100"} and {@code "6135550100"}) compare
++     * equal. Returns {@code null} when blank.
++     */
++    private static String normalizeTelephone(String value) {
++        if (value == null) {
++            return null;
++        }
++        String digits = value.replaceAll("[^0-9]", "");
++        return digits.isEmpty() ? null : digits;
++    }
++
+     /**
+      * Lower-cases and collapses whitespace so that comparisons ignore letter case and
+      * surrounding or repeated whitespace.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 984c786..3164a2c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: The telephone number of the pet owner. Spaces, dashes and
++            parentheses are accepted on input and stripped so the stored value is
++            digits only.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[-0-9 ()]*$'
+           example: '6085551023'
+         email:
+           title: Email address
