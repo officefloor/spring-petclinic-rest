@@ -1,0 +1,49 @@
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4d4b286..c307c0f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: ensureUnique
++
++ensureUnique:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerUnique
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 999c951..c9ea6a5 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Uniquefranklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -112,6 +112,19 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateConflict() throws Exception {
++        Owner existing = newOwner("Duplicatefranklin");
++        String body = """
++            {"firstName":"%s","lastName":"%s","address":"%s","city":"%s","telephone":"%s"}
++            """.formatted(existing.getFirstName(), existing.getLastName(), existing.getAddress(),
++                existing.getCity(), existing.getTelephone());
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

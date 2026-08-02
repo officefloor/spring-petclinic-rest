@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerAlreadyExistsException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerAlreadyExistsException.java
+index 61c5e0e..e00e775 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerAlreadyExistsException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerAlreadyExistsException.java
+@@ -1,8 +1,8 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown when attempting to create an owner that duplicates an existing one
+- * (same last name and telephone).
++ * Thrown when attempting to create an owner whose telephone number is already
++ * used by another owner.
+  * Handled globally by {@link OwnerAlreadyExistsExceptionHandler}, which responds 409.
+  */
+ public class OwnerAlreadyExistsException extends Exception {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+index 0b4dbaa..b895a44 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+@@ -8,17 +8,17 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.OwnerAlreadyExistsException;
+ 
+ /**
+- * Rejects creating an owner that duplicates an existing one (same last name and
+- * same telephone) with a 409 conflict.
++ * Rejects creating an owner whose telephone number is already used by any other
++ * owner with a 409 conflict.
+  */
+ public class EnsureOwnerUnique {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws OwnerAlreadyExistsException {
+-        for (Owner existing : ownerRepository.findByLastName(owner.getLastName())) {
+-            if (Objects.equals(existing.getLastName(), owner.getLastName())
+-                    && Objects.equals(existing.getTelephone(), owner.getTelephone())) {
+-                throw new OwnerAlreadyExistsException("Owner already exists");
++        for (Owner existing : ownerRepository.findAll()) {
++            if (Objects.equals(existing.getTelephone(), owner.getTelephone())) {
++                throw new OwnerAlreadyExistsException(
++                        "Owner with telephone " + owner.getTelephone() + " already exists");
+             }
+         }
+     }
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index c9ea6a5..7999b98 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Uniquefranklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Uniquefranklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6081234567"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
