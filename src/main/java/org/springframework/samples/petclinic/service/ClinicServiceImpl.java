@@ -232,6 +232,12 @@ public class ClinicServiceImpl implements ClinicService {
         return vetRepository.findAll();
     }
 
+    /**
+     * The number of owners, counted from the very first one ever created, that receive the
+     * {@code FOUNDING} membership tier. Every owner created after this threshold is {@code STANDARD}.
+     */
+    private static final int MAX_FOUNDING_OWNERS = 100;
+
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
@@ -249,6 +255,7 @@ public class ClinicServiceImpl implements ClinicService {
             }
             owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+            owner.setMembershipTier(owner.getMembershipNumber() <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
             owner.setCustomerCode(generateCustomerCode(owner));
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
