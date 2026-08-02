@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1dc2eaa..08fc2b5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
+     @Mapping(target = "membershipTier", ignore = true)
++    @Mapping(target = "namesakeCount", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
+@@ -80,6 +81,23 @@ public interface OwnerMapper {
+         return number <= 100 ? "FOUNDING" : "STANDARD";
+     }
+ 
++    /**
++     * The number of other owners that shared this owner's last name at the moment of registration.
++     * Computed as the count of owners, excluding this one, whose id is smaller than this owner's id and
++     * whose last name matches (case-insensitively). Because a newly created owner always has the largest
++     * id, this equals the number of existing namesakes at registration and stays stable when read back later.
++     */
++    static Integer namesakeCount(Owner owner, Collection<Owner> allOwners) {
++        Integer id = owner.getId();
++        String lastName = owner.getLastName();
++        if (id == null || lastName == null) {
++            return null;
++        }
++        return (int) allOwners.stream()
++                .filter(o -> o.getId() != null && o.getId() < id && lastName.equalsIgnoreCase(o.getLastName()))
++                .count();
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index fb173de..f3bc79e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -16,6 +16,7 @@ public class RespondWithOwner {
+         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
+         dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
++        dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 6c0f7fc..b4bacd0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -19,6 +19,7 @@ public class RespondWithOwnerCreated {
+         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
+         dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
++        dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index b7f2f02..064f0d4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerUpdated {
+         java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
++        dto.setNamesakeCount(OwnerMapper.namesakeCount(owner, allOwners));
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5bdf54e..99026f9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2096,6 +2096,14 @@ components:
+               type: string
+               example: 'FOUNDING'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that shared this owner's last name at the moment of registration.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 2
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

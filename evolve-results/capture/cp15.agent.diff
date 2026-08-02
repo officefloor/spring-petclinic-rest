@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d60251e..1dc2eaa 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(OwnerMapper.initials(owner))")
+     @Mapping(target = "membershipNumber", ignore = true)
+     @Mapping(target = "customerCode", ignore = true)
++    @Mapping(target = "membershipTier", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** First letters of first and last name, upper-cased and dot-separated with a trailing dot, e.g. "J.S.". */
+@@ -66,6 +67,19 @@ public interface OwnerMapper {
+         return String.format("%s-%04d", city.toUpperCase(), sequence);
+     }
+ 
++    /**
++     * The membership tier assigned to the owner at registration: {@code "FOUNDING"} for the first 100
++     * owners ever created and {@code "STANDARD"} for all later owners. Derived from the sequential
++     * {@link #membershipNumber(Owner, Collection) membership number}, so it is stable when read back later.
++     */
++    static String membershipTier(Owner owner, Collection<Owner> allOwners) {
++        Integer number = membershipNumber(owner, allOwners);
++        if (number == null) {
++            return null;
++        }
++        return number <= 100 ? "FOUNDING" : "STANDARD";
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index a408a2c..fb173de 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -15,6 +15,7 @@ public class RespondWithOwner {
+         java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
++        dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 28df319..6c0f7fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -18,6 +18,7 @@ public class RespondWithOwnerCreated {
+         java.util.Collection<Owner> allOwners = ownerRepository.findAll();
+         dto.setMembershipNumber(OwnerMapper.membershipNumber(owner, allOwners));
+         dto.setCustomerCode(OwnerMapper.customerCode(owner, allOwners));
++        dto.setMembershipTier(OwnerMapper.membershipTier(owner, allOwners));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 43bd528..5bdf54e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2090,6 +2090,12 @@ components:
+               type: string
+               example: 'LONDON-0007'
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: The membership tier assigned at registration. The first 100 owners ever created are FOUNDING; all later owners are STANDARD.
++              type: string
++              example: 'FOUNDING'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

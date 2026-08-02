@@ -1,0 +1,73 @@
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 8bb12d8..5347a1a 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ build:
+ normalizeCity:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerCity
+   govern: [ transaction ]
++  next: rejectOverCityCap
++
++rejectOverCityCap:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectOverCityCap
++  govern: [ transaction ]
+   next: rejectDuplicate
+ 
+ rejectDuplicate:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 911e048..dccb7ef 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -143,6 +143,52 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenCityAlreadyHasEightOwners() throws Exception {
++        // A city that already holds 8 owners is full: a 9th create is rejected 400.
++        String city = "Capville-" + System.nanoTime();
++        for (int i = 0; i < 8; i++) {
++            Owner existing = new Owner();
++            existing.setFirstName("George");
++            existing.setLastName("Franklin-" + System.nanoTime());
++            existing.setAddress("110 W. Liberty St.");
++            existing.setCity(city);
++            existing.setTelephone("60855510" + (10 + i));
++            ownerRepository.save(existing);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"%s","telephone":"6085559123"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedWhenCityHasFewerThanEightOwners() throws Exception {
++        // With only 7 existing owners the city is not yet full, so the create succeeds.
++        String city = "Roomyville-" + System.nanoTime();
++        for (int i = 0; i < 7; i++) {
++            Owner existing = new Owner();
++            existing.setFirstName("George");
++            existing.setLastName("Franklin-" + System.nanoTime());
++            existing.setAddress("110 W. Liberty St.");
++            existing.setCity(city);
++            existing.setTelephone("60855520" + (10 + i));
++            ownerRepository.save(existing);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"%s","telephone":"6085559124"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

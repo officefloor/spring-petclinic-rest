@@ -1,0 +1,141 @@
+# PetClinic-Evolve configuration.
+# Fill in the two branch base refs and the hotspot method names, then smoke-test
+# with --dry-run and --max-checkpoints 1.
+
+model: claude-opus-4-8
+chains: 10                    # independent runs per (arm, strategy). 10 = target for tight CIs.
+active_strategy: just-solve   # which prompt strategy to run by default
+agent_timeout: 3600
+
+# Resilience. On a TOKEN/SESSION limit the harness rolls back the current
+# checkpoint, waits for the window to reopen, then retries the SAME checkpoint --
+# so an overnight pause resumes exactly where it left off. TRANSIENT failures
+# (internet dropping in/out, the API overloaded, no completion) are treated the
+# same way but with a short exponential backoff instead of a quota-reset wait.
+limits:
+  # token/session limit
+  poll_seconds: 1800        # wait between retries when the reset time can't be parsed (30 min)
+  max_sleep_seconds: 21600  # cap on a single quota-reset wait (6 h), then re-check
+  # transient failures (network / overload / no completion)
+  retry_backoff_seconds: 60     # first backoff; doubles each consecutive transient failure
+  retry_backoff_max: 900        # cap on a single transient backoff (15 min)
+  max_transient_attempts: 20    # consecutive transient failures before aborting (network truly down)
+  # overall
+  max_attempts: 500         # absolute safety cap on retries per checkpoint
+
+# Paths below that are NOT absolute are resolved relative to THIS config file's
+# directory, so the harness can be moved without editing them.
+checkpoints_file: checkpoints.yaml
+
+# Acceptance criteria are injected PER CHECKPOINT (never pre-committed to the base
+# branch), so the agent only ever sees the current + prior requirements' tests,
+# never future ones. At checkpoint K the harness copies Cp{K}Tests.java (plus the
+# shared infra at K=1) into the worktree and commits it as "test: add cpK ...".
+acceptance:
+  src_dir: acceptance/src/test/java/org/springframework/samples/petclinic/acceptance
+  dest_subpath: src/test/java/org/springframework/samples/petclinic/acceptance
+  shared: ["AcceptanceBase.java", "AuditLogCapture.java"]   # injected at checkpoint 1
+
+arms:
+  spring:
+    repo: ${HOME}/compare/spring       # ${VARS} and ~ are expanded from the environment
+    base_ref: spring-compare
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: []                       # Spring has no endpoint YAML
+    # Hotspot + scoped erosion use a DYNAMIC subsystem: the production-Java files
+    # changed since base_ref (cumulative). A new class the agent creates is in
+    # that diff, so it can't hide — no fixed hotspot config needed.
+    function_package_glob: null          # N/A for Spring
+    # Entry-handler trajectory (#4): the ONE function POST /api/owners routes
+    # through. Regex over '<file>::<name>'. Spring's single handler can bloat.
+    entry_handler: "OwnerRestControllerV1::addOwner"
+
+  officefloor:
+    repo: ${HOME}/compare/officefloor
+    base_ref: officefloor-compare
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: ["src/main/resources/officefloor/**/*.yml"]
+    # Same dynamic touched-file subsystem as Spring (so the hotspot catches any
+    # bloat wherever it lands). OfficeFloor's own wired functions are also tracked
+    # separately via function_package_glob (fn_count / fn_nloc_max).
+    function_package_glob: "src/main/java/**/rest/function/**/*.java"
+    # Designated create-entry function of the owner pipeline. Expected to stay
+    # flat: new rules attach as NEW wired functions, not by growing this one.
+    entry_handler: "BuildOwner::service"
+
+# Prompt strategies mirror SlopCodeBench's intervention study. {spec} is replaced
+# with the checkpoint specification. Keep them neutral: never mention the
+# experiment, the architecture, or "refactor" in just-solve.
+prompt_strategies:
+  just-solve: |
+    Implement the following change to the application so that it fully satisfies
+    the specification and all existing and new tests pass. Run the test suite and
+    make it green before finishing.
+
+    {spec}
+  anti_slop: |
+    Implement the following change. Do not add verbose or defensive code,
+    unnecessary abstractions, or duplicated logic. Group code by responsibility
+    and avoid growing any single "god" method or function. Make all tests pass.
+
+    {spec}
+  plan_first: |
+    First outline your approach in a few bullet points. Then implement the
+    simplest solution that satisfies the specification, verify the edge cases,
+    and refactor if needed. Make all tests pass before finishing.
+
+    {spec}
+
+build:
+  # Compile step used as the build gate (fast; tests run separately by tag).
+  cmd: ["./mvnw", "-q", "-B", "-DskipTests", "test-compile"]
+  # {tags} is replaced with "cp01,cp02,...,cpK" (JUnit5 tag include = OR).
+  test_cmd_template: ["./mvnw", "-q", "-B", "-Dgroups={tags}", "test"]
+  surefire_dir: "target/surefire-reports"
+  timeout: 1800
+  test_timeout: 3600
+
+tools:
+  jscpd: "jscpd"     # npm i -g jscpd  (clone detection for Verbosity)
+  astgrep: "sg"      # ast-grep binary  (pattern flags for Verbosity)
+  astgrep_rules: "astgrep-rules"
+
+probe:
+  enabled: true
+  at_checkpoints: [1, 5, 10, 15, 20]   # run the cold-reader probe at these checkpoints
+  question: |
+    Read the code as it currently stands and answer without changing anything.
+    List, in order, every validation and side-effect that is applied when
+    creating an owner via POST /api/owners.
+  # Ground-truth items for a crude recall score (case-insensitive substring match;
+  # grade properly offline too). Single distinctive tokens for the create-owner
+  # rules, so casing/spacing (e.g. "displayName" vs "display name") doesn't matter.
+  expected:
+    - "duplicate"       # exact / household / telephone / email uniqueness (cp1-5)
+    - "telephone"       # normalisation + uniqueness (cp3, cp11)
+    - "email"           # cp4
+    - "display"         # displayName (cp6)
+    - "initials"        # cp7
+    - "registration"    # registrationDate default (cp8)
+    - "membership"      # membershipNumber + tier (cp9, cp15)
+    - "customer"        # customerCode (cp10)
+    - "city"            # canonical casing + city capacity (cp12, cp14)
+    - "namesake"        # namesakeCount (cp16)
+    - "household"       # sharesHousehold (cp17)
+    - "local"           # locality (cp18)
+    - "audit"           # audit trail + bulk-signup warning (cp19, cp20)
+
+# Kept identical at every checkpoint. CLAUDE.md is the fixed, human-authored
+# project guide (present in BOTH arms so the playing field is level: it offsets
+# Spring's training-data advantage for OfficeFloor). Pinning restores it to the
+# base_ref version after each agent turn, so it can never become accumulating
+# cross-checkpoint memory. The CSV `notes` column flags any checkpoint where the
+# agent tried to edit it.
+isolation:
+  pin_files: ["CLAUDE.md"]
+
+paths:
+  work_root: work
+  results_csv: results/records.csv
