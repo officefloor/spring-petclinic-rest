@@ -73,6 +73,9 @@ public class Owner extends Person {
     @Column(name = "shares_household")
     private Boolean sharesHousehold;
 
+    @Column(name = "locality")
+    private String locality;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -157,6 +160,14 @@ public class Owner extends Person {
 
     public void setSharesHousehold(Boolean sharesHousehold) {
         this.sharesHousehold = sharesHousehold;
+    }
+
+    public String getLocality() {
+        return this.locality;
+    }
+
+    public void setLocality(String locality) {
+        this.locality = locality;
     }
 
     protected Set<Pet> getPetsInternal() {

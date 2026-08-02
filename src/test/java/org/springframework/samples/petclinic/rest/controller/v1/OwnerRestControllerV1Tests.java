@@ -128,7 +128,25 @@ class OwnerRestControllerV1Tests {
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"))
-            .andExpect(jsonPath("$.displayName").value(uniqueLastName + ", George"));
+            .andExpect(jsonPath("$.displayName").value(uniqueLastName + ", George"))
+            // Madison is the single most common city among the seeded owners, so a new
+            // Madison owner is classified as 'local'.
+            .andExpect(jsonPath("$.locality").value("local"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRemoteLocalityForUncommonCity() throws Exception {
+        String uniqueLastName = uniqueLastName("Franklin");
+        String uniqueTelephone = uniqueTelephone();
+        // A city that is not the single most common among existing owners yields 'remote'.
+        String body = """
+            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Faraway","telephone":"%s"}
+            """.formatted(uniqueLastName, uniqueTelephone);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.locality").value("remote"));
     }
 
     @Test

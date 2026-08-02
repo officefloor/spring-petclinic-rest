@@ -18,6 +18,9 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -107,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipTier(resolveMembershipTier());
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+        owner.setLocality(resolveLocality(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -206,6 +210,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
                 && city.equalsIgnoreCase(existing.getCity()));
+    }
+
+    /**
+     * Resolve the locality for a newly created owner: 'local' if the owner's city
+     * is the single most common city among the owners that already exist at the
+     * moment the new owner is created, otherwise 'remote'. Cities are compared
+     * case-insensitively. If no owners yet exist, or two or more cities are tied
+     * for the most common, there is no single most common city and the result is
+     * 'remote'.
+     */
+    private String resolveLocality(String city) {
+        if (city == null) {
+            return "remote";
+        }
+        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(existing -> existing.toLowerCase(), Collectors.counting()));
+        if (countsByCity.isEmpty()) {
+            return "remote";
+        }
+        long maxCount = countsByCity.values().stream().max(Long::compareTo).orElse(0L);
+        long citiesWithMax = countsByCity.values().stream().filter(count -> count == maxCount).count();
+        boolean cityIsMostCommon = countsByCity.getOrDefault(city.toLowerCase(), 0L) == maxCount;
+        return citiesWithMax == 1 && cityIsMostCommon ? "local" : "remote";
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
