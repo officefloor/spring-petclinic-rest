@@ -72,6 +72,13 @@ public class Owner extends Person {
     @Transient
     private Integer namesakeCount;
 
+    /**
+     * Whether, at the moment this owner was created, another owner already had the same address
+     * and city. Computed and populated when the owner is created; not persisted.
+     */
+    @Transient
+    private Boolean sharesHousehold;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -145,6 +152,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Boolean getSharesHousehold() {
+        return this.sharesHousehold;
+    }
+
+    public void setSharesHousehold(Boolean sharesHousehold) {
+        this.sharesHousehold = sharesHousehold;
     }
 
     protected Set<Pet> getPetsInternal() {

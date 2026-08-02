@@ -152,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber);
         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+        owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
         owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
@@ -318,6 +319,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Determines whether another owner already resides at the same address and city as the owner
+     * about to be created. Both address and city are matched ignoring letter case. This is
+     * evaluated before the new owner is saved, so it reflects only owners that already existed.
+     *
+     * @param address the address of the owner about to be created
+     * @param city    the city of the owner about to be created
+     * @return {@code true} if an existing owner already has the same address and city
+     */
+    private boolean sharesHousehold(String address, String city) {
+        if (address == null || city == null) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
+                && city.equalsIgnoreCase(existing.getCity()));
     }
 
     private String nextCustomerCode(String city) {
