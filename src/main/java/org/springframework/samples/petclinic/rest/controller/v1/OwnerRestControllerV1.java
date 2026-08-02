@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -130,7 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -238,6 +239,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isDuplicateOwner(Owner owner) {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
+    }
+
+    /**
+     * Normalises a telephone number to digits only by stripping spaces, dashes and parentheses (and
+     * any other non-digit characters). This is applied before storing the number and before the
+     * telephone-uniqueness check, so that e.g. {@code "(613) 555-0100"} and {@code "6135550100"} are
+     * stored identically and treated as the same number.
+     *
+     * @param telephone the raw telephone number, may be {@code null}
+     * @return the digits-only telephone number, or {@code null} if {@code telephone} was {@code null}
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[^0-9]", "");
     }
 
     /**
