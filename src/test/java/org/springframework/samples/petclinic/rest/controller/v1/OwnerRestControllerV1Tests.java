@@ -198,6 +198,29 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // Pre-seed 20 owners registered today; the 21st creation for today must be rejected.
+        for (int i = 0; i < 20; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily");
+            owner.setLastName("Limit-" + System.nanoTime());
+            owner.setAddress("1 Capacity Rd.");
+            owner.setCity("Madison");
+            owner.setTelephone("70000000" + String.format("%02d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"Overflow","address":"742 Evergreen Terrace","city":"Springfield","telephone":"6085554321"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
