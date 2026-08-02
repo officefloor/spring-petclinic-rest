@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -248,9 +249,10 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
+        String telephone = normalize(owner.getTelephone());
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getTelephone(), owner.getTelephone()));
+                && Objects.equals(normalize(existing.getTelephone()), telephone));
     }
 
     private boolean isDuplicateEmail(Owner owner) {
@@ -258,9 +260,25 @@ public class ClinicServiceImpl implements ClinicService {
         if (email == null || email.isBlank()) {
             return false;
         }
+        String normalizedEmail = normalize(email);
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getEmail(), email));
+                && Objects.equals(normalize(existing.getEmail()), normalizedEmail));
+    }
+
+    /**
+     * Normalize a textual value for duplicate detection so that comparisons
+     * ignore letter case and surrounding or repeated whitespace. A {@code null}
+     * value stays {@code null}; otherwise surrounding whitespace is trimmed, any
+     * run of internal whitespace is collapsed to a single space, and letters are
+     * lower-cased. For example "  john   smith " and "John Smith" normalize to
+     * the same value and therefore count as the same person.
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @Override
