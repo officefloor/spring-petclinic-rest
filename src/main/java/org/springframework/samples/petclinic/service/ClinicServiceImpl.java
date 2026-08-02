@@ -243,6 +243,10 @@ public class ClinicServiceImpl implements ClinicService {
                 throw new OwnerRegistrationLimitException(
                     "The maximum number of owners that can be registered today has been reached");
             }
+            if (isCityCapacityReached(owner)) {
+                throw new OwnerCityCapacityException(
+                    "The maximum number of owners that can be registered in this city has been reached");
+            }
             owner.setCity(resolveCity(owner));
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setCustomerCode(generateCustomerCode(owner));
@@ -344,6 +348,28 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return registeredToday >= MAX_OWNERS_PER_DAY;
+    }
+
+    /**
+     * The maximum number of owners that may be registered in any single city (compared case-insensitively).
+     */
+    private static final int MAX_OWNERS_PER_CITY = 8;
+
+    /**
+     * Determine whether the given owner's city has already reached its capacity. Counts the existing owners
+     * whose city matches the new owner's city (compared case-insensitively) and returns {@code true} once
+     * that count has reached {@link #MAX_OWNERS_PER_CITY}. An owner without a city is never at capacity.
+     */
+    private boolean isCityCapacityReached(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return false;
+        }
+        long ownersInCity = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        return ownersInCity >= MAX_OWNERS_PER_CITY;
     }
 
     private boolean isDuplicateTelephone(Owner owner) {

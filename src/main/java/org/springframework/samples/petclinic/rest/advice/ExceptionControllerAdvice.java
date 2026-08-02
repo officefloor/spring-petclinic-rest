@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+import org.springframework.samples.petclinic.service.OwnerCityCapacityException;
 import org.springframework.samples.petclinic.service.OwnerRegistrationLimitException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -157,6 +158,27 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleOwnerRegistrationLimitException(OwnerRegistrationLimitException e, HttpServletRequest request) {
         logger.warn("Owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link OwnerCityCapacityException} which indicates an attempt to create an owner in a city that
+     * has already reached the maximum number of owners allowed per city. This method returns a 400 Bad Request
+     * status.
+     *
+     * @param e The {@link OwnerCityCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(OwnerCityCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityCapacityException(OwnerCityCapacityException e, HttpServletRequest request) {
+        logger.warn("Owner city capacity reached at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());

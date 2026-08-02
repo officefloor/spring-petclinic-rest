@@ -185,7 +185,9 @@ class OwnerRestControllerV1Tests {
         owner.setFirstName("Daily");
         owner.setLastName("Limit");
         owner.setAddress("110 W. Liberty St.");
-        owner.setCity("Madison");
+        // Each seeded owner lives in its own city so these tests exercise the daily
+        // registration cap in isolation, without tripping the per-city cap.
+        owner.setCity("DailyCity" + telephone);
         owner.setTelephone(telephone);
         owner.setRegistrationDate(registrationDate);
         ownerRepository.save(owner);
