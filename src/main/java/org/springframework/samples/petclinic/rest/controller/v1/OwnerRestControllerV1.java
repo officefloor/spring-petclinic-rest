@@ -105,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -133,9 +134,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return {@code true} if an owner with the same telephone is already present in the data store
      */
     private boolean isDuplicateTelephone(Owner candidate) {
-        String telephone = normalize(candidate.getTelephone());
+        String telephone = normalizeTelephone(candidate.getTelephone());
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(normalize(existing.getTelephone()), telephone));
+            .anyMatch(existing -> Objects.equals(normalizeTelephone(existing.getTelephone()), telephone));
+    }
+
+    /**
+     * Canonicalises a telephone number by stripping every character that is not a digit
+     * (for example spaces, dashes and parentheses), so that {@code "(613) 555-0100"} and
+     * {@code "6135550100"} are treated as the same number. This is the form persisted for
+     * an owner and used for the telephone-uniqueness check.
+     *
+     * @param telephone the raw telephone value, possibly {@code null}
+     * @return the digits-only telephone, or {@code null} if {@code telephone} was {@code null}
+     */
+    private static String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        return telephone.replaceAll("[^0-9]", "");
     }
 
     /**
@@ -200,7 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
