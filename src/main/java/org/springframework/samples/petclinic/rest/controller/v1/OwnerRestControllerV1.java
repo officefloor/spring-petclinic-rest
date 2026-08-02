@@ -24,6 +24,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -45,6 +47,8 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,6 +64,12 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Dedicated audit logger recording successful owner creations, including the authenticated
+     * user and the new owner's id and membership number.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
      * The maximum number of owners that may be registered on any single day (by registration date).
@@ -159,6 +169,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
+        AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
+            currentUsername(), owner.getId(), owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -402,6 +414,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Resolves the name of the currently authenticated user for audit logging.
+     *
+     * @return the authenticated user's name, or {@code "anonymous"} if there is no authentication
+     */
+    private static String currentUsername() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return "anonymous";
+        }
+        return authentication.getName();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
