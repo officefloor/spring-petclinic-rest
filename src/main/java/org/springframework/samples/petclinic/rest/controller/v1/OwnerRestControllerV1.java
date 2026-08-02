@@ -134,9 +134,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setSharesHousehold(sharesHousehold(owner));
         owner.setLocality(locality(owner));
+        long sharedAreaCodeCount = sharedAreaCodeCount(owner);
         this.clinicService.saveOwner(owner);
         auditLogger.info("Owner created by user={} ownerId={} membershipNumber={}",
             currentUsername(), owner.getId(), owner.getMembershipNumber());
+        if (sharedAreaCodeCount >= 5) {
+            auditLogger.warn("Possible bulk signup: owner={} telephone area code {} shared with {} existing owners",
+                owner.getId(), areaCode(owner.getTelephone()), sharedAreaCodeCount);
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -404,6 +409,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String currentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null ? authentication.getName() : "anonymous";
+    }
+
+    /**
+     * Counts how many existing owners share the given owner's telephone area code (the first three
+     * digits of the normalised, digits-only telephone number). The owner being created is not yet
+     * persisted and so is not included in the count. Owners whose telephone has fewer than three
+     * digits (or no area code) never match.
+     *
+     * @param owner the owner being created
+     * @return the number of existing owners sharing the owner's telephone area code
+     */
+    private long sharedAreaCodeCount(Owner owner) {
+        String areaCode = areaCode(owner.getTelephone());
+        if (areaCode == null) {
+            return 0;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> areaCode.equals(areaCode(existing.getTelephone())))
+            .count();
+    }
+
+    /**
+     * Extracts the area code (first three digits) of a normalised, digits-only telephone number.
+     *
+     * @param telephone the telephone number, may be {@code null}
+     * @return the first three digits, or {@code null} if the number is {@code null} or has fewer than
+     *         three digits
+     */
+    private static String areaCode(String telephone) {
+        if (telephone == null || telephone.length() < 3) {
+            return null;
+        }
+        return telephone.substring(0, 3);
     }
 
     private boolean isDuplicateOwner(Owner owner) {

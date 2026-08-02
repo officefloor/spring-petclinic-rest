@@ -1,8 +1,13 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.LocalDate;
+import java.util.List;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -55,6 +60,26 @@ class OwnerRestControllerV1Tests {
         owner.setTelephone("6085551023");
         ownerRepository.save(owner);
         return owner;
+    }
+
+    private Owner ownerWithTelephone(String city, String telephone) {
+        Owner owner = new Owner();
+        owner.setFirstName("George");
+        owner.setLastName("AreaCode-" + System.nanoTime());
+        owner.setAddress("110 W. Liberty St.");
+        owner.setCity(city);
+        owner.setTelephone(telephone);
+        ownerRepository.save(owner);
+        return owner;
+    }
+
+    private ListAppender<ILoggingEvent> attachAuditAppender() {
+        ch.qos.logback.classic.Logger auditLogger =
+            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        return appender;
     }
 
     private PetType dogType() {
@@ -449,5 +474,53 @@ class OwnerRestControllerV1Tests {
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.description").value("rabies shot"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWarnsOnBulkSignupWhenAreaCodeShared() throws Exception {
+        // Five existing owners already share the 770 area code.
+        String city = "BulkTown-" + System.nanoTime();
+        for (int i = 1; i <= 5; i++) {
+            ownerWithTelephone(city, "770555000" + i);
+        }
+        ListAppender<ILoggingEvent> appender = attachAuditAppender();
+
+        String body = """
+            {"firstName":"George","lastName":"Bulk","address":"1 Main St.","city":"%s","telephone":"7705550006"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        List<ILoggingEvent> warnings = appender.list.stream()
+            .filter(event -> event.getLevel() == Level.WARN)
+            .filter(event -> event.getFormattedMessage().toLowerCase().contains("bulk signup"))
+            .toList();
+        org.assertj.core.api.Assertions.assertThat(warnings).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(warnings.get(0).getFormattedMessage()).contains("770");
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDoesNotWarnWhenAreaCodeNotShared() throws Exception {
+        // Only four existing owners share the 771 area code, below the threshold of five.
+        String city = "QuietTown-" + System.nanoTime();
+        for (int i = 1; i <= 4; i++) {
+            ownerWithTelephone(city, "771555000" + i);
+        }
+        ListAppender<ILoggingEvent> appender = attachAuditAppender();
+
+        String body = """
+            {"firstName":"George","lastName":"Quiet","address":"1 Main St.","city":"%s","telephone":"7715550005"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        boolean warned = appender.list.stream()
+            .filter(event -> event.getLevel() == Level.WARN)
+            .anyMatch(event -> event.getFormattedMessage().toLowerCase().contains("bulk signup"));
+        org.assertj.core.api.Assertions.assertThat(warned).isFalse();
     }
 }
