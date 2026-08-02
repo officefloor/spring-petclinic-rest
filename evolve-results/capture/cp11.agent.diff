@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index 79256be..3472e52 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -11,6 +11,6 @@ public class ApplyOwner {
+         owner.setCity(request.getCity());
+         owner.setFirstName(request.getFirstName());
+         owner.setLastName(request.getLastName());
+-        owner.setTelephone(request.getTelephone());
++        owner.setTelephone(OwnerTelephones.digitsOnly(request.getTelephone()));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 9efeac1..f2c29a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -15,6 +15,7 @@ public class BuildOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
++        owner.setTelephone(OwnerTelephones.digitsOnly(owner.getTelephone()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+index 82b2d61..4e3fd41 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerUnique.java
+@@ -14,19 +14,21 @@ import org.springframework.util.StringUtils;
+  * already used by another owner, or (when an email address is provided) when that
+  * email is already used by another owner.
+  *
+- * <p>Duplicate detection is insensitive to letter case and to surrounding or
++ * <p>Email duplicate detection is insensitive to letter case and to surrounding or
+  * repeated whitespace: values are {@link #normalize(String) normalized} before
+  * comparison, so {@code "  john   smith "} and {@code "John Smith"} are treated as
+- * the same value.
++ * the same value. Telephone duplicate detection compares
++ * {@link OwnerTelephones#digitsOnly(String) digits only}, so {@code "(613) 555-0100"}
++ * and {@code "6135550100"} are treated as the same number.
+  */
+ public class EnsureOwnerUnique {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws OwnerConflictException {
+-        String telephone = normalize(owner.getTelephone());
++        String telephone = OwnerTelephones.digitsOnly(owner.getTelephone());
+         String email = normalize(owner.getEmail());
+         boolean hasEmail = StringUtils.hasText(email);
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (Objects.equals(normalize(existing.getTelephone()), telephone)) {
++            if (Objects.equals(OwnerTelephones.digitsOnly(existing.getTelephone()), telephone)) {
+                 throw new OwnerConflictException(
+                         "An owner with the same telephone already exists");
+             }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8c54bdb..aa13d2b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,7 +2029,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[0-9 ()-]*$'
+           example: '6085551023'
+         email:
+           title: Email address

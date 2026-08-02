@@ -1,0 +1,49 @@
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 3d1135a..5db3457 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ build:
+ ensureUnique:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerUnique
+   govern: [ transaction ]
++  next: enforceDailyLimit
++
++enforceDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnforceOwnerDailyLimit
++  govern: [ transaction ]
+   next: normalizeCity
+ 
+ normalizeCity:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index d19a861..3e0180e 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -137,6 +137,28 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.schemaValidationErrors[0].field").exists());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        // 20 owners may be registered today; the 21st is a 400.
++        for (int i = 0; i < 20; i++) {
++            String telephone = String.format("70000000%02d", i);
++            String body = String.format("""
++                {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
++                """, telephone);
++            mvc.perform(post("/api/owners").content(body)
++                    .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++                .andExpect(status().isCreated());
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"7000009999"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

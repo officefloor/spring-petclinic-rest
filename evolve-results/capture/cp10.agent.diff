@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cf479fc..b01a323 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private Integer membershipNumber;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -110,6 +113,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a710323..e6f5fc9 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(80)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 970a156..8e9da06 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  membership_number INTEGER
++  membership_number INTEGER,
++  customer_code VARCHAR(80)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 34cb5d8..9c8beee 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INT,
++  customer_code VARCHAR(80),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9cddf75..451110e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      membership_number INT
++                                      membership_number INT,
++                                      customer_code TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index ec30744..2de120d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -14,6 +14,11 @@ ensureUnique:
+ assignMembership:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerMembershipNumber
+   govern: [ transaction ]
++  next: assignCustomerCode
++
++assignCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCustomerCode
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 288b827..8c54bdb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2095,6 +2095,14 @@ components:
+               format: int32
+               example: 11
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: The owner's customer code, assigned on creation and
++                formatted as '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than
++                the number of owners already in that city, zero-padded to four digits.
++              type: string
++              example: LONDON-0007
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
