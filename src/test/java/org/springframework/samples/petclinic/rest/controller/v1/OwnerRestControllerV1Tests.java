@@ -102,9 +102,10 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
-        // Distinct address from the seed George Franklin (110 W. Liberty St.): identical owners are rejected 409.
+        // Distinct telephone from the seed George Franklin (6085551023): owners sharing a
+        // last name and telephone are rejected 409.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"200 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Franklin","address":"200 W. Liberty St.","city":"Madison","telephone":"6085559999"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
