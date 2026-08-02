@@ -130,6 +130,26 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithTelephoneUsedByAnotherOwnerReturnsConflict() throws Exception {
+        // An existing owner already uses this telephone (different name/address entirely).
+        Owner existing = new Owner();
+        existing.setFirstName("Existing");
+        existing.setLastName("Holder-" + System.nanoTime());
+        existing.setAddress("1 Existing Way");
+        existing.setCity("Madison");
+        existing.setTelephone("6085551088");
+        ownerRepository.save(existing);
+
+        String body = """
+            {"firstName":"Different","lastName":"Person","address":"99 Other St.","city":"Springfield","telephone":"6085551088"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}

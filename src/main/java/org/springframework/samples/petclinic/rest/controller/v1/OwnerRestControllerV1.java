@@ -113,16 +113,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether an owner already exists matching on last name and telephone number.
+     * Determines whether an owner already exists using the same telephone number.
      *
      * @param owner the candidate owner to check
-     * @return {@code true} if another owner with the same last name and telephone is already stored
+     * @return {@code true} if any other owner with the same telephone is already stored
      */
     private boolean ownerAlreadyExists(Owner owner) {
-        return this.clinicService.findOwnerByLastName(owner.getLastName()).stream()
-            .anyMatch(existing ->
-                Objects.equals(existing.getLastName(), owner.getLastName())
-                    && Objects.equals(existing.getTelephone(), owner.getTelephone()));
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
