@@ -112,6 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDailyRegistrationLimitReached()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (isCityCapacityReached(owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (isDuplicateOwner(owner) || isDuplicateEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -298,6 +301,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
         return registeredToday >= 20;
+    }
+
+    /**
+     * Determines whether the city of a newly created owner has already reached its capacity. At most
+     * 8 owners may live in a single city; once a city already contains 8 owners, further registrations
+     * for that city are rejected. Cities are matched case- and whitespace-insensitively so that
+     * differing spellings of the same city name count towards the same limit.
+     *
+     * @param city the canonical city of the owner being created, may be {@code null}
+     * @return {@code true} if the city already contains 8 or more owners, {@code false} otherwise
+     */
+    private boolean isCityCapacityReached(String city) {
+        String normalized = normalize(city);
+        long existingInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(normalized, normalize(existing.getCity())))
+            .count();
+        return existingInCity >= 8;
     }
 
     private boolean isDuplicateOwner(Owner owner) {

@@ -183,6 +183,28 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerCityCapacityReached() throws Exception {
+        // Once a city already contains 8 owners, further registrations for that city are rejected.
+        String city = "Capacityville-" + System.nanoTime();
+        for (int i = 0; i < 8; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("George");
+            owner.setLastName("Cityowner-" + System.nanoTime());
+            owner.setAddress("110 W. Liberty St.");
+            owner.setCity(city);
+            owner.setTelephone(String.format("71055%05d", i));
+            ownerRepository.save(owner);
+        }
+        String body = String.format("""
+            {"firstName":"George","lastName":"Overcityowner","address":"110 W. Liberty St.","city":"%s","telephone":"9995558888"}
+            """, city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
