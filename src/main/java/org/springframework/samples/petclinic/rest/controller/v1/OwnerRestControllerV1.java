@@ -20,7 +20,9 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -153,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+        owner.setLocality(resolveLocality(owner.getCity()));
         owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
@@ -330,6 +333,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param city    the city of the owner about to be created
      * @return {@code true} if an existing owner already has the same address and city
      */
+    /**
+     * Determines the locality of the owner about to be created relative to the existing clientele.
+     * The result is {@code "local"} if the owner's city is the single most common city among all
+     * owners that already exist, and {@code "remote"} otherwise. Cities are grouped ignoring letter
+     * case. If there are no existing owners, or if two or more cities are tied for the most common
+     * (so there is no single most common city), the result is {@code "remote"}.
+     *
+     * @param city the city of the owner about to be created
+     * @return {@code "local"} if the city is the single most common among existing owners,
+     *         otherwise {@code "remote"}
+     */
+    private String resolveLocality(String city) {
+        if (city == null) {
+            return "remote";
+        }
+        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(existing -> existing.toLowerCase(Locale.ROOT),
+                Collectors.counting()));
+        long maxCount = countsByCity.values().stream()
+            .mapToLong(Long::longValue)
+            .max()
+            .orElse(0L);
+        if (maxCount == 0L) {
+            return "remote";
+        }
+        List<String> mostCommonCities = countsByCity.entrySet().stream()
+            .filter(entry -> entry.getValue() == maxCount)
+            .map(Map.Entry::getKey)
+            .toList();
+        if (mostCommonCities.size() != 1) {
+            return "remote";
+        }
+        return mostCommonCities.get(0).equals(city.toLowerCase(Locale.ROOT)) ? "local" : "remote";
+    }
+
     private boolean sharesHousehold(String address, String city) {
         if (address == null || city == null) {
             return false;

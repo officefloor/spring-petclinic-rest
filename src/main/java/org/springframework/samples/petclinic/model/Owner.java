@@ -79,6 +79,15 @@ public class Owner extends Person {
     @Transient
     private Boolean sharesHousehold;
 
+    /**
+     * The locality of the owner relative to the rest of the clientele: {@code "local"} if, at the
+     * moment this owner was created, their city was the single most common city among existing
+     * owners, otherwise {@code "remote"}. Computed and populated when the owner is created; not
+     * persisted.
+     */
+    @Transient
+    private String locality;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -160,6 +169,14 @@ public class Owner extends Person {
 
     public void setSharesHousehold(Boolean sharesHousehold) {
         this.sharesHousehold = sharesHousehold;
+    }
+
+    public String getLocality() {
+        return this.locality;
+    }
+
+    public void setLocality(String locality) {
+        this.locality = locality;
     }
 
     protected Set<Pet> getPetsInternal() {

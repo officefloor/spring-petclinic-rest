@@ -20,7 +20,25 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(toInitials(owner))")
+    @Mapping(target = "locality", expression = "java(toLocality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Maps the owner's locality, held as the string {@code 'local'} or {@code 'remote'}, to the
+     * corresponding {@link OwnerDto.LocalityEnum} value. Unlike the default MapStruct string-to-enum
+     * conversion (which matches on the enum constant name), this resolves by the enum's JSON value,
+     * so the lower-cased locality values map correctly.
+     *
+     * @param owner the owner, may be {@code null}
+     * @return the matching locality enum value, or {@code null} if {@code owner} or its locality is
+     *         {@code null}
+     */
+    default OwnerDto.LocalityEnum toLocality(Owner owner) {
+        if (owner == null || owner.getLocality() == null) {
+            return null;
+        }
+        return OwnerDto.LocalityEnum.fromValue(owner.getLocality());
+    }
 
     /**
      * Computes the display name of an owner formatted as {@code 'LastName, FirstName'}.
