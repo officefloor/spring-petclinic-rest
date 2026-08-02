@@ -52,6 +52,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+    private static final String ERROR_DUPLICATE_OWNER = "An identical owner already exists";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -119,6 +120,26 @@ public class ExceptionControllerAdvice {
         logger.debug("Data integrity violation stacktrace", e);
         HttpStatus status = HttpStatus.NOT_FOUND;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerException} thrown when a client attempts to create an owner
+     * that is identical to an existing one, returning a 409 Conflict status.
+     *
+     * @param e The {@link DuplicateOwnerException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+     */
+    @ExceptionHandler(DuplicateOwnerException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
+        logger.warn("Duplicate owner rejected at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_OWNER);
         return ResponseEntity.status(status).body(detail);
     }
 

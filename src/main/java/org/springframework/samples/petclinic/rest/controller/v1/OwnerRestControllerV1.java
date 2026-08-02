@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -101,11 +103,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (isDuplicateOwner(owner)) {
+            throw new DuplicateOwnerException("An owner with the same first name, last name, "
+                + "address, city and telephone already exists");
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Determines whether an owner identical to the given one already exists, comparing first name,
+     * last name, address, city and telephone.
+     *
+     * @param candidate the owner about to be created
+     * @return {@code true} if a matching owner is already present in the data store
+     */
+    private boolean isDuplicateOwner(Owner candidate) {
+        return this.clinicService.findOwnerByLastName(candidate.getLastName()).stream()
+            .anyMatch(existing ->
+                Objects.equals(existing.getFirstName(), candidate.getFirstName())
+                    && Objects.equals(existing.getLastName(), candidate.getLastName())
+                    && Objects.equals(existing.getAddress(), candidate.getAddress())
+                    && Objects.equals(existing.getCity(), candidate.getCity())
+                    && Objects.equals(existing.getTelephone(), candidate.getTelephone()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
