@@ -102,8 +102,9 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        // Distinct telephone so it does not collide with the seeded George Franklin (identical owners are rejected).
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551024"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
