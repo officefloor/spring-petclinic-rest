@@ -18,7 +18,21 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Computes the display name of an owner formatted as {@code 'LastName, FirstName'}.
+     *
+     * @param owner the owner, may be {@code null}
+     * @return the formatted display name, or {@code null} if {@code owner} is {@code null}
+     */
+    default String toDisplayName(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.getLastName() + ", " + owner.getFirstName();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

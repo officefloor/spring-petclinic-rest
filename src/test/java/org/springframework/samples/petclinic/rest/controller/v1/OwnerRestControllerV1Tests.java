@@ -110,7 +110,8 @@ class OwnerRestControllerV1Tests {
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
-            .andExpect(jsonPath("$.firstName").value("George"));
+            .andExpect(jsonPath("$.firstName").value("George"))
+            .andExpect(jsonPath("$.displayName").value("Franklin, George"));
     }
 
     @Test
