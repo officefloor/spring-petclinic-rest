@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_OWNER = "An identical owner already exists";
     private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners that may be registered today has been reached";
+    private static final String ERROR_CITY_OWNER_LIMIT = "The maximum number of owners for this city has been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -162,6 +163,27 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_OWNER_LIMIT);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityOwnerLimitException} thrown when a client attempts to create an owner
+     * in a city that already contains the maximum number of owners permitted per city,
+     * returning a 400 Bad Request status.
+     *
+     * @param e The {@link CityOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(CityOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityOwnerLimitException(CityOwnerLimitException e, HttpServletRequest request) {
+        logger.warn("City owner limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_OWNER_LIMIT);
         return ResponseEntity.status(status).body(detail);
     }
 

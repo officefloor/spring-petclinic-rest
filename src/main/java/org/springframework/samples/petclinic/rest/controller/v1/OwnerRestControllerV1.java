@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -63,6 +64,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Once this many owners already carry today's registration date, further creation is rejected.
      */
     private static final int MAX_OWNERS_PER_DAY = 20;
+
+    /**
+     * The maximum number of owners permitted in any single city. Once a city already contains
+     * this many owners, creating a further owner in that city is rejected. Cities are matched
+     * ignoring letter case.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 8;
 
     private final ClinicService clinicService;
 
@@ -129,6 +137,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateOwnerException("An owner with email "
                 + owner.getEmail() + " already exists");
         }
+        if (isCityOwnerLimitReached(owner.getCity())) {
+            throw new CityOwnerLimitException("The city " + owner.getCity()
+                + " already contains the maximum of " + MAX_OWNERS_PER_CITY + " owners");
+        }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCity(resolveCity(owner.getCity()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
@@ -153,6 +165,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
         return registeredToday >= MAX_OWNERS_PER_DAY;
+    }
+
+    /**
+     * Determines whether the given city already contains the maximum number of owners permitted
+     * per city. Owners are counted by matching their city ignoring letter case. A {@code null}
+     * city is never considered to have reached the limit.
+     *
+     * @param city the city of the owner about to be created
+     * @return {@code true} if at least {@link #MAX_OWNERS_PER_CITY} owners already reside in the
+     *         given city
+     */
+    private boolean isCityOwnerLimitReached(String city) {
+        if (city == null) {
+            return false;
+        }
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null
+                && existing.getCity().equalsIgnoreCase(city))
+            .count();
+        return ownersInCity >= MAX_OWNERS_PER_CITY;
     }
 
     /**

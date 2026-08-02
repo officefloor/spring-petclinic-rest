@@ -201,7 +201,10 @@ class OwnerRestControllerV1Tests {
             owner.setFirstName("Daily");
             owner.setLastName("Registrant");
             owner.setAddress("1 Registration Way");
-            owner.setCity("Madison");
+            // Each registrant lives in a distinct city so this daily-limit fixture does not
+            // incidentally trip the per-city owner limit; the daily limit counts by
+            // registration date, independent of city.
+            owner.setCity("DailyCity" + i);
             owner.setTelephone(String.format("60855%05d", i));
             owner.setRegistrationDate(LocalDate.now());
             ownerRepository.save(owner);
