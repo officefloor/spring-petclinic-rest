@@ -117,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 + owner.getEmail() + " already exists");
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCustomerCode(nextCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -152,6 +153,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(normalize(existing.getEmail()), email));
+    }
+
+    /**
+     * Builds the customer code for a newly created owner, formatted as
+     * {@code '<UPPERCASE_CITY>-<NNNN>'} where {@code NNNN} is one more than the number of
+     * owners already present in the same city, zero-padded to four digits
+     * (e.g. {@code 'LONDON-0007'}). Cities are matched ignoring letter case.
+     *
+     * @param city the city of the owner about to be created
+     * @return the formatted customer code
+     */
+    private String nextCustomerCode(String city) {
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null
+                && existing.getCity().equalsIgnoreCase(city))
+            .count();
+        return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), ownersInCity + 1);
     }
 
     /**
