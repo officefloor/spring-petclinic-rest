@@ -182,6 +182,50 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenCityFull() throws Exception {
+        String city = "Fullville-" + System.nanoTime();
+        for (int i = 0; i < 8; i++) {
+            Owner existing = new Owner();
+            existing.setFirstName("Resident" + i);
+            existing.setLastName("Local-" + System.nanoTime());
+            existing.setAddress(i + " Main St.");
+            existing.setCity(city);
+            existing.setTelephone("60800000" + String.format("%02d", i));
+            ownerRepository.save(existing);
+        }
+
+        String body = """
+            {"firstName":"One","lastName":"TooMany","address":"9 Main St.","city":"%s","telephone":"6089999999"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenCityBelowLimit() throws Exception {
+        String city = "Roomyville-" + System.nanoTime();
+        for (int i = 0; i < 7; i++) {
+            Owner existing = new Owner();
+            existing.setFirstName("Resident" + i);
+            existing.setLastName("Local-" + System.nanoTime());
+            existing.setAddress(i + " Main St.");
+            existing.setCity(city);
+            existing.setTelephone("60811100" + String.format("%02d", i));
+            ownerRepository.save(existing);
+        }
+
+        String body = """
+            {"firstName":"Just","lastName":"InTime","address":"8 Main St.","city":"%s","telephone":"6088888888"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """
