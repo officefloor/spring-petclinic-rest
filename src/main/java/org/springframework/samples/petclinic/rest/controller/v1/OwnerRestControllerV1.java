@@ -18,9 +18,12 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -124,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipTier(membershipNumber <= 100 ? "FOUNDING" : "STANDARD");
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setSharesHousehold(sharesHousehold(owner));
+        owner.setLocality(locality(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -260,6 +264,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(address, normalize(existing.getAddress()))
                 && Objects.equals(city, normalize(existing.getCity())));
+    }
+
+    /**
+     * Determines the locality of a newly created owner. The owner is {@code "local"} if their city
+     * is the single most common city among the owners that already exist at the moment of creation
+     * (i.e. strictly more owners live there than in any other city); otherwise the owner is
+     * {@code "remote"}. When no owners yet exist, or when several cities are tied for most common,
+     * the owner is {@code "remote"}. Cities are matched case- and whitespace-insensitively.
+     *
+     * @param owner the owner being created
+     * @return {@code "local"} or {@code "remote"}
+     */
+    private String locality(Owner owner) {
+        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
+            .map(existing -> normalize(existing.getCity()))
+            .filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(city -> city, Collectors.counting()));
+        if (countsByCity.isEmpty()) {
+            return "remote";
+        }
+        long max = Collections.max(countsByCity.values());
+        List<String> mostCommon = countsByCity.entrySet().stream()
+            .filter(entry -> entry.getValue() == max)
+            .map(Map.Entry::getKey)
+            .toList();
+        if (mostCommon.size() == 1 && mostCommon.get(0).equals(normalize(owner.getCity()))) {
+            return "local";
+        }
+        return "remote";
     }
 
     private int namesakeCount(Owner owner) {
