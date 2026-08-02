@@ -91,6 +91,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int FOUNDING_MEMBERSHIP_LIMIT = 100;
 
+    /**
+     * The number of existing owners that must already share a new owner's telephone area code
+     * (the first three digits) before the creation is flagged, via a WARN to the AUDIT logger,
+     * as a possible bulk signup.
+     */
+    private static final int BULK_AREA_CODE_THRESHOLD = 5;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -160,6 +167,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new CityOwnerLimitException("The city " + owner.getCity()
                 + " already contains the maximum of " + MAX_OWNERS_PER_CITY + " owners");
         }
+        boolean bulkAreaCodeSignup = isBulkAreaCodeSignup(owner.getTelephone());
         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
         owner.setMembershipNumber(membershipNumber);
         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
@@ -171,6 +179,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
             currentUsername(), owner.getId(), owner.getMembershipNumber());
+        if (bulkAreaCodeSignup) {
+            AUDIT.warn("Possible bulk signup: owner ownerId={} shares telephone area code {} "
+                    + "with {} or more existing owners",
+                owner.getId(), areaCode(owner.getTelephone()), BULK_AREA_CODE_THRESHOLD);
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -240,6 +253,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return telephone.replaceAll("[^0-9]", "");
+    }
+
+    /**
+     * Determines whether creating an owner with the given telephone should be flagged as a
+     * possible bulk signup. This is the case when {@link #BULK_AREA_CODE_THRESHOLD} or more
+     * existing owners already share the candidate's telephone area code (the first three digits
+     * of the digits-only telephone). Owners whose telephone has fewer than three digits, and a
+     * {@code null} candidate telephone, never trigger the flag. Evaluated before the new owner is
+     * saved, so only pre-existing owners are counted.
+     *
+     * @param telephone the (already normalised) telephone of the owner about to be created
+     * @return {@code true} if at least {@link #BULK_AREA_CODE_THRESHOLD} existing owners share the
+     *         same telephone area code
+     */
+    private boolean isBulkAreaCodeSignup(String telephone) {
+        String areaCode = areaCode(telephone);
+        if (areaCode == null) {
+            return false;
+        }
+        long sharing = this.clinicService.findAllOwners().stream()
+            .filter(existing -> areaCode.equals(areaCode(existing.getTelephone())))
+            .count();
+        return sharing >= BULK_AREA_CODE_THRESHOLD;
+    }
+
+    /**
+     * Extracts the area code (the first three digits) of a telephone number after stripping any
+     * non-digit characters.
+     *
+     * @param telephone the raw telephone value, possibly {@code null}
+     * @return the three-digit area code, or {@code null} if the telephone is {@code null} or has
+     *         fewer than three digits
+     */
+    private static String areaCode(String telephone) {
+        String digits = normalizeTelephone(telephone);
+        if (digits == null || digits.length() < 3) {
+            return null;
+        }
+        return digits.substring(0, 3);
     }
 
     /**
