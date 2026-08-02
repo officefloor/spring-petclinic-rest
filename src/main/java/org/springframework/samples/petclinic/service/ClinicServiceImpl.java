@@ -239,6 +239,7 @@ public class ClinicServiceImpl implements ClinicService {
             if (owner.getRegistrationDate() == null) {
                 owner.setRegistrationDate(LocalDate.now());
             }
+            owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
