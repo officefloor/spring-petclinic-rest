@@ -253,28 +253,44 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.getEmail() == null) {
             return false;
         }
+        String email = normalizeKey(owner.getEmail());
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getEmail(), owner.getEmail()));
+                && Objects.equals(normalizeKey(existing.getEmail()), email));
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
         if (owner.getTelephone() == null) {
             return false;
         }
+        String telephone = normalizeKey(owner.getTelephone());
         return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getTelephone(), owner.getTelephone()));
+                && Objects.equals(normalizeKey(existing.getTelephone()), telephone));
     }
 
     private boolean isDuplicateOwner(Owner owner) {
         if (owner.getLastName() == null) {
             return false;
         }
-        return ownerRepository.findByLastName(owner.getLastName()).stream()
+        String lastName = normalizeKey(owner.getLastName());
+        String telephone = normalizeKey(owner.getTelephone());
+        return ownerRepository.findAll().stream()
             .anyMatch(existing -> !existing.getId().equals(owner.getId())
-                && Objects.equals(existing.getLastName(), owner.getLastName())
-                && Objects.equals(existing.getTelephone(), owner.getTelephone()));
+                && Objects.equals(normalizeKey(existing.getLastName()), lastName)
+                && Objects.equals(normalizeKey(existing.getTelephone()), telephone));
+    }
+
+    /**
+     * Normalizes a value for duplicate detection so that comparisons ignore
+     * letter case and surrounding or repeated whitespace (e.g. {@code
+     * "  john   smith "} and {@code "John Smith"} are treated as equal).
+     */
+    private static String normalizeKey(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     @Override
