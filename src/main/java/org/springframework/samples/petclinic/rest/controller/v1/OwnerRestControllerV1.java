@@ -104,8 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (isDuplicateOwner(owner)) {
-            throw new DuplicateOwnerException("An owner with the same first name, last name, "
-                + "address, city and telephone already exists");
+            throw new DuplicateOwnerException("An owner with the same last name and "
+                + "telephone already exists");
         }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -115,8 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether an owner identical to the given one already exists, comparing first name,
-     * last name, address, city and telephone.
+     * Determines whether an owner with the same last name and telephone already exists.
      *
      * @param candidate the owner about to be created
      * @return {@code true} if a matching owner is already present in the data store
@@ -124,10 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isDuplicateOwner(Owner candidate) {
         return this.clinicService.findOwnerByLastName(candidate.getLastName()).stream()
             .anyMatch(existing ->
-                Objects.equals(existing.getFirstName(), candidate.getFirstName())
-                    && Objects.equals(existing.getLastName(), candidate.getLastName())
-                    && Objects.equals(existing.getAddress(), candidate.getAddress())
-                    && Objects.equals(existing.getCity(), candidate.getCity())
+                Objects.equals(existing.getLastName(), candidate.getLastName())
                     && Objects.equals(existing.getTelephone(), candidate.getTelephone()));
     }
 

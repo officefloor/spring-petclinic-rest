@@ -128,6 +128,37 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateLastNameAndTelephoneReturnsConflict() throws Exception {
+        // An owner with this last name and telephone (6085551023) already exists.
+        // The last name must satisfy Bean Validation (letters only), so it cannot carry
+        // a numeric suffix; the surrounding @Transactional rollback keeps it isolated.
+        String lastName = "Zephyrion";
+        newOwner(lastName);
+        // Differs in first name, address and city, but shares last name and telephone.
+        String body = """
+            {"firstName":"Jane","lastName":"%s","address":"999 Other St.","city":"Springfield","telephone":"6085551023"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSameLastNameDifferentTelephoneSucceeds() throws Exception {
+        String lastName = "Quinnelle";
+        newOwner(lastName);
+        // Same last name but a different telephone is allowed.
+        String body = """
+            {"firstName":"Jane","lastName":"%s","address":"999 Other St.","city":"Springfield","telephone":"6085559999"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """

@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an attempt is made to create an {@code Owner} that is identical to
- * one that already exists (same first name, last name, address, city and
- * telephone). Handled by {@link ExceptionControllerAdvice} as an HTTP 409 Conflict.
+ * Thrown when an attempt is made to create an {@code Owner} that has the same
+ * last name and telephone as one that already exists. Handled by
+ * {@link ExceptionControllerAdvice} as an HTTP 409 Conflict.
  */
 public class DuplicateOwnerException extends RuntimeException {
 
