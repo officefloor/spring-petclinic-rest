@@ -88,7 +88,10 @@ public class Owner extends Person {
     }
 
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        // Store telephone numbers as digits only, stripping spaces, dashes and
+        // parentheses so that formatted input such as "(613) 555-0100" is kept
+        // and compared as "6135550100".
+        this.telephone = telephone == null ? null : telephone.replaceAll("[\\s()-]", "");
     }
 
     public String getEmail() {
