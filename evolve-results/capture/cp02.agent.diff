@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+index d25d057..5c199c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+@@ -17,9 +17,9 @@
+ package org.springframework.samples.petclinic.rest.advice;
+ 
+ /**
+- * Thrown when an attempt is made to create an {@code Owner} that is identical to
+- * one that already exists (same first name, last name, address, city and
+- * telephone). Handled by {@link ExceptionControllerAdvice} as an HTTP 409 Conflict.
++ * Thrown when an attempt is made to create an {@code Owner} that has the same
++ * last name and telephone as one that already exists. Handled by
++ * {@link ExceptionControllerAdvice} as an HTTP 409 Conflict.
+  */
+ public class DuplicateOwnerException extends RuntimeException {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c4dd558..ea11240 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,8 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (isDuplicateOwner(owner)) {
+-            throw new DuplicateOwnerException("An owner with the same first name, last name, "
+-                + "address, city and telephone already exists");
++            throw new DuplicateOwnerException("An owner with the same last name and "
++                + "telephone already exists");
+         }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -115,8 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether an owner identical to the given one already exists, comparing first name,
+-     * last name, address, city and telephone.
++     * Determines whether an owner with the same last name and telephone already exists.
+      *
+      * @param candidate the owner about to be created
+      * @return {@code true} if a matching owner is already present in the data store
+@@ -124,10 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private boolean isDuplicateOwner(Owner candidate) {
+         return this.clinicService.findOwnerByLastName(candidate.getLastName()).stream()
+             .anyMatch(existing ->
+-                Objects.equals(existing.getFirstName(), candidate.getFirstName())
+-                    && Objects.equals(existing.getLastName(), candidate.getLastName())
+-                    && Objects.equals(existing.getAddress(), candidate.getAddress())
+-                    && Objects.equals(existing.getCity(), candidate.getCity())
++                Objects.equals(existing.getLastName(), candidate.getLastName())
+                     && Objects.equals(existing.getTelephone(), candidate.getTelephone()));
+     }
+ 
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 4cf0e96..f456bf4 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -126,6 +126,37 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.schemaValidationErrors[0].field").exists());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateLastNameAndTelephoneReturnsConflict() throws Exception {
++        // An owner with this last name and telephone (6085551023) already exists.
++        // The last name must satisfy Bean Validation (letters only), so it cannot carry
++        // a numeric suffix; the surrounding @Transactional rollback keeps it isolated.
++        String lastName = "Zephyrion";
++        newOwner(lastName);
++        // Differs in first name, address and city, but shares last name and telephone.
++        String body = """
++            {"firstName":"Jane","lastName":"%s","address":"999 Other St.","city":"Springfield","telephone":"6085551023"}
++            """.formatted(lastName);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerSameLastNameDifferentTelephoneSucceeds() throws Exception {
++        String lastName = "Quinnelle";
++        newOwner(lastName);
++        // Same last name but a different telephone is allowed.
++        String body = """
++            {"firstName":"Jane","lastName":"%s","address":"999 Other St.","city":"Springfield","telephone":"6085559999"}
++            """.formatted(lastName);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

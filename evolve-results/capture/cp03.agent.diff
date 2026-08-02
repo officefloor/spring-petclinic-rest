@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+index 5c199c1..a1a6b86 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerException.java
+@@ -17,8 +17,8 @@
+ package org.springframework.samples.petclinic.rest.advice;
+ 
+ /**
+- * Thrown when an attempt is made to create an {@code Owner} that has the same
+- * last name and telephone as one that already exists. Handled by
++ * Thrown when an attempt is made to create an {@code Owner} whose telephone
++ * number is already used by another owner. Handled by
+  * {@link ExceptionControllerAdvice} as an HTTP 409 Conflict.
+  */
+ public class DuplicateOwnerException extends RuntimeException {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ea11240..05f1e96 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,9 +103,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        if (isDuplicateOwner(owner)) {
+-            throw new DuplicateOwnerException("An owner with the same last name and "
+-                + "telephone already exists");
++        if (isDuplicateTelephone(owner)) {
++            throw new DuplicateOwnerException("An owner with telephone "
++                + owner.getTelephone() + " already exists");
+         }
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -115,16 +115,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether an owner with the same last name and telephone already exists.
++     * Determines whether any other owner already uses the candidate's telephone number.
+      *
+      * @param candidate the owner about to be created
+-     * @return {@code true} if a matching owner is already present in the data store
++     * @return {@code true} if an owner with the same telephone is already present in the data store
+      */
+-    private boolean isDuplicateOwner(Owner candidate) {
+-        return this.clinicService.findOwnerByLastName(candidate.getLastName()).stream()
++    private boolean isDuplicateTelephone(Owner candidate) {
++        return this.clinicService.findAllOwners().stream()
+             .anyMatch(existing ->
+-                Objects.equals(existing.getLastName(), candidate.getLastName())
+-                    && Objects.equals(existing.getTelephone(), candidate.getTelephone()));
++                Objects.equals(existing.getTelephone(), candidate.getTelephone()));
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index f456bf4..0b32529 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -143,6 +143,19 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateTelephoneDifferentLastNameReturnsConflict() throws Exception {
++        // An existing owner uses telephone 6085551023; a different last name must still be rejected.
++        newOwner("Zephyrion");
++        String body = """
++            {"firstName":"Jane","lastName":"Quinnelle","address":"999 Other St.","city":"Springfield","telephone":"6085551023"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSameLastNameDifferentTelephoneSucceeds() throws Exception {

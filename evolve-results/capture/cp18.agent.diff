@@ -1,0 +1,152 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 92a768d..c0b8f58 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,8 +20,26 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(toDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(toInitials(owner))")
++    @Mapping(target = "locality", expression = "java(toLocality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Maps the owner's locality, held as the string {@code 'local'} or {@code 'remote'}, to the
++     * corresponding {@link OwnerDto.LocalityEnum} value. Unlike the default MapStruct string-to-enum
++     * conversion (which matches on the enum constant name), this resolves by the enum's JSON value,
++     * so the lower-cased locality values map correctly.
++     *
++     * @param owner the owner, may be {@code null}
++     * @return the matching locality enum value, or {@code null} if {@code owner} or its locality is
++     *         {@code null}
++     */
++    default OwnerDto.LocalityEnum toLocality(Owner owner) {
++        if (owner == null || owner.getLocality() == null) {
++            return null;
++        }
++        return OwnerDto.LocalityEnum.fromValue(owner.getLocality());
++    }
++
+     /**
+      * Computes the display name of an owner formatted as {@code 'LastName, FirstName'}.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6d3cc11..2180e8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -79,6 +79,15 @@ public class Owner extends Person {
+     @Transient
+     private Boolean sharesHousehold;
+ 
++    /**
++     * The locality of the owner relative to the rest of the clientele: {@code "local"} if, at the
++     * moment this owner was created, their city was the single most common city among existing
++     * owners, otherwise {@code "remote"}. Computed and populated when the owner is created; not
++     * persisted.
++     */
++    @Transient
++    private String locality;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -162,6 +171,14 @@ public class Owner extends Person {
+         this.sharesHousehold = sharesHousehold;
+     }
+ 
++    public String getLocality() {
++        return this.locality;
++    }
++
++    public void setLocality(String locality) {
++        this.locality = locality;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1c2ec20..01eea1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,7 +20,9 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Objects;
++import java.util.stream.Collectors;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -153,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
++        owner.setLocality(resolveLocality(owner.getCity()));
+         owner.setCity(resolveCity(owner.getCity()));
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+@@ -330,6 +333,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param city    the city of the owner about to be created
+      * @return {@code true} if an existing owner already has the same address and city
+      */
++    /**
++     * Determines the locality of the owner about to be created relative to the existing clientele.
++     * The result is {@code "local"} if the owner's city is the single most common city among all
++     * owners that already exist, and {@code "remote"} otherwise. Cities are grouped ignoring letter
++     * case. If there are no existing owners, or if two or more cities are tied for the most common
++     * (so there is no single most common city), the result is {@code "remote"}.
++     *
++     * @param city the city of the owner about to be created
++     * @return {@code "local"} if the city is the single most common among existing owners,
++     *         otherwise {@code "remote"}
++     */
++    private String resolveLocality(String city) {
++        if (city == null) {
++            return "remote";
++        }
++        Map<String, Long> countsByCity = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCity)
++            .filter(Objects::nonNull)
++            .collect(Collectors.groupingBy(existing -> existing.toLowerCase(Locale.ROOT),
++                Collectors.counting()));
++        long maxCount = countsByCity.values().stream()
++            .mapToLong(Long::longValue)
++            .max()
++            .orElse(0L);
++        if (maxCount == 0L) {
++            return "remote";
++        }
++        List<String> mostCommonCities = countsByCity.entrySet().stream()
++            .filter(entry -> entry.getValue() == maxCount)
++            .map(Map.Entry::getKey)
++            .toList();
++        if (mostCommonCities.size() != 1) {
++            return "remote";
++        }
++        return mostCommonCities.get(0).equals(city.toLowerCase(Locale.ROOT)) ? "local" : "remote";
++    }
++
+     private boolean sharesHousehold(String address, String city) {
+         if (address == null || city == null) {
+             return false;
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7b8cdbc..c39b879 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,6 +2115,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            locality:
++              title: Locality
++              description: "'local' if, when this owner was created, their city was the single most common city among existing owners; otherwise 'remote'."
++              type: string
++              enum:
++                - local
++                - remote
++              example: 'local'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7403f9c..307860b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.time.LocalDate;
+ import java.util.*;
+ 
+ /**
+@@ -52,6 +53,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "registration_date")
++    private LocalDate registrationDate;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -87,6 +91,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++
++    public void setRegistrationDate(LocalDate registrationDate) {
++        this.registrationDate = registrationDate;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 540152e..34a97b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
+@@ -104,6 +105,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (owner.getRegistrationDate() == null) {
++            owner.setRegistrationDate(LocalDate.now());
++        }
+         if (isDuplicateTelephone(owner)) {
+             throw new DuplicateOwnerException("An owner with telephone "
+                 + owner.getTelephone() + " already exists");
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 33bc0c8..77bb122 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+-  email VARCHAR(255)
++  email VARCHAR(255),
++  registration_date DATE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 005b04d..4a76772 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+-  email      VARCHAR(255)
++  email      VARCHAR(255),
++  registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e2082e0..4e5bc62 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  registration_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c1e01cc..a363d74 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       address    TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+-                                      email      TEXT
++                                      email      TEXT,
++                                      registration_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 14d7ef6..6c6b801 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2039,6 +2039,12 @@ components:
+           minLength: 1
+           maxLength: 255
+           example: george.franklin@example.com
++        registrationDate:
++          title: Registration date
++          description: The date the pet owner was registered, in ISO format (YYYY-MM-DD). Defaults to today's date when the owner is created without one.
++          type: string
++          format: date
++          example: '2026-08-03'
+       required:
+         - firstName
+         - lastName
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 0e340cc..5d10e73 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -114,6 +114,30 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.displayName").value("Franklin, George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerWithoutRegistrationDateDefaultsToToday() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551077"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.registrationDate").value(LocalDate.now().toString()));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerWithRegistrationDateKeepsProvidedValue() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085551066","registrationDate":"2020-05-17"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.registrationDate").value("2020-05-17"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {

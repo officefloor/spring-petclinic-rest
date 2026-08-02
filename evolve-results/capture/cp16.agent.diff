@@ -1,0 +1,140 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 924afcc..42df0c9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,13 @@ public class Owner extends Person {
+     @Column(name = "membership_tier")
+     private String membershipTier;
+ 
++    /**
++     * The number of other owners that already shared this owner's last name at the moment the
++     * owner was created. Computed and populated when the owner is created; not persisted.
++     */
++    @Transient
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -132,6 +139,14 @@ public class Owner extends Person {
+         this.membershipTier = membershipTier;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a7dbebc..9ffd831 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -151,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         int membershipNumber = this.clinicService.findAllOwners().size() + 1;
+         owner.setMembershipNumber(membershipNumber);
+         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
++        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         owner.setCity(resolveCity(owner.getCity()));
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+@@ -301,6 +302,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return result.toString();
+     }
+ 
++    /**
++     * Counts how many owners already present in the data store share the given last name,
++     * ignoring letter case. This is evaluated before the new owner is saved, so it reflects
++     * the number of <em>other</em> owners carrying that last name at creation time.
++     *
++     * @param lastName the last name of the owner about to be created
++     * @return the number of existing owners with the same last name; {@code 0} if the last
++     *         name is {@code null}
++     */
++    private int countNamesakes(String lastName) {
++        if (lastName == null) {
++            return 0;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
++            .count();
++    }
++
+     private String nextCustomerCode(String city) {
+         long ownersInCity = this.clinicService.findAllOwners().stream()
+             .filter(existing -> existing.getCity() != null
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1ff65a8..5fdaec6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2101,6 +2101,14 @@ components:
+                 - STANDARD
+               example: 'FOUNDING'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that already shared this owner's last name at the moment the owner was created.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index fbd7661..960237f 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -308,6 +308,46 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.city").value("McFarland"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReportsZeroNamesakesForNovelLastName() throws Exception {
++        // No existing owner (seed or otherwise) carries this last name, so no namesakes exist.
++        String body = """
++            {"firstName":"George","lastName":"Wobblesworth","address":"111 W. Liberty St.","city":"Namesakeville","telephone":"6085557001"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.namesakeCount").value(0));
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerCountsExistingNamesakes() throws Exception {
++        // Two owners already share this last name (matched ignoring case); the newly created
++        // owner must report a namesake count of two, excluding itself.
++        saveNamesake("Wobblesworth", 1);
++        saveNamesake("WOBBLESWORTH", 2);
++        String body = """
++            {"firstName":"Jane","lastName":"Wobblesworth","address":"999 Other St.","city":"Namesaketown","telephone":"6085557003"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.namesakeCount").value(2));
++    }
++
++    private void saveNamesake(String lastName, int index) {
++        Owner owner = new Owner();
++        owner.setFirstName("Existing");
++        owner.setLastName(lastName);
++        owner.setAddress("1 Namesake Way");
++        // Distinct city per owner so this fixture never trips the per-city owner limit.
++        owner.setCity("NamesakeCity" + index);
++        owner.setTelephone(String.format("60855570%02d", 10 + index));
++        ownerRepository.save(owner);
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

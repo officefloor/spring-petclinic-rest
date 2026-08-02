@@ -1,0 +1,120 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 5714c9e..c927fcf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+     private static final String ERROR_DUPLICATE_OWNER = "An identical owner already exists";
+     private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners that may be registered today has been reached";
++    private static final String ERROR_CITY_OWNER_LIMIT = "The maximum number of owners for this city has been reached";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -165,6 +166,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityOwnerLimitException} thrown when a client attempts to create an owner
++     * in a city that already contains the maximum number of owners permitted per city,
++     * returning a 400 Bad Request status.
++     *
++     * @param e The {@link CityOwnerLimitException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(CityOwnerLimitException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityOwnerLimitException(CityOwnerLimitException e, HttpServletRequest request) {
++        logger.warn("City owner limit reached at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_OWNER_LIMIT);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b5ce04f..37ba36d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.CityOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+@@ -64,6 +65,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int MAX_OWNERS_PER_DAY = 20;
+ 
++    /**
++     * The maximum number of owners permitted in any single city. Once a city already contains
++     * this many owners, creating a further owner in that city is rejected. Cities are matched
++     * ignoring letter case.
++     */
++    private static final int MAX_OWNERS_PER_CITY = 8;
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -129,6 +137,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new DuplicateOwnerException("An owner with email "
+                 + owner.getEmail() + " already exists");
+         }
++        if (isCityOwnerLimitReached(owner.getCity())) {
++            throw new CityOwnerLimitException("The city " + owner.getCity()
++                + " already contains the maximum of " + MAX_OWNERS_PER_CITY + " owners");
++        }
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+         owner.setCity(resolveCity(owner.getCity()));
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+@@ -155,6 +167,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return registeredToday >= MAX_OWNERS_PER_DAY;
+     }
+ 
++    /**
++     * Determines whether the given city already contains the maximum number of owners permitted
++     * per city. Owners are counted by matching their city ignoring letter case. A {@code null}
++     * city is never considered to have reached the limit.
++     *
++     * @param city the city of the owner about to be created
++     * @return {@code true} if at least {@link #MAX_OWNERS_PER_CITY} owners already reside in the
++     *         given city
++     */
++    private boolean isCityOwnerLimitReached(String city) {
++        if (city == null) {
++            return false;
++        }
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getCity() != null
++                && existing.getCity().equalsIgnoreCase(city))
++            .count();
++        return ownersInCity >= MAX_OWNERS_PER_CITY;
++    }
++
+     /**
+      * Determines whether any other owner already uses the candidate's telephone number.
+      * The comparison ignores letter case and surrounding or repeated whitespace.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 73ed2c1..fbd7661 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -201,7 +201,10 @@ class OwnerRestControllerV1Tests {
+             owner.setFirstName("Daily");
+             owner.setLastName("Registrant");
+             owner.setAddress("1 Registration Way");
+-            owner.setCity("Madison");
++            // Each registrant lives in a distinct city so this daily-limit fixture does not
++            // incidentally trip the per-city owner limit; the daily limit counts by
++            // registration date, independent of city.
++            owner.setCity("DailyCity" + i);
+             owner.setTelephone(String.format("60855%05d", i));
+             owner.setRegistrationDate(LocalDate.now());
+             ownerRepository.save(owner);

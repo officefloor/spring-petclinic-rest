@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 42df0c9..6d3cc11 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,13 @@ public class Owner extends Person {
+     @Transient
+     private Integer namesakeCount;
+ 
++    /**
++     * Whether, at the moment this owner was created, another owner already had the same address
++     * and city. Computed and populated when the owner is created; not persisted.
++     */
++    @Transient
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -147,6 +154,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9ffd831..1c2ec20 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -152,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipNumber(membershipNumber);
+         owner.setMembershipTier(membershipNumber <= FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD");
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
++        owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+         owner.setCity(resolveCity(owner.getCity()));
+         owner.setCustomerCode(nextCustomerCode(owner.getCity()));
+         this.clinicService.saveOwner(owner);
+@@ -320,6 +321,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Determines whether another owner already resides at the same address and city as the owner
++     * about to be created. Both address and city are matched ignoring letter case. This is
++     * evaluated before the new owner is saved, so it reflects only owners that already existed.
++     *
++     * @param address the address of the owner about to be created
++     * @param city    the city of the owner about to be created
++     * @return {@code true} if an existing owner already has the same address and city
++     */
++    private boolean sharesHousehold(String address, String city) {
++        if (address == null || city == null) {
++            return false;
++        }
++        return this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
++                && city.equalsIgnoreCase(existing.getCity()));
++    }
++
+     private String nextCustomerCode(String city) {
+         long ownersInCity = this.clinicService.findAllOwners().stream()
+             .filter(existing -> existing.getCity() != null
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5fdaec6..7b8cdbc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2109,6 +2109,12 @@ components:
+               minimum: 0
+               example: 3
+               readOnly: true
++            sharesHousehold:
++              title: Shares household
++              description: Whether, when this owner was created, another owner already had the same address and city.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
