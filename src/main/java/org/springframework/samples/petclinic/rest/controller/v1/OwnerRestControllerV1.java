@@ -139,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: user={} ownerId={} membershipNumber={}",
             currentUsername(), owner.getId(), owner.getMembershipNumber());
+        warnIfPossibleBulkSignup(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -154,6 +155,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String currentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null ? authentication.getName() : "anonymous";
+    }
+
+    /**
+     * The number of existing owners that must already share a newly created owner's telephone area
+     * code (see {@link #areaCode(String)}) before a possible-bulk-signup warning is emitted.
+     */
+    private static final long BULK_SIGNUP_AREA_CODE_THRESHOLD = 5;
+
+    /**
+     * Emits a WARN to the {@link #AUDIT} logger flagging a possible bulk signup when the newly
+     * created owner's telephone shares its area code (first three digits, see
+     * {@link #areaCode(String)}) with {@value #BULK_SIGNUP_AREA_CODE_THRESHOLD} or more existing
+     * owners. The owner itself is excluded from the count so only previously stored owners are
+     * considered. Owners without a resolvable area code are ignored.
+     *
+     * @param owner the owner that has just been created and stored
+     */
+    private void warnIfPossibleBulkSignup(Owner owner) {
+        String areaCode = areaCode(owner.getTelephone());
+        if (areaCode == null) {
+            return;
+        }
+        long existingWithAreaCode = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> areaCode.equals(areaCode(existing.getTelephone())))
+            .count();
+        if (existingWithAreaCode >= BULK_SIGNUP_AREA_CODE_THRESHOLD) {
+            AUDIT.warn("possible bulk signup: user={} ownerId={} areaCode={} existingOwners={}",
+                currentUsername(), owner.getId(), areaCode, existingWithAreaCode);
+        }
+    }
+
+    /**
+     * Resolves the area code of a telephone number, defined as the first three digits of its
+     * normalized digits-only form (see {@link #normalizeTelephone(String)}).
+     *
+     * @param telephone the raw telephone value, may be {@code null}
+     * @return the three-digit area code, or {@code null} if fewer than three digits are present
+     */
+    private static String areaCode(String telephone) {
+        String normalized = normalizeTelephone(telephone);
+        if (normalized == null || normalized.length() < 3) {
+            return null;
+        }
+        return normalized.substring(0, 3);
     }
 
     /**
