@@ -106,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
         owner.setMembershipTier(resolveMembershipTier());
         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+        owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -191,6 +192,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getLastName() != null
                 && existing.getLastName().equalsIgnoreCase(lastName))
             .count();
+    }
+
+    /**
+     * Determine whether another owner already shares a household with a newly
+     * created owner, i.e. an existing owner already has the same address and city
+     * (both compared case-insensitively) at the moment the new owner is created.
+     */
+    private boolean sharesHousehold(String address, String city) {
+        if (address == null || city == null) {
+            return false;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
+                && city.equalsIgnoreCase(existing.getCity()));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
