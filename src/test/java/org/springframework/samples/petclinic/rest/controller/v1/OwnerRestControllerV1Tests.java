@@ -195,6 +195,45 @@ class OwnerRestControllerV1Tests {
             .andExpect(status().isCreated());
     }
 
+    private void registerOwnersToday(int count) {
+        for (int i = 0; i < count; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily");
+            owner.setLastName("Registrant");
+            owner.setAddress("1 Registration Way");
+            owner.setCity("Madison");
+            owner.setTelephone(String.format("60855%05d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // Twenty owners have already been registered today; the next one must be rejected.
+        registerOwnersToday(20);
+        String body = """
+            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085552222"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenBelowDailyLimit() throws Exception {
+        // Only nineteen owners registered today: there is still room for one more.
+        registerOwnersToday(19);
+        String body = """
+            {"firstName":"George","lastName":"Franklin","address":"111 W. Liberty St.","city":"Madison","telephone":"6085552223"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerWithEmailSucceedsAndReturnsEmail() throws Exception {

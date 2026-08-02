@@ -53,6 +53,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_OWNER = "An identical owner already exists";
+    private static final String ERROR_DAILY_OWNER_LIMIT = "The maximum number of owners that may be registered today has been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -140,6 +141,27 @@ public class ExceptionControllerAdvice {
             e.getMessage());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_OWNER);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyOwnerRegistrationLimitException} thrown when a client attempts to create
+     * an owner after the maximum number of owners allowed to register on a single day has already
+     * been reached, returning a 400 Bad Request status.
+     *
+     * @param e The {@link DailyOwnerRegistrationLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(DailyOwnerRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerRegistrationLimitException(DailyOwnerRegistrationLimitException e, HttpServletRequest request) {
+        logger.warn("Daily owner registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_OWNER_LIMIT);
         return ResponseEntity.status(status).body(detail);
     }
 

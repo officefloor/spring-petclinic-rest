@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -56,6 +57,12 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * The maximum number of owners that may be registered on any single day (by registration date).
+     * Once this many owners already carry today's registration date, further creation is rejected.
+     */
+    private static final int MAX_OWNERS_PER_DAY = 20;
 
     private final ClinicService clinicService;
 
@@ -109,6 +116,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (isDailyRegistrationLimitReached()) {
+            throw new DailyOwnerRegistrationLimitException(
+                "The maximum of " + MAX_OWNERS_PER_DAY
+                    + " owners that may be registered today has already been reached");
+        }
         if (isDuplicateTelephone(owner)) {
             throw new DuplicateOwnerException("An owner with telephone "
                 + owner.getTelephone() + " already exists");
@@ -125,6 +137,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Determines whether the maximum number of owner registrations permitted for today has
+     * already been reached. Owners are counted by registration date, comparing against the
+     * current day, so the limit resets at midnight.
+     *
+     * @return {@code true} if at least {@link #MAX_OWNERS_PER_DAY} owners already carry today's
+     *         registration date
+     */
+    private boolean isDailyRegistrationLimitReached() {
+        LocalDate today = LocalDate.now();
+        long registeredToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        return registeredToday >= MAX_OWNERS_PER_DAY;
     }
 
     /**
