@@ -240,6 +240,7 @@ public class ClinicServiceImpl implements ClinicService {
                 owner.setRegistrationDate(LocalDate.now());
             }
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
+            owner.setCustomerCode(generateCustomerCode(owner));
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
@@ -251,6 +252,22 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Build a customer code for a newly created owner, formatted as
+     * {@code <UPPERCASE_CITY>-<NNNN>} where NNNN is one more than the number of
+     * owners already registered in that city, zero-padded to four digits
+     * (e.g. {@code LONDON-0007}).
+     */
+    private String generateCustomerCode(Owner owner) {
+        String city = owner.getCity();
+        long existingInCity = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        String prefix = city == null ? "" : city.toUpperCase(Locale.ROOT);
+        return String.format("%s-%04d", prefix, existingInCity + 1);
     }
 
     private boolean isDuplicateTelephone(Owner owner) {
