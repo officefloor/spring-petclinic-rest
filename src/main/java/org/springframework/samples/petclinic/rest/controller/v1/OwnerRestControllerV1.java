@@ -105,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
         owner.setMembershipTier(resolveMembershipTier());
+        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -176,6 +177,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
         return String.format("%s-%04d", city.toUpperCase(), ownersInCity + 1);
+    }
+
+    /**
+     * Count how many owners already exist that share the given last name
+     * (compared case-insensitively) at the moment a new owner is created.
+     */
+    private int countNamesakes(String lastName) {
+        if (lastName == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
