@@ -127,6 +127,26 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailIgnoresCase() throws Exception {
+        // First owner registers an email; second owner reuses it differing only by letter case,
+        // with a distinct telephone so the email is the sole duplicate trigger.
+        String first = """
+            {"firstName":"George","lastName":"Emailone","address":"110 W. Liberty St.","city":"Madison","telephone":"9995550010","email":"John.Smith@Example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        String second = """
+            {"firstName":"Jane","lastName":"Emailtwo","address":"200 Main St.","city":"Madison","telephone":"9995550011","email":"john.smith@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDuplicateTelephoneConflict() throws Exception {
         // A different last name but a telephone already used by another owner must be rejected.
         Owner existing = newOwner("Existingowner-" + System.nanoTime());

@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
@@ -219,17 +220,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Determines whether the given owner's email address is already used by another owner. An owner
-     * without an email address never conflicts.
+     * without an email address never conflicts. The comparison is case-insensitive and ignores
+     * surrounding or repeated whitespace, so e.g. {@code "  John.Smith@Example.com "} and
+     * {@code "john.smith@example.com"} are treated as the same address.
      *
      * @param owner the candidate owner to check
      * @return {@code true} if another owner already uses the email address, {@code false} otherwise
      */
     private boolean isDuplicateEmail(Owner owner) {
-        String email = owner.getEmail();
-        if (email == null || email.isBlank()) {
+        String email = normalize(owner.getEmail());
+        if (email == null || email.isEmpty()) {
             return false;
         }
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> Objects.equals(existing.getEmail(), email));
+            .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+    }
+
+    /**
+     * Normalises a value for case- and whitespace-insensitive duplicate detection: surrounding
+     * whitespace is stripped, any run of internal whitespace is collapsed to a single space and all
+     * letters are lower-cased. This is what makes {@code "  john   smith "} and {@code "John Smith"}
+     * count as the same person (or, for e-mail, the same address) when detecting duplicates.
+     *
+     * @param value the raw value, may be {@code null}
+     * @return the normalised value, or {@code null} if {@code value} was {@code null}
+     */
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
