@@ -101,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setCity(resolveCity(owner.getCity()));
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
         this.clinicService.saveOwner(owner);
@@ -108,6 +109,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Resolve the city for a newly created owner. If an owner already exists in
+     * that city (matched case-insensitively), reuse that owner's exact spelling;
+     * otherwise the supplied city is title-cased.
+     */
+    private String resolveCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getCity)
+            .filter(existing -> existing != null && existing.equalsIgnoreCase(city))
+            .findFirst()
+            .orElseGet(() -> titleCase(city));
+    }
+
+    /**
+     * Title-case a city name: the first letter of each whitespace-separated word
+     * is upper-cased and the remaining letters lower-cased.
+     */
+    private String titleCase(String city) {
+        StringBuilder sb = new StringBuilder(city.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < city.length(); i++) {
+            char c = city.charAt(i);
+            if (Character.isWhitespace(c)) {
+                startOfWord = true;
+                sb.append(c);
+            } else if (startOfWord) {
+                sb.append(Character.toUpperCase(c));
+                startOfWord = false;
+            } else {
+                sb.append(Character.toLowerCase(c));
+            }
+        }
+        return sb.toString();
     }
 
     /**
