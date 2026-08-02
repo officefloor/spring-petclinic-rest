@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5c5386d..2402227 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -67,6 +67,9 @@ public class Owner extends Person {
+     @Column(name = "membership_tier")
+     private String membershipTier;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -137,6 +140,14 @@ public class Owner extends Person {
+         this.membershipTier = membershipTier;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3912f35..e883891 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -105,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
+         owner.setMembershipTier(resolveMembershipTier());
++        owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -178,6 +179,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", city.toUpperCase(), ownersInCity + 1);
+     }
+ 
++    /**
++     * Count how many owners already exist that share the given last name
++     * (compared case-insensitively) at the moment a new owner is created.
++     */
++    private int countNamesakes(String lastName) {
++        if (lastName == null) {
++            return 0;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getLastName() != null
++                && existing.getLastName().equalsIgnoreCase(lastName))
++            .count();
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 32dd855..635d9b0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0e82971..e554118 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   membership_number INTEGER,
+   customer_code VARCHAR(90),
+-  membership_tier VARCHAR(20)
++  membership_tier VARCHAR(20),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index f61bb33..974085f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number INT,
+   customer_code VARCHAR(90),
+   membership_tier VARCHAR(20),
++  namesake_count INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index f4083c6..29c0465 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       membership_number INTEGER,
+                                       customer_code VARCHAR(90),
+-                                      membership_tier VARCHAR(20)
++                                      membership_tier VARCHAR(20),
++                                      namesake_count INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c9e390e..bf333e4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2098,6 +2098,14 @@ components:
+               type: string
+               example: 'FOUNDING'
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: The number of other owners that already shared this owner's last name at the moment the owner was created.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

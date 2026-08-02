@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 751cbb8..ede242f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.CityOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.service.DailyOwnerRegistrationLimitExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -164,6 +165,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityOwnerLimitExceededException} which indicates an attempt to create an owner in a
++     * city that already contains the maximum number of owners allowed to reside in a single city.
++     *
++     * @param e The {@link CityOwnerLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(CityOwnerLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityOwnerLimitExceededException(CityOwnerLimitExceededException e, HttpServletRequest request) {
++        logger.warn("City owner limit exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 48982eb..7c69b4a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -246,6 +246,10 @@ public class ClinicServiceImpl implements ClinicService {
+             throw new DuplicateOwnerException(
+                 "An owner with the same last name and telephone already exists");
+         }
++        if (owner.isNew() && cityOwnerLimitReached(owner)) {
++            throw new CityOwnerLimitExceededException(
++                "The maximum number of owners that can be registered in this city has been reached");
++        }
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -293,6 +297,24 @@ public class ClinicServiceImpl implements ClinicService {
+         return registeredOnDay >= MAX_OWNERS_PER_DAY;
+     }
+ 
++    /**
++     * The maximum number of owners that may reside in a single city. Once a city already contains
++     * this many owners, attempts to register a further owner in that city are rejected.
++     */
++    private static final long MAX_OWNERS_PER_CITY = 8;
++
++    private boolean cityOwnerLimitReached(Owner owner) {
++        if (owner.getCity() == null) {
++            return false;
++        }
++        String city = normalizeKey(owner.getCity());
++        long ownersInCity = ownerRepository.findAll().stream()
++            .filter(existing -> !existing.getId().equals(owner.getId())
++                && Objects.equals(normalizeKey(existing.getCity()), city))
++            .count();
++        return ownersInCity >= MAX_OWNERS_PER_CITY;
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         if (owner.getLastName() == null) {
+             return false;
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 1236907..e7d90b3 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -162,11 +162,13 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+         // The first 20 owners registered today are accepted. Last names use only letters (per the
+-        // Owner last-name constraint) and telephones are unique 10-digit numbers.
++        // Owner last-name constraint) and telephones are unique 10-digit numbers. Each owner is
++        // registered in its own city so the per-city owner limit is never reached, keeping this test
++        // focused on the daily registration limit.
+         for (int i = 0; i < 20; i++) {
+             String body = """
+-                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"Madison","telephone":"93000000%02d"}
+-                """.formatted((char) ('a' + i), i);
++                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"DailyLimitCity%c","telephone":"93000000%02d"}
++                """.formatted((char) ('a' + i), (char) ('a' + i), i);
+             mvc.perform(post("/api/owners").content(body)
+                     .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+                 .andExpect(status().isCreated());
+@@ -174,13 +176,36 @@ class OwnerRestControllerV1Tests {
+ 
+         // The 21st owner in the same day is rejected with 400 Bad Request.
+         String body = """
+-            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"Madison","telephone":"9300000099"}
++            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"DailyLimitCityz","telephone":"9300000099"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isBadRequest());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenCityAlreadyHasEightOwners() throws Exception {
++        // Use a city with no seeded owners so exactly the first 8 owners fill it.
++        String city = "CityLimitville";
++        for (int i = 0; i < 8; i++) {
++            String body = """
++                {"firstName":"George","lastName":"CityLimitOwner%c","address":"110 W. Liberty St.","city":"%s","telephone":"92000000%02d"}
++                """.formatted((char) ('a' + i), city, i);
++            mvc.perform(post("/api/owners").content(body)
++                    .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++                .andExpect(status().isCreated());
++        }
++
++        // The 9th owner in a city that already holds 8 owners is rejected with 400 Bad Request.
++        String body = """
++            {"firstName":"George","lastName":"CityLimitOwnerz","address":"110 W. Liberty St.","city":"%s","telephone":"9200000099"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

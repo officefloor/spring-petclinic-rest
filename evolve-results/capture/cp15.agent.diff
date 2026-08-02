@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ee23335..5c5386d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "membership_tier")
++    private String membershipTier;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -126,6 +129,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getMembershipTier() {
++        return this.membershipTier;
++    }
++
++    public void setMembershipTier(String membershipTier) {
++        this.membershipTier = membershipTier;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 63b6462..3912f35 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCity(resolveCity(owner.getCity()));
+         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+         owner.setCustomerCode(buildCustomerCode(owner.getCity()));
++        owner.setMembershipTier(resolveMembershipTier());
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -149,6 +150,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return sb.toString();
+     }
+ 
++    /**
++     * The number of owners that, once created, are granted the 'FOUNDING'
++     * membership tier. Owners created after this threshold receive 'STANDARD'.
++     */
++    private static final int FOUNDING_MEMBERSHIP_LIMIT = 100;
++
++    /**
++     * Resolve the membership tier for a newly created owner: the first
++     * {@link #FOUNDING_MEMBERSHIP_LIMIT} owners ever created are 'FOUNDING' and
++     * all later owners are 'STANDARD'.
++     */
++    private String resolveMembershipTier() {
++        long existingOwners = this.clinicService.findAllOwners().size();
++        return existingOwners < FOUNDING_MEMBERSHIP_LIMIT ? "FOUNDING" : "STANDARD";
++    }
++
+     /**
+      * Build the customer code for a newly created owner, formatted as
+      * '<UPPERCASE_CITY>-<NNNN>' where NNNN is one more than the number of owners
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index e130f68..32dd855 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   membership_number INTEGER,
+-  customer_code VARCHAR(90)
++  customer_code VARCHAR(90),
++  membership_tier VARCHAR(20)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ff415d4..0e82971 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   membership_number INTEGER,
+-  customer_code VARCHAR(90)
++  customer_code VARCHAR(90),
++  membership_tier VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d2dddc0..f61bb33 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   membership_number INT,
+   customer_code VARCHAR(90),
++  membership_tier VARCHAR(20),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6bdaf06..f4083c6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       membership_number INTEGER,
+-                                      customer_code VARCHAR(90)
++                                      customer_code VARCHAR(90),
++                                      membership_tier VARCHAR(20)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7a87d14..c9e390e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,6 +2092,12 @@ components:
+               type: string
+               example: 'LONDON-0007'
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: The membership tier assigned when the owner was created. The first 100 owners ever created are 'FOUNDING'; all later owners are 'STANDARD'.
++              type: string
++              example: 'FOUNDING'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.

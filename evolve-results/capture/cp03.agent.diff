@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 0f9ae12..9e606cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -233,6 +233,10 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
++        if (owner.isNew() && isDuplicateTelephone(owner)) {
++            throw new DuplicateOwnerException(
++                "An owner with the same telephone already exists");
++        }
+         if (owner.isNew() && isDuplicateOwner(owner)) {
+             throw new DuplicateOwnerException(
+                 "An owner with the same last name and telephone already exists");
+@@ -241,6 +245,15 @@ public class ClinicServiceImpl implements ClinicService {
+ 
+     }
+ 
++    private boolean isDuplicateTelephone(Owner owner) {
++        if (owner.getTelephone() == null) {
++            return false;
++        }
++        return ownerRepository.findAll().stream()
++            .anyMatch(existing -> !existing.getId().equals(owner.getId())
++                && Objects.equals(existing.getTelephone(), owner.getTelephone()));
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         if (owner.getLastName() == null) {
+             return false;
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index a2d1fd6..b5896dd 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -65,6 +65,14 @@ class OwnerRestControllerV1Tests {
+         return base + suffix;
+     }
+ 
++    private String uniqueTelephone() {
++        // Exactly 10 digits (per the Owner telephone constraint), starting with 9 so it never
++        // collides with the seeded 608-prefixed numbers.
++        String nanos = Long.toString(System.nanoTime());
++        String last9 = nanos.length() >= 9 ? nanos.substring(nanos.length() - 9) : nanos;
++        return "9" + String.format("%09d", Long.parseLong(last9));
++    }
++
+     private PetType dogType() {
+         PetType type = new PetType();
+         type.setName("dog-" + System.nanoTime());
+@@ -111,9 +119,10 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String uniqueLastName = uniqueLastName("Franklin");
++        String uniqueTelephone = uniqueTelephone();
+         String body = """
+-            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+-            """.formatted(uniqueLastName);
++            {"firstName":"George","lastName":"%s","address":"110 W. Liberty St.","city":"Madison","telephone":"%s"}
++            """.formatted(uniqueLastName, uniqueTelephone);
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+             .andExpect(status().isCreated())

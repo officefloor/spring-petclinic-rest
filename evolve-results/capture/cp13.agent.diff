@@ -1,0 +1,111 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index c407c62..751cbb8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.DailyOwnerRegistrationLimitExceededException;
+ import org.springframework.samples.petclinic.service.DuplicateOwnerException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -143,6 +144,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DailyOwnerRegistrationLimitExceededException} which indicates an attempt to create an
++     * owner once the maximum number of owners allowed to be registered in a single day has been reached.
++     *
++     * @param e The {@link DailyOwnerRegistrationLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(DailyOwnerRegistrationLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyOwnerRegistrationLimitExceededException(DailyOwnerRegistrationLimitExceededException e, HttpServletRequest request) {
++        logger.warn("Daily owner registration limit exceeded at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getMessage());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 7ffd58d..48982eb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -249,6 +249,10 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        if (owner.isNew() && dailyRegistrationLimitReached(owner.getRegistrationDate())) {
++            throw new DailyOwnerRegistrationLimitExceededException(
++                "The maximum number of owners that can be registered today has been reached");
++        }
+         ownerRepository.save(owner);
+ 
+     }
+@@ -273,6 +277,22 @@ public class ClinicServiceImpl implements ClinicService {
+                 && Objects.equals(normalizeKey(existing.getTelephone()), telephone));
+     }
+ 
++    /**
++     * The maximum number of owners that may be registered on a single calendar day (by registration
++     * date). Attempts to register more than this in a day are rejected.
++     */
++    private static final long MAX_OWNERS_PER_DAY = 20;
++
++    private boolean dailyRegistrationLimitReached(LocalDate registrationDate) {
++        if (registrationDate == null) {
++            return false;
++        }
++        long registeredOnDay = ownerRepository.findAll().stream()
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++        return registeredOnDay >= MAX_OWNERS_PER_DAY;
++    }
++
+     private boolean isDuplicateOwner(Owner owner) {
+         if (owner.getLastName() == null) {
+             return false;
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 09b0b0f..1236907 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -158,6 +158,29 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.schemaValidationErrors[0].field").exists());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        // The first 20 owners registered today are accepted. Last names use only letters (per the
++        // Owner last-name constraint) and telephones are unique 10-digit numbers.
++        for (int i = 0; i < 20; i++) {
++            String body = """
++                {"firstName":"George","lastName":"DailyLimitOwner%c","address":"110 W. Liberty St.","city":"Madison","telephone":"93000000%02d"}
++                """.formatted((char) ('a' + i), i);
++            mvc.perform(post("/api/owners").content(body)
++                    .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++                .andExpect(status().isCreated());
++        }
++
++        // The 21st owner in the same day is rejected with 400 Bad Request.
++        String body = """
++            {"firstName":"George","lastName":"DailyLimitOwnerz","address":"110 W. Liberty St.","city":"Madison","telephone":"9300000099"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void updateOwnerSuccess() throws Exception {

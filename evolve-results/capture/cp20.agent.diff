@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 407045e..5239714 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -117,9 +117,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getLastName()));
+         owner.setSharesHousehold(sharesHousehold(owner.getAddress(), owner.getCity()));
+         owner.setLocality(resolveLocality(owner.getCity()));
++        long areaCodeMatches = countAreaCodeMatches(owner.getTelephone());
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created by user={} ownerId={} membershipNumber={}",
+             currentUsername(), owner.getId(), owner.getMembershipNumber());
++        if (areaCodeMatches >= BULK_SIGNUP_AREA_CODE_THRESHOLD) {
++            AUDIT.warn("Possible bulk signup: ownerId={} telephone={} shares area code with {} existing owners",
++                owner.getId(), owner.getTelephone(), areaCodeMatches);
++        }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -254,6 +259,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return citiesWithMax == 1 && cityIsMostCommon ? "local" : "remote";
+     }
+ 
++    /**
++     * The number of existing owners that must share a newly created owner's
++     * telephone area code before a possible bulk signup is flagged.
++     */
++    private static final int BULK_SIGNUP_AREA_CODE_THRESHOLD = 5;
++
++    /**
++     * Count how many existing owners share the given telephone's area code (its
++     * first three digits) at the moment a new owner is created. If the telephone
++     * is null or has fewer than three digits there is no area code and the result
++     * is zero.
++     */
++    private long countAreaCodeMatches(String telephone) {
++        String areaCode = areaCode(telephone);
++        if (areaCode == null) {
++            return 0;
++        }
++        return this.clinicService.findAllOwners().stream()
++            .map(existing -> areaCode(existing.getTelephone()))
++            .filter(areaCode::equals)
++            .count();
++    }
++
++    /**
++     * The area code of a telephone, i.e. its first three characters, or
++     * {@code null} if the telephone is null or shorter than three characters.
++     */
++    private String areaCode(String telephone) {
++        if (telephone == null || telephone.length() < 3) {
++            return null;
++        }
++        return telephone.substring(0, 3);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
