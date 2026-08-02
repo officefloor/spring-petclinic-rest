@@ -140,6 +140,47 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithEmailStoresAndReturnsEmail() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"Emailer","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550001","email":"george.emailer@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.email").value("george.emailer@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithDuplicateEmailReturnsConflict() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Dupemail","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550002","email":"dup@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+        // Same email but a different telephone, so only the email collides.
+        String second = """
+            {"firstName":"Henry","lastName":"Other","address":"200 Main St.","city":"Madison","telephone":"6085550003","email":"dup@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerWithoutEmailSucceeds() throws Exception {
+        String body = """
+            {"firstName":"George","lastName":"NoEmail","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550004"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
