@@ -257,6 +257,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setMembershipNumber(ownerRepository.findAll().size() + 1);
             owner.setMembershipTier(owner.getMembershipNumber() <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
             owner.setCustomerCode(generateCustomerCode(owner));
+            owner.setNamesakeCount(countNamesakes(owner));
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
@@ -268,6 +269,22 @@ public class ClinicServiceImpl implements ClinicService {
         }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Count how many other owners already share this owner's last name at the
+     * moment of creation (compared case-insensitively). The owner being created
+     * is not yet persisted and is therefore never included in the count.
+     */
+    private int countNamesakes(Owner owner) {
+        String lastName = owner.getLastName();
+        if (lastName == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
     }
 
     /**
