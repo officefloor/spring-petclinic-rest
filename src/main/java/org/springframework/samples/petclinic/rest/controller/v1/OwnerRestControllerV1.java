@@ -111,6 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setMembershipNumber(this.clinicService.findAllOwners().size() + 1);
+        owner.setCustomerCode(customerCode(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -218,6 +219,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the candidate owner to check
      * @return {@code true} if another owner already uses the telephone number, {@code false} otherwise
      */
+    /**
+     * Builds the customer code assigned to a newly created owner, formatted as
+     * {@code '<UPPERCASE_CITY>-<NNNN>'} where {@code NNNN} is one more than the number of owners
+     * already registered in the same city, zero-padded to four digits (e.g. {@code 'LONDON-0007'}).
+     *
+     * @param owner the owner being created
+     * @return the customer code for the owner
+     */
+    private String customerCode(Owner owner) {
+        String city = owner.getCity();
+        long existingInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> Objects.equals(existing.getCity(), city))
+            .count();
+        return String.format("%s-%04d", city.toUpperCase(Locale.ROOT), existingInCity + 1);
+    }
+
     private boolean isDuplicateOwner(Owner owner) {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> Objects.equals(existing.getTelephone(), owner.getTelephone()));

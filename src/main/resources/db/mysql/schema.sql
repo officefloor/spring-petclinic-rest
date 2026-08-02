@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
   email VARCHAR(255),
   registration_date DATE,
   membership_number INTEGER,
+  customer_code VARCHAR(255),
   INDEX(last_name)
 ) engine=InnoDB;
 
