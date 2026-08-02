@@ -258,6 +258,7 @@ public class ClinicServiceImpl implements ClinicService {
             owner.setMembershipTier(owner.getMembershipNumber() <= MAX_FOUNDING_OWNERS ? "FOUNDING" : "STANDARD");
             owner.setCustomerCode(generateCustomerCode(owner));
             owner.setNamesakeCount(countNamesakes(owner));
+            owner.setSharesHousehold(sharesHousehold(owner));
             if (isDuplicateTelephone(owner)) {
                 throw new DuplicateOwnerException(
                     "An owner with the same telephone already exists");
@@ -285,6 +286,25 @@ public class ClinicServiceImpl implements ClinicService {
             .filter(existing -> !existing.getId().equals(owner.getId()))
             .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Determine whether a newly created owner shares a household with an
+     * existing owner, i.e. another owner already has the same address and city
+     * (both compared case-insensitively) at the moment of creation. The owner
+     * being created is not yet persisted and is therefore never matched against
+     * itself.
+     */
+    private boolean sharesHousehold(Owner owner) {
+        String address = owner.getAddress();
+        String city = owner.getCity();
+        if (address == null || city == null) {
+            return false;
+        }
+        return ownerRepository.findAll().stream()
+            .filter(existing -> !existing.getId().equals(owner.getId()))
+            .anyMatch(existing -> address.equalsIgnoreCase(existing.getAddress())
+                && city.equalsIgnoreCase(existing.getCity()));
     }
 
     /**
