@@ -67,6 +67,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
 
+    /**
+     * Disposable / throw-away email domains whose owners are rejected: an email on one of these
+     * domains is treated as invalid input and rejected with 400. Compared case-insensitively.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     /** Dedicated audit logger for owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -351,6 +358,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return value >= range[0] && value <= range[1];
     }
 
+    /**
+     * Whether the email's domain (the part after the final '@') is on the disposable-domain
+     * blocklist. A {@code null} email is not disposable; the comparison is case-insensitive.
+     */
+    private static boolean isDisposableEmailDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<List<OwnerDto>> listOwners(String lastName) {
@@ -388,6 +411,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String email = ownerFieldsDto.getEmail();
         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (isDisposableEmailDomain(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         String address = normaliseAddress(ownerFieldsDto.getAddress());
