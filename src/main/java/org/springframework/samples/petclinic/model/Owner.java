@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -210,6 +213,20 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * Ceiling on the derived {@code membershipLevel}: one above the maximum
+     * membershipLevel among the owner's existing household members at creation, or null
+     * when no cap applies (no existing household member). The mapper clamps the computed
+     * level to this ceiling when present.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Integer getPossibleDuplicateOf() {
