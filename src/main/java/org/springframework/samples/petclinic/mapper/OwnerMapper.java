@@ -39,7 +39,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last two
-     * digits of the registration-date year (e.g. {@code "SMI-0007-M26"}). Returns {@code null} when the
+     * digits of the registration-date year (e.g. {@code "LON-SMI-0007-M26"}). Returns {@code null} when the
      * customer code or registration date is absent.
      */
     default String formatMembershipNumber(Owner owner) {
