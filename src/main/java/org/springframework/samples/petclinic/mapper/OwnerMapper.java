@@ -137,9 +137,10 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's membership level, a number from 1 to 3: starting at 1, plus 1 when an email
-     * is present, plus 1 when the owner's namesake count is 0, capped at 3 (level 4 is reserved for
-     * tenure).
+     * Computes an owner's membership level, a number from 1 to 4: starting at 1, plus 1 when an email
+     * is present, plus 1 when the owner's namesake count is 0, plus 1 when the owner's tenure exceeds
+     * 365 days, capped at 4. Because a newly created owner has zero tenure, a new owner never exceeds
+     * level 3.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
@@ -154,7 +155,12 @@ public interface OwnerMapper {
         if (unique) {
             level++;
         }
-        return Math.min(level, 3);
+        boolean tenured = owner.getRegistrationDate() != null
+            && owner.getRegistrationDate().plusDays(365).isBefore(LocalDate.now());
+        if (tenured) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
