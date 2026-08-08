@@ -22,7 +22,6 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -199,13 +198,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derive the stable, shared household identifier for owners sharing a household. It is a
-     * deterministic UUID over the normalised last-name and address, so every owner in the same
-     * household resolves to the same value regardless of the order in which they were created.
+     * Derive the stable, shared household identifier for owners in the same household: the first 12
+     * lower-case hex characters of the SHA-256 digest over {@code '<normalizedLastName>|<postcode>'},
+     * so every owner with the same last name and postcode resolves to the same value regardless of
+     * the order in which they were created.
      */
-    private static String householdId(String lastNameKey, String addressKey) {
-        String seed = lastNameKey + " " + addressKey;
-        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8)).toString();
+    private static String householdId(String lastNameKey, String postcode) {
+        return hashHex(lastNameKey + "|" + (postcode == null ? "" : postcode), 12, false);
     }
 
     /**
@@ -236,6 +235,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * First 8 upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of {@code input}.
      */
     private static String hash8(String input) {
+        return hashHex(input, 8, true);
+    }
+
+    /**
+     * First {@code length} hex characters of the SHA-256 digest of the UTF-8 bytes of {@code input},
+     * upper-cased when {@code upperCase} is true and lower-cased otherwise.
+     */
+    private static String hashHex(String input, int length, boolean upperCase) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(input.getBytes(StandardCharsets.UTF_8));
@@ -243,7 +250,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, 8).toUpperCase();
+            String hex = sb.substring(0, length);
+            return upperCase ? hex.toUpperCase() : hex;
         }
         catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
@@ -415,14 +423,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
-        String addressKey = address;
-        List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
-            .filter(existing ->
-                normaliseIdentity(existing.getLastName()).equals(lastNameKey)
-                    && normaliseAddress(existing.getAddress()).equals(addressKey))
-            .toList();
-        String householdId = (sharesHousehold && !householdMembers.isEmpty())
-            ? householdId(lastNameKey, addressKey) : null;
+        // The household is deterministically keyed on (normalized last name, postcode): every owner
+        // with a postcode belongs to the household identified by this computed id, and owners sharing
+        // a last name and postcode share it automatically.
+        String householdId = (postcode == null) ? null : householdId(lastNameKey, postcode);
+        // Existing owners already in this household (same last name and postcode).
+        List<Owner> householdMembers = (householdId == null) ? List.of()
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing -> householdId.equals(
+                    householdId(normaliseIdentity(existing.getLastName()), existing.getPostcode())))
+                .toList();
+        // A second owner in an existing household is a household duplicate: rejected with 409 unless
+        // it declares 'sharesHousehold', which only bypasses this block (the household link itself is
+        // already assigned deterministically above).
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         String identityKey = identityKey(telephone, email, householdId);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> identityKey(toE164(existing.getTelephone()),
@@ -445,25 +461,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(
             region(postcode, owner.getCity()), telephone, owner.getLastName()));
-        if (householdId != null) {
-            owner.setHouseholdId(householdId);
-            for (Owner member : householdMembers) {
-                if (member.getHouseholdId() == null) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
-                }
-            }
-        }
-        Integer possibleDuplicateOf = (postcode == null) ? null
-            : this.clinicService.findAllOwners().stream()
-                .filter(existing ->
-                    normaliseIdentity(existing.getLastName()).equals(lastNameKey)
-                        && postcode.equals(existing.getPostcode())
-                        && !telephone.equals(toE164(existing.getTelephone())))
-                .map(Owner::getId)
-                .findFirst()
-                .orElse(null);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        owner.setHouseholdId(householdId);
+        // A created owner is never flagged as a suspected duplicate: a lone owner has no household
+        // peer, and a same-household owner can only be created by declaring 'sharesHousehold', which
+        // makes it an intentional household member rather than a suspected duplicate.
+        owner.setPossibleDuplicateOf(null);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
