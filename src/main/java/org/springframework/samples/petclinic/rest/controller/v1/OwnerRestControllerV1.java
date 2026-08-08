@@ -48,6 +48,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.OwnerIdentity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -303,19 +304,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return Math.min(natural, maxMemberLevel + 1);
-    }
-
-    /**
-     * Build an owner's derived duplicate-detection identity key as
-     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Each {@code null}
-     * component contributes the empty string, and the email is lower-cased so the comparison is
-     * case-insensitive. Two owners are duplicates only when their whole identity keys are equal.
-     */
-    private static String identityKey(String normalizedTelephone, String email, String householdId) {
-        String telephone = normalizedTelephone == null ? "" : normalizedTelephone;
-        String emailKey = email == null ? "" : email.toLowerCase();
-        String household = householdId == null ? "" : householdId;
-        return telephone + "|" + emailKey + "|" + household;
     }
 
     /**
@@ -611,14 +599,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // a last name and postcode share it automatically. A new owner may join an existing household;
         // the household ceiling below (rather than a hard rejection) governs its membership level.
         String householdId = (postcode == null) ? null : householdId(lastNameKey, postcode);
-        String identityKey = identityKey(telephone, email, householdId);
+        // Duplicate detection is the single identity key (normalized telephone, lower-cased email and
+        // Soundex of the last name). A candidate whose key collides with an existing, non-deleted
+        // owner is a hard duplicate (409); the household id no longer participates in this decision.
+        String identityKey = OwnerIdentity.identityKey(telephone, email, ownerFieldsDto.getLastName());
         boolean identityInUse = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> identityKey(toE164(existing.getTelephone()),
-                existing.getEmail(), existing.getHouseholdId()).equals(identityKey));
+            .anyMatch(existing -> OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                existing.getEmail(), existing.getLastName()).equals(identityKey));
         if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Soft match: an existing, non-deleted owner sharing this owner's postcode and last-name
+        // Soundex but with a different identity key (e.g. a different telephone) is not a hard
+        // duplicate, but the new owner is flagged as a possible duplicate of it.
+        String lastNameSoundex = OwnerIdentity.soundex(ownerFieldsDto.getLastName());
+        Integer possibleDuplicateOf = (postcode == null) ? null
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing -> !existing.isDeleted())
+                .filter(existing -> postcode.equals(existing.getPostcode()))
+                .filter(existing -> lastNameSoundex.equals(OwnerIdentity.soundex(existing.getLastName())))
+                .filter(existing -> !OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                    existing.getEmail(), existing.getLastName()).equals(identityKey))
+                .map(Owner::getId)
+                .findFirst()
+                .orElse(null);
         String firstNameKey = normaliseIdentity(ownerFieldsDto.getFirstName());
         int namesakeCount = (int) this.clinicService.findAllOwners().stream()
             .filter(existing ->
@@ -642,10 +647,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(deduplicateCustomerCode(nextCustomerCode(
             region(postcode, owner.getCity()), telephone, owner.getLastName())));
         owner.setHouseholdId(householdId);
-        // A created owner is never flagged as a suspected duplicate: a lone owner has no household
-        // peer, and a same-household owner can only be created by declaring 'sharesHousehold', which
-        // makes it an intentional household member rather than a suspected duplicate.
-        owner.setPossibleDuplicateOf(null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             this.idempotentCreations.put(idempotencyKey, owner.getId());

@@ -61,19 +61,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's duplicate-detection identity key as
-     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'} from the stored
-     * (already E.164-normalized) telephone, lower-cased email and household id. A {@code null}
-     * telephone, email or household id contributes the empty string in its position.
+     * Derives an owner's duplicate-detection identity key as the lower-case SHA-256 hex digest over
+     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'} from the stored (already
+     * E.164-normalized) telephone, lower-cased email and the Soundex code of the last name. A
+     * {@code null} telephone or email contributes the empty string in its position.
      */
     default String formatIdentityKey(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        return org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(
+            owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**

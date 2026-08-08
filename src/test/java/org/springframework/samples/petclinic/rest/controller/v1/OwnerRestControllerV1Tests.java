@@ -129,13 +129,14 @@ class OwnerRestControllerV1Tests {
     void createOwnerDuplicateTelephoneReturnsConflict() throws Exception {
         Owner existing = new Owner();
         existing.setFirstName("Jane");
-        existing.setLastName("Doe-" + System.nanoTime());
+        existing.setLastName("Roe");
         existing.setAddress("110 W. Liberty St.");
         existing.setCity("Madison");
         existing.setTelephone("6081234567");
         ownerRepository.save(existing);
 
-        // A differently-formatted telephone that normalizes to the same digits must be rejected.
+        // A differently-formatted telephone that normalizes to the same digits, for an owner with the
+        // same identity (last name -> same Soundex, no email), must be rejected as a duplicate.
         String body = """
             {"firstName":"John","lastName":"Roe","address":"1 Main St.","city":"Madison","telephone":"(608) 123-4567"}
             """;
