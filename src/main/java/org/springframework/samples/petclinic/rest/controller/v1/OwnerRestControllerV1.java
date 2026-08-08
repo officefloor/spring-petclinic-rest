@@ -80,6 +80,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.visitMapper = visitMapper;
     }
 
+    /**
+     * Normalise a raw telephone number to E.164 form.
+     *
+     * <p>Spaces, dashes and brackets are stripped. A leading '+' and its country
+     * code are kept when present; otherwise country code '+61' is assumed and a
+     * single leading '0' is dropped from the national digits. The result must have
+     * between 8 and 15 digits after the '+'.
+     *
+     * @return the E.164 string, or {@code null} if the input cannot form a valid one.
+     */
+    static String toE164(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String cleaned = raw.replaceAll("[\\s()\\[\\]-]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<List<OwnerDto>> listOwners(String lastName) {
@@ -108,9 +136,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        String telephone = ownerFieldsDto.getTelephone() == null ? ""
-            : ownerFieldsDto.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = toE164(ownerFieldsDto.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         String email = ownerFieldsDto.getEmail();
@@ -119,8 +146,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
+            .map(OwnerRestControllerV1::toE164)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
             .anyMatch(telephone::equals);
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -142,6 +169,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+        String telephone = toE164(ownerFieldsDto.getTelephone());
+        if (telephone == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         Owner currentOwner = this.clinicService.findOwnerById(ownerId);
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
@@ -154,7 +185,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(telephone);
         currentOwner.setEmail(email == null ? null : email.toLowerCase());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
