@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 
@@ -26,8 +28,30 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's age band from the birth date, computed against the registration date
+     * (falling back to the current date when the registration date is absent): {@code MINOR} when
+     * under 18, {@code ADULT} from 18 to 64, and {@code SENIOR} at 65 or older. Returns
+     * {@code null} when no birth date is present, so the field is omitted from the response.
+     */
+    default OwnerDto.AgeBandEnum formatAgeBand(Owner owner) {
+        if (owner == null || owner.getBirthDate() == null) {
+            return null;
+        }
+        LocalDate asOf = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        int age = Period.between(owner.getBirthDate(), asOf).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Derives an owner's duplicate-detection identity key as
