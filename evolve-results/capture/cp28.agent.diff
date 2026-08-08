@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3cc25591..41eda7bf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,9 +24,26 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
++    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives an owner's duplicate-detection identity key as
++     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'} from the stored
++     * (already E.164-normalized) telephone, lower-cased email and household id. A {@code null}
++     * telephone, email or household id contributes the empty string in its position.
++     */
++    default String formatIdentityKey(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
++        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase();
++        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
++        return telephone + "|" + email + "|" + householdId;
++    }
++
+     /**
+      * Derives an owner's preferred contact channel: {@code EMAIL} when an email address is present
+      * (non-null and non-blank), otherwise {@code PHONE}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a21ffca4..8e0cd93a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -207,6 +207,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8)).toString();
+     }
+ 
++    /**
++     * Build an owner's derived duplicate-detection identity key as
++     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Each {@code null}
++     * component contributes the empty string, and the email is lower-cased so the comparison is
++     * case-insensitive. Two owners are duplicates only when their whole identity keys are equal.
++     */
++    private static String identityKey(String normalizedTelephone, String email, String householdId) {
++        String telephone = normalizedTelephone == null ? "" : normalizedTelephone;
++        String emailKey = email == null ? "" : email.toLowerCase();
++        String household = householdId == null ? "" : householdId;
++        return telephone + "|" + emailKey + "|" + household;
++    }
++
+     /**
+      * Build the customer code for a new owner as {@code '<CITY3>-<LAST3>-<NNNN>'}, where CITY3 is the
+      * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
+@@ -316,25 +329,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (ownersInCity >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+-            .map(Owner::getTelephone)
+-            .map(OwnerRestControllerV1::toE164)
+-            .filter(existing -> existing != null)
+-            .anyMatch(telephone::equals);
+-        if (telephoneInUse) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (email != null) {
+-            String emailKey = email.toLowerCase();
+-            boolean emailInUse = this.clinicService.findAllOwners().stream()
+-                .map(Owner::getEmail)
+-                .filter(existing -> existing != null)
+-                .map(String::toLowerCase)
+-                .anyMatch(emailKey::equals);
+-            if (emailInUse) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+-            }
+-        }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
+         String addressKey = address;
+@@ -343,7 +337,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 normaliseIdentity(existing.getLastName()).equals(lastNameKey)
+                     && normaliseAddress(existing.getAddress()).equals(addressKey))
+             .toList();
+-        if (!householdMembers.isEmpty() && !sharesHousehold) {
++        String householdId = (sharesHousehold && !householdMembers.isEmpty())
++            ? householdId(lastNameKey, addressKey) : null;
++        String identityKey = identityKey(telephone, email, householdId);
++        boolean identityInUse = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> identityKey(toE164(existing.getTelephone()),
++                existing.getEmail(), existing.getHouseholdId()).equals(identityKey));
++        if (identityInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         String firstNameKey = normaliseIdentity(ownerFieldsDto.getFirstName());
+@@ -360,8 +360,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setEmail(email == null ? null : email.toLowerCase());
+         owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+-        if (sharesHousehold && !householdMembers.isEmpty()) {
+-            String householdId = householdId(lastNameKey, addressKey);
++        if (householdId != null) {
+             owner.setHouseholdId(householdId);
+             for (Owner member : householdMembers) {
+                 if (member.getHouseholdId() == null) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3c98f40b..3e96f9c1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,6 +2134,18 @@ components:
+               type: string
+               example: '9f1c8b1e-7c2a-3d4e-8a5b-6c7d8e9f0a1b'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived duplicate-detection key, formed as
++                '<normalizedTelephone>|<email or empty>|<householdId or empty>'
++                from the stored E.164 telephone, lower-cased email (empty when
++                absent) and household id (empty when absent). Two owners are
++                treated as duplicates only when their whole identity keys are
++                equal.
++              type: string
++              example: '+61412345678|george.franklin@example.com|'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: >-
