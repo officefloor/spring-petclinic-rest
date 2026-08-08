@@ -238,6 +238,30 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenRegistrationDateInFuture() throws Exception {
+        // A supplied registrationDate later than the server date is rejected with 400.
+        String body = """
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023","registrationDate":"%s"}
+            """.formatted(LocalDate.now().plusDays(1));
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenRegistrationDateToday() throws Exception {
+        // Today's date is not in the future, so it is accepted.
+        String body = """
+            {"firstName":"George","lastName":"Todayer","address":"110 W. Liberty St.","city":"Madison","telephone":"6085557788","registrationDate":"%s"}
+            """.formatted(LocalDate.now());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
