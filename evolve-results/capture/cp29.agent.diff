@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2f546df4..2e74a8de 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8e0cd93a..efa5ea7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -261,6 +261,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Region -> inclusive 4-digit postcode range {@code {low, high}} used to validate a supplied
++     * postcode against the owner's city region.
++     */
++    private static final java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Resolve an owner's region from the city using the fixed city-to-region table
++     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}); {@code "UNKNOWN"}
++     * when the city is not listed.
++     */
++    private static String regionForCity(String city) {
++        return switch (city == null ? "" : city) {
++            case "Sydney" -> "NSW";
++            case "Melbourne" -> "VIC";
++            case "Brisbane" -> "QLD";
++            default -> "UNKNOWN";
++        };
++    }
++
++    /**
++     * Validate a supplied postcode: it must be exactly 4 digits, and when the owner's city maps to a
++     * known region the numeric value must fall within that region's inclusive range (NSW 2000-2099,
++     * VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
++     */
++    private static boolean isPostcodeValid(String postcode, String city) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return false;
++        }
++        int[] range = REGION_POSTCODES.get(regionForCity(city));
++        if (range == null) {
++            return true;
++        }
++        int value = Integer.parseInt(postcode);
++        return value >= range[0] && value <= range[1];
++    }
++
+     /** Upper-cased first three characters of {@code value} (fewer if it is shorter); "" when null. */
+     private static String prefix3(String value) {
+         String letters = value == null ? "" : value;
+@@ -310,6 +350,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (address.isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        String postcode = ownerFieldsDto.getPostcode();
++        if (postcode != null && !isPostcodeValid(postcode, ownerFieldsDto.getCity())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         LocalDate effectiveDate = ownerFieldsDto.getRegistrationDate() != null
+             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+         LocalDate registrationDate = toBusinessDay(effectiveDate);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 7aeec222..b376333a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  postcode VARCHAR(10)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 370e4295..8236ca51 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  postcode VARCHAR(10)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 5d802772..021e4e36 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(36),
+   namesake_count INT,
++  postcode VARCHAR(10),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831a..35ad669b 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      postcode TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3e96f9c1..93524070 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2065,6 +2065,15 @@ components:
+             Optional; defaults to false.
+           type: boolean
+           example: false
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when present it must be valid
++            for the owner's city per a fixed city-region table (NSW 2000-2099,
++            VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any
++            4-digit postcode. Stored and returned as given.
++          type: string
++          example: '2000'
+       required:
+         - firstName
+         - lastName
