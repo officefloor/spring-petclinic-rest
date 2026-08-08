@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 810cad5c..6e2e78e7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName",
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+@@ -52,6 +53,33 @@ public interface OwnerMapper {
+                 owner.getRegistrationDate().getYear() % 100);
+     }
+ 
++    /** A single Luhn check digit (0-9) computed over the digits contained in the
++     *  owner's customerCode. Null when the customerCode is absent. */
++    default Integer checkDigit(Owner owner) {
++        String code = owner.getCustomerCode();
++        if (code == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /** Numeric membership level from 1 to 3, assigned on creation: starts at 1, gains 1
+      *  when an email is present, gains a further 1 when namesakeCount is 0, capped at 3
+      *  (level 4 is reserved for tenure). */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index af8a277f..bbb8df06 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,6 +2126,17 @@ components:
+               type: string
+               readOnly: true
+               example: 'LON-SMI-0007'
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits
++                contained in the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              readOnly: true
++              example: 7
+             membershipNumber:
+               title: Membership number
+               description: >-
