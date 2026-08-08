@@ -20,6 +20,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(formatSelfLink(owner))")
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
@@ -305,6 +306,18 @@ public interface OwnerMapper {
      */
     private int countryCodeLength(String digits) {
         return digits.startsWith("1") ? 1 : 2;
+    }
+
+    /**
+     * Formats an owner's canonical self link as {@code "/api/owners/" + id} from the stored id.
+     * Returns {@code null} when the owner or its id is absent, so the field is omitted from the
+     * response.
+     */
+    default String formatSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
     }
 
     /**
