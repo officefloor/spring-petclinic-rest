@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index adca5eab..38350f19 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -260,6 +260,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * The existing, non-deleted owners that belong to {@code owner}'s household (sharing its
++     * normalized last name and postcode), excluding {@code owner} itself. An owner without a
++     * postcode has no household peers, so this is empty.
++     */
++    private List<Owner> otherHouseholdMembers(Owner owner) {
++        if (owner.getPostcode() == null) {
++            return List.of();
++        }
++        String householdId = householdId(normaliseIdentity(owner.getLastName()), owner.getPostcode());
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.isDeleted())
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> existing.getPostcode() != null
++                && householdId.equals(
++                    householdId(normaliseIdentity(existing.getLastName()), existing.getPostcode())))
++            .toList();
++    }
++
++    /**
++     * The owner's membership level after applying the household ceiling: the natural level derived
++     * from the owner's membership points, capped at one above the current maximum membership level
++     * among the owner's existing household members. With no existing household member no cap applies.
++     * Assumes the owner's household size has already been populated.
++     */
++    private Integer cappedMembershipLevel(Owner owner) {
++        Integer natural = ownerMapper.formatMembershipLevel(owner);
++        if (natural == null) {
++            return null;
++        }
++        List<Owner> members = otherHouseholdMembers(owner);
++        if (members.isEmpty()) {
++            return natural;
++        }
++        int maxMemberLevel = 0;
++        for (Owner member : members) {
++            member.setHouseholdSize(householdSize(member));
++            Integer memberLevel = ownerMapper.formatMembershipLevel(member);
++            if (memberLevel != null) {
++                maxMemberLevel = Math.max(maxMemberLevel, memberLevel);
++            }
++        }
++        return Math.min(natural, maxMemberLevel + 1);
++    }
++
+     /**
+      * Build an owner's derived duplicate-detection identity key as
+      * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Each {@code null}
+@@ -468,6 +513,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setHouseholdSize(householdSize(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setMembershipLevel(cappedMembershipLevel(owner));
+         ownerDto.setBulkSignupWarning(owner.getRegistrationDate() != null
+             && ownersCreatedOn(owner.getRegistrationDate()) > 80);
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+@@ -498,6 +544,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 if (existing != null) {
+                     existing.setHouseholdSize(householdSize(existing));
+                     OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
++                    existingDto.setMembershipLevel(cappedMembershipLevel(existing));
+                     existingDto.setBulkSignupWarning(existing.getRegistrationDate() != null
+                         && ownersCreatedOn(existing.getRegistrationDate()) > 80);
+                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
+@@ -558,26 +605,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (ownersInCity >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
+         // The household is deterministically keyed on (normalized last name, postcode): every owner
+         // with a postcode belongs to the household identified by this computed id, and owners sharing
+-        // a last name and postcode share it automatically.
++        // a last name and postcode share it automatically. A new owner may join an existing household;
++        // the household ceiling below (rather than a hard rejection) governs its membership level.
+         String householdId = (postcode == null) ? null : householdId(lastNameKey, postcode);
+-        // Existing owners already in this household (same last name and postcode). Soft-deleted
+-        // owners are ignored so a duplicate that only matches a deleted owner is allowed.
+-        List<Owner> householdMembers = (householdId == null) ? List.of()
+-            : this.clinicService.findAllOwners().stream()
+-                .filter(existing -> !existing.isDeleted())
+-                .filter(existing -> householdId.equals(
+-                    householdId(normaliseIdentity(existing.getLastName()), existing.getPostcode())))
+-                .toList();
+-        // A second owner in an existing household is a household duplicate: rejected with 409 unless
+-        // it declares 'sharesHousehold', which only bypasses this block (the household link itself is
+-        // already assigned deterministically above).
+-        if (!householdMembers.isEmpty() && !sharesHousehold) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         String identityKey = identityKey(telephone, email, householdId);
+         boolean identityInUse = this.clinicService.findAllOwners().stream()
+             .filter(existing -> !existing.isDeleted())
+@@ -618,10 +651,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             this.idempotentCreations.put(idempotencyKey, owner.getId());
+         }
+         owner.setHouseholdSize(householdSize(owner));
++        Integer membershipLevel = cappedMembershipLevel(owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            ownerMapper.formatMembershipLevel(owner), ownerMapper.formatMembershipNumber(owner));
++            membershipLevel, ownerMapper.formatMembershipNumber(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setMembershipLevel(membershipLevel);
+         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
