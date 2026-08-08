@@ -454,6 +454,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        Integer possibleDuplicateOf = (postcode == null) ? null
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing ->
+                    normaliseIdentity(existing.getLastName()).equals(lastNameKey)
+                        && postcode.equals(existing.getPostcode())
+                        && !telephone.equals(toE164(existing.getTelephone())))
+                .map(Owner::getId)
+                .findFirst()
+                .orElse(null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
