@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 643c1d1e..f95a590d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -390,6 +390,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (postcode != null && !isPostcodeValid(postcode, ownerFieldsDto.getCity())) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (ownerFieldsDto.getRegistrationDate() != null
++            && ownerFieldsDto.getRegistrationDate().isAfter(LocalDate.now())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         LocalDate effectiveDate = ownerFieldsDto.getRegistrationDate() != null
+             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+         LocalDate registrationDate = toBusinessDay(effectiveDate);
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index dde6ba80..9f63ec5d 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -236,6 +236,30 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenRegistrationDateInFuture() throws Exception {
++        // A supplied registrationDate later than the server date is rejected with 400.
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023","registrationDate":"%s"}
++            """.formatted(LocalDate.now().plusDays(1));
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedWhenRegistrationDateToday() throws Exception {
++        // Today's date is not in the future, so it is accepted.
++        String body = """
++            {"firstName":"George","lastName":"Todayer","address":"110 W. Liberty St.","city":"Madison","telephone":"6085557788","registrationDate":"%s"}
++            """.formatted(LocalDate.now());
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
