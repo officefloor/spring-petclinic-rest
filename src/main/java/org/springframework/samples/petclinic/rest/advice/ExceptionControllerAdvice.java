@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
@@ -36,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Global Exception handler for REST controllers.
@@ -98,7 +100,7 @@ public class ExceptionControllerAdvice {
         logger.error("Unexpected error at {} {}", request.getMethod(), request.getRequestURI(), e);
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_UNEXPECTED);
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -119,7 +121,7 @@ public class ExceptionControllerAdvice {
         logger.debug("Data integrity violation stacktrace", e);
         HttpStatus status = HttpStatus.NOT_FOUND;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
     /**
@@ -162,9 +164,32 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
-            return ResponseEntity.status(status).body(detail);
+            return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
         }
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+    }
+
+    /**
+     * Handles {@link ResponseStatusException} raised by controllers to reject a request (e.g. 400, 409,
+     * 429). Renders the rejection as an RFC7807 {@code application/problem+json} body carrying
+     * {@code type}, {@code title}, {@code status} and {@code detail}, preserving the exception's status.
+     *
+     * @param e The {@link ResponseStatusException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the problem detail and the exception's HTTP status
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        String detailMessage = (e.getReason() != null) ? e.getReason() : status.getReasonPhrase();
+        logger.warn("Request rejected at {} {} with status {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            status.value(),
+            detailMessage);
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
     }
 
 }

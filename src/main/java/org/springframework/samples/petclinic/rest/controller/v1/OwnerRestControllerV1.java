@@ -58,6 +58,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -663,14 +664,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephone = toE164(ownerFieldsDto.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied telephone number is not valid");
         }
         String email = ownerFieldsDto.getEmail();
         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied email address is not valid");
         }
         if (isDisposableEmailDomain(email)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Disposable email addresses are not accepted");
         }
         // Structured address is preferred when supplied (a non-blank 'addressLine1'); otherwise the
         // flat 'address' input is used for backward compatibility. Normalization applies to whichever
@@ -686,15 +687,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             address = normaliseAddress(ownerFieldsDto.getAddress());
         }
         if (address.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An address is required");
         }
         String postcode = ownerFieldsDto.getPostcode();
         if (postcode != null && !isPostcodeValid(postcode, ownerFieldsDto.getCity())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied postcode is not valid for the city");
         }
         if (ownerFieldsDto.getRegistrationDate() != null
             && ownerFieldsDto.getRegistrationDate().isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The registration date cannot be in the future");
         }
         LocalDate effectiveDate = ownerFieldsDto.getRegistrationDate() != null
             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
@@ -706,14 +707,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(registrationDate::equals)
             .count();
         if (ownersCreatedThatDay >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner-registration limit has been reached");
         }
         String cityKey = normaliseIdentity(ownerFieldsDto.getCity());
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
             .count();
         if (ownersInCity >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The city has reached its owner capacity");
         }
         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
         // The household is deterministically keyed on (normalized last name, postcode): every owner
@@ -730,7 +732,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> OwnerIdentity.identityKey(toE164(existing.getTelephone()),
                 existing.getEmail(), existing.getLastName()).equals(identityKey));
         if (identityInUse) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An owner with the same identity already exists");
         }
         // Soft match: an existing, non-deleted owner sharing this owner's postcode and last-name
         // Soundex but with a different identity key (e.g. a different telephone) is not a hard
@@ -800,7 +802,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
         String telephone = toE164(ownerFieldsDto.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied telephone number is not valid");
         }
         Owner currentOwner = this.clinicService.findOwnerById(ownerId);
         if (currentOwner == null) {
@@ -808,7 +810,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String email = ownerFieldsDto.getEmail();
         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied email address is not valid");
         }
         String addressLine1 = normaliseAddress(ownerFieldsDto.getAddressLine1());
         String addressLine2 = normaliseAddress(ownerFieldsDto.getAddressLine2());
