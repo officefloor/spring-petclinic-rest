@@ -8,19 +8,29 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a newly created owner a {@code customerCode} formatted
- * {@code '<LAST3>-<NNNN>'}: LAST3 is the upper-cased first three letters of the
- * owner's last name and NNNN is a global 4-digit zero-padded sequence equal to
- * one more than the current number of owners. Runs before {@link SaveOwner} so
- * the owner being created is not yet counted. Mutates the {@link Owner} in place
- * so it is persisted and returned with the code.
+ * {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the upper-cased first three letters
+ * of the owner's city, LAST3 the upper-cased first three letters of the owner's
+ * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more
+ * than the number of owners already in that city. Runs before {@link SaveOwner}
+ * so the owner being created is not yet counted. Mutates the {@link Owner} in
+ * place so it is persisted and returned with the code.
  */
 public class AssignOwnerCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String lastName = owner.getLastName();
-        int len = Math.min(3, lastName.length());
-        String last3 = lastName.substring(0, len).toUpperCase(Locale.ROOT);
-        int sequence = ownerRepository.findAll().size() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
+        String city3 = first3Upper(owner.getCity());
+        String last3 = first3Upper(owner.getLastName());
+        String city = owner.getCity();
+        long inCity = ownerRepository.findAll().stream()
+                .filter(existing -> city == null ? existing.getCity() == null
+                        : city.equals(existing.getCity()))
+                .count();
+        int sequence = (int) inCity + 1;
+        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    }
+
+    private static String first3Upper(String value) {
+        int len = Math.min(3, value.length());
+        return value.substring(0, len).toUpperCase(Locale.ROOT);
     }
 }
