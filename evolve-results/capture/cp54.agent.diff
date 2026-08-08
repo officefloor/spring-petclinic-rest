@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index eb76489c..8c9b24cf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3085d7b3..2ec4508a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -484,6 +484,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+     }
+ 
++    /**
++     * Whether the owner's city is approaching the per-city capacity limit of 50 owners: true when the
++     * city already holds between 40 and 49 owners (counted the same way as the hard-limit rule, over
++     * all owners with a matching, normalized city), otherwise false.
++     */
++    private boolean capacityWarning(String city) {
++        String cityKey = normaliseIdentity(city);
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
++            .count();
++        return ownersInCity >= 40 && ownersInCity <= 49;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<List<OwnerDto>> listOwners(String lastName) {
+@@ -512,6 +525,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         ownerDto.setMembershipLevel(cappedMembershipLevel(owner));
+         ownerDto.setBulkSignupWarning(owner.getRegistrationDate() != null
+             && ownersCreatedOn(owner.getRegistrationDate()) > 80);
++        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -543,6 +557,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                     existingDto.setMembershipLevel(cappedMembershipLevel(existing));
+                     existingDto.setBulkSignupWarning(existing.getRegistrationDate() != null
+                         && ownersCreatedOn(existing.getRegistrationDate()) > 80);
++                    existingDto.setCapacityWarning(capacityWarning(existing.getCity()));
+                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
+                 }
+             }
+@@ -672,6 +687,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setMembershipLevel(membershipLevel);
+         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);
++        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c7efb9a3..ef2e8d5f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2329,6 +2329,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether the owner's city is approaching its capacity limit of 50
++                owners. True when the city already holds between 40 and 49
++                owners, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
