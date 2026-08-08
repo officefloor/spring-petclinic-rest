@@ -458,7 +458,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDisposableEmailDomain(email)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        String address = normaliseAddress(ownerFieldsDto.getAddress());
+        // Structured address is preferred when supplied (a non-blank 'addressLine1'); otherwise the
+        // flat 'address' input is used for backward compatibility. Normalization applies to whichever
+        // fields are supplied, and the composed 'address' is the normalized addressLine1 with the
+        // normalized addressLine2 appended after a single space when present.
+        String addressLine1 = normaliseAddress(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = normaliseAddress(ownerFieldsDto.getAddressLine2());
+        boolean structuredAddress = !addressLine1.isEmpty();
+        String address;
+        if (structuredAddress) {
+            address = addressLine2.isEmpty() ? addressLine1 : addressLine1 + " " + addressLine2;
+        } else {
+            address = normaliseAddress(ownerFieldsDto.getAddress());
+        }
         if (address.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
@@ -524,6 +536,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setNamesakeCount(namesakeCount);
         owner.setAddress(address);
+        if (structuredAddress) {
+            owner.setAddressLine1(addressLine1);
+            owner.setAddressLine2(addressLine2.isEmpty() ? null : addressLine2);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+        }
         owner.setTelephone(telephone);
         owner.setEmail(email == null ? null : email.toLowerCase());
         owner.setRegistrationDate(registrationDate);
@@ -561,7 +580,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        currentOwner.setAddress(ownerFieldsDto.getAddress());
+        String addressLine1 = normaliseAddress(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = normaliseAddress(ownerFieldsDto.getAddressLine2());
+        if (!addressLine1.isEmpty()) {
+            currentOwner.setAddressLine1(addressLine1);
+            currentOwner.setAddressLine2(addressLine2.isEmpty() ? null : addressLine2);
+            currentOwner.setAddress(addressLine2.isEmpty() ? addressLine1 : addressLine1 + " " + addressLine2);
+        } else {
+            currentOwner.setAddressLine1(null);
+            currentOwner.setAddressLine2(null);
+            currentOwner.setAddress(normaliseAddress(ownerFieldsDto.getAddress()));
+        }
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
