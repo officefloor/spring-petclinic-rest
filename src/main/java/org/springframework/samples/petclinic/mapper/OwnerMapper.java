@@ -21,12 +21,23 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
     default String initials(Owner owner) {
         return owner.getFirstName().substring(0, 1).toUpperCase()
                 + "." + owner.getLastName().substring(0, 1).toUpperCase() + ".";
+    }
+
+    /** Membership number '<customerCode>-M<YY>', YY = last two digits of the
+     *  registrationDate year. Null unless both source fields are present. */
+    default String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+                owner.getRegistrationDate().getYear() % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
