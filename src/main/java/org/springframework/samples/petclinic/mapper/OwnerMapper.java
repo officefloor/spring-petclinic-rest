@@ -57,13 +57,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (region) from the city using a fixed city-to-region table
+     * Derives an owner's locality (region) preferring the postcode: the region is resolved by
+     * postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the
+     * postcode is absent or in no known range does it fall back to the fixed city-to-region table
      * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns
-     * {@code "UNKNOWN"} when the city is not in the table.
+     * {@code "UNKNOWN"} when neither the postcode nor the city resolves to a region.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String fromPostcode = regionForPostcode(owner.getPostcode());
+        if (fromPostcode != null) {
+            return fromPostcode;
         }
         return switch (owner.getCity() == null ? "" : owner.getCity()) {
             case "Sydney" -> "NSW";
@@ -71,6 +77,28 @@ public interface OwnerMapper {
             case "Brisbane" -> "QLD";
             default -> "UNKNOWN";
         };
+    }
+
+    /**
+     * Resolves a region from a 4-digit postcode by inclusive range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099). Returns {@code null} when the postcode is absent, not exactly 4 digits, or in
+     * no known range, signalling that the caller should fall back to the city-to-region table.
+     */
+    private String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value >= 2000 && value <= 2099) {
+            return "NSW";
+        }
+        if (value >= 3000 && value <= 3099) {
+            return "VIC";
+        }
+        if (value >= 4000 && value <= 4099) {
+            return "QLD";
+        }
+        return null;
     }
 
     /**
