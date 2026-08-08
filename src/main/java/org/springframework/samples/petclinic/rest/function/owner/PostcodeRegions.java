@@ -10,7 +10,7 @@ import java.util.Map;
  * region accepts any 4-digit postcode. Ranges (inclusive): NSW 2000-2099,
  * VIC 3000-3099, QLD 4000-4099.
  */
-final class PostcodeRegions {
+public final class PostcodeRegions {
 
     private static final Map<String, String> CITY_REGION = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -24,8 +24,32 @@ final class PostcodeRegions {
     }
 
     /** Canonical region for the city, or null when the city has no known region. */
-    static String regionFor(String city) {
+    public static String regionFor(String city) {
         return CITY_REGION.get(city);
+    }
+
+    /**
+     * Canonical region whose inclusive postcode range contains {@code postcode}, or null
+     * when the postcode is blank, not a number, or in no known range.
+     */
+    public static String regionForPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**

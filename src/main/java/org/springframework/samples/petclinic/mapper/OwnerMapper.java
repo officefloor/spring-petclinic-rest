@@ -67,20 +67,18 @@ public interface OwnerMapper {
         return Math.min(level, 3);
     }
 
-    /** Canonical region derived from the owner's city via the fixed city-to-region
-     *  table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); 'UNKNOWN' otherwise. */
+    /** Canonical region for the owner, preferring the postcode range (NSW 2000-2099,
+     *  VIC 3000-3099, QLD 4000-4099) and falling back to the fixed city-to-region table
+     *  (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no
+     *  known range; 'UNKNOWN' when neither resolves a region. */
     default String locality(Owner owner) {
-        String city = owner.getCity();
-        if ("Sydney".equals(city)) {
-            return "NSW";
+        String region = org.springframework.samples.petclinic.rest.function.owner.PostcodeRegions
+                .regionForPostcode(owner.getPostcode());
+        if (region == null) {
+            region = org.springframework.samples.petclinic.rest.function.owner.PostcodeRegions
+                    .regionFor(owner.getCity());
         }
-        if ("Melbourne".equals(city)) {
-            return "VIC";
-        }
-        if ("Brisbane".equals(city)) {
-            return "QLD";
-        }
-        return "UNKNOWN";
+        return region == null ? "UNKNOWN" : region;
     }
 
     Owner toOwner(OwnerDto ownerDto);
