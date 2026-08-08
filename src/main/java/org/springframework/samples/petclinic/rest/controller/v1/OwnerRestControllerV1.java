@@ -77,6 +77,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
         java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
+    /**
+     * Fixed public-holiday list. A registration date that lands on one of these is not a business
+     * day and is rolled forward to the next non-holiday weekday.
+     */
+    private static final java.util.Set<LocalDate> PUBLIC_HOLIDAYS =
+        java.util.Set.of(
+            LocalDate.of(2026, 1, 1),
+            LocalDate.of(2026, 1, 26),
+            LocalDate.of(2026, 4, 25),
+            LocalDate.of(2026, 12, 25),
+            LocalDate.of(2026, 12, 28));
+
     /** Dedicated audit logger for owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -335,10 +347,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Roll a registration date forward to the next business day: when it falls on a Saturday or
-     * Sunday it is advanced to the following Monday; weekday dates are returned unchanged.
+     * Sunday, or on a listed public holiday, it is advanced day by day to the next non-holiday
+     * weekday; ordinary weekday dates are returned unchanged.
      */
     static LocalDate toBusinessDay(LocalDate date) {
-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY
+            || date.getDayOfWeek() == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
