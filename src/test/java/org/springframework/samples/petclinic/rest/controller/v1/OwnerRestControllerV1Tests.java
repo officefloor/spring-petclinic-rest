@@ -118,6 +118,32 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDailyLimitReached() throws Exception {
+        // Seed 100 owners already registered today (by registrationDate), each with distinct
+        // last name, address, city and telephone so the create under test is only rejected by
+        // the daily-limit rule and not by the telephone / household / city-capacity rules.
+        LocalDate today = LocalDate.now();
+        for (int i = 0; i < 100; i++) {
+            Owner existing = new Owner();
+            existing.setFirstName("Daily");
+            existing.setLastName("Limit-" + i + "-" + System.nanoTime());
+            existing.setAddress(i + " Daily Limit Ave");
+            existing.setCity("DailyLimitCity-" + i);
+            existing.setTelephone(String.format("7%09d", i));
+            existing.setRegistrationDate(today);
+            ownerRepository.save(existing);
+        }
+        String body = """
+            {"firstName":"George","lastName":"OverLimit","address":"1 Over Limit Way","city":"Overflow","telephone":"6085559999"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.title").value("OwnerDailyLimitException"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
