@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e087fcb9..5c5fb0b9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+@@ -44,16 +44,24 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Computes an owner's membership tier: {@code "SILVER"} when the owner's namesake count is 0 and
+-     * an email is present, otherwise {@code "BRONZE"}.
++     * Computes an owner's membership level, a number from 1 to 3: starting at 1, plus 1 when an email
++     * is present, plus 1 when the owner's namesake count is 0, capped at 3 (level 4 is reserved for
++     * tenure).
+      */
+-    default String formatMembershipTier(Owner owner) {
++    default Integer formatMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        int level = 1;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (hasEmail) {
++            level++;
++        }
++        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        if (unique) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c6537c98..b94f9bab 100644
+Binary files a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java and b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java differ
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1a3fa4da..842d98d2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2146,15 +2146,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has three or more members;
+-                otherwise 'SILVER' when the owner's namesakeCount is 0 and an
+-                email is present, and 'BRONZE' in all remaining cases.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 computed once
++                at creation: starting at 1, plus 1 when an email is present, plus
++                1 when namesakeCount is 0, capped at 3 (level 4 is reserved for
++                tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
