@@ -109,6 +109,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalise a text field for case-insensitive, whitespace-insensitive identity
+     * comparison: leading/trailing whitespace is trimmed, internal runs of whitespace
+     * are collapsed to a single space, and the result is lower-cased. A {@code null}
+     * input normalises to the empty string.
+     */
+    private static String normaliseIdentity(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
      * Build the customer code for a new owner as {@code '<LAST3>-<NNNN>'}, where LAST3 is the
      * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
      * sequence equal to one more than the current number of owners.
@@ -163,6 +176,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(telephone::equals);
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold) {
+            String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
+            String addressKey = normaliseIdentity(ownerFieldsDto.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing ->
+                    normaliseIdentity(existing.getLastName()).equals(lastNameKey)
+                        && normaliseIdentity(existing.getAddress()).equals(addressKey));
+            if (householdInUse) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);

@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551234"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St. Apt 1","city":"Madison","telephone":"9995551234"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -116,7 +116,7 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerReturnsDisplayName() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551235"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St. Apt 2","city":"Madison","telephone":"9995551235"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
