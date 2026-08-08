@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e308fc81..3d267a58 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,6 +108,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return "+" + digits;
+     }
+ 
++    /**
++     * Normalise a text field for case-insensitive, whitespace-insensitive identity
++     * comparison: leading/trailing whitespace is trimmed, internal runs of whitespace
++     * are collapsed to a single space, and the result is lower-cased. A {@code null}
++     * input normalises to the empty string.
++     */
++    private static String normaliseIdentity(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
+     /**
+      * Build the customer code for a new owner as {@code '<LAST3>-<NNNN>'}, where LAST3 is the
+      * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
+@@ -164,6 +177,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (telephoneInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        if (!sharesHousehold) {
++            String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
++            String addressKey = normaliseIdentity(ownerFieldsDto.getAddress());
++            boolean householdInUse = this.clinicService.findAllOwners().stream()
++                .anyMatch(existing ->
++                    normaliseIdentity(existing.getLastName()).equals(lastNameKey)
++                        && normaliseIdentity(existing.getAddress()).equals(addressKey));
++            if (householdInUse) {
++                return new ResponseEntity<>(HttpStatus.CONFLICT);
++            }
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(telephone);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 28042fe2..10f53414 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2057,6 +2057,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            When true, allows creating this owner even if another owner already
++            has the same last name and address (i.e. they share a household).
++            Optional; defaults to false.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index f0ac87c1..3e808664 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551234"}
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St. Apt 1","city":"Madison","telephone":"9995551234"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -116,7 +116,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerReturnsDisplayName() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551235"}
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St. Apt 2","city":"Madison","telephone":"9995551235"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
