@@ -30,7 +30,24 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning",
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Age band derived from birthDate relative to registrationDate: 'MINOR' when under
+     *  18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or over. Null when either date is absent. */
+    default String ageBand(Owner owner) {
+        if (owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int age = java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
+    }
 
     /** 'EMAIL' when the owner has a non-blank email address, otherwise 'PHONE'. */
     default String contactPreference(Owner owner) {
