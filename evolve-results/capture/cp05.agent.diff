@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f100923d..a959ab75 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -18,8 +18,19 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Formats an owner's display name as {@code "LastName, FirstName"} from the stored names.
++     */
++    default String formatDisplayName(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return owner.getLastName() + ", " + owner.getFirstName();
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ebdef6c2..53089b20 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2065,6 +2065,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            displayName:
++              title: Display name
++              description: >-
++                The owner's name formatted as 'LastName, FirstName' from the
++                stored first and last names.
++              type: string
++              example: 'Franklin, George'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index bef927df..f0ac87c1 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -112,6 +112,18 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerReturnsDisplayName() throws Exception {
++        String body = """
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551235"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.displayName").value("Franklin, George"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerDuplicateTelephoneReturnsConflict() throws Exception {
