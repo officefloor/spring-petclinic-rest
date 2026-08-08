@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fa7a364a..11c0c543 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,7 @@ public interface OwnerMapper {
+     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "capacityWarning", ignore = true)
++    @Mapping(target = "riskFlag", ignore = true)
+     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 431cd57c..179e903a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -539,6 +539,61 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return ownersInCity >= 40 && ownersInCity <= 49;
+     }
+ 
++    /**
++     * The soft, review-triggering per-city capacity threshold (as opposed to the hard 50-owner limit
++     * that rejects a create): a city holding this many owners or more is considered over soft capacity.
++     */
++    private static final int SOFT_CITY_CAPACITY = 40;
++
++    /**
++     * Whether the owner's city is over its soft capacity: true when the city already holds
++     * {@link #SOFT_CITY_CAPACITY} owners or more (counted the same way as the hard-limit rule, over all
++     * owners with a matching, normalized city), otherwise false.
++     */
++    private boolean overSoftCityCapacity(String city) {
++        String cityKey = normaliseIdentity(city);
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
++            .count();
++        return ownersInCity >= SOFT_CITY_CAPACITY;
++    }
++
++    /**
++     * Whether the email's domain (the part after the final '@') is disposable-adjacent: it is one of
++     * the disposable domains, or a subdomain of one (it ends with {@code '.<disposableDomain>'}). This
++     * is broader than {@link #isDisposableEmailDomain(String)} (which rejects an exact disposable
++     * domain at create time): an owner whose stored email sits just off the blocklist is flagged for
++     * review rather than rejected. A {@code null} email is not disposable-adjacent; the comparison is
++     * case-insensitive.
++     */
++    private static boolean isDisposableAdjacentEmailDomain(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
++            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * The owner's risk flag: true when any of these hold — the owner is a possible duplicate
++     * (a {@code possibleDuplicateOf} target exists), the email domain is disposable-adjacent, or the
++     * owner's city is over its soft capacity; otherwise false.
++     */
++    private boolean riskFlag(Owner owner) {
++        return owner.getPossibleDuplicateOf() != null
++            || isDisposableAdjacentEmailDomain(owner.getEmail())
++            || overSoftCityCapacity(owner.getCity());
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<List<OwnerDto>> listOwners(String lastName) {
+@@ -568,6 +623,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         ownerDto.setBulkSignupWarning(owner.getRegistrationDate() != null
+             && ownersCreatedOn(owner.getRegistrationDate()) > 80);
+         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
++        ownerDto.setRiskFlag(riskFlag(owner));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -600,6 +656,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                     existingDto.setBulkSignupWarning(existing.getRegistrationDate() != null
+                         && ownersCreatedOn(existing.getRegistrationDate()) > 80);
+                     existingDto.setCapacityWarning(capacityWarning(existing.getCity()));
++                    existingDto.setRiskFlag(riskFlag(existing));
+                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
+                 }
+             }
+@@ -732,6 +789,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         ownerDto.setMembershipLevel(membershipLevel);
+         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);
+         ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
++        ownerDto.setRiskFlag(riskFlag(owner));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f691cce8..3cd74db4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2320,6 +2320,17 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether this owner warrants review. True when any of the
++                following hold: the owner is a possible duplicate, the email
++                domain is disposable-adjacent (a disposable domain or a
++                subdomain of one), or the owner's city is over its soft capacity
++                (40 or more owners); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
