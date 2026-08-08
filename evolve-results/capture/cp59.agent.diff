@@ -1,0 +1,167 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 61f5836f..7e012eae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -26,6 +26,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+@@ -36,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Global Exception handler for REST controllers.
+@@ -98,7 +100,7 @@ public class ExceptionControllerAdvice {
+         logger.error("Unexpected error at {} {}", request.getMethod(), request.getRequestURI(), e);
+         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_UNEXPECTED);
+-        return ResponseEntity.status(status).body(detail);
++        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+     }
+ 
+     /**
+@@ -119,7 +121,7 @@ public class ExceptionControllerAdvice {
+         logger.debug("Data integrity violation stacktrace", e);
+         HttpStatus status = HttpStatus.NOT_FOUND;
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+-        return ResponseEntity.status(status).body(detail);
++        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+     }
+ 
+     /**
+@@ -162,9 +164,32 @@ public class ExceptionControllerAdvice {
+                 request.getRequestURI(),
+                 bindingResult.getFieldErrors());
+             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+-            return ResponseEntity.status(status).body(detail);
++            return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+         }
+-        return ResponseEntity.status(status).body(detail);
++        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
++    }
++
++    /**
++     * Handles {@link ResponseStatusException} raised by controllers to reject a request (e.g. 400, 409,
++     * 429). Renders the rejection as an RFC7807 {@code application/problem+json} body carrying
++     * {@code type}, {@code title}, {@code status} and {@code detail}, preserving the exception's status.
++     *
++     * @param e The {@link ResponseStatusException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the problem detail and the exception's HTTP status
++     */
++    @ExceptionHandler(ResponseStatusException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
++        String detailMessage = (e.getReason() != null) ? e.getReason() : status.getReasonPhrase();
++        logger.warn("Request rejected at {} {} with status {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            status.value(),
++            detailMessage);
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
++        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+     }
+ 
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 179e903a..2a8fcfe5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -58,6 +58,7 @@ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.context.request.RequestAttributes;
+ import org.springframework.web.context.request.RequestContextHolder;
+ import org.springframework.web.context.request.ServletRequestAttributes;
++import org.springframework.web.server.ResponseStatusException;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -663,14 +664,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         String telephone = toE164(ownerFieldsDto.getTelephone());
+         if (telephone == null) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied telephone number is not valid");
+         }
+         String email = ownerFieldsDto.getEmail();
+         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied email address is not valid");
+         }
+         if (isDisposableEmailDomain(email)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Disposable email addresses are not accepted");
+         }
+         // Structured address is preferred when supplied (a non-blank 'addressLine1'); otherwise the
+         // flat 'address' input is used for backward compatibility. Normalization applies to whichever
+@@ -686,15 +687,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             address = normaliseAddress(ownerFieldsDto.getAddress());
+         }
+         if (address.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An address is required");
+         }
+         String postcode = ownerFieldsDto.getPostcode();
+         if (postcode != null && !isPostcodeValid(postcode, ownerFieldsDto.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied postcode is not valid for the city");
+         }
+         if (ownerFieldsDto.getRegistrationDate() != null
+             && ownerFieldsDto.getRegistrationDate().isAfter(LocalDate.now())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The registration date cannot be in the future");
+         }
+         LocalDate effectiveDate = ownerFieldsDto.getRegistrationDate() != null
+             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+@@ -706,14 +707,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .filter(registrationDate::equals)
+             .count();
+         if (ownersCreatedThatDay >= 100) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
++                "The daily owner-registration limit has been reached");
+         }
+         String cityKey = normaliseIdentity(ownerFieldsDto.getCity());
+         long ownersInCity = this.clinicService.findAllOwners().stream()
+             .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
+             .count();
+         if (ownersInCity >= 50) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The city has reached its owner capacity");
+         }
+         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
+         // The household is deterministically keyed on (normalized last name, postcode): every owner
+@@ -730,7 +732,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(existing -> OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                 existing.getEmail(), existing.getLastName()).equals(identityKey));
+         if (identityInUse) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "An owner with the same identity already exists");
+         }
+         // Soft match: an existing, non-deleted owner sharing this owner's postcode and last-name
+         // Soundex but with a different identity key (e.g. a different telephone) is not a hard
+@@ -800,7 +802,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+         String telephone = toE164(ownerFieldsDto.getTelephone());
+         if (telephone == null) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied telephone number is not valid");
+         }
+         Owner currentOwner = this.clinicService.findOwnerById(ownerId);
+         if (currentOwner == null) {
+@@ -808,7 +810,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         String email = ownerFieldsDto.getEmail();
+         if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The supplied email address is not valid");
+         }
+         String addressLine1 = normaliseAddress(ownerFieldsDto.getAddressLine1());
+         String addressLine2 = normaliseAddress(ownerFieldsDto.getAddressLine2());
