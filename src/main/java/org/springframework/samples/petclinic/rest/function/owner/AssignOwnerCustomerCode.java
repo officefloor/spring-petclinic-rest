@@ -1,36 +1,47 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns a newly created owner a {@code customerCode} formatted
- * {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the upper-cased first three letters
- * of the owner's city, LAST3 the upper-cased first three letters of the owner's
- * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more
- * than the number of owners already in that city. Runs before {@link SaveOwner}
- * so the owner being created is not yet counted. Mutates the {@link Owner} in
- * place so it is persisted and returned with the code.
+ * Assigns a newly created owner a {@code customerCode} formatted {@code '<REGION>-<HASH8>'}:
+ * REGION is the region code derived from the owner's postcode (NSW 2000-2099, VIC 3000-3099,
+ * QLD 4000-4099, otherwise {@code UNKNOWN}), and HASH8 is the first eight UPPER-case hex
+ * characters of the SHA-256 digest over the normalized (E.164) telephone concatenated with the
+ * owner's last name. The former per-city sequence number is gone, so the code no longer depends
+ * on how many owners already exist. Mutates the {@link Owner} in place so it is persisted and
+ * returned with the code, and so every value derived from the customerCode (membership number,
+ * check digit, audit line and locality) reflects the new region-and-hash identity.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city3 = first3Upper(owner.getCity());
-        String last3 = first3Upper(owner.getLastName());
-        String city = owner.getCity();
-        long inCity = ownerRepository.findAll().stream()
-                .filter(existing -> city == null ? existing.getCity() == null
-                        : city.equals(existing.getCity()))
-                .count();
-        int sequence = (int) inCity + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    public void service(@Val Owner owner) {
+        String region = PostcodeRegions.regionForPostcode(owner.getPostcode());
+        if (region == null) {
+            region = "UNKNOWN";
+        }
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        owner.setCustomerCode(region + "-" + hash8(telephone + lastName));
     }
 
-    private static String first3Upper(String value) {
-        int len = Math.min(3, value.length());
-        return value.substring(0, len).toUpperCase(Locale.ROOT);
+    /** First eight UPPER-case hex characters (four bytes) of SHA-256 over the UTF-8 bytes. */
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 }
