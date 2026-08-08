@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,6 +53,13 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic email validation: a non-empty local part, a single '@', and a
+     * domain with at least one dot-separated label ending in a letter-only TLD.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
 
     private final ClinicService clinicService;
 
@@ -104,6 +112,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String email = ownerFieldsDto.getEmail();
+        if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
@@ -115,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
+        owner.setEmail(email == null ? null : email.toLowerCase());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -129,11 +142,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        String email = ownerFieldsDto.getEmail();
+        if (email != null && !EMAIL_PATTERN.matcher(email).matches()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(email == null ? null : email.toLowerCase());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
