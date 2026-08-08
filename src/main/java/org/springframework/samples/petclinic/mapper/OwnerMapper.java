@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "identityKey",
@@ -108,26 +109,43 @@ public interface OwnerMapper {
         return (10 - (sum % 10)) % 10;
     }
 
-    /** Numeric membership level from 1 to 4: starts at 1, gains 1 when an email is present,
-     *  gains a further 1 when namesakeCount is 0 — these creation-time factors are capped at 3.
-     *  Level 4 is reserved for tenure: it requires more than 365 days between the
-     *  registrationDate and today, so a newly created owner (zero tenure) never exceeds 3. */
-    default Integer membershipLevel(Owner owner) {
-        int level = 1;
+    /** Membership points: starts at 0, adds 2 when an email is present, adds 1 when
+     *  namesakeCount is 0, adds 2 for a household of 3 or more, and adds 3 for tenure
+     *  (more than 365 days between the registrationDate and today). */
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
         if (owner.getRegistrationDate() != null
                 && java.time.temporal.ChronoUnit.DAYS.between(
                         owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /** Numeric membership level from 1 to 4, mapped from membershipPoints: level 1 for
+     *  0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. */
+    default Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /** The owner's locality: the REGION component of the customerCode ('<REGION>-<HASH8>'),
