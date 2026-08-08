@@ -261,6 +261,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
+    /**
+     * Region -> inclusive 4-digit postcode range {@code {low, high}} used to validate a supplied
+     * postcode against the owner's city region.
+     */
+    private static final java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Resolve an owner's region from the city using the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}); {@code "UNKNOWN"}
+     * when the city is not listed.
+     */
+    private static String regionForCity(String city) {
+        return switch (city == null ? "" : city) {
+            case "Sydney" -> "NSW";
+            case "Melbourne" -> "VIC";
+            case "Brisbane" -> "QLD";
+            default -> "UNKNOWN";
+        };
+    }
+
+    /**
+     * Validate a supplied postcode: it must be exactly 4 digits, and when the owner's city maps to a
+     * known region the numeric value must fall within that region's inclusive range (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
+     */
+    private static boolean isPostcodeValid(String postcode, String city) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODES.get(regionForCity(city));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
+    }
+
     /** Upper-cased first three characters of {@code value} (fewer if it is shorter); "" when null. */
     private static String prefix3(String value) {
         String letters = value == null ? "" : value;
@@ -308,6 +348,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String address = normaliseAddress(ownerFieldsDto.getAddress());
         if (address.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode != null && !isPostcodeValid(postcode, ownerFieldsDto.getCity())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         LocalDate effectiveDate = ownerFieldsDto.getRegistrationDate() != null
