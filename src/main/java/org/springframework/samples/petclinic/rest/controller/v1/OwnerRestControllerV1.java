@@ -104,6 +104,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(telephone::equals);
+        if (telephoneInUse) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);

@@ -103,13 +103,33 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551234"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateTelephoneReturnsConflict() throws Exception {
+        Owner existing = new Owner();
+        existing.setFirstName("Jane");
+        existing.setLastName("Doe-" + System.nanoTime());
+        existing.setAddress("110 W. Liberty St.");
+        existing.setCity("Madison");
+        existing.setTelephone("6081234567");
+        ownerRepository.save(existing);
+
+        // A differently-formatted telephone that normalizes to the same digits must be rejected.
+        String body = """
+            {"firstName":"John","lastName":"Roe","address":"1 Main St.","city":"Madison","telephone":"(608) 123-4567"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
     }
 
     @Test
