@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3fe208e2..a3f277a5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
++    @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+@@ -115,6 +116,24 @@ public interface OwnerMapper {
+         };
+     }
+ 
++    /**
++     * Derives an owner's IANA timezone from the locality (region) via the fixed region-to-timezone
++     * table: {@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++     * {@code QLD -> Australia/Brisbane}. Returns {@code null} when the region is not one of these,
++     * so the field is omitted from the response.
++     */
++    default String formatTimezone(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return switch (formatLocality(owner)) {
++            case "NSW" -> "Australia/Sydney";
++            case "VIC" -> "Australia/Melbourne";
++            case "QLD" -> "Australia/Brisbane";
++            default -> null;
++        };
++    }
++
+     /**
+      * Resolves a region from a 4-digit postcode by inclusive range (NSW 2000-2099, VIC 3000-3099,
+      * QLD 4000-4099). Returns {@code null} when the postcode is absent, not exactly 4 digits, or in
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0bdd5afc..79a73c2f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2229,6 +2229,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone derived from the locality (region) via
++                the fixed region-to-timezone table: NSW -> Australia/Sydney,
++                VIC -> Australia/Melbourne, QLD -> Australia/Brisbane. Absent when
++                the region is not one of these.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
