@@ -484,6 +484,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
 
+    /**
+     * Whether the owner's city is approaching the per-city capacity limit of 50 owners: true when the
+     * city already holds between 40 and 49 owners (counted the same way as the hard-limit rule, over
+     * all owners with a matching, normalized city), otherwise false.
+     */
+    private boolean capacityWarning(String city) {
+        String cityKey = normaliseIdentity(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
+            .count();
+        return ownersInCity >= 40 && ownersInCity <= 49;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<List<OwnerDto>> listOwners(String lastName) {
@@ -512,6 +525,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerDto.setMembershipLevel(cappedMembershipLevel(owner));
         ownerDto.setBulkSignupWarning(owner.getRegistrationDate() != null
             && ownersCreatedOn(owner.getRegistrationDate()) > 80);
+        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -543,6 +557,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     existingDto.setMembershipLevel(cappedMembershipLevel(existing));
                     existingDto.setBulkSignupWarning(existing.getRegistrationDate() != null
                         && ownersCreatedOn(existing.getRegistrationDate()) > 80);
+                    existingDto.setCapacityWarning(capacityWarning(existing.getCity()));
                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
                 }
             }
@@ -672,6 +687,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(membershipLevel);
         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);
+        ownerDto.setCapacityWarning(capacityWarning(owner.getCity()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
