@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**
