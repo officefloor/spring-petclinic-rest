@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * being created. Runs after {@link AssignOwnerHousehold} (which sets the
  * {@code householdId}) and before {@link SaveOwner}, so the owner is not yet
  * persisted and therefore never counts itself. Mutates the {@link Owner} in place so
- * the snapshot is persisted and later read by the tier rule
- * ({@code membershipTier} is 'GOLD' when the household has three or more members).
+ * the snapshot is persisted for later reporting on household composition.
  *
  * <p>When the owner did not join a household (no {@code householdId}) the size is 1:
  * the owner is its own single-member household.

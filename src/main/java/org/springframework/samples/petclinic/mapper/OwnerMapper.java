@@ -22,7 +22,7 @@ public interface OwnerMapper {
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning",
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
@@ -44,16 +44,19 @@ public interface OwnerMapper {
                 owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** Membership tier: 'GOLD' when the owner's household has 3 or more members;
-     *  otherwise 'SILVER' when namesakeCount is 0 and an email is present, else 'BRONZE'. */
-    default String membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
-        }
+    /** Numeric membership level from 1 to 3, assigned on creation: starts at 1, gains 1
+     *  when an email is present, gains a further 1 when namesakeCount is 0, capped at 3
+     *  (level 4 is reserved for tenure). */
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        boolean unique = Integer.valueOf(0).equals(owner.getNamesakeCount());
-        return (unique && hasEmail) ? "SILVER" : "BRONZE";
+        if (hasEmail) {
+            level++;
+        }
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** Canonical region derived from the owner's city via the fixed city-to-region
