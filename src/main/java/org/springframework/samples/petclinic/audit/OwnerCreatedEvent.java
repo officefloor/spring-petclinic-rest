@@ -33,6 +33,9 @@ public final class OwnerCreatedEvent {
     /** Fixed discriminator identifying this event type in the audit stream. */
     public static final String EVENT = "OWNER_CREATED";
 
+    /** Schema version of this audit event. Version 2 accompanies the version-2 owner identity. */
+    public static final int SCHEMA_VERSION = 2;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final long seq;
@@ -69,11 +72,13 @@ public final class OwnerCreatedEvent {
 
     /**
      * Render this event as a compact JSON object with a stable field order:
-     * {@code {seq, ownerId, memberId, membershipLevel, event}}. The primary identifier is
-     * published under the {@code memberId} key.
+     * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event}}. The primary identifier
+     * (the version-2 memberId) is published under the {@code memberId} key, and {@code schemaVersion}
+     * is fixed at 2 for the version-2 audit schema.
      */
     public String toJson() {
         Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("schemaVersion", SCHEMA_VERSION);
         fields.put("seq", this.seq);
         fields.put("ownerId", this.ownerId);
         fields.put("memberId", this.primaryIdentifier);

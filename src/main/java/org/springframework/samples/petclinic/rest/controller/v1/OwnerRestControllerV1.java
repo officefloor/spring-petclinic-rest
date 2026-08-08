@@ -248,12 +248,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derive the stable, shared household identifier for owners in the same household: the first 12
-     * lower-case hex characters of the SHA-256 digest over {@code '<normalizedLastName>|<postcode>'},
-     * so every owner with the same last name and postcode resolves to the same value regardless of
-     * the order in which they were created.
+     * lower-case hex characters of the SHA-256 digest over
+     * {@code '<VERSION_TAG>|<normalizedLastName>|<postcode>'}, so every owner with the same last name
+     * and postcode resolves to the same value regardless of the order in which they were created. The
+     * fixed {@code V2} version tag is mixed in so the value differs from its version-1 form.
      */
     private static String householdId(String lastNameKey, String postcode) {
-        return hashHex(lastNameKey + "|" + (postcode == null ? "" : postcode), 12, false);
+        return hashHex(OwnerIdentity.VERSION_TAG + "|" + lastNameKey + "|" + (postcode == null ? "" : postcode),
+            12, false);
     }
 
     /**
@@ -320,18 +322,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the unified member id for a new owner as {@code '<REGION><FY><HASH8><CHK>'}, where REGION is
-     * the region code derived from the postcode (falling back to the city-to-region table, else
-     * {@code "UNKNOWN"}), FY is the two-digit fiscal year (starting 1 July) of the
-     * business-day-adjusted {@code registrationDate}, HASH8 is the first 8 upper-case hex characters of
-     * the SHA-256 digest over {@code normalizedTelephone + lastName}, and CHK is a single Luhn check
-     * digit computed over the digits of {@code '<REGION><FY><HASH8>'}. The id depends only on the
-     * owner's own region, fiscal year and identity, not on how many owners already exist.
+     * the version-2 region code — the fixed {@code V2} version tag prepended to the region derived from
+     * the postcode (falling back to the city-to-region table, else {@code "UNKNOWN"}) — FY is the
+     * two-digit fiscal year (starting 1 July) of the business-day-adjusted {@code registrationDate},
+     * HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over
+     * {@code normalizedTelephone + lastName}, and CHK is a single Luhn check digit computed over the
+     * digits of {@code '<REGION><FY><HASH8>'}. The version tag ensures the id differs from its
+     * version-1 form; the id otherwise depends only on the owner's own region, fiscal year and
+     * identity, not on how many owners already exist.
      */
     private String nextMemberId(String region, LocalDate registrationDate,
                                 String normalizedTelephone, String lastName) {
         String fiscalYear = String.format("%02d", fiscalYearStart(registrationDate) % 100);
         String hash8 = hash8(normalizedTelephone + (lastName == null ? "" : lastName));
-        String base = region + fiscalYear + hash8;
+        String base = OwnerIdentity.regionCode(region) + fiscalYear + hash8;
         return base + luhnCheckDigit(base);
     }
 

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
@@ -31,7 +32,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "timezone", expression = "java(formatTimezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
+    @Mapping(target = "identity", expression = "java(formatIdentity(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -81,10 +83,27 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's duplicate-detection identity key as the lower-case SHA-256 hex digest over
-     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'} from the stored (already
-     * E.164-normalized) telephone, lower-cased email and the Soundex code of the last name. A
-     * {@code null} telephone or email contributes the empty string in its position.
+     * Builds an owner's nested version-2 identity object, grouping the stored memberId and
+     * householdId with the derived identityKey. Each value is produced by the version-2 algorithm
+     * that mixes in the fixed {@code V2} version tag. Returns {@code null} when the owner is
+     * {@code null}.
+     */
+    default OwnerIdentityDto formatIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(formatIdentityKey(owner));
+        return identity;
+    }
+
+    /**
+     * Derives an owner's version-2 duplicate-detection identity key as the lower-case SHA-256 hex
+     * digest, mixing in the fixed {@code V2} version tag, over the stored (already E.164-normalized)
+     * telephone, lower-cased email and the Soundex code of the last name. A {@code null} telephone or
+     * email contributes the empty string in its position.
      */
     default String formatIdentityKey(Owner owner) {
         if (owner == null) {
@@ -107,21 +126,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (region) from the memberId identity: it is the {@code REGION}
-     * segment of the {@code '<REGION><FY><HASH8><CHK>'} memberId (everything preceding its
-     * fixed-length trailing FY, HASH8 and CHK segments). When the memberId is absent it falls back to
-     * resolving the region directly, preferring the postcode range (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099) and then the fixed city-to-region table ({@code Sydney -> NSW},
-     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), yielding {@code "UNKNOWN"} when neither
-     * resolves.
+     * Derives an owner's locality: the plain region code resolved directly, preferring the postcode
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and then the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), yielding
+     * {@code "UNKNOWN"} when neither resolves. The locality is intentionally NOT read from the
+     * memberId (whose region segment carries the {@code V2} version tag): it must stay the plain,
+     * user-facing region code.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
-        }
-        String region = memberIdRegion(owner.getMemberId());
-        if (region != null) {
-            return region;
         }
         String fromPostcode = regionForPostcode(owner.getPostcode());
         if (fromPostcode != null) {
@@ -253,18 +267,6 @@ public interface OwnerMapper {
         }
         int dash = memberId.indexOf('-');
         return dash > 0 ? memberId.substring(0, dash) : memberId;
-    }
-
-    /**
-     * The {@code REGION} segment of a memberId (everything preceding its fixed-length trailing FY,
-     * HASH8 and CHK segments), or {@code null} when the memberId is absent or too short to carry one.
-     */
-    private String memberIdRegion(String memberId) {
-        String core = memberIdCore(memberId);
-        if (core == null || core.length() <= 11) {
-            return null;
-        }
-        return core.substring(0, core.length() - 11);
     }
 
     /**

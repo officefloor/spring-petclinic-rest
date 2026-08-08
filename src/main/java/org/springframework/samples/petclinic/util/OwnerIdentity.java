@@ -27,20 +27,39 @@ import java.security.NoSuchAlgorithmException;
  */
 public final class OwnerIdentity {
 
+    /**
+     * Fixed version tag mixed into every version-2 identifier (the memberId's region code, the
+     * householdId and the identityKey). Its presence guarantees every version-2 identifier differs
+     * from its version-1 form and that no version-1 value is ever produced again. It is deliberately
+     * kept out of the user-facing {@code locality}, {@code timezone} and owner-segment region, which
+     * remain the plain region code.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerIdentity() {
     }
 
     /**
      * The owner's derived duplicate-detection identity key: the lower-case SHA-256 hex digest over
-     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. A {@code null} telephone or
-     * email contributes the empty string, the email is lower-cased so the comparison is
+     * {@code '<VERSION_TAG>|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. The fixed
+     * {@code V2} version tag is mixed in so every key differs from its version-1 form. A {@code null}
+     * telephone or email contributes the empty string, the email is lower-cased so the comparison is
      * case-insensitive, and the last name is reduced to its Soundex code so near-identical surnames
      * collide.
      */
     public static String identityKey(String normalizedTelephone, String email, String lastName) {
         String telephone = normalizedTelephone == null ? "" : normalizedTelephone;
         String emailKey = email == null ? "" : email.toLowerCase();
-        return sha256Hex(telephone + "|" + emailKey + "|" + soundex(lastName));
+        return sha256Hex(VERSION_TAG + "|" + telephone + "|" + emailKey + "|" + soundex(lastName));
+    }
+
+    /**
+     * The version-2 region code carried inside the memberId: the fixed {@code V2} version tag
+     * prepended to the plain region code (e.g. {@code "NSW"} becomes {@code "V2NSW"}). This is the
+     * only place the region gains the version tag; the user-facing locality keeps the plain code.
+     */
+    public static String regionCode(String plainRegion) {
+        return VERSION_TAG + (plainRegion == null ? "" : plainRegion);
     }
 
     /**
