@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
@@ -47,6 +48,22 @@ public interface OwnerMapper {
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean unique = Integer.valueOf(0).equals(owner.getNamesakeCount());
         return (unique && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
+    /** Canonical region derived from the owner's city via the fixed city-to-region
+     *  table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); 'UNKNOWN' otherwise. */
+    default String locality(Owner owner) {
+        String city = owner.getCity();
+        if ("Sydney".equals(city)) {
+            return "NSW";
+        }
+        if ("Melbourne".equals(city)) {
+            return "VIC";
+        }
+        if ("Brisbane".equals(city)) {
+            return "QLD";
+        }
+        return "UNKNOWN";
     }
 
     Owner toOwner(OwnerDto ownerDto);
