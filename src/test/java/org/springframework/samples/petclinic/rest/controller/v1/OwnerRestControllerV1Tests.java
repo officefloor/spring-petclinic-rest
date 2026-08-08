@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
@@ -119,10 +120,15 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerDailyLimitReached() throws Exception {
-        // Seed 100 owners already registered today (by registrationDate), each with distinct
+        // Seed 100 owners already registered on the business day the new owner will land on
+        // (its supplied/defaulted date rolled forward over any weekend), each with distinct
         // last name, address, city and telephone so the create under test is only rejected by
         // the daily-limit rule and not by the telephone / household / city-capacity rules.
-        LocalDate today = LocalDate.now();
+        LocalDate businessDay = LocalDate.now();
+        while (businessDay.getDayOfWeek() == DayOfWeek.SATURDAY
+                || businessDay.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            businessDay = businessDay.plusDays(1);
+        }
         for (int i = 0; i < 100; i++) {
             Owner existing = new Owner();
             existing.setFirstName("Daily");
@@ -130,7 +136,7 @@ class OwnerRestControllerV1Tests {
             existing.setAddress(i + " Daily Limit Ave");
             existing.setCity("DailyLimitCity-" + i);
             existing.setTelephone(String.format("7%09d", i));
-            existing.setRegistrationDate(today);
+            existing.setRegistrationDate(businessDay);
             ownerRepository.save(existing);
         }
         String body = """

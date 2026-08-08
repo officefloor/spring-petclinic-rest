@@ -9,11 +9,12 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitExce
 
 /**
  * Rejects a new owner once {@value #DAILY_LIMIT} or more owners have already been
- * created today, counted by {@code registrationDate} equal to the current server date.
- * Runs after {@link DefaultOwnerRegistrationDate} (so the incoming owner already has a
- * registration date) and before {@link SaveOwner}: when the day is full it throws a
- * checked {@link OwnerDailyLimitException}, which the escalation handler turns into a
- * 429 Too Many Requests.
+ * created for the same business day, counted by {@code registrationDate} equal to this
+ * owner's adjusted registration date. Runs after {@link DefaultOwnerRegistrationDate}
+ * (so the incoming owner already has its business-day registration date) and before
+ * {@link SaveOwner}: when the day is full it throws a checked
+ * {@link OwnerDailyLimitException}, which the escalation handler turns into a 429 Too
+ * Many Requests.
  */
 public class RejectOwnerDailyLimit {
 
@@ -22,13 +23,13 @@ public class RejectOwnerDailyLimit {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws OwnerDailyLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate businessDay = owner.getRegistrationDate();
         long count = 0;
         for (Owner existing : ownerRepository.findAll()) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // never count the owner itself
             }
-            if (today.equals(existing.getRegistrationDate())) {
+            if (businessDay.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
