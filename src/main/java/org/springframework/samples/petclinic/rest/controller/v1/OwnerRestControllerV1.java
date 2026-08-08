@@ -208,6 +208,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Build an owner's derived duplicate-detection identity key as
+     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Each {@code null}
+     * component contributes the empty string, and the email is lower-cased so the comparison is
+     * case-insensitive. Two owners are duplicates only when their whole identity keys are equal.
+     */
+    private static String identityKey(String normalizedTelephone, String email, String householdId) {
+        String telephone = normalizedTelephone == null ? "" : normalizedTelephone;
+        String emailKey = email == null ? "" : email.toLowerCase();
+        String household = householdId == null ? "" : householdId;
+        return telephone + "|" + emailKey + "|" + household;
+    }
+
+    /**
      * Build the customer code for a new owner as {@code '<CITY3>-<LAST3>-<NNNN>'}, where CITY3 is the
      * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
      * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
@@ -316,25 +329,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .map(OwnerRestControllerV1::toE164)
-            .filter(existing -> existing != null)
-            .anyMatch(telephone::equals);
-        if (telephoneInUse) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (email != null) {
-            String emailKey = email.toLowerCase();
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(existing -> existing != null)
-                .map(String::toLowerCase)
-                .anyMatch(emailKey::equals);
-            if (emailInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         String lastNameKey = normaliseIdentity(ownerFieldsDto.getLastName());
         String addressKey = address;
@@ -343,7 +337,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 normaliseIdentity(existing.getLastName()).equals(lastNameKey)
                     && normaliseAddress(existing.getAddress()).equals(addressKey))
             .toList();
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
+        String householdId = (sharesHousehold && !householdMembers.isEmpty())
+            ? householdId(lastNameKey, addressKey) : null;
+        String identityKey = identityKey(telephone, email, householdId);
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey(toE164(existing.getTelephone()),
+                existing.getEmail(), existing.getHouseholdId()).equals(identityKey));
+        if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String firstNameKey = normaliseIdentity(ownerFieldsDto.getFirstName());
@@ -360,8 +360,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(email == null ? null : email.toLowerCase());
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
-        if (sharesHousehold && !householdMembers.isEmpty()) {
-            String householdId = householdId(lastNameKey, addressKey);
+        if (householdId != null) {
             owner.setHouseholdId(householdId);
             for (Owner member : householdMembers) {
                 if (member.getHouseholdId() == null) {
