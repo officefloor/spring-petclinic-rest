@@ -44,9 +44,13 @@ public interface OwnerMapper {
                 owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** Membership tier: 'SILVER' when namesakeCount is 0 and an email is present,
-     *  otherwise 'BRONZE'. */
+    /** Membership tier: 'GOLD' when the owner's household has 3 or more members;
+     *  otherwise 'SILVER' when namesakeCount is 0 and an email is present, else 'BRONZE'. */
     default String membershipTier(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            return "GOLD";
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean unique = Integer.valueOf(0).equals(owner.getNamesakeCount());
         return (unique && hasEmail) ? "SILVER" : "BRONZE";
