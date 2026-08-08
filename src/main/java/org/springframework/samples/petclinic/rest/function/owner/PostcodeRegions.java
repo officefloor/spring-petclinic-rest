@@ -20,7 +20,17 @@ public final class PostcodeRegions {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     private PostcodeRegions() {
+    }
+
+    /** IANA timezone name for the region, or null when the region has no known timezone. */
+    public static String timezoneForRegion(String region) {
+        return region == null ? null : REGION_TIMEZONE.get(region);
     }
 
     /** Canonical region for the city, or null when the city has no known region. */
