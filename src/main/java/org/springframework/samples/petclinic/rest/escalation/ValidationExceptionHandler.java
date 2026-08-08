@@ -20,6 +20,13 @@ public class ValidationExceptionHandler {
                 "The request contains invalid or missing parameters");
         BindingResult bindingResult = ex.getBindingResult();
         if (bindingResult.hasErrors()) {
+            // Distinct field names of every rejected field (a field can fail more than one
+            // constraint), so a missing or blank field lists its name once in 'errors'.
+            List<String> errors = bindingResult.getFieldErrors().stream()
+                    .map(fieldError -> fieldError.getField())
+                    .distinct()
+                    .toList();
+            detail.setProperty("errors", errors);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                     .map(fieldError -> {
                         String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
