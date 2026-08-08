@@ -36,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
+    @Mapping(target = "riskFlag", ignore = true)
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     OwnerDto toOwnerDto(Owner owner);
 
