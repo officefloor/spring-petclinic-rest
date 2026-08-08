@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouse
 
 /**
  * Rejects a new owner that would share a household with an existing owner: same
- * {@code lastName} and same {@code address}, compared case-insensitively after
+ * {@code lastName} and same {@code address}. Addresses are compared in their normalized
+ * form (see {@link AddressNormalizer}); last names are compared case-insensitively after
  * collapsing runs of whitespace to a single space. Throws a checked
  * {@link DuplicateOwnerHouseholdException} (turned into a 409 Conflict by the
  * escalation handler) unless the request opted in with {@code sharesHousehold} true.
@@ -21,7 +22,7 @@ public class RejectDuplicateOwnerHousehold {
             return; // explicitly allowed to share a household
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         if (lastName == null || address == null) {
             return; // nothing to compare against
         }
@@ -30,14 +31,14 @@ public class RejectDuplicateOwnerHousehold {
                 continue; // never conflict with the owner itself
             }
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 throw new DuplicateOwnerHouseholdException(
                         "Another owner with the same last name and address already exists");
             }
         }
     }
 
-    /** Lower-cased, trimmed, with internal whitespace runs collapsed to one space. */
+    /** Last-name key: lower-cased, trimmed, with internal whitespace runs collapsed to one space. */
     private static String normalize(String value) {
         if (value == null) {
             return null;
