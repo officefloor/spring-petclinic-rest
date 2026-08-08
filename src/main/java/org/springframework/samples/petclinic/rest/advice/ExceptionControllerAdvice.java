@@ -138,6 +138,11 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
+            List<String> errorFields = bindingResult.getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList();
+            detail.setProperty("errors", errorFields);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                 .map(fieldError -> {
                     String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
