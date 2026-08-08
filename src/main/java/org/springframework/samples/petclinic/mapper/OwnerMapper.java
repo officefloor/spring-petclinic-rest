@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(formatMembershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -44,16 +44,24 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's membership tier: {@code "SILVER"} when the owner's namesake count is 0 and
-     * an email is present, otherwise {@code "BRONZE"}.
+     * Computes an owner's membership level, a number from 1 to 3: starting at 1, plus 1 when an email
+     * is present, plus 1 when the owner's namesake count is 0, capped at 3 (level 4 is reserved for
+     * tenure).
      */
-    default String formatMembershipTier(Owner owner) {
+    default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
+        if (hasEmail) {
+            level++;
+        }
+        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (unique) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
