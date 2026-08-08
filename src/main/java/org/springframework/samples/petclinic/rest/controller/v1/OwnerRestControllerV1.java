@@ -507,9 +507,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // with a postcode belongs to the household identified by this computed id, and owners sharing
         // a last name and postcode share it automatically.
         String householdId = (postcode == null) ? null : householdId(lastNameKey, postcode);
-        // Existing owners already in this household (same last name and postcode).
+        // Existing owners already in this household (same last name and postcode). Soft-deleted
+        // owners are ignored so a duplicate that only matches a deleted owner is allowed.
         List<Owner> householdMembers = (householdId == null) ? List.of()
             : this.clinicService.findAllOwners().stream()
+                .filter(existing -> !existing.isDeleted())
                 .filter(existing -> householdId.equals(
                     householdId(normaliseIdentity(existing.getLastName()), existing.getPostcode())))
                 .toList();
@@ -521,6 +523,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String identityKey = identityKey(telephone, email, householdId);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey(toE164(existing.getTelephone()),
                 existing.getEmail(), existing.getHouseholdId()).equals(identityKey));
         if (identityInUse) {
@@ -608,7 +611,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft delete: flag the owner deleted and retain the record so it can still be read back.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 

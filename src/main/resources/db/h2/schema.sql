@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(36),
   namesake_count INTEGER,
   postcode VARCHAR(10),
-  possible_duplicate_of INTEGER
+  possible_duplicate_of INTEGER,
+  deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);
