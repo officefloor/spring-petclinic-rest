@@ -22,6 +22,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(formatDisplayName(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -195,6 +196,40 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Formats an owner's stored E.164 telephone for humans as the country code, a space, and the
+     * national digits grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}).
+     * The raw {@code telephone} value stays in E.164 form. Returns the stored value unchanged when it
+     * is {@code null} or not a well-formed E.164 string (a {@code '+'} followed by digits).
+     */
+    default String formatTelephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.matches("\\+[0-9]+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int countryCodeLength = countryCodeLength(digits);
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            grouped.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return grouped.toString();
+    }
+
+    /**
+     * Determines the length of the country-code segment of an E.164 number's digits (its digits
+     * without the leading {@code '+'}): 1 for the NANP ({@code '+1'}) and 2 otherwise (e.g. Australia's
+     * {@code '+61'}), mirroring the country codes the application normalises to.
+     */
+    private int countryCodeLength(String digits) {
+        return digits.startsWith("1") ? 1 : 2;
     }
 
     /**
