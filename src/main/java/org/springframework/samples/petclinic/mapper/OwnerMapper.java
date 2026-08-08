@@ -34,6 +34,8 @@ public interface OwnerMapper {
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     @Mapping(target = "possibleDuplicate",
             expression = "java(owner.getPossibleDuplicateOf() != null)")
+    @Mapping(target = "deleted",
+            expression = "java(owner.getDeleted() != null && owner.getDeleted())")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")

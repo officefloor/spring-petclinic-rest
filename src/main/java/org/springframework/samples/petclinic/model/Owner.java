@@ -85,6 +85,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted;
+
     /**
      * Derived, non-persisted flag set during the create flow: true when more than 80
      * owners had already been created for this owner's business day at the time of
@@ -215,6 +218,21 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /** Soft-delete flag. Null (for owners created before the column existed or never
+     *  deleted) is treated as not deleted. */
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /** Convenience: true only when the owner is explicitly flagged deleted. */
+    public boolean isDeleted() {
+        return Boolean.TRUE.equals(this.deleted);
     }
 
     public Boolean getBulkSignupWarning() {

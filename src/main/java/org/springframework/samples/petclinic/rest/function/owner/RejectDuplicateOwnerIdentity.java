@@ -26,6 +26,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerIdent
  * <p>The {@code sharesHousehold} flag therefore no longer creates the household link (the
  * id is now derived purely from lastName+postcode); it only lets a genuine second member
  * through the duplicate block.
+ *
+ * <p>Soft-deleted owners (flagged {@code deleted}) are skipped entirely: they no longer
+ * block a create, so a normally-blocking duplicate is admitted when the only matching
+ * owner has been deleted.
  */
 public class RejectDuplicateOwnerIdentity {
 
@@ -37,6 +41,9 @@ public class RejectDuplicateOwnerIdentity {
         for (Owner existing : ownerRepository.findAll()) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // never conflict with the owner itself
+            }
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a create
             }
             if (identityKey.equals(OwnerIdentity.identityKey(existing))) {
                 throw new DuplicateOwnerIdentityException(
