@@ -66,6 +66,49 @@ public final class E164Telephone {
     }
 
     /**
+     * Formats a stored E.164 number for humans: the country code, a space, then the national digits
+     * grouped in threes (left to right), e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
+     * The raw E.164 value is left untouched; this is a presentation-only rendering.
+     *
+     * @return the human-readable rendering of {@code e164}, or {@code null} when {@code e164} is not a
+     *   value this normalizer produces — no leading {@code '+'}, not 8 to 15 digits, or a country code
+     *   outside {@link #NATIONAL_LENGTH_BY_COUNTRY_CODE} whose national-number split is unknown.
+     */
+    public static String toDisplayOrNull(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String cleaned = e164.replaceAll("[\\s()\\-]", "");
+        if (!cleaned.startsWith("+")) {
+            return null;
+        }
+        String digits = cleaned.substring(1);
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode) && digits.length() - countryCode.length() == entry.getValue()) {
+                String national = digits.substring(countryCode.length());
+                return "+" + countryCode + " " + groupInThrees(national);
+            }
+        }
+        return null;
+    }
+
+    /** Groups a run of digits into space-separated chunks of three, left to right. */
+    private static String groupInThrees(String national) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(national.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /**
      * Checks the national-number length of an explicitly country-coded number against its country.
      *
      * @param digits the digits following the {@code '+'} (country code plus national number).

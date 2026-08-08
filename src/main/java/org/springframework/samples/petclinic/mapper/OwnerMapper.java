@@ -33,7 +33,16 @@ public interface OwnerMapper {
             expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The stored E.164 'telephone' formatted for humans: the country code, a space, then the
+     *  national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' stays
+     *  E.164. Null when the stored value is not a recognised E.164 number. */
+    default String telephoneDisplay(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.E164Telephone
+                .toDisplayOrNull(owner.getTelephone());
+    }
 
     /** Age band derived from birthDate relative to registrationDate: 'MINOR' when under
      *  18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or over. Null when either date is absent. */
