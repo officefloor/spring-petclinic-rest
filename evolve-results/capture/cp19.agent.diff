@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitException.java
+new file mode 100644
+index 00000000..cc9d0781
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when creating an owner once 100 or more owners have already been created
++ * today (compared by {@code registrationDate}). Handled globally by
++ * {@link OwnerDailyLimitExceptionHandler}, which responds 429 Too Many Requests.
++ */
++public class OwnerDailyLimitException extends Exception {
++
++    public OwnerDailyLimitException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitExceptionHandler.java
+new file mode 100644
+index 00000000..834b99fa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerDailyLimitExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class OwnerDailyLimitExceptionHandler {
++
++    public void handle(@Parameter OwnerDailyLimitException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java
+new file mode 100644
+index 00000000..d4b3978b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException;
++
++/**
++ * Rejects a new owner once {@value #DAILY_LIMIT} or more owners have already been
++ * created today, counted by {@code registrationDate} equal to the current server date.
++ * Runs after {@link DefaultOwnerRegistrationDate} (so the incoming owner already has a
++ * registration date) and before {@link SaveOwner}: when the day is full it throws a
++ * checked {@link OwnerDailyLimitException}, which the escalation handler turns into a
++ * 429 Too Many Requests.
++ */
++public class RejectOwnerDailyLimit {
++
++    /** Maximum number of owners that may be created on a single day. */
++    static final int DAILY_LIMIT = 100;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws OwnerDailyLimitException {
++        LocalDate today = LocalDate.now();
++        long count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue; // never count the owner itself
++            }
++            if (today.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        if (count >= DAILY_LIMIT) {
++            throw new OwnerDailyLimitException(
++                    "The maximum number of owners for today has already been reached");
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException.yml
+new file mode 100644
+index 00000000..cab2a246
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.OwnerDailyLimitExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 3154fb40..17a1949f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -39,6 +39,11 @@ rejectHousehold:
+ rejectCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectOwnerCityAtCapacity
+   govern: [ transaction ]
++  next: rejectDailyLimit
++
++rejectDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectOwnerDailyLimit
++  govern: [ transaction ]
+   next: assignHousehold
+ 
+ assignHousehold:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 85b5b3f3..5003220b 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -116,6 +116,32 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDailyLimitReached() throws Exception {
++        // Seed 100 owners already registered today (by registrationDate), each with distinct
++        // last name, address, city and telephone so the create under test is only rejected by
++        // the daily-limit rule and not by the telephone / household / city-capacity rules.
++        LocalDate today = LocalDate.now();
++        for (int i = 0; i < 100; i++) {
++            Owner existing = new Owner();
++            existing.setFirstName("Daily");
++            existing.setLastName("Limit-" + i + "-" + System.nanoTime());
++            existing.setAddress(i + " Daily Limit Ave");
++            existing.setCity("DailyLimitCity-" + i);
++            existing.setTelephone(String.format("7%09d", i));
++            existing.setRegistrationDate(today);
++            ownerRepository.save(existing);
++        }
++        String body = """
++            {"firstName":"George","lastName":"OverLimit","address":"1 Over Limit Way","city":"Overflow","telephone":"6085559999"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isTooManyRequests())
++            .andExpect(jsonPath("$.title").value("OwnerDailyLimitException"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
