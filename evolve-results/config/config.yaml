@@ -1,0 +1,207 @@
+# PetClinic-Evolve configuration.
+# Fill in the two branch base refs and the hotspot method names, then smoke-test
+# with --dry-run and --max-checkpoints 1.
+
+model: claude-opus-4-8
+chains: 10                    # independent runs per (arm, strategy). 10 = target for tight CIs.
+active_strategy: just-solve   # which prompt strategy to run by default
+agent_timeout: 3600
+
+# Resilience. On a TOKEN/SESSION limit the harness rolls back the current
+# checkpoint, waits for the window to reopen, then retries the SAME checkpoint --
+# so an overnight pause resumes exactly where it left off. TRANSIENT failures
+# (internet dropping in/out, the API overloaded, no completion) are treated the
+# same way but with a short exponential backoff instead of a quota-reset wait.
+limits:
+  # token/session limit
+  poll_seconds: 1800        # wait between retries when the reset time can't be parsed (30 min)
+  max_sleep_seconds: 21600  # cap on a single quota-reset wait (6 h), then re-check
+  # transient failures (network / overload / no completion)
+  retry_backoff_seconds: 60     # first backoff; doubles each consecutive transient failure
+  retry_backoff_max: 900        # cap on a single transient backoff (15 min)
+  max_transient_attempts: 20    # consecutive transient failures before aborting (network truly down)
+  # overall
+  max_attempts: 500         # absolute safety cap on retries per checkpoint
+
+# Paths below that are NOT absolute are resolved relative to THIS config file's
+# directory, so the harness can be moved without editing them.
+checkpoints_file: checkpoints.yaml
+
+# Acceptance criteria are injected PER CHECKPOINT (never pre-committed to the base
+# branch), so the agent only ever sees the current + prior requirements' tests,
+# never future ones. At checkpoint K the harness copies Cp{K}Tests.java (plus the
+# shared infra at K=1) into the worktree and commits it as "test: add cpK ...".
+acceptance:
+  src_dir: acceptance/src/test/java/org/springframework/samples/petclinic/acceptance
+  dest_subpath: src/test/java/org/springframework/samples/petclinic/acceptance
+  shared: ["AcceptanceBase.java", "AuditLogCapture.java"]   # injected at checkpoint 1
+
+arms:
+  spring:
+    repo: ${HOME}/compare/spring       # ${VARS} and ~ are expanded from the environment
+    base_ref: spring-compare
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: []                       # Spring has no endpoint YAML
+    # Hotspot + scoped erosion use a DYNAMIC subsystem: the production-Java files
+    # changed since base_ref (cumulative). A new class the agent creates is in
+    # that diff, so it can't hide — no fixed hotspot config needed.
+    function_package_glob: null          # N/A for Spring
+    # Entry-handler trajectory (#4): the ONE function POST /api/owners routes
+    # through. Regex over '<file>::<name>'. Spring's single handler can bloat.
+    entry_handler: "OwnerRestControllerV1::addOwner"
+
+  officefloor:
+    repo: ${HOME}/compare/officefloor
+    base_ref: officefloor-compare
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: ["src/main/resources/officefloor/**/*.yml"]
+    # Same dynamic touched-file subsystem as Spring (so the hotspot catches any
+    # bloat wherever it lands). OfficeFloor's own wired functions are also tracked
+    # separately via function_package_glob (fn_count / fn_nloc_max).
+    function_package_glob: "src/main/java/**/rest/function/**/*.java"
+    # Designated create-entry function of the owner pipeline. Expected to stay
+    # flat: new rules attach as NEW wired functions, not by growing this one.
+    entry_handler: "BuildOwner::service"
+
+# Prompt strategies mirror SlopCodeBench's intervention study. {spec} is replaced
+# with the checkpoint specification. Keep them neutral: never mention the
+# experiment, the architecture, or "refactor" in just-solve.
+prompt_strategies:
+  just-solve: |
+    Implement the following change to the application so that it fully satisfies
+    the specification and all existing and new tests pass. Run the test suite and
+    make it green before finishing.
+
+    {spec}
+  anti_slop: |
+    Implement the following change. Do not add verbose or defensive code,
+    unnecessary abstractions, or duplicated logic. Group code by responsibility
+    and avoid growing any single "god" method or function. Make all tests pass.
+
+    {spec}
+  plan_first: |
+    First outline your approach in a few bullet points. Then implement the
+    simplest solution that satisfies the specification, verify the edge cases,
+    and refactor if needed. Make all tests pass before finishing.
+
+    {spec}
+
+build:
+  # Compile step used as the build gate (fast; tests run separately by tag).
+  cmd: ["./mvnw", "-q", "-B", "-DskipTests", "test-compile"]
+  # {tags} is replaced with "cp01,cp02,...,cpK" (JUnit5 tag include = OR).
+  test_cmd_template: ["./mvnw", "-q", "-B", "-Dgroups={tags}", "test"]
+  surefire_dir: "target/surefire-reports"
+  timeout: 1800
+  test_timeout: 3600
+
+tools:
+  jscpd: "jscpd"     # npm i -g jscpd  (clone detection for Verbosity)
+  astgrep: "sg"      # ast-grep binary  (pattern flags for Verbosity)
+  astgrep_rules: "astgrep-rules"
+
+probe:
+  enabled: true
+  at_checkpoints: [1, 10, 20, 30, 40, 50, 60]   # cold-reader probe every 10 checkpoints
+  question: |
+    Read the code as it currently stands and answer without changing anything.
+    List, in order, every validation and side-effect that is applied when
+    creating an owner via POST /api/owners.
+  # Ground-truth items for a crude recall score (case-insensitive substring match;
+  # grade properly offline too). Single distinctive tokens for the create-owner
+  # rules, so casing/spacing (e.g. "displayName" vs "display name") doesn't matter.
+  # Spans the full cp1-60 stream: at an early probe only the rules implemented so
+  # far can match, so the denominator is shared and the score rises over the run.
+  # The absolute value is rough; the Spring-vs-OfficeFloor gap at each probe is the
+  # signal (same denominator, same checkpoint, both arms).
+  expected:
+    # cp1-20 rule web
+    - "duplicate"       # exact / household / telephone / email uniqueness
+    - "telephone"       # normalisation + uniqueness + E.164
+    - "email"           # email presence / format / uniqueness
+    - "display"         # displayName
+    - "initials"        # initials
+    - "registration"    # registrationDate default + business day
+    - "membership"      # membershipNumber
+    - "customer"        # customerCode
+    - "city"            # canonical casing + per-city sequence + capacity
+    - "namesake"        # namesakeCount
+    - "household"       # sharesHousehold / householdId
+    - "local"           # locality
+    - "audit"           # audit trail
+    # cp21-40 identity, limits, membership maths
+    - "bulk"            # bulkSignupWarning
+    - "gold"            # GOLD tier before numeric levels
+    - "level"           # membershipLevel (numeric, then points)
+    - "country"         # country-specific telephone length
+    - "preference"      # contactPreference
+    - "identity"        # identityKey
+    - "postcode"        # postcode validation
+    - "luhn"            # customerCode check digit
+    - "hash"            # SHA-256 region-and-hash identity
+    - "future"          # reject future registrationDate
+    - "age"             # ageBand
+    - "possible"        # possibleDuplicate soft-match
+    - "blocklist"       # disposable email-domain blocklist
+    - "tenure"          # tenure gate on top level
+    - "points"          # membershipPoints
+    # cp41-60 collisions, structure, fiscal, v2
+    - "collision"       # customerCode / memberId de-duplication
+    - "timezone"        # region-to-timezone
+    - "title"           # salutation from title
+    - "deleted"         # exclude deleted owners from checks
+    - "holiday"         # public-holiday business-day roll-forward
+    - "fiscal"          # fiscal-year basis
+    - "idempotency"     # Idempotency-Key replay
+    - "soundex"         # identityKey v2 soundex(lastName)
+    - "segment"         # ownerSegment
+    - "capacity"        # capacityWarning approaching city limit
+    - "risk"            # riskFlag
+    - "problem"         # RFC7807 problem+json rejections
+    - "version"         # apiVersion / schemaVersion v2 finale
+
+# Kept identical at every checkpoint. CLAUDE.md is the fixed, human-authored
+# project guide (present in BOTH arms so the playing field is level: it offsets
+# Spring's training-data advantage for OfficeFloor). Pinning restores it to the
+# base_ref version after each agent turn, so it can never become accumulating
+# cross-checkpoint memory. The CSV `notes` column flags any checkpoint where the
+# agent tried to edit it.
+isolation:
+  pin_files: ["CLAUDE.md"]
+
+  # Filesystem confinement for the agent turn (Linux Landlock; no root/bwrap). The
+  # blind-agent design removes the withheld tests from the sandbox and git history,
+  # but the agent process could still `find /` the rest of the disk — reaching the
+  # harness acceptance/ suite, checkpoints.yaml, and prior runs left in Trash. With
+  # this on, the agent (and every child it spawns) is restricted to the sandbox +
+  # toolchain; everything else returns EACCES. Fails CLOSED: if Landlock is missing
+  # or the sentinel self-check finds withheld material readable, the turn is refused.
+  # Verify support with:  python harness/landlock_selftest.py   (expect OVERALL: PASS)
+  agent_confinement:
+    enabled: true
+    extra_ro_binds: []   # extra read-only paths (toolchain not under /usr,/opt,~/.local)
+    extra_rw_binds: []   # extra writable paths (e.g. an alternate Maven repo)
+
+paths:
+  # work_root holds the per-chain git WORKTREES (production tree + .git history +
+  # capture staging), under <work_root>/<run_id>/<arm>-<strategy>-chain<n>.
+  #
+  # sandbox_root IS the agent's sandbox directory itself: the project contents are
+  # mirrored directly under it, so its cwd looks like an ordinary project dir (e.g.
+  # named "sandbox") with NOTHING in the path — no run_id/arm/strategy/chain — that
+  # could hint at a checkpoint sequence. It is reused across chains (which run
+  # sequentially) and rebuilt fresh each turn; the harness deletes it wholesale, so it
+  # MUST be a dedicated directory (a home/root path is refused).
+  #
+  # Both MUST be absolute, EXTERNAL, and SEPARATE from each other (${VARS} and ~ are
+  # expanded; a relative path would be anchored inside this repo). Why: the agent's cwd
+  # is the sandbox. If it were a child of work_root (or of this repo), the agent could
+  # `cd ..` into a worktree and read its .git history (the cp01/cp02… sequence), the
+  # experimenter's acceptance/ suite, checkpoints.yaml, and all future specs — defeating
+  # the blind-agent isolation (observed once at cp60). A separate, flat sandbox_root
+  # gives the agent a tree with no worktree/.git/capture siblings to walk into.
+  work_root: ${HOME}/pe-work
+  sandbox_root: ${HOME}/sandbox
+  results_csv: results/records.csv
