@@ -25,8 +25,6 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(formatSalutation(owner))")
     @Mapping(target = "initials", expression = "java(formatInitials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
-    @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
@@ -108,23 +106,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (region) from the customer-code identity: it is the {@code REGION}
-     * segment of the {@code '<REGION>-<HASH8>'} customer code (the part before the first {@code '-'}).
-     * When the customer code is absent it falls back to resolving the region directly, preferring the
-     * postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and then the fixed city-to-region
-     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), yielding
-     * {@code "UNKNOWN"} when neither resolves.
+     * Derives an owner's locality (region) from the memberId identity: it is the {@code REGION}
+     * segment of the {@code '<REGION><FY><HASH8><CHK>'} memberId (everything preceding its
+     * fixed-length trailing FY, HASH8 and CHK segments). When the memberId is absent it falls back to
+     * resolving the region directly, preferring the postcode range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) and then the fixed city-to-region table ({@code Sydney -> NSW},
+     * {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), yielding {@code "UNKNOWN"} when neither
+     * resolves.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
-            }
+        String region = memberIdRegion(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         String fromPostcode = regionForPostcode(owner.getPostcode());
         if (fromPostcode != null) {
@@ -230,58 +226,56 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's check digit: a single Luhn check digit (0-9) over the digits contained in the
-     * customer code. Returns {@code null} when the customer code is absent.
-     */
-    default Integer formatCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last two
-     * digits of the fiscal year (starting 1 July) of the business-day-adjusted registration date
-     * (e.g. {@code "NSW-1A2B3C4D-M26"}). Returns {@code null} when the customer code or registration
-     * date is absent.
-     */
-    default String formatMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYearStart(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Formats an owner's fiscal year as {@code 'FY<YY>'}, where YY is the last two digits of the
-     * starting calendar year of the fiscal year (starting 1 July) that contains the owner's
-     * business-day-adjusted registration date (e.g. 5 August 2026 yields {@code "FY26"} and 3 March
-     * 2026 yields {@code "FY25"}). Returns {@code null} when the registration date is absent.
+     * Formats an owner's fiscal year as {@code 'FY<YY>'}, where YY is the two-digit FY segment carried
+     * inside the memberId ({@code '<REGION><FY><HASH8><CHK>'}): the last two digits of the starting
+     * calendar year of the fiscal year (starting 1 July) of the business-day-adjusted registration
+     * date (e.g. a memberId formed on 5 August 2026 yields {@code "FY26"} and one on 3 March 2026
+     * yields {@code "FY25"}). Returns {@code null} when the memberId is absent.
      */
     default String formatFiscalYear(Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        if (owner == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearStart(owner.getRegistrationDate()) % 100);
+        String fiscalYear = memberIdFiscalYear(owner.getMemberId());
+        return fiscalYear == null ? null : "FY" + fiscalYear;
+    }
+
+    /**
+     * The core of a memberId with any {@code '-<n>'} collision suffix stripped, or {@code null} when
+     * the memberId is absent. The core is the raw {@code '<REGION><FY><HASH8><CHK>'} whose trailing FY
+     * (2 digits), HASH8 (8 hex) and CHK (1 digit) are fixed-length, so its segments can be read by
+     * position.
+     */
+    private String memberIdCore(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int dash = memberId.indexOf('-');
+        return dash > 0 ? memberId.substring(0, dash) : memberId;
+    }
+
+    /**
+     * The {@code REGION} segment of a memberId (everything preceding its fixed-length trailing FY,
+     * HASH8 and CHK segments), or {@code null} when the memberId is absent or too short to carry one.
+     */
+    private String memberIdRegion(String memberId) {
+        String core = memberIdCore(memberId);
+        if (core == null || core.length() <= 11) {
+            return null;
+        }
+        return core.substring(0, core.length() - 11);
+    }
+
+    /**
+     * The two-digit {@code FY} segment of a memberId (the two digits preceding its fixed-length HASH8
+     * and CHK segments), or {@code null} when the memberId is absent or too short to carry one.
+     */
+    private String memberIdFiscalYear(String memberId) {
+        String core = memberIdCore(memberId);
+        if (core == null || core.length() < 11) {
+            return null;
+        }
+        return core.substring(core.length() - 11, core.length() - 9);
     }
 
     /**

@@ -315,34 +315,73 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a new owner as {@code '<REGION>-<HASH8>'}, where REGION is the region
-     * code derived from the postcode (falling back to the city-to-region table, else {@code "UNKNOWN"})
-     * and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over
-     * {@code normalizedTelephone + lastName}. Sequence numbers are no longer used, so the code depends
-     * only on the owner's own region and identity, not on how many owners already exist.
+     * Build the unified member id for a new owner as {@code '<REGION><FY><HASH8><CHK>'}, where REGION is
+     * the region code derived from the postcode (falling back to the city-to-region table, else
+     * {@code "UNKNOWN"}), FY is the two-digit fiscal year (starting 1 July) of the
+     * business-day-adjusted {@code registrationDate}, HASH8 is the first 8 upper-case hex characters of
+     * the SHA-256 digest over {@code normalizedTelephone + lastName}, and CHK is a single Luhn check
+     * digit computed over the digits of {@code '<REGION><FY><HASH8>'}. The id depends only on the
+     * owner's own region, fiscal year and identity, not on how many owners already exist.
      */
-    private String nextCustomerCode(String region, String normalizedTelephone, String lastName) {
-        return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+    private String nextMemberId(String region, LocalDate registrationDate,
+                                String normalizedTelephone, String lastName) {
+        String fiscalYear = String.format("%02d", fiscalYearStart(registrationDate) % 100);
+        String hash8 = hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+        String base = region + fiscalYear + hash8;
+        return base + luhnCheckDigit(base);
     }
 
     /**
-     * De-duplicate a computed customer code against the codes already assigned to existing owners:
-     * when {@code code} is unused it is returned unchanged, otherwise {@code '-<n>'} is appended with
+     * De-duplicate a computed member id against the ids already assigned to existing owners: when
+     * {@code memberId} is unused it is returned unchanged, otherwise {@code '-<n>'} is appended with
      * the smallest {@code n} of 2 or more that makes the result unique among existing owners.
      */
-    private String deduplicateCustomerCode(String code) {
+    private String deduplicateMemberId(String memberId) {
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!existing.contains(code)) {
-            return code;
+        if (!existing.contains(memberId)) {
+            return memberId;
         }
         int n = 2;
-        while (existing.contains(code + "-" + n)) {
+        while (existing.contains(memberId + "-" + n)) {
             n++;
         }
-        return code + "-" + n;
+        return memberId + "-" + n;
+    }
+
+    /**
+     * The starting calendar year of the fiscal year (which starts on 1 July) that contains the given
+     * date: the date's own year when it falls on or after 1 July, otherwise the previous year.
+     */
+    private static int fiscalYearStart(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * A single Luhn check digit (0-9) computed over the digits contained in {@code input}
+     * (non-digit characters are ignored).
+     */
+    private static int luhnCheckDigit(String input) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = input.length() - 1; i >= 0; i--) {
+            char c = input.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -667,8 +706,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(email == null ? null : email.toLowerCase());
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(deduplicateCustomerCode(nextCustomerCode(
-            region(postcode, owner.getCity()), telephone, owner.getLastName())));
+        owner.setMemberId(deduplicateMemberId(nextMemberId(
+            region(postcode, owner.getCity()), registrationDate, telephone, owner.getLastName())));
         owner.setHouseholdId(householdId);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
@@ -677,13 +716,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdSize(householdSize(owner));
         Integer membershipLevel = cappedMembershipLevel(owner);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, ownerMapper.formatMembershipNumber(owner));
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         // Immutable structured event carrying the owner's current primary identifier (the
-        // customerCode today; the memberId once the two are unified), with a monotonic sequence.
+        // unified memberId), with a monotonic sequence.
         AUDIT.info(new OwnerCreatedEvent(CREATE_SEQUENCE.incrementAndGet(), owner.getId(),
-            owner.getCustomerCode(), membershipLevel).toJson());
+            owner.getMemberId(), membershipLevel).toJson());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(membershipLevel);
         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);

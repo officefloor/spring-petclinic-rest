@@ -24,10 +24,9 @@ import tools.jackson.databind.ObjectMapper;
  * Immutable structured audit event emitted when an owner is created.
  *
  * <p>It carries the monotonically increasing create sequence number, the owner id, the membership
- * level, and — crucially — the owner's <em>current primary identifier</em>. Today that identifier is
- * the {@code customerCode}, and that is the JSON key it is published under; when the customerCode is
- * later unified into the memberId the event will simply carry the memberId (callers always pass
- * whatever the current primary identifier is, so only the key name changes here).
+ * level, and — crucially — the owner's <em>current primary identifier</em>, the unified
+ * {@code memberId}, which is the JSON key it is published under. Callers always pass whatever the
+ * current primary identifier is.
  */
 public final class OwnerCreatedEvent {
 
@@ -59,7 +58,7 @@ public final class OwnerCreatedEvent {
         return this.ownerId;
     }
 
-    /** The owner's current primary identifier at the time of the event (currently the customerCode). */
+    /** The owner's current primary identifier at the time of the event (the memberId). */
     public String getPrimaryIdentifier() {
         return this.primaryIdentifier;
     }
@@ -70,14 +69,14 @@ public final class OwnerCreatedEvent {
 
     /**
      * Render this event as a compact JSON object with a stable field order:
-     * {@code {seq, ownerId, customerCode, membershipLevel, event}}. The primary identifier is
-     * currently published under the {@code customerCode} key.
+     * {@code {seq, ownerId, memberId, membershipLevel, event}}. The primary identifier is
+     * published under the {@code memberId} key.
      */
     public String toJson() {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("seq", this.seq);
         fields.put("ownerId", this.ownerId);
-        fields.put("customerCode", this.primaryIdentifier);
+        fields.put("memberId", this.primaryIdentifier);
         fields.put("membershipLevel", this.membershipLevel);
         fields.put("event", EVENT);
         return MAPPER.writeValueAsString(fields);
