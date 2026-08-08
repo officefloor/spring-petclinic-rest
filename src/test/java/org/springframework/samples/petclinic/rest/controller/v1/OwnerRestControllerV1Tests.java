@@ -103,9 +103,11 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
         // Distinct telephone (not used by any seed owner) so the create is not rejected by the
-        // telephone-uniqueness rule; this test asserts the happy-path 201 create.
+        // telephone-uniqueness rule, and a distinct address so it is not rejected by the
+        // same-lastName-and-address household rule (seed owner Franklin lives at 110 W. Liberty St.);
+        // this test asserts the happy-path 201 create.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            {"firstName":"George","lastName":"Franklin","address":"1 Distinct Way","city":"Madison","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
