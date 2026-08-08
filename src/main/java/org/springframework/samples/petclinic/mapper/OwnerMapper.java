@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
@@ -137,30 +138,54 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes an owner's membership level, a number from 1 to 4: starting at 1, plus 1 when an email
-     * is present, plus 1 when the owner's namesake count is 0, plus 1 when the owner's tenure exceeds
-     * 365 days, capped at 4. Because a newly created owner has zero tenure, a new owner never exceeds
-     * level 3.
+     * Computes an owner's membership points, starting at 0: plus 2 when an email is present, plus 1
+     * when the owner's namesake count is 0, plus 2 for a household of 3 or more, plus 3 when the
+     * owner's tenure exceeds 365 days.
+     */
+    default Integer formatMembershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        int points = 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            points += 2;
+        }
+        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (unique) {
+            points += 1;
+        }
+        boolean largeHousehold = owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
+        if (largeHousehold) {
+            points += 2;
+        }
+        boolean tenured = owner.getRegistrationDate() != null
+            && owner.getRegistrationDate().plusDays(365).isBefore(LocalDate.now());
+        if (tenured) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Derives an owner's membership level, a number from 1 to 4, from the owner's membership points:
+     * 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
      */
     default Integer formatMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        int level = 1;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
-            level++;
+        int points = formatMembershipPoints(owner);
+        if (points <= 1) {
+            return 1;
         }
-        boolean unique = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        if (unique) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        boolean tenured = owner.getRegistrationDate() != null
-            && owner.getRegistrationDate().plusDays(365).isBefore(LocalDate.now());
-        if (tenured) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, 4);
+        return 4;
     }
 
     /**

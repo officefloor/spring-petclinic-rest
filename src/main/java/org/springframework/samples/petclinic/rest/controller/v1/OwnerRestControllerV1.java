@@ -215,6 +215,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Count how many owners belong to the given owner's household (owners sharing its normalized last
+     * name and postcode). An owner without a postcode has no household peers and counts as a household
+     * of one.
+     */
+    private int householdSize(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return 1;
+        }
+        String householdId = householdId(normaliseIdentity(owner.getLastName()), owner.getPostcode());
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getPostcode() != null
+                && householdId.equals(
+                    householdId(normaliseIdentity(existing.getLastName()), existing.getPostcode())))
+            .count();
+    }
+
+    /**
      * Build an owner's derived duplicate-detection identity key as
      * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Each {@code null}
      * component contributes the empty string, and the email is lower-cased so the comparison is
@@ -386,6 +403,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owners.forEach(owner -> owner.setHouseholdSize(householdSize(owner)));
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
@@ -396,6 +414,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owner.setHouseholdSize(householdSize(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(owner.getRegistrationDate() != null
             && ownersCreatedOn(owner.getRegistrationDate()) > 80);
@@ -493,6 +512,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // makes it an intentional household member rather than a suspected duplicate.
         owner.setPossibleDuplicateOf(null);
         this.clinicService.saveOwner(owner);
+        owner.setHouseholdSize(householdSize(owner));
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.formatMembershipLevel(owner));
