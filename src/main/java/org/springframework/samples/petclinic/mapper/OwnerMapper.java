@@ -108,9 +108,10 @@ public interface OwnerMapper {
         return (10 - (sum % 10)) % 10;
     }
 
-    /** Numeric membership level from 1 to 3, assigned on creation: starts at 1, gains 1
-     *  when an email is present, gains a further 1 when namesakeCount is 0, capped at 3
-     *  (level 4 is reserved for tenure). */
+    /** Numeric membership level from 1 to 4: starts at 1, gains 1 when an email is present,
+     *  gains a further 1 when namesakeCount is 0 — these creation-time factors are capped at 3.
+     *  Level 4 is reserved for tenure: it requires more than 365 days between the
+     *  registrationDate and today, so a newly created owner (zero tenure) never exceeds 3. */
     default Integer membershipLevel(Owner owner) {
         int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
@@ -120,7 +121,13 @@ public interface OwnerMapper {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (owner.getRegistrationDate() != null
+                && java.time.temporal.ChronoUnit.DAYS.between(
+                        owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /** The owner's locality: the REGION component of the customerCode ('<REGION>-<HASH8>'),
