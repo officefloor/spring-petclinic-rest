@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7b3bb4eb..934ae72c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (telephone.length() != 10) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
++            .map(Owner::getTelephone)
++            .filter(existing -> existing != null)
++            .map(existing -> existing.replaceAll("\\D", ""))
++            .anyMatch(telephone::equals);
++        if (telephoneInUse) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setTelephone(telephone);
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 999c9512..bef927df 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -103,7 +103,7 @@ class OwnerRestControllerV1Tests {
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
++            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"9995551234"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -112,6 +112,26 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateTelephoneReturnsConflict() throws Exception {
++        Owner existing = new Owner();
++        existing.setFirstName("Jane");
++        existing.setLastName("Doe-" + System.nanoTime());
++        existing.setAddress("110 W. Liberty St.");
++        existing.setCity("Madison");
++        existing.setTelephone("6081234567");
++        ownerRepository.save(existing);
++
++        // A differently-formatted telephone that normalizes to the same digits must be rejected.
++        String body = """
++            {"firstName":"John","lastName":"Roe","address":"1 Main St.","city":"Madison","telephone":"(608) 123-4567"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
