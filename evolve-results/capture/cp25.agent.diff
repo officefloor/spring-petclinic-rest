@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailException.java
+new file mode 100644
+index 00000000..f7b658da
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when creating an owner whose lower-cased email is already used by
++ * another owner. Handled globally by {@link DuplicateOwnerEmailExceptionHandler},
++ * which responds 409 Conflict.
++ */
++public class DuplicateOwnerEmailException extends Exception {
++
++    public DuplicateOwnerEmailException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailExceptionHandler.java
+new file mode 100644
+index 00000000..3d559ab2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerEmailExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateOwnerEmailExceptionHandler {
++
++    public void handle(@Parameter DuplicateOwnerEmailException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerEmail.java
+new file mode 100644
+index 00000000..b6c6236e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerEmail.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerEmailException;
++
++/**
++ * Rejects a new owner whose lower-cased email is already used by any other owner.
++ * Runs after {@link NormalizeOwnerEmail} (so {@code owner} holds the lower-cased
++ * email) and before {@link SaveOwner}: if any existing owner has the same
++ * lower-cased email, it throws a checked {@link DuplicateOwnerEmailException},
++ * which the escalation handler turns into a 409 Conflict.
++ */
++public class RejectDuplicateOwnerEmail {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws DuplicateOwnerEmailException {
++        String email = lower(owner.getEmail());
++        if (email == null) {
++            return; // no email; nothing to compare against
++        }
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue; // never conflict with the owner itself
++            }
++            if (email.equals(lower(existing.getEmail()))) {
++                throw new DuplicateOwnerEmailException(
++                        "Email is already used by another owner");
++            }
++        }
++    }
++
++    private static String lower(String value) {
++        if (value == null) {
++            return null;
++        }
++        String trimmed = value.trim();
++        return trimmed.isEmpty() ? null : trimmed.toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerEmailException.yml
+new file mode 100644
+index 00000000..9c6386ba
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerEmailException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerEmailExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a282e39e..72105544 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -29,6 +29,11 @@ normalizeAddress:
+ rejectDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateOwnerTelephone
+   govern: [ transaction ]
++  next: rejectDuplicateEmail
++
++rejectDuplicateEmail:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateOwnerEmail
++  govern: [ transaction ]
+   next: rejectHousehold
+ 
+ rejectHousehold:
