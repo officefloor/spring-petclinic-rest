@@ -3,9 +3,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
+import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a newly created owner a {@code customerCode} formatted {@code '<REGION>-<HASH8>'}:
@@ -16,17 +19,46 @@ import org.springframework.samples.petclinic.model.Owner;
  * on how many owners already exist. Mutates the {@link Owner} in place so it is persisted and
  * returned with the code, and so every value derived from the customerCode (membership number,
  * check digit, audit line and locality) reflects the new region-and-hash identity.
+ *
+ * <p>When the computed code collides with an existing owner's {@code customerCode}, it is
+ * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
+ * makes it unique, so distinct owners always receive distinct customerCodes.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = PostcodeRegions.regionForPostcode(owner.getPostcode());
         if (region == null) {
             region = "UNKNOWN";
         }
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        owner.setCustomerCode(region + "-" + hash8(telephone + lastName));
+        String base = region + "-" + hash8(telephone + lastName);
+        owner.setCustomerCode(deduplicate(base, owner, ownerRepository));
+    }
+
+    /**
+     * Return {@code base} if no existing owner already holds it, otherwise
+     * {@code base + "-" + n} with the smallest {@code n >= 2} that is unused.
+     */
+    private static String deduplicate(String base, Owner owner, OwnerRepository ownerRepository) {
+        Set<String> taken = new HashSet<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                continue; // never collide with the owner itself
+            }
+            if (existing.getCustomerCode() != null) {
+                taken.add(existing.getCustomerCode());
+            }
+        }
+        if (!taken.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (taken.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /** First eight UPPER-case hex characters (four bytes) of SHA-256 over the UTF-8 bytes. */
