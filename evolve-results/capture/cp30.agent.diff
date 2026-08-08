@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3519688c..810cad5c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -67,20 +67,18 @@ public interface OwnerMapper {
+         return Math.min(level, 3);
+     }
+ 
+-    /** Canonical region derived from the owner's city via the fixed city-to-region
+-     *  table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); 'UNKNOWN' otherwise. */
++    /** Canonical region for the owner, preferring the postcode range (NSW 2000-2099,
++     *  VIC 3000-3099, QLD 4000-4099) and falling back to the fixed city-to-region table
++     *  (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no
++     *  known range; 'UNKNOWN' when neither resolves a region. */
+     default String locality(Owner owner) {
+-        String city = owner.getCity();
+-        if ("Sydney".equals(city)) {
+-            return "NSW";
++        String region = org.springframework.samples.petclinic.rest.function.owner.PostcodeRegions
++                .regionForPostcode(owner.getPostcode());
++        if (region == null) {
++            region = org.springframework.samples.petclinic.rest.function.owner.PostcodeRegions
++                    .regionFor(owner.getCity());
+         }
+-        if ("Melbourne".equals(city)) {
+-            return "VIC";
+-        }
+-        if ("Brisbane".equals(city)) {
+-            return "QLD";
+-        }
+-        return "UNKNOWN";
++        return region == null ? "UNKNOWN" : region;
+     }
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRegions.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRegions.java
+index 0f236059..df3efa8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRegions.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PostcodeRegions.java
+@@ -10,7 +10,7 @@ import java.util.Map;
+  * region accepts any 4-digit postcode. Ranges (inclusive): NSW 2000-2099,
+  * VIC 3000-3099, QLD 4000-4099.
+  */
+-final class PostcodeRegions {
++public final class PostcodeRegions {
+ 
+     private static final Map<String, String> CITY_REGION = Map.of(
+             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+@@ -24,10 +24,34 @@ final class PostcodeRegions {
+     }
+ 
+     /** Canonical region for the city, or null when the city has no known region. */
+-    static String regionFor(String city) {
++    public static String regionFor(String city) {
+         return CITY_REGION.get(city);
+     }
+ 
++    /**
++     * Canonical region whose inclusive postcode range contains {@code postcode}, or null
++     * when the postcode is blank, not a number, or in no known range.
++     */
++    public static String regionForPostcode(String postcode) {
++        if (postcode == null || postcode.isBlank()) {
++            return null;
++        }
++        int value;
++        try {
++            value = Integer.parseInt(postcode.trim());
++        }
++        catch (NumberFormatException ex) {
++            return null;
++        }
++        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * True when the 4-digit postcode is valid for the city: valid when the city has no
+      * known region, otherwise valid only when the postcode falls within that region's
