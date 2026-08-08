@@ -26,7 +26,13 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning",
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** 'EMAIL' when the owner has a non-blank email address, otherwise 'PHONE'. */
+    default String contactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+    }
 
     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
     default String initials(Owner owner) {
