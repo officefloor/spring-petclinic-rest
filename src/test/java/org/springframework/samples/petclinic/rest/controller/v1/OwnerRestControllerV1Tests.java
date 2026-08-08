@@ -192,6 +192,52 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
+        // 100 owners already registered today: the next creation must be rejected with 429.
+        for (int i = 0; i < 100; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily" + i);
+            owner.setLastName("Daily-" + System.nanoTime());
+            owner.setAddress(i + " Daily St.");
+            owner.setCity("Dailytown-" + System.nanoTime());
+            owner.setTelephone("60820" + String.format("%05d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"Latecomer","address":"9000 Daily St.","city":"Freshville-%d","telephone":"6089992222"}
+            """.formatted(System.nanoTime());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowedWhenDailyLimitNotReached() throws Exception {
+        // 99 owners registered today leaves room for one more.
+        for (int i = 0; i < 99; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Daily" + i);
+            owner.setLastName("Daily-" + System.nanoTime());
+            owner.setAddress(i + " Daily St.");
+            owner.setCity("Dailytown-" + System.nanoTime());
+            owner.setTelephone("60830" + String.format("%05d", i));
+            owner.setRegistrationDate(LocalDate.now());
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"Latecomer","address":"9000 Daily St.","city":"Freshville-%d","telephone":"6089993333"}
+            """.formatted(System.nanoTime());
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
