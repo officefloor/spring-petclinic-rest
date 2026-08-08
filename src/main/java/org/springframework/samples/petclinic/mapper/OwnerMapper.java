@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(formatContactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(formatIdentityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(formatAgeBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(formatOwnerSegment(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
@@ -59,6 +60,25 @@ public interface OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Derives an owner's segment formatted {@code '<TIER>_<AREA>'}. TIER is {@code PREMIUM} when
+     * the membership level is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the
+     * locality is a known region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code REGIONAL}.
+     * Returns {@code null} when the owner is {@code null}.
+     */
+    default OwnerDto.OwnerSegmentEnum formatOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean premium = formatMembershipLevel(owner) >= 3;
+        String locality = formatLocality(owner);
+        boolean metro = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
+        if (premium) {
+            return metro ? OwnerDto.OwnerSegmentEnum.PREMIUM_METRO : OwnerDto.OwnerSegmentEnum.PREMIUM_REGIONAL;
+        }
+        return metro ? OwnerDto.OwnerSegmentEnum.STANDARD_METRO : OwnerDto.OwnerSegmentEnum.STANDARD_REGIONAL;
     }
 
     /**
