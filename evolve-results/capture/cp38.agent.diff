@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java
+new file mode 100644
+index 00000000..8c5b21e5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmailDomain.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
++
++/**
++ * Rejects an owner whose email domain is on the disposable-domain blocklist. Runs after
++ * {@link NormalizeOwnerEmail}, so the email is already syntactically valid and lower-cased. When the
++ * email is absent the owner is left untouched; when present and its domain is blocked, a 400 is
++ * raised via {@link InvalidEmailException}.
++ */
++public class RejectDisposableEmailDomain {
++
++    private static final Set<String> BLOCKED_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    public void service(@Val Owner owner) throws InvalidEmailException {
++        String email = owner.getEmail();
++        if (email == null) {
++            return;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        if (BLOCKED_DOMAINS.contains(domain)) {
++            throw new InvalidEmailException("Email domain is not allowed");
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index d7847e00..04ff2f2d 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -26,6 +26,11 @@ normalize:
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
+   govern: [ transaction ]
++  next: rejectDisposableEmailDomain
++
++rejectDisposableEmailDomain:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableEmailDomain
++  govern: [ transaction ]
+   next: normalizeAddress
+ 
+ normalizeAddress:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+index fcdae692..02ae8c31 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+@@ -24,6 +24,11 @@ rejectInvalidPostcode:
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
+   govern: [ transaction ]
++  next: rejectDisposableEmailDomain
++
++rejectDisposableEmailDomain:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableEmailDomain
++  govern: [ transaction ]
+   next: save
+ 
+ save:
