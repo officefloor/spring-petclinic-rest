@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -221,19 +222,60 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a new owner as {@code '<CITY3>-<LAST3>-<NNNN>'}, where CITY3 is the
-     * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
-     * last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners already in that city at the time the owner was created.
+     * Build the customer code for a new owner as {@code '<REGION>-<HASH8>'}, where REGION is the region
+     * code derived from the postcode (falling back to the city-to-region table, else {@code "UNKNOWN"})
+     * and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over
+     * {@code normalizedTelephone + lastName}. Sequence numbers are no longer used, so the code depends
+     * only on the owner's own region and identity, not on how many owners already exist.
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = prefix3(city);
-        String last3 = prefix3(lastName);
-        String cityKey = normaliseIdentity(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normaliseIdentity(existing.getCity()).equals(cityKey))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String nextCustomerCode(String region, String normalizedTelephone, String lastName) {
+        return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+    }
+
+    /**
+     * First 8 upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of {@code input}.
+     */
+    private static String hash8(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 8).toUpperCase();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Resolve an owner's region preferring the postcode: the region is taken from the postcode range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) when the postcode resolves, otherwise from the
+     * fixed city-to-region table, else {@code "UNKNOWN"}.
+     */
+    private static String region(String postcode, String city) {
+        String fromPostcode = regionForPostcode(postcode);
+        return fromPostcode != null ? fromPostcode : regionForCity(city);
+    }
+
+    /**
+     * Region for a 4-digit postcode by inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
+     * or {@code null} when the postcode is absent, not exactly 4 digits, or in no known range.
+     */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
@@ -299,12 +341,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         int value = Integer.parseInt(postcode);
         return value >= range[0] && value <= range[1];
-    }
-
-    /** Upper-cased first three characters of {@code value} (fewer if it is shorter); "" when null. */
-    private static String prefix3(String value) {
-        String letters = value == null ? "" : value;
-        return letters.substring(0, Math.min(3, letters.length())).toUpperCase();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -403,7 +439,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(email == null ? null : email.toLowerCase());
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(
+            region(postcode, owner.getCity()), telephone, owner.getLastName()));
         if (householdId != null) {
             owner.setHouseholdId(householdId);
             for (Owner member : householdMembers) {

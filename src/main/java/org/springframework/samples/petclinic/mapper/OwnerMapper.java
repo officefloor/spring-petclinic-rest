@@ -58,15 +58,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality (region) preferring the postcode: the region is resolved by
-     * postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the
-     * postcode is absent or in no known range does it fall back to the fixed city-to-region table
-     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}). Returns
-     * {@code "UNKNOWN"} when neither the postcode nor the city resolves to a region.
+     * Derives an owner's locality (region) from the customer-code identity: it is the {@code REGION}
+     * segment of the {@code '<REGION>-<HASH8>'} customer code (the part before the first {@code '-'}).
+     * When the customer code is absent it falls back to resolving the region directly, preferring the
+     * postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and then the fixed city-to-region
+     * table ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), yielding
+     * {@code "UNKNOWN"} when neither resolves.
      */
     default String formatLocality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
         }
         String fromPostcode = regionForPostcode(owner.getPostcode());
         if (fromPostcode != null) {
@@ -154,7 +162,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last two
-     * digits of the registration-date year (e.g. {@code "LON-SMI-0007-M26"}). Returns {@code null} when the
+     * digits of the registration-date year (e.g. {@code "NSW-1A2B3C4D-M26"}). Returns {@code null} when the
      * customer code or registration date is absent.
      */
     default String formatMembershipNumber(Owner owner) {
