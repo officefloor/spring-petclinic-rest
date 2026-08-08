@@ -22,8 +22,10 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -50,6 +52,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -91,6 +96,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger for owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Request header carrying the client-supplied idempotency key for owner creation. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers which owner was created for each already-seen idempotency key, so a repeated create
+     * carrying a key seen before returns the originally created owner instead of creating a duplicate.
+     */
+    private final Map<String, Integer> idempotentCreations = new ConcurrentHashMap<>();
 
     private final ClinicService clinicService;
 
@@ -459,9 +473,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
+    /**
+     * The value of the {@code Idempotency-Key} header on the current request, or {@code null} when the
+     * request carries no such header (or there is no active servlet request). A blank value is treated
+     * as absent.
+     */
+    private static String currentIdempotencyKey() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+            return null;
+        }
+        String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return (key == null || key.isBlank()) ? null : key;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = this.idempotentCreations.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    existing.setHouseholdSize(householdSize(existing));
+                    OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
+                    existingDto.setBulkSignupWarning(existing.getRegistrationDate() != null
+                        && ownersCreatedOn(existing.getRegistrationDate()) > 80);
+                    return new ResponseEntity<>(existingDto, HttpStatus.OK);
+                }
+            }
+        }
         String telephone = toE164(ownerFieldsDto.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -572,6 +614,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // makes it an intentional household member rather than a suspected duplicate.
         owner.setPossibleDuplicateOf(null);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            this.idempotentCreations.put(idempotencyKey, owner.getId());
+        }
         owner.setHouseholdSize(householdSize(owner));
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
