@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -47,6 +48,7 @@ import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+import org.springframework.samples.petclinic.audit.OwnerCreatedEvent;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.OwnerIdentity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -97,6 +99,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger for owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence number stamped onto the structured {@code OWNER_CREATED}
+     * audit event, incremented once per successful create so events are strictly ordered.
+     */
+    private static final AtomicLong CREATE_SEQUENCE = new AtomicLong();
 
     /** Request header carrying the client-supplied idempotency key for owner creation. */
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
@@ -657,6 +665,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             membershipLevel, ownerMapper.formatMembershipNumber(owner));
+        // Immutable structured event carrying the owner's current primary identifier (the
+        // customerCode today; the memberId once the two are unified), with a monotonic sequence.
+        AUDIT.info(new OwnerCreatedEvent(CREATE_SEQUENCE.incrementAndGet(), owner.getId(),
+            owner.getCustomerCode(), membershipLevel).toJson());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setMembershipLevel(membershipLevel);
         ownerDto.setBulkSignupWarning(ownersCreatedThatDay > 80);
