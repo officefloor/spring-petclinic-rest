@@ -73,6 +73,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     /**
      * Derived, non-persisted flag set during the create flow: true when more than 80
      * owners had already been created for this owner's business day at the time of
@@ -171,6 +174,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public Boolean getBulkSignupWarning() {

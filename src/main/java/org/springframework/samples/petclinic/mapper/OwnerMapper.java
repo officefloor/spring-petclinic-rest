@@ -29,6 +29,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
     @Mapping(target = "bulkSignupWarning",
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+    @Mapping(target = "possibleDuplicate",
+            expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
