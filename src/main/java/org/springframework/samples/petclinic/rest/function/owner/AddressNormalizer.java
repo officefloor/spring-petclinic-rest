@@ -47,4 +47,17 @@ final class AddressNormalizer {
         }
         return sb.toString();
     }
+
+    /**
+     * Compose the stored/returned address from already-normalized structured lines: the
+     * normalized {@code line1}, with a single space and the normalized {@code line2}
+     * appended when {@code line2} is present. Returns {@code null} when {@code line1} is
+     * {@code null} (no structured address).
+     */
+    static String compose(String line1, String line2) {
+        if (line1 == null) {
+            return null;
+        }
+        return line2 == null ? line1 : line1 + " " + line2;
+    }
 }
