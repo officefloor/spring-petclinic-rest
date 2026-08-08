@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index db096d74..0a9a9247 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "bulkSignupWarning",
++            expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5bb420fb..a54f42f3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,15 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    /**
++     * Derived, non-persisted flag set during the create flow: true when more than 80
++     * owners had already been created for this owner's business day at the time of
++     * registration. Returned as {@code bulkSignupWarning}; null (treated as false) for
++     * owners loaded from the database, which never carry the create-time snapshot.
++     */
++    @Transient
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -131,6 +140,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerBulkSignupWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerBulkSignupWarning.java
+new file mode 100644
+index 00000000..7ca724a8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerBulkSignupWarning.java
+@@ -0,0 +1,39 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags a bulk-signup surge on the new owner. Counts how many owners were already
++ * created for the same business day (owners sharing this owner's adjusted
++ * {@code registrationDate}), excluding the owner being created, and sets
++ * {@code bulkSignupWarning} to true once that count exceeds {@value #WARNING_THRESHOLD}.
++ *
++ * <p>Runs after {@link DefaultOwnerRegistrationDate} (so the business-day registration
++ * date is set) and before {@link SaveOwner} (so the owner being created is not yet
++ * persisted and never counts itself). This is the same daily accumulation the
++ * {@link RejectOwnerDailyLimit} rule counts, evaluated at a lower, non-rejecting
++ * threshold. The value is a create-time snapshot returned as {@code bulkSignupWarning}.
++ */
++public class AssignOwnerBulkSignupWarning {
++
++    /** Owners already created today must exceed this for the warning to be raised. */
++    static final int WARNING_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        LocalDate businessDay = owner.getRegistrationDate();
++        long count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue; // never count the owner itself
++            }
++            if (businessDay.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        owner.setBulkSignupWarning(count > WARNING_THRESHOLD);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 22a66618..c26ab680 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -59,6 +59,11 @@ assignCustomerCode:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerNamesakeCount
+   govern: [ transaction ]
++  next: assignBulkSignupWarning
++
++assignBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerBulkSignupWarning
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 376296e7..a1d6c4f1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2155,6 +2155,14 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created for this
++                owner's business day at the time of registration, otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
