@@ -1,6 +1,13 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# First step: read the optional 'Idempotency-Key' header. When the key was already seen, replay
+# the originally created owner with 200 (thrown as an escalation) rather than creating a duplicate.
+# Ungoverned: a replay short-circuits here before any write, so no transaction is opened.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  next: build
+
 build:
   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
   govern: [ transaction ]
@@ -103,6 +110,13 @@ save:
 
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Record the created owner against the request's Idempotency-Key (no-op when absent), so a
+# later create with the same key replays this owner instead of creating a duplicate.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: respond
 
