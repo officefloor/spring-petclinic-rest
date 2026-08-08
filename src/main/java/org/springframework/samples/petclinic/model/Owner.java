@@ -64,6 +64,15 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    /**
+     * Derived, non-persisted flag set during the create flow: true when more than 80
+     * owners had already been created for this owner's business day at the time of
+     * registration. Returned as {@code bulkSignupWarning}; null (treated as false) for
+     * owners loaded from the database, which never carry the create-time snapshot.
+     */
+    @Transient
+    private Boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -129,6 +138,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Boolean getBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     protected Set<Pet> getPetsInternal() {

@@ -24,6 +24,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "bulkSignupWarning",
+            expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
