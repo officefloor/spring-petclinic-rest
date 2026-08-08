@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 617d4d52..650a8d9a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -22,7 +22,10 @@ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
++import java.util.Set;
+ import java.util.regex.Pattern;
++import java.util.stream.Collectors;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -255,6 +258,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+     }
+ 
++    /**
++     * De-duplicate a computed customer code against the codes already assigned to existing owners:
++     * when {@code code} is unused it is returned unchanged, otherwise {@code '-<n>'} is appended with
++     * the smallest {@code n} of 2 or more that makes the result unique among existing owners.
++     */
++    private String deduplicateCustomerCode(String code) {
++        Set<String> existing = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(Objects::nonNull)
++            .collect(Collectors.toSet());
++        if (!existing.contains(code)) {
++            return code;
++        }
++        int n = 2;
++        while (existing.contains(code + "-" + n)) {
++            n++;
++        }
++        return code + "-" + n;
++    }
++
+     /**
+      * First 8 upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of {@code input}.
+      */
+@@ -504,8 +527,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setTelephone(telephone);
+         owner.setEmail(email == null ? null : email.toLowerCase());
+         owner.setRegistrationDate(registrationDate);
+-        owner.setCustomerCode(nextCustomerCode(
+-            region(postcode, owner.getCity()), telephone, owner.getLastName()));
++        owner.setCustomerCode(deduplicateCustomerCode(nextCustomerCode(
++            region(postcode, owner.getCity()), telephone, owner.getLastName())));
+         owner.setHouseholdId(householdId);
+         // A created owner is never flagged as a suspected duplicate: a lone owner has no household
+         // peer, and a same-household owner can only be created by declaring 'sharesHousehold', which
