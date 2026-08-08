@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
@@ -65,6 +66,16 @@ public interface OwnerMapper {
     /** 'EMAIL' when the owner has a non-blank email address, otherwise 'PHONE'. */
     default String contactPreference(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+    }
+
+    /** The owner's salutation: 'title' + ' ' + lastName when a title is present, else just the
+     *  lastName. */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title != null && !title.isBlank()) {
+            return title + " " + owner.getLastName();
+        }
+        return owner.getLastName();
     }
 
     /** Upper-cased first letters of firstName and lastName, dot-separated with a trailing dot. */
