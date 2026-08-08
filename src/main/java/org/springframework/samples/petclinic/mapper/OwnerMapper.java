@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(formatTelephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(formatCheckDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(formatMembershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(formatFiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(formatMembershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(formatMembershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(formatLocality(owner))")
@@ -180,7 +181,7 @@ public interface OwnerMapper {
             points += 2;
         }
         boolean tenured = owner.getRegistrationDate() != null
-            && owner.getRegistrationDate().plusDays(365).isBefore(LocalDate.now());
+            && fiscalYearStart(LocalDate.now()) - fiscalYearStart(owner.getRegistrationDate()) >= 1;
         if (tenured) {
             points += 3;
         }
@@ -239,14 +240,37 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last two
-     * digits of the registration-date year (e.g. {@code "NSW-1A2B3C4D-M26"}). Returns {@code null} when the
-     * customer code or registration date is absent.
+     * digits of the fiscal year (starting 1 July) of the business-day-adjusted registration date
+     * (e.g. {@code "NSW-1A2B3C4D-M26"}). Returns {@code null} when the customer code or registration
+     * date is absent.
      */
     default String formatMembershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYearStart(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Formats an owner's fiscal year as {@code 'FY<YY>'}, where YY is the last two digits of the
+     * starting calendar year of the fiscal year (starting 1 July) that contains the owner's
+     * business-day-adjusted registration date (e.g. 5 August 2026 yields {@code "FY26"} and 3 March
+     * 2026 yields {@code "FY25"}). Returns {@code null} when the registration date is absent.
+     */
+    default String formatFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearStart(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Returns the starting calendar year of the fiscal year (which starts on 1 July) that contains
+     * the given date: the date's own year when it falls on or after 1 July, otherwise the previous
+     * year.
+     */
+    private int fiscalYearStart(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() : date.getYear() - 1;
     }
 
     /**
