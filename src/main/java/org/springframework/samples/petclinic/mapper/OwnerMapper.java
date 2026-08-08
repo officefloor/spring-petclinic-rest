@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "identityKey",
@@ -87,13 +88,33 @@ public interface OwnerMapper {
     }
 
     /** Membership number '<customerCode>-M<YY>', YY = last two digits of the
-     *  registrationDate year. Null unless both source fields are present. */
+     *  fiscal year of the (business-day-adjusted) registrationDate, where the fiscal
+     *  year starts on 1 July. Null unless both source fields are present. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-                owner.getRegistrationDate().getYear() % 100);
+                fiscalYearOf(owner.getRegistrationDate()) % 100);
+    }
+
+    /** The fiscal year of the (business-day-adjusted) registrationDate as 'FY<YY>',
+     *  where the fiscal year starts on 1 July and is labelled by the calendar year in
+     *  which it ends (e.g. 2 Jul 2025 -> FY26, 30 Jun 2026 -> FY26). Null when there is
+     *  no registrationDate. */
+    default String fiscalYear(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
+    }
+
+    /** The calendar year in which the fiscal year containing {@code date} ends. The fiscal
+     *  year starts on 1 July, so July-December fall in the fiscal year ending the following
+     *  calendar year, and January-June in the one ending the current year. */
+    static int fiscalYearOf(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue()
+                ? date.getYear() + 1 : date.getYear();
     }
 
     /** A single Luhn check digit (0-9) computed over the digits contained in the
@@ -125,7 +146,8 @@ public interface OwnerMapper {
 
     /** Membership points: starts at 0, adds 2 when an email is present, adds 1 when
      *  namesakeCount is 0, adds 2 for a household of 3 or more, and adds 3 for tenure
-     *  (more than 365 days between the registrationDate and today). */
+     *  (at least one elapsed fiscal year between the registrationDate and today, the
+     *  fiscal year starting 1 July). */
     default Integer membershipPoints(Owner owner) {
         int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
@@ -139,8 +161,8 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && java.time.temporal.ChronoUnit.DAYS.between(
-                        owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+                && fiscalYearOf(java.time.LocalDate.now())
+                        - fiscalYearOf(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
