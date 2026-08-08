@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index ba2b208c..bd40d96b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -1,9 +1,10 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown when a telephone number does not contain exactly 10 digits once every
+- * non-digit character has been stripped. Handled globally by
+- * {@link InvalidTelephoneExceptionHandler}, which responds 400.
++ * Thrown when a telephone number cannot form a valid E.164 value: it falls outside the 8-to-15
++ * digit bound, or it carries an explicit country code whose national-number length is wrong for
++ * that country ({@code '+61'} requires 9 national digits, {@code '+1'} requires 10). Handled
++ * globally by {@link InvalidTelephoneExceptionHandler}, which responds 400.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+index fb3916d0..633a2956 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -1,5 +1,8 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.LinkedHashMap;
++import java.util.Map;
++
+ /**
+  * Converts a raw telephone string to canonical E.164 form.
+  *
+@@ -9,6 +12,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  *   <li>keep a leading {@code '+'} and country code when present;</li>
+  *   <li>otherwise assume country code {@code '+61'} and drop a single leading {@code '0'}
+  *       from the national digits;</li>
++ *   <li>when the number carries an explicit country code, its national-number length must match
++ *       that country: {@code '+61'} requires 9 national digits and {@code '+1'} requires 10;
++ *       country codes outside this table fall back to the generic bound below;</li>
+  *   <li>require 8 to 15 digits after the {@code '+'}.</li>
+  * </ul>
+  *
+@@ -17,6 +23,18 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  */
+ public final class E164Telephone {
+ 
++    /**
++     * Required national-number digit count for each supported country code, longest code first so a
++     * {@code "61…"} number is matched as {@code +61} rather than as some shorter code. Country codes
++     * absent here are validated only by the generic 8-to-15 total-digit bound.
++     */
++    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY_CODE = new LinkedHashMap<>();
++
++    static {
++        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("61", 9); // Australia
++        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("1", 10); // North American Numbering Plan
++    }
++
+     private E164Telephone() {
+     }
+ 
+@@ -31,6 +49,10 @@ public final class E164Telephone {
+         String digits;
+         if (cleaned.startsWith("+")) {
+             digits = cleaned.substring(1);
++            // An explicit country code fixes the expected national-number length.
++            if (!nationalLengthMatchesCountry(digits)) {
++                return null;
++            }
+         } else {
+             if (cleaned.startsWith("0")) {
+                 cleaned = cleaned.substring(1); // drop a single leading national-trunk '0'
+@@ -42,4 +64,22 @@ public final class E164Telephone {
+         }
+         return "+" + digits;
+     }
++
++    /**
++     * Checks the national-number length of an explicitly country-coded number against its country.
++     *
++     * @param digits the digits following the {@code '+'} (country code plus national number).
++     * @return {@code false} only when {@code digits} begins with a supported country code and the
++     *   remaining national digits are not the exact length that country requires; {@code true} for
++     *   any country code outside the table (left to the generic length bound).
++     */
++    private static boolean nationalLengthMatchesCountry(String digits) {
++        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
++            String countryCode = entry.getKey();
++            if (digits.startsWith(countryCode)) {
++                return digits.length() - countryCode.length() == entry.getValue();
++            }
++        }
++        return true;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index e042383f..b7960916 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -7,9 +7,11 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+ /**
+  * Normalizes a new owner's telephone to E.164 form: strips spaces, dashes and brackets, keeps a
+  * leading '+' and country code when present, otherwise assumes country code '+61' and drops a
+- * single leading '0' from the national digits, and requires 8 to 15 digits after the '+'. So
+- * '0412 345 678' is stored as '+61412345678'. The stored (and later returned) value is the E.164
+- * string; anything that cannot form valid E.164 is a 400. Mutates the built {@link Owner} in place
++ * single leading '0' from the national digits, and requires 8 to 15 digits after the '+'. When a
++ * country code is given explicitly its national-number length must match that country ('+61' needs
++ * 9 national digits, '+1' needs 10). So '0412 345 678' is stored as '+61412345678'. The stored (and
++ * later returned) value is the E.164 string; anything that cannot form valid E.164 is a 400. Mutates
++ * the built {@link Owner} in place
+  * so {@link SaveOwner} persists the normalized value.
+  */
+ public class NormalizeOwnerTelephone {
+@@ -18,7 +20,9 @@ public class NormalizeOwnerTelephone {
+         String e164 = E164Telephone.toE164OrNull(owner.getTelephone());
+         if (e164 == null) {
+             throw new InvalidTelephoneException(
+-                    "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
++                    "Telephone must form a valid E.164 number with 8 to 15 digits after the '+', "
++                            + "and a national-number length matching its country code "
++                            + "('+61' requires 9 national digits, '+1' requires 10)");
+         }
+         owner.setTelephone(e164);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3a8c8b5d..39f5dc4f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2032,8 +2032,11 @@ components:
+             E.164 form: a leading '+' and country code are kept when present,
+             otherwise country code '+61' is assumed and a single leading '0' is
+             dropped from the national digits; spaces, dashes and brackets are
+-            stripped and 8 to 15 digits are required after the '+'. So
+-            '0412 345 678' is stored and returned as '+61412345678'.
++            stripped and 8 to 15 digits are required after the '+'. When a country
++            code is given explicitly the national-number length must match that
++            country ('+61' requires 9 national digits, '+1' requires 10), else the
++            request is rejected with 400. So '0412 345 678' is stored and returned
++            as '+61412345678'.
+           type: string
+           minLength: 1
+           maxLength: 20
