@@ -67,8 +67,11 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
             int householdSize = owner.getHouseholdId() == null ? 1
                 : householdSizes.getOrDefault(owner.getHouseholdId(), 1);
             int points = MembershipPoints.points(owner, householdSize);
+            int level = MembershipPoints.level(points);
             ownerDtos.get(i).setMembershipPoints(points);
-            ownerDtos.get(i).setMembershipLevel(MembershipPoints.level(points));
+            ownerDtos.get(i).setMembershipLevel(level);
+            ownerDtos.get(i).setOwnerSegment(org.springframework.samples.petclinic.mapper.OwnerSegment
+                .segment(level, ownerDtos.get(i).getLocality()));
         }
     }
 }

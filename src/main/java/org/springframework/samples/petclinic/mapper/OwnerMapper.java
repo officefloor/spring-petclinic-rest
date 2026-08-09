@@ -30,6 +30,9 @@ public interface OwnerMapper {
     // owner's household (the household-of-three-or-more factor needs the other owners).
     @Mapping(target = "membershipPoints", ignore = true)
     @Mapping(target = "membershipLevel", ignore = true)
+    // ownerSegment depends on the membershipLevel, so the controller populates it once the
+    // level is known.
+    @Mapping(target = "ownerSegment", ignore = true)
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "timezone",

@@ -261,6 +261,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Map<String, Integer> householdSizes = householdSizes();
         applyMembership(ownerDto, owner, householdSizes);
         capMembershipLevelToHousehold(ownerDto, owner, householdSizes);
+        applyOwnerSegment(ownerDto);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
@@ -799,6 +800,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int points = MembershipPoints.points(owner, householdSize);
         ownerDto.setMembershipPoints(points);
         ownerDto.setMembershipLevel(MembershipPoints.level(points));
+        applyOwnerSegment(ownerDto);
+    }
+
+    /**
+     * Populates an owner's {@code ownerSegment} on the given dto from its already-applied
+     * {@code membershipLevel} and mapped {@code locality}. Call this whenever the membership
+     * level changes (e.g. after {@link #capMembershipLevelToHousehold}) so the segment stays
+     * consistent with the level.
+     *
+     * @param ownerDto the dto whose membershipLevel and locality are already populated
+     */
+    private void applyOwnerSegment(OwnerDto ownerDto) {
+        Integer membershipLevel = ownerDto.getMembershipLevel();
+        int level = membershipLevel == null ? 1 : membershipLevel;
+        ownerDto.setOwnerSegment(org.springframework.samples.petclinic.mapper.OwnerSegment.segment(
+            level, ownerDto.getLocality()));
     }
 
     /**
