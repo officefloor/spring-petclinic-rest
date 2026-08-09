@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 41454a98..fbabca9f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -193,4 +193,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidOwnerFieldsException} raised when an owner create/update request supplies
++     * a mandatory field whose value violates a business rule that Bean Validation does not otherwise
++     * reject (for example a telephone that is not exactly ten digits after non-digit characters are
++     * stripped). Returns a 400 Bad Request whose {@code errors} array lists the name of each field.
++     *
++     * @param e The {@link InvalidOwnerFieldsException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidOwnerFieldsException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidOwnerFieldsException(InvalidOwnerFieldsException e, HttpServletRequest request) {
++        logger.debug("Invalid owner fields at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getInvalidFields());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", e.getInvalidFields());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidOwnerFieldsException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidOwnerFieldsException.java
+new file mode 100644
+index 00000000..6e9e0bc4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidOwnerFieldsException.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.List;
++
++/**
++ * Thrown when a request to create or update an owner supplies a mandatory field that is present
++ * but fails a business rule on its value (for example a telephone that is not exactly ten digits
++ * after non-digit characters are stripped). The {@link #getInvalidFields()} list carries the names
++ * of the offending fields so the response can report exactly which values were rejected.
++ */
++public class InvalidOwnerFieldsException extends RuntimeException {
++
++    private final List<String> invalidFields;
++
++    public InvalidOwnerFieldsException(List<String> invalidFields) {
++        super("Invalid owner fields: " + invalidFields);
++        this.invalidFields = List.copyOf(invalidFields);
++    }
++
++    public List<String> getInvalidFields() {
++        return this.invalidFields;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9c15a69a..cb88ec6d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -104,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredOwnerFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -237,4 +239,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private boolean isBlank(String value) {
+         return value == null || value.isBlank();
+     }
++
++    /**
++     * Normalizes a telephone number supplied on create by removing every non-digit character and
++     * requiring the result to be exactly ten digits. The normalized ten-digit value is what gets
++     * stored and returned.
++     *
++     * @param telephone the raw telephone value from the request
++     * @return the normalized ten-digit telephone
++     * @throws InvalidOwnerFieldsException if the value is not exactly ten digits after stripping
++     */
++    private String normalizeTelephone(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new InvalidOwnerFieldsException(List.of("telephone"));
++        }
++        return digits;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76..fac78ffa 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create it is normalized by
++            removing every non-digit character and must then be exactly 10 digits;
++            the normalized 10-digit value is stored and returned.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
