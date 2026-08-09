@@ -33,17 +33,24 @@ public interface OwnerMapper {
     // ownerSegment depends on the membershipLevel, so the controller populates it once the
     // level is known.
     @Mapping(target = "ownerSegment", ignore = true)
+    // locality and timezone are the user-facing plain region derived directly from the postcode;
+    // they must never carry the version-2 'V2' tag that appears inside the identity's region code.
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromMemberId(owner.getMemberId()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(owner.getPostcode()))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneFromMemberId(owner.getMemberId()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneFromPostcode(owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneFormat.display(owner.getTelephone()))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerIdentity.identityKey("
-            + "owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    // The version-2 owner identity: memberId, householdId and identityKey grouped under a nested
+    // 'identity' object, no longer exposed at the top level. apiVersion is the fixed schema version.
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity",
+        expression = "java(new org.springframework.samples.petclinic.rest.dto.IdentityDto()"
+            + ".memberId(owner.getMemberId()).householdId(owner.getHouseholdId())"
+            + ".identityKey(org.springframework.samples.petclinic.mapper.OwnerIdentity.identityKey("
+            + "owner.getTelephone(), owner.getEmail(), owner.getLastName())))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.forBirthDate("
             + "owner.getBirthDate(), owner.getRegistrationDate()))")

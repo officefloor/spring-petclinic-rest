@@ -272,7 +272,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
-        emitOwnerCreatedEvent(owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+        emitOwnerCreatedEvent(owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(),
+            ownerDto.getOwnerSegment());
         NOTIFY.info("welcome: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
@@ -295,19 +296,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the immutable, structured {@code OWNER_CREATED} audit event via the {@code AUDIT}
-     * logger, in addition to the human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq}
-     * is a process-wide monotonically increasing integer across creates, and the {@code memberId}
-     * slot carries the owner's {@link #primaryIdentifier current primary identifier}.
+     * logger, in addition to the human-readable audit line. The event is a schema-version-2 JSON
+     * object {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}} where {@code seq} is a process-wide monotonically increasing integer
+     * across creates, the {@code memberId} slot carries the owner's {@link #primaryIdentifier
+     * current primary identifier} (the version-2 memberId) and {@code ownerSegment} is the owner
+     * segment recomputed from that version-2 identity.
      *
      * @param ownerId         the newly created owner's id
-     * @param primaryId       the owner's current primary identifier (the memberId)
+     * @param primaryId       the owner's current primary identifier (the version-2 memberId)
      * @param membershipLevel the owner's resolved membership level
+     * @param ownerSegment    the owner segment recomputed from the version-2 identity
      */
-    private static void emitOwnerCreatedEvent(int ownerId, String primaryId, int membershipLevel) {
+    private static void emitOwnerCreatedEvent(int ownerId, String primaryId, int membershipLevel,
+        String ownerSegment) {
         long seq = AUDIT_EVENT_SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},"
-            + "\"event\":\"OWNER_CREATED\"}", seq, ownerId, primaryId, membershipLevel);
+        AUDIT.info("{\"schemaVersion\":2,\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\","
+            + "\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+            seq, ownerId, primaryId, membershipLevel, ownerSegment);
     }
 
     /**
@@ -542,30 +548,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the unified member id for a newly created owner, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the canonical region
+     * Builds the version-2 unified member id for a newly created owner, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the version-2 region code — the
+     * fixed {@code 'V2'} tag followed by the canonical region
      * {@link OwnerLocality#forPostcodeOrUnknown derived from the postcode} (or
-     * {@code "UNKNOWN"} when the postcode resolves no region), {@code FY} is the last two
+     * {@code "V2UNKNOWN"} when the postcode resolves no region), {@code FY} is the last two
      * digits of the fiscal year of the business-day-adjusted registration date (fiscal year
      * starts 1 July, named by the year it ends in), {@code HASH8} is the first eight
-     * upper-case hex characters of the SHA-256 digest of {@code normalizedTelephone + lastName}
-     * (the same hash used by the region-and-hash identity), and {@code CHK} is a single Luhn
-     * check digit computed over the digits of {@code '<REGION><FY><HASH8>'}. The id carries no
-     * sequence number, so it is stable for a given telephone, last name and fiscal year rather
-     * than dependent on creation order.
+     * upper-case hex characters of the SHA-256 digest of
+     * {@code 'V2' + normalizedTelephone + lastName}, and {@code CHK} is a single Luhn
+     * check digit computed over the digits of {@code '<REGION><FY><HASH8>'}. Mixing the
+     * {@code 'V2'} tag into both the region code and the hash means no version-1 member id
+     * recurs. The id carries no sequence number, so it is stable for a given telephone, last
+     * name and fiscal year rather than dependent on creation order.
      *
      * @param postcode            the owner's postcode (may be {@code null})
      * @param normalizedTelephone the owner's normalized E.164 telephone
      * @param lastName            the owner's last name
      * @param registrationDate    the owner's business-day-adjusted registration date
-     * @return the assigned member id (e.g. {@code 'NSW271A2B3C4D5'})
+     * @return the assigned member id (e.g. {@code 'V2NSW271A2B3C4D5'})
      */
     private static String memberId(String postcode, String normalizedTelephone, String lastName,
         LocalDate registrationDate) {
-        String region = org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(postcode);
+        // Version-2 region code: the fixed 'V2' tag mixed in front of the plain canonical region,
+        // so the region code carried inside the identifier differs from every version-1 value. The
+        // plain region still feeds the user-facing locality/timezone/segment, which never see 'V2'.
+        String region = OwnerIdentity.VERSION_TAG
+            + org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(postcode);
         int fiscalYear = org.springframework.samples.petclinic.mapper.FiscalYear.yearValue(registrationDate);
         String fy = String.format("%02d", Math.floorMod(fiscalYear, 100));
-        String base = region + fy + sha256Hex8(normalizedTelephone + lastName);
+        String base = region + fy + sha256Hex8(OwnerIdentity.VERSION_TAG + normalizedTelephone + lastName);
         int chk = org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(base);
         return base + chk;
     }
@@ -737,14 +749,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link #householdKey normalized} last name and postcode) always maps to the same
      * value — so every owner in a household is assigned an identical id. It is the
      * upper-cased first twelve hex characters of the SHA-256 digest of {@code
-     * '<lastNameKey>|<postcode>'}.
+     * 'V2|<lastNameKey>|<postcode>'}, the leading {@code 'V2'} being the fixed version-2 tag
+     * that distinguishes it from the version-1 household id.
      *
      * @param lastNameKey the normalized last name key
      * @param postcode    the owner's postcode
      * @return the shared household identifier
      */
     private static String householdId(String lastNameKey, String postcode) {
-        String source = lastNameKey + "|" + postcode;
+        String source = OwnerIdentity.VERSION_TAG + "|" + lastNameKey + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(source.getBytes(StandardCharsets.UTF_8));

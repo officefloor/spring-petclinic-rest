@@ -15,6 +15,14 @@ import java.security.NoSuchAlgorithmException;
  */
 public final class OwnerIdentity {
 
+    /**
+     * The fixed version-2 tag mixed into every derived owner identifier (the identityKey, the
+     * householdId and the memberId, including its region code) so that no value produced under
+     * version 1 recurs. It is never exposed in the user-facing {@code locality}, {@code timezone}
+     * or owner-segment region.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerIdentity() {
     }
 
@@ -23,7 +31,9 @@ public final class OwnerIdentity {
      * and last name. The email is trimmed and lower-cased and the last name is reduced to its
      * {@link #soundex soundex} code before hashing; a null telephone, email or last name
      * contributes an empty component. The result is the full lower-case hex SHA-256 of
-     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}.
+     * {@code 'V2|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}, where the leading
+     * {@code 'V2'} is the fixed {@link #VERSION_TAG version-2 tag} that distinguishes it from the
+     * version-1 key.
      *
      * @param normalizedTelephone the E.164 telephone (may be {@code null})
      * @param email               the owner's email, lower-cased here (may be {@code null})
@@ -33,7 +43,7 @@ public final class OwnerIdentity {
     public static String identityKey(String normalizedTelephone, String email, String lastName) {
         String telephone = normalizedTelephone == null ? "" : normalizedTelephone;
         String lowerEmail = email == null ? "" : email.trim().toLowerCase();
-        String source = telephone + "|" + lowerEmail + "|" + soundex(lastName);
+        String source = VERSION_TAG + "|" + telephone + "|" + lowerEmail + "|" + soundex(lastName);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);

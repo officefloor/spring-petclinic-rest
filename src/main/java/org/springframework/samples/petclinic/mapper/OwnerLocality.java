@@ -56,6 +56,18 @@ public final class OwnerLocality {
     }
 
     /**
+     * Return the IANA timezone name for the owner's plain region, derived directly from its
+     * {@code postcode} via the fixed region-to-timezone table (NSW -> Australia/Sydney,
+     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). Returns {@code null} when the
+     * postcode resolves no known region, so the {@code timezone} field is omitted from the
+     * response. The plain region is used (never the version-2 region code carried inside the
+     * identifiers), so the {@code 'V2'} tag never reaches the {@code timezone}.
+     */
+    public static String timezoneFromPostcode(String postcode) {
+        return REGION_TIMEZONE.get(forPostcodeOrUnknown(postcode));
+    }
+
+    /**
      * Return the REGION component of a {@code memberId} formatted
      * {@code '<REGION><FY><HASH8><CHK>'}, i.e. the leading run of letters before the two-digit
      * fiscal year. Returns {@code "UNKNOWN"} when the member id is null or carries no region

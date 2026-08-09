@@ -144,7 +144,7 @@ class OwnerRestControllerV1Tests {
         mvc.perform(post("/api/owners").content(first)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.identityKey").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")));
+            .andExpect(jsonPath("$.identity.identityKey").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")));
 
         // Different first name/address, but the SAME telephone, no email and a last name with the
         // SAME soundex: the whole identityKey matches -> 409.
