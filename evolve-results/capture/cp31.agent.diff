@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
+index 8546ad03..ae3a17a8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
+@@ -40,6 +40,33 @@ public final class OwnerLocality {
+         return byPostcode != null ? byPostcode : forCity(city);
+     }
+ 
++    /**
++     * Compute the single Luhn check digit (0-9) over the digits contained in {@code s}.
++     * Non-digit characters are ignored; the rightmost digit is doubled first. Kept here,
++     * alongside the other derived-field helpers, so MapStruct does not treat it as an
++     * implicit mapping method.
++     */
++    public static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Return the canonical region whose postcode range contains {@code postcode}, or
+      * {@code null} when the postcode is absent, malformed, or in no known range.
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2b0490ec..f6dcb271 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,9 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey",
+         expression = "java(owner.getTelephone() + \"|\" + (owner.getEmail() == null ? \"\" : owner.getEmail()) "
+             + "+ \"|\" + (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
++    @Mapping(target = "checkDigit",
++        expression = "java(owner.getCustomerCode() == null ? null "
++            + ": org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(owner.getCustomerCode()))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dd156d9b..102b6836 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2131,6 +2131,17 @@ components:
+               type: string
+               example: 'FRA-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits
++                contained in the owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 7
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
