@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
+        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (telephone.equals(toE164(existing.getTelephone()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -255,6 +258,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * The maximum number of owners permitted per city. Owner creation is rejected once the
+     * owner's city already contains this many owners.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /**
+     * Counts how many existing owners live in the given city, compared case-insensitively.
+     * This is evaluated before the new owner is persisted, so the owner being created is not
+     * included in the count.
+     *
+     * @param city the new owner's city
+     * @return the number of existing owners in that city
+     */
+    private int countOwnersInCity(String city) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
