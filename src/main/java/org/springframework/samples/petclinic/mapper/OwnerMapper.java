@@ -28,8 +28,33 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's fiscal year, derived at read time from the (business-day-adjusted)
+     * {@code registrationDate} and formatted {@code FY<YY>}, where YY is the last two digits of the
+     * fiscal year. The fiscal year starts on 1 July, so a date on or after 1 July belongs to the
+     * fiscal year labelled with the next calendar year (2026-07-01 -> {@code FY27}) and an earlier
+     * date to the current calendar year (2026-06-30 -> {@code FY26}). Null when the owner or its
+     * {@code registrationDate} is absent, so the field is simply omitted then.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * The fiscal year a date falls in, as a full calendar year. The fiscal year starts on 1 July, so
+     * a date in July or later belongs to the next calendar year and an earlier date to the current
+     * calendar year. Kept {@code private static} so MapStruct does not treat it as a property mapping.
+     */
+    private static int fiscalYearOf(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
 
     /**
      * The owner's age band, derived at read time from {@code birthDate} relative to the
