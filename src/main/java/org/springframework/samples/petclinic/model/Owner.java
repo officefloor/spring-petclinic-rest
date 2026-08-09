@@ -243,29 +243,51 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. It starts at 1, gains a level when an email
-     * address is present, and gains a level when the owner has no namesakes ({@code namesakeCount} is
-     * zero); these pre-tenure factors are capped at 3. It gains a fourth level for tenure, awarded only
-     * when the owner's tenure &mdash; the number of whole days from {@code registrationDate} to today
-     * &mdash; is more than 365 days. Because a newly created owner has zero tenure, a new owner never
-     * exceeds level 3.
+     * The owner's membership points, a non-negative score. It starts at 0 and accumulates: 2 points
+     * when an email address is present, 1 point when the owner has no namesakes ({@code namesakeCount}
+     * is zero), 2 points for a household of 3 or more members ({@code householdMemberCount} is at least
+     * 3), and 3 points for tenure &mdash; the number of whole days from {@code registrationDate} to
+     * today &mdash; of more than 365 days.
+     *
+     * @return the derived membership points (0 or more)
+     */
+    public Integer getMembershipPoints() {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            points += 1;
+        }
+        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
+            points += 2;
+        }
+        if (this.registrationDate != null
+            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4, derived from {@link #getMembershipPoints()}:
+     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more
+     * points.
      *
      * @return the derived membership level (1 to 4)
      */
     public Integer getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+        if (points >= 4) {
+            return 3;
         }
-        level = Math.min(level, 3);
-        if (this.registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+        if (points >= 2) {
+            return 2;
         }
-        return level;
+        return 1;
     }
 
     /**
