@@ -515,9 +515,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Normalizes a telephone number for owner creation into E.164 form. Spaces, dashes
      * and brackets are stripped. When the number already carries a leading {@code '+'}
-     * and country code these are kept; otherwise Australia's country code {@code '+61'}
-     * is assumed and a single leading {@code '0'} is dropped from the national digits.
-     * The resulting number must have between 8 and 15 digits after the {@code '+'}.
+     * and country code these are kept; a number written in national trunk form (a leading
+     * {@code '0'}) is treated as Australian, so the {@code '0'} is dropped and country code
+     * {@code '+61'} prepended; any other bare number is treated as a NANP number and country
+     * code {@code '+1'} is prepended. The resulting number must have between 8 and 15 digits
+     * after the {@code '+'}, and its national-number length must be valid for the detected
+     * country code (see {@link #hasValidNationalLength}).
      *
      * @param telephone the raw telephone value supplied by the client
      * @return the E.164 telephone (e.g. {@code +61412345678}), or {@code null} when it
@@ -531,11 +534,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String digits;
         if (cleaned.startsWith("+")) {
             digits = cleaned.substring(1);
+        } else if (cleaned.startsWith("0")) {
+            digits = "61" + cleaned.substring(1);
         } else {
-            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
-            digits = "61" + national;
+            digits = "1" + cleaned;
         }
-        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        if (!hasValidNationalLength(digits)) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Validates the national-number length of an E.164 digit string against its country
+     * code: Australia ({@code +61}) requires exactly 9 national digits and the NANP
+     * ({@code +1}) requires exactly 10. Numbers under any other country code are not
+     * length-checked here — only the general 8-to-15-digit E.164 bound applies to them.
+     *
+     * @param digits the E.164 digits (without the leading {@code '+'})
+     * @return {@code true} when the national-number length is valid for the country code
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 
     /**
