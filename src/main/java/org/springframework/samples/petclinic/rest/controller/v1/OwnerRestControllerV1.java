@@ -105,6 +105,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (owner.getEmail() != null) {
+            String email = normalizeEmail(owner.getEmail());
+            if (email == null) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            owner.setEmail(email);
+        }
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (telephone.equals(normalizeTelephone(existing.getTelephone()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -225,5 +232,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String digits = telephone.replaceAll("\\D", "");
         return digits.length() == 10 ? digits : null;
+    }
+
+    /**
+     * Normalizes an owner email for creation. A present email must be a syntactically
+     * valid address; the returned value is lower-cased.
+     *
+     * @param email the raw email value supplied by the client (never {@code null} here)
+     * @return the lower-cased email, or {@code null} when it is not a syntactically valid
+     *         address (signalling a 400 Bad Request)
+     */
+    private static String normalizeEmail(String email) {
+        String trimmed = email.trim();
+        if (!trimmed.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+            return null;
+        }
+        return trimmed.toLowerCase();
     }
 }
