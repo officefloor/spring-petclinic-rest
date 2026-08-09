@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e5dfae0f..54e1b326 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,10 @@ public interface OwnerMapper {
+     @Mapping(target = "timezone",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
+             + ".timezoneForCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
++            + ".ownerSegment(owner.getMembershipLevel(), owner.getCustomerCode(), owner.getPostcode(), "
++            + "owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityLookup.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityLookup.java
+index 281e3968..c15fd13b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityLookup.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityLookup.java
+@@ -70,6 +70,29 @@ public final class LocalityLookup {
+         return REGION_TIMEZONE.get(forCustomerCode(customerCode, postcode, city));
+     }
+ 
++    /**
++     * Returns the owner's segment, formatted {@code <TIER>_<AREA>}, one of {@code PREMIUM_METRO},
++     * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
++     *
++     * <p>TIER is {@code PREMIUM} when the given membership level is 3 or more, otherwise
++     * {@code STANDARD}. AREA is {@code METRO} when the locality derived from the owner's customer
++     * code, postcode and city (see {@link #forCustomerCode(String, String, String)}) is a known
++     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     *
++     * @param membershipLevel the owner's derived membership level, or {@code null}
++     * @param customerCode the owner's region-and-hash customer code, or {@code null}
++     * @param postcode the owner's stored postcode, or {@code null}
++     * @param city the owner's stored city, or {@code null}
++     * @return the formatted owner segment
++     */
++    public static String ownerSegment(Integer membershipLevel, String customerCode, String postcode,
++            String city) {
++        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String locality = forCustomerCode(customerCode, postcode, city);
++        String area = REGION_POSTCODES.containsKey(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Returns the canonical region for the given postcode and city, preferring the postcode.
+      *
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 58e58542..ebd849c1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2309,6 +2309,17 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise
++                'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
