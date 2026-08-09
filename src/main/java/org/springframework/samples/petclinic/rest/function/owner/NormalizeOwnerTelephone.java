@@ -19,6 +19,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
  * Spaces, dashes and brackets are stripped. The digits following the {@code '+'} must number between
  * 8 and 15. So {@code '0412 345 678'} becomes {@code '+61412345678'}.
  *
+ * <p>When the caller supplies an explicit country code, the national-number length is additionally
+ * validated against that country: {@code '+61'} requires 9 national digits and {@code '+1'} requires
+ * 10. A number whose national part is the wrong length for its country is rejected as a 400.
+ *
  * <p>A value that cannot form valid E.164 is rejected as a 400, mirroring the schema-validation
  * failures produced by {@link ValidateOwner}.
  */
@@ -29,6 +33,18 @@ public class NormalizeOwnerTelephone {
     private static final int MAX_DIGITS = 15;
 
     private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /**
+     * Known country codes mapped to the exact number of national digits they require, longest code
+     * first so {@code '61'} is matched before the shorter {@code '1'}. When an explicit country code
+     * matches one of these, the national-number length is enforced; other codes fall back to the
+     * generic {@link #MIN_DIGITS}..{@link #MAX_DIGITS} bound.
+     */
+    private static final java.util.List<CountryRule> COUNTRY_RULES = java.util.List.of(
+            new CountryRule("61", 9), new CountryRule("1", 10));
+
+    private record CountryRule(String code, int nationalDigits) {
+    }
 
     private static final Method SERVICE_METHOD;
 
@@ -77,13 +93,29 @@ public class NormalizeOwnerTelephone {
         if (digits.length() < MIN_DIGITS || digits.length() > MAX_DIGITS) {
             return null;
         }
+
+        // When the caller gave an explicit country code, hold the national part to that country's
+        // required length ('+61' => 9 digits, '+1' => 10). This is the only place we can tell the
+        // country apart from the assumed default, so it is scoped to explicitly-coded numbers.
+        if (hasCountryCode) {
+            for (CountryRule rule : COUNTRY_RULES) {
+                if (digits.startsWith(rule.code())) {
+                    String national = digits.substring(rule.code().length());
+                    if (national.length() != rule.nationalDigits()) {
+                        return null;
+                    }
+                    break;
+                }
+            }
+        }
         return "+" + digits;
     }
 
     private static void reject(OwnerFieldsDto request) throws MethodArgumentNotValidException {
         BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
         binding.rejectValue("telephone", "Telephone",
-                "must form a valid E.164 telephone number (8 to 15 digits after the '+')");
+                "must form a valid E.164 telephone number (8 to 15 digits after the '+', "
+                        + "and the national-number length required by the country code: +61 => 9, +1 => 10)");
         throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
     }
 }
