@@ -26,6 +26,9 @@ public interface OwnerMapper {
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
             + ".forCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
+            + ".timezoneForCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

@@ -21,6 +21,10 @@ public final class LocalityLookup {
         Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -&gt; IANA timezone; anything not listed has no timezone. */
+    private static final Map<String, String> REGION_TIMEZONE =
+        Map.of("NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     private LocalityLookup() {
     }
 
@@ -46,6 +50,24 @@ public final class LocalityLookup {
             }
         }
         return forPostcodeAndCity(postcode, city);
+    }
+
+    /**
+     * Returns the IANA timezone name for the locality derived from the owner's customer code,
+     * postcode and city, using the same derivation as {@link #forCustomerCode(String, String, String)}.
+     *
+     * <p>The derived region is mapped through the fixed region-to-timezone table
+     * (NSW -&gt; {@code Australia/Sydney}, VIC -&gt; {@code Australia/Melbourne},
+     * QLD -&gt; {@code Australia/Brisbane}). Regions not in the table (including {@code "UNKNOWN"})
+     * have no timezone and yield {@code null}.
+     *
+     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param postcode the owner's stored postcode, or {@code null}
+     * @param city the owner's stored city, or {@code null}
+     * @return the IANA timezone name for the derived region, or {@code null} when it has none
+     */
+    public static String timezoneForCustomerCode(String customerCode, String postcode, String city) {
+        return REGION_TIMEZONE.get(forCustomerCode(customerCode, postcode, city));
     }
 
     /**
