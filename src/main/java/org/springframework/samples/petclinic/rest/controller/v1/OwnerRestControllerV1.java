@@ -40,6 +40,9 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.BadRequestException;
+import org.springframework.samples.petclinic.rest.advice.ConflictException;
+import org.springframework.samples.petclinic.rest.advice.RateLimitExceededException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -171,38 +174,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String address = applyAddress(owner, ownerFieldsDto);
         if (address.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new BadRequestException("The owner's address is missing or could not be resolved to a valid address");
         }
         owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new BadRequestException("The owner's telephone number is not a valid phone number");
         }
         owner.setTelephone(telephone);
         if (owner.getEmail() != null) {
             String email = normalizeEmail(owner.getEmail());
             if (email == null) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new BadRequestException("The owner's email address is invalid or uses a disallowed domain");
             }
             owner.setEmail(email);
         }
         if (owner.getPostcode() != null && !isValidPostcode(owner.getPostcode(), owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new BadRequestException("The owner's postcode is not valid for the given city");
         }
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
             effectiveRegistrationDate = LocalDate.now();
         }
         else if (effectiveRegistrationDate.isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new BadRequestException("The owner's registration date cannot be in the future");
         }
         LocalDate registrationDate = toBusinessDay(effectiveRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ConflictException("The maximum number of owners for this city has been reached");
         }
         if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RateLimitExceededException("The maximum number of owner registrations for this day has been reached");
         }
         // The householdId is deterministic: the first twelve hex characters of SHA-256 over
         // '<normalizedLastName>|<postcode>'. Owners sharing a last name and postcode therefore
@@ -241,7 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             if (identityKey.equals(OwnerIdentity.identityKey(toE164(existing.getTelephone()),
                 existing.getEmail(), existing.getLastName()))) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+                throw new ConflictException("An owner with the same identity already exists");
             }
         }
         // Soft-match: the owner is not a hard (identityKey) duplicate, but if it shares an

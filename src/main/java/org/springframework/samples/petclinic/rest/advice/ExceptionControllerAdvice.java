@@ -125,6 +125,56 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link BadRequestException} raised when a request is malformed or violates a
+     * business rule. Returns a 400 Bad Request as an RFC 7807 {@code application/problem+json}
+     * response.
+     *
+     * @param e The {@link BadRequestException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
+     */
+    @ExceptionHandler(BadRequestException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleBadRequestException(BadRequestException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link ConflictException} raised when a request conflicts with the current state of
+     * the resource. Returns a 409 Conflict as an RFC 7807 {@code application/problem+json}
+     * response.
+     *
+     * @param e The {@link ConflictException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+     */
+    @ExceptionHandler(ConflictException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleConflictException(ConflictException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link RateLimitExceededException} raised when a rate limit has been exceeded.
+     * Returns a 429 Too Many Requests as an RFC 7807 {@code application/problem+json} response.
+     *
+     * @param e The {@link RateLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRateLimitExceededException(RateLimitExceededException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
