@@ -508,15 +508,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds an owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where
-     * customerCode is the owner's customer code and YY is the last two digits of the
-     * registrationDate year (e.g. 'NSW-1A2B3C4D-M26').
+     * customerCode is the owner's customer code and YY is the last two digits of the fiscal year (the
+     * fiscal year starts on 1 July) that the business-day-adjusted registrationDate falls in
+     * (e.g. 'NSW-1A2B3C4D-M27').
      *
      * @param customerCode the owner's customer code
-     * @param registrationDate the owner's registration date
+     * @param registrationDate the owner's business-day-adjusted registration date
      * @return the formatted membership number
      */
     private String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        String yy = String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
         return customerCode + "-M" + yy;
     }
 

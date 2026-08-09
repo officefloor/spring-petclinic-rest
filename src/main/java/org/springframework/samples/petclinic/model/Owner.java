@@ -302,11 +302,40 @@ public class Owner extends Person {
     }
 
     /**
+     * The fiscal year in which a date falls, where the fiscal year starts on 1 July. A date on or after
+     * 1 July belongs to the fiscal year ending in the following calendar year; a date before 1 July
+     * belongs to the fiscal year ending in that same calendar year. The returned value is the fiscal
+     * year's ending calendar year (e.g. {@code 2026-08-10} yields {@code 2027}, {@code 2026-05-10}
+     * yields {@code 2026}).
+     *
+     * @param date the date to classify
+     * @return the ending calendar year of the fiscal year the date falls in
+     */
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'} where YY is the last two digits of the fiscal
+     * year (which starts on 1 July) that the business-day-adjusted {@code registrationDate} falls in
+     * (e.g. a registration date of {@code 2026-08-10} yields {@code 'FY27'}). It is a derived,
+     * non-persistent value; when no {@code registrationDate} is present it is {@code null}.
+     *
+     * @return the {@code 'FY<YY>'} fiscal year, or {@code null} when no registration date is present
+     */
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYear(this.registrationDate) % 100);
+    }
+
+    /**
      * The owner's membership points, a non-negative score. It starts at 0 and accumulates: 2 points
      * when an email address is present, 1 point when the owner has no namesakes ({@code namesakeCount}
      * is zero), 2 points for a household of 3 or more members ({@code householdMemberCount} is at least
-     * 3), and 3 points for tenure &mdash; the number of whole days from {@code registrationDate} to
-     * today &mdash; of more than 365 days.
+     * 3), and 3 points for tenure &mdash; the number of elapsed fiscal years (the fiscal year starts on
+     * 1 July) from {@code registrationDate} to today &mdash; of more than 1.
      *
      * @return the derived membership points (0 or more)
      */
@@ -322,7 +351,7 @@ public class Owner extends Person {
             points += 2;
         }
         if (this.registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            && fiscalYear(LocalDate.now()) - fiscalYear(this.registrationDate) > 1) {
             points += 3;
         }
         return points;
