@@ -133,7 +133,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredOwnerFields(ownerFieldsDto);
-        rejectDailyLimitExceeded();
+        LocalDate suppliedOrDefaultDate =
+            ownerFieldsDto.getRegistrationDate() != null ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+        LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
+        rejectDailyLimitExceeded(registrationDate);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -143,9 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(normalizedTelephone);
         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
         owner.setEmail(normalizeEmail(owner.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -313,22 +314,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws OwnerCityCapacityExceededException if the city already contains the maximum number of owners
      */
     /**
-     * Rejects an owner create once the maximum number of owners have already been registered today.
-     * Owners are grouped by their {@code registrationDate}; when {@link #MAX_OWNERS_PER_DAY} or more
-     * existing owners already carry today's date the create is rejected as too many requests. A new
-     * owner that supplies no registration date is dated today, so this quota bounds the number of
-     * owners that may be created on any single day.
+     * Rejects an owner create once the maximum number of owners have already been registered on the
+     * business day this owner would land on. Owners are grouped by their {@code registrationDate},
+     * which is always a business day (a weekend effective date is rolled forward to the following
+     * Monday); when {@link #MAX_OWNERS_PER_DAY} or more existing owners already carry the given
+     * business day the create is rejected as too many requests. Because a weekend effective date is
+     * rolled forward, this quota bounds the number of owners that may be registered per business day.
      *
-     * @throws OwnerDailyLimitExceededException if today already holds the maximum number of owners
+     * @param businessDay the adjusted business day the owner being created would be registered on
+     * @throws OwnerDailyLimitExceededException if the business day already holds the maximum number of owners
      */
-    private void rejectDailyLimitExceeded() {
-        LocalDate today = LocalDate.now();
-        long ownersToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+    private void rejectDailyLimitExceeded(LocalDate businessDay) {
+        long ownersOnDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
             .count();
-        if (ownersToday >= MAX_OWNERS_PER_DAY) {
-            throw new OwnerDailyLimitExceededException(today, MAX_OWNERS_PER_DAY);
+        if (ownersOnDay >= MAX_OWNERS_PER_DAY) {
+            throw new OwnerDailyLimitExceededException(businessDay, MAX_OWNERS_PER_DAY);
         }
+    }
+
+    /**
+     * Rolls an effective registration date forward onto a business day. A Saturday or Sunday is moved
+     * forward to the following Monday; a weekday is returned unchanged. This applies whether the date
+     * was supplied on the request or defaulted to the server's current date.
+     *
+     * @param date the effective registration date (supplied or defaulted)
+     * @return the same date when it is a weekday, otherwise the following Monday
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     private void rejectCityAtCapacity(String city) {
