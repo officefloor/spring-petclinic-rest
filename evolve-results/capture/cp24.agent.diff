@@ -1,0 +1,140 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8b2f56e2..0cab2ab0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
+ import org.springframework.data.domain.Page;
++import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -15,7 +16,7 @@ import java.util.List;
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+-@Mapper(uses = PetMapper.class)
++@Mapper(uses = PetMapper.class, imports = MembershipLevel.class)
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -24,8 +25,8 @@ public interface OwnerMapper {
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+             expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-            expression = "java(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 ? \"GOLD\" : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++            expression = "java(MembershipLevel.of(owner))")
+     @Mapping(target = "locality",
+             expression = "java(Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+new file mode 100644
+index 00000000..955ea925
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Derives an owner's numeric membership level, assigned once at creation.
++ *
++ * <p>Starts at {@code 1}; adds {@code 1} when an email address is present; adds {@code 1} when the
++ * owner has no namesakes ({@code namesakeCount} is {@code 0}); the result is capped at {@code 3}.
++ * Level {@code 4} is reserved for tenure and is never produced here.
++ */
++public final class MembershipLevel {
++
++    private MembershipLevel() {
++    }
++
++    /** Compute the membership level (1..3) for the given owner. */
++    public static int of(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+index 305fdc4e..63098297 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+@@ -15,8 +15,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * owner does not join a household ({@code householdId} is {@code null}), it is the sole member and
+  * the count is {@code 1}.
+  *
+- * <p>The count is what drives the {@code GOLD} membership tier (3 or more members); see
+- * {@link org.springframework.samples.petclinic.mapper.OwnerMapper}.
++ * <p>The count is persisted on the owner as {@code householdMemberCount} for reporting; it no
++ * longer influences the membership level (see
++ * {@link org.springframework.samples.petclinic.model.MembershipLevel}).
+  */
+ public class AssignHouseholdSize {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 51376a1a..bb7327d0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -3,11 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.variable.Val;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
++import org.springframework.samples.petclinic.model.MembershipLevel;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Emits an audit line on successful create via the dedicated {@code AUDIT} logger, carrying the
+- * new owner's id, its {@code customerCode} and its {@code registrationDate}.
++ * new owner's id, its {@code customerCode}, its {@code registrationDate} and its
++ * {@code membershipLevel}.
+  *
+  * <p>Runs after {@link SaveOwner}, so the owner has been assigned its generated id, and before
+  * {@link RespondWithOwnerCreated}, so the line is only written once the create has succeeded.
+@@ -17,7 +19,8 @@ public class AuditOwnerCreated {
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                MembershipLevel.of(owner));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4c26d9a8..9c575c5d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2137,14 +2137,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'SILVER' when the owner has no namesakes
+-                (namesakeCount is 0) and an email address is present; otherwise 'BRONZE'.
+-                Derived from the owner's own namesakeCount and email.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned once at creation. Starts
++                at 1; adds 1 when an email address is present; adds 1 when the owner has
++                no namesakes (namesakeCount is 0); capped at 3. Level 4 is reserved for
++                tenure. Derived from the owner's own namesakeCount and email.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
