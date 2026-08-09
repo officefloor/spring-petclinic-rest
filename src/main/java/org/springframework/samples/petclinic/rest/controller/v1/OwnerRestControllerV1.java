@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -121,7 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         rejectDuplicateTelephone(normalizedTelephone);
-        rejectDuplicateHousehold(owner, ownerFieldsDto.getSharesHousehold());
+        applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
         owner.setEmail(normalizeEmail(owner.getEmail()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -342,28 +345,70 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner create that would form a second owner in an existing household - one whose
-     * last name and address already belong to another owner. Last name and address are compared
-     * case-insensitively after surrounding whitespace is trimmed and each internal run of whitespace
-     * is collapsed to a single space, so purely cosmetic differences in spacing or letter case still
-     * count as the same household. The check is skipped when the caller sets {@code sharesHousehold}
-     * true to deliberately register a housemate.
+     * Applies the household rule to an owner being created. A household is the set of owners sharing a
+     * last name and address, compared case-insensitively after surrounding whitespace is trimmed and
+     * each internal run of whitespace is collapsed to a single space, so purely cosmetic differences in
+     * spacing or letter case still count as the same household.
+     * <p>
+     * When the owner's last name and address already belong to at least one other owner the behaviour
+     * depends on {@code sharesHousehold}. If it is not true the create is rejected as a duplicate
+     * household. If it is true the create is allowed and every member of the household - the existing
+     * owners and this joiner - is assigned the same stable {@code householdId}, which is returned on
+     * read. When no other owner shares the last name and address no identifier is assigned.
      *
      * @param owner the owner being created
      * @param sharesHousehold the request's shared-household acknowledgement, or {@code null} when absent
-     * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and address
+     * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and
+     *         address and {@code sharesHousehold} is not true
      */
-    private void rejectDuplicateHousehold(Owner owner, Boolean sharesHousehold) {
-        if (Boolean.TRUE.equals(sharesHousehold)) {
-            return;
-        }
+    private void applyHousehold(Owner owner, Boolean sharesHousehold) {
         String lastName = normalizeHouseholdField(owner.getLastName());
         String address = normalizeHouseholdField(owner.getAddress());
-        boolean clash = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
-                && normalizeHouseholdField(existing.getAddress()).equals(address));
-        if (clash) {
+        List<Owner> housemates = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
+                && normalizeHouseholdField(existing.getAddress()).equals(address))
+            .toList();
+        if (housemates.isEmpty()) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(sharesHousehold)) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+        }
+        String householdId = generateHouseholdId(lastName, address);
+        owner.setHouseholdId(householdId);
+        for (Owner housemate : housemates) {
+            if (!householdId.equals(housemate.getHouseholdId())) {
+                housemate.setHouseholdId(householdId);
+                this.clinicService.saveOwner(housemate);
+            }
+        }
+    }
+
+    /**
+     * Builds the stable identifier shared by the members of one household. It is derived purely from
+     * the normalized last name and address, so every owner of a given household deterministically
+     * resolves to the same value - the first 12 upper-case hex characters of the SHA-256 digest of the
+     * two normalized fields joined by a single space.
+     *
+     * @param normalizedLastName the household's last name, already normalized for comparison
+     * @param normalizedAddress the household's address, already normalized for comparison
+     * @return the shared household identifier
+     */
+    private String generateHouseholdId(String normalizedLastName, String normalizedAddress) {
+        String key = normalizedLastName + ' ' + normalizedAddress;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02X", b));
+                if (hex.length() >= 12) {
+                    break;
+                }
+            }
+            return hex.substring(0, 12);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }
     }
 
