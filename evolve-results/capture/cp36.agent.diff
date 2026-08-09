@@ -1,0 +1,264 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerHouseholdException.java
+index e642b39c..aebc8851 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerHouseholdException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerHouseholdException.java
+@@ -17,28 +17,28 @@
+ package org.springframework.samples.petclinic.rest.advice;
+ 
+ /**
+- * Thrown when a request to create an owner supplies a lastName and address that already belong to
+- * another owner (compared case-insensitively with collapsed whitespace). Two owners sharing a
+- * surname and address are treated as the same household, so this conflict is reported to the caller
+- * as an HTTP 409 unless the request explicitly acknowledges the shared household.
++ * Thrown when a request to create an owner supplies a lastName and postcode that already belong to
++ * another owner (the lastName compared case-insensitively with collapsed whitespace). Two owners
++ * sharing a surname and postcode are treated as the same household, so this conflict is reported to
++ * the caller as an HTTP 409 unless the request explicitly acknowledges the shared household.
+  */
+ public class DuplicateOwnerHouseholdException extends RuntimeException {
+ 
+     private final String lastName;
+ 
+-    private final String address;
++    private final String postcode;
+ 
+-    public DuplicateOwnerHouseholdException(String lastName, String address) {
+-        super("Owner already exists for household: " + lastName + ", " + address);
++    public DuplicateOwnerHouseholdException(String lastName, String postcode) {
++        super("Owner already exists for household: " + lastName + ", " + postcode);
+         this.lastName = lastName;
+-        this.address = address;
++        this.postcode = postcode;
+     }
+ 
+     public String getLastName() {
+         return this.lastName;
+     }
+ 
+-    public String getAddress() {
+-        return this.address;
++    public String getPostcode() {
++        return this.postcode;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index d58fef66..bb138189 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -266,8 +266,9 @@ public class ExceptionControllerAdvice {
+ 
+     /**
+      * Handles {@link DuplicateOwnerHouseholdException} raised when an owner create request supplies a
+-     * last name and address that already belong to another owner (compared case-insensitively with
+-     * collapsed whitespace) without acknowledging the shared household. Returns a 409 Conflict.
++     * last name and postcode that already belong to another owner (the last name compared
++     * case-insensitively with collapsed whitespace) without acknowledging the shared household.
++     * Returns a 409 Conflict.
+      *
+      * @param e The {@link DuplicateOwnerHouseholdException} to be handled
+      * @param request {@link HttpServletRequest} object referring to the current request.
+@@ -280,10 +281,10 @@ public class ExceptionControllerAdvice {
+             request.getMethod(),
+             request.getRequestURI(),
+             e.getLastName(),
+-            e.getAddress());
++            e.getPostcode());
+         HttpStatus status = HttpStatus.CONFLICT;
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+-        detail.setProperty("errors", List.of("lastName", "address"));
++        detail.setProperty("errors", List.of("lastName", "postcode"));
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8c798816..daa2d219 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+@@ -173,10 +174,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setAddress(normalizeAddress(owner.getAddress()));
+         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+         owner.setTelephone(normalizedTelephone);
+-        applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
++        boolean declaredHouseholdMember = applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+         rejectDuplicateIdentity(owner);
+-        applyPossibleDuplicate(owner);
++        applyPossibleDuplicate(owner, declaredHouseholdMember);
+         owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(
+             generateCustomerCode(owner.getPostcode(), owner.getCity(), normalizedTelephone, owner.getLastName()));
+@@ -631,10 +632,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * (its identity key differs) and is still created. When at least one soft match exists,
+      * {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to the lowest-id match;
+      * otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left unset.
++     * <p>
++     * A declared household member - an owner that acknowledged sharing an existing household via
++     * {@code sharesHousehold} - is never flagged: having deliberately joined the household it is not a
++     * suspected duplicate, so {@code possibleDuplicate} is set false without inspecting other owners.
+      *
+      * @param owner the owner being created, with its last name, postcode and normalized telephone resolved
++     * @param declaredHouseholdMember whether the owner joined an existing household by acknowledging it
+      */
+-    private void applyPossibleDuplicate(Owner owner) {
++    private void applyPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
++        if (declaredHouseholdMember) {
++            owner.setPossibleDuplicate(false);
++            return;
++        }
+         String lastName = normalizeHouseholdField(owner.getLastName());
+         String postcode = owner.getPostcode();
+         String telephone = owner.getTelephone();
+@@ -655,23 +665,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
+-    /**
+-     * Applies the household rule to an owner being created. A household is the set of owners sharing a
+-     * last name and a normalized address: last names are compared case-insensitively after whitespace
+-     * is trimmed and collapsed, and addresses are compared in their normalized form (see
+-     * {@link #normalizeAddress(String)}), so purely cosmetic differences in spacing, letter case or
+-     * abbreviation still count as the same household.
+-     * <p>
+-     * When the owner's last name and address already belong to at least one other owner and
+-     * {@code sharesHousehold} is true, every member of the household - the existing owners and this
+-     * joiner - is assigned the same stable {@code householdId}, which is returned on read and forms
+-     * the third component of the {@code identityKey}. When {@code sharesHousehold} is not true, or no
+-     * other owner shares the last name and address, no identifier is assigned. Household membership no
+-     * longer rejects a create on its own; duplicates are detected solely through the identity key.
+-     *
+-     * @param owner the owner being created
+-     * @param sharesHousehold the request's shared-household acknowledgement, or {@code null} when absent
+-     */
+     /**
+      * Maps an owner to its DTO, first populating the owner's {@link Owner#getHouseholdMemberCount()
+      * household member count} for the response.
+@@ -702,41 +695,57 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
+-    private void applyHousehold(Owner owner, Boolean sharesHousehold) {
++    /**
++     * Applies the household rule to an owner being created. A household is the set of owners sharing a
++     * last name and a postcode: the {@code householdId} is derived deterministically from the
++     * normalized last name and the postcode (see {@link #generateHouseholdId(String, String)}), so two
++     * owners with the same last name and postcode always resolve to the same identifier and belong to
++     * the same household automatically - no acknowledgement is needed to create the link.
++     * <p>
++     * When the owner supplies a postcode its {@code householdId} is always assigned. If that household
++     * already has at least one member, the create is a household duplicate: it is rejected with a 409
++     * unless {@code sharesHousehold} is true, in which case the owner is created as a declared member
++     * of that household. An owner with no postcode belongs to no household and is left without an
++     * identifier.
++     *
++     * @param owner the owner being created
++     * @param sharesHousehold the request's shared-household acknowledgement, or {@code null} when absent
++     * @return {@code true} when the owner joined an existing household as a declared member, otherwise
++     *         {@code false}
++     * @throws DuplicateOwnerHouseholdException when the household already exists and the create did not
++     *         acknowledge it via {@code sharesHousehold}
++     */
++    private boolean applyHousehold(Owner owner, Boolean sharesHousehold) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return false;
++        }
+         String lastName = normalizeHouseholdField(owner.getLastName());
+-        String address = normalizeAddress(owner.getAddress());
+-        List<Owner> housemates = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
+-                && normalizeAddress(existing.getAddress()).equals(address))
+-            .toList();
+-        if (housemates.isEmpty()) {
+-            return;
++        String householdId = generateHouseholdId(lastName, postcode);
++        owner.setHouseholdId(householdId);
++        boolean hasExistingMember = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
++        if (!hasExistingMember) {
++            return false;
+         }
+         if (!Boolean.TRUE.equals(sharesHousehold)) {
+-            return;
+-        }
+-        String householdId = generateHouseholdId(lastName, address);
+-        owner.setHouseholdId(householdId);
+-        for (Owner housemate : housemates) {
+-            if (!householdId.equals(housemate.getHouseholdId())) {
+-                housemate.setHouseholdId(householdId);
+-                this.clinicService.saveOwner(housemate);
+-            }
++            throw new DuplicateOwnerHouseholdException(owner.getLastName(), postcode);
+         }
++        return true;
+     }
+ 
+     /**
+      * Builds the stable identifier shared by the members of one household. It is derived purely from
+-     * the normalized last name and address, so every owner of a given household deterministically
++     * the normalized last name and the postcode, so every owner sharing a last name and postcode
+      * resolves to the same value - the first 12 upper-case hex characters of the SHA-256 digest of the
+-     * two normalized fields joined by a single space.
++     * two fields joined by a single '|'.
+      *
+      * @param normalizedLastName the household's last name, already normalized for comparison
+-     * @param normalizedAddress the household's address, already normalized for comparison
++     * @param postcode the household's postcode
+      * @return the shared household identifier
+      */
+-    private String generateHouseholdId(String normalizedLastName, String normalizedAddress) {
+-        String key = normalizedLastName + ' ' + normalizedAddress;
++    private String generateHouseholdId(String normalizedLastName, String postcode) {
++        String key = normalizedLastName + '|' + postcode;
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                 .digest(key.getBytes(StandardCharsets.UTF_8));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d2df99c7..96357ca0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2080,10 +2080,14 @@ components:
+           title: Shares household
+           description: >-
+             Create-only flag acknowledging that this owner deliberately shares a
+-            household with an existing owner. When omitted or false, a create whose
+-            lastName and address already belong to another owner (compared
+-            case-insensitively with collapsed whitespace) is rejected with 409;
+-            when true the create is allowed to proceed. The flag is not persisted.
++            household with an existing owner. A household is keyed on (lastName,
++            postcode), so a create whose lastName and postcode already belong to
++            another owner (the lastName compared case-insensitively with collapsed
++            whitespace) is rejected with 409 when this flag is omitted or false; when
++            true the create bypasses that duplicate block and the owner is created as
++            a declared household member (and is not flagged as a possible duplicate).
++            The householdId is assigned deterministically regardless of this flag; the
++            flag is not persisted.
+           type: boolean
+           example: false
+       required:
+@@ -2154,12 +2158,12 @@ components:
+             householdId:
+               title: Household ID
+               description: >-
+-                A stable identifier shared by the owners of a single household. When an
+-                owner is created with 'sharesHousehold' true and their lastName and
+-                address already belong to an existing owner (compared case-insensitively
+-                with collapsed whitespace), the joiner and the existing household members
+-                are all assigned this same identifier. It is absent for an owner that does
+-                not share a household with anyone.
++                A stable identifier shared by the owners of a single household. It is
++                derived deterministically from the owner's normalized lastName and
++                postcode (the first 12 hex characters of SHA-256 over
++                normalizedLastName + '|' + postcode), so owners sharing a lastName and
++                postcode automatically resolve to the same identifier. It is absent for
++                an owner created without a postcode.
+               type: string
+               example: 'A1B2C3D4E5F6'
+               readOnly: true
