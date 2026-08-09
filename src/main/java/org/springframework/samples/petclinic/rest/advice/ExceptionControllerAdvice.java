@@ -138,6 +138,15 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
+            List<String> missingFields = bindingResult.getFieldErrors().stream()
+                .filter(fieldError -> {
+                    Object rejected = fieldError.getRejectedValue();
+                    return rejected == null || (rejected instanceof String value && value.isBlank());
+                })
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList();
+            detail.setProperty("errors", missingFields);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
                 .map(fieldError -> {
                     String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
@@ -159,6 +168,28 @@ public class ExceptionControllerAdvice {
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException} raised when an owner create/update request omits
+     * or leaves blank one or more mandatory fields that Bean Validation does not otherwise reject.
+     * Returns a 400 Bad Request whose {@code errors} array lists the name of each missing field.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
+        logger.debug("Missing owner fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMissingFields());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getMissingFields());
         return ResponseEntity.status(status).body(detail);
     }
 
