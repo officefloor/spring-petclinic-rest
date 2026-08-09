@@ -243,11 +243,14 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3 fixed at creation. It starts at 1, gains a
-     * level when an email address is present, and gains a level when the owner has no namesakes
-     * ({@code namesakeCount} is zero); it is capped at 3. Level 4 is reserved for tenure.
+     * The owner's membership level, a number from 1 to 4. It starts at 1, gains a level when an email
+     * address is present, and gains a level when the owner has no namesakes ({@code namesakeCount} is
+     * zero); these pre-tenure factors are capped at 3. It gains a fourth level for tenure, awarded only
+     * when the owner's tenure &mdash; the number of whole days from {@code registrationDate} to today
+     * &mdash; is more than 365 days. Because a newly created owner has zero tenure, a new owner never
+     * exceeds level 3.
      *
-     * @return the derived membership level (1 to 3)
+     * @return the derived membership level (1 to 4)
      */
     public Integer getMembershipLevel() {
         int level = 1;
@@ -257,7 +260,12 @@ public class Owner extends Person {
         if (this.namesakeCount != null && this.namesakeCount == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (this.registrationDate != null
+            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 
     /**
