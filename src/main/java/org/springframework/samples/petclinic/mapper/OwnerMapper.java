@@ -19,6 +19,7 @@ import java.util.Map;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -205,6 +206,22 @@ public interface OwnerMapper {
             grouped.append(national.charAt(i));
         }
         return "+" + countryCode + (grouped.length() == 0 ? "" : " " + grouped);
+    }
+
+    /**
+     * The owner's salutation, derived at read time as the stored title and last name
+     * separated by a single space (e.g. 'DR Franklin'), or just the last name when no
+     * title was supplied (null or blank).
+     */
+    default String salutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /** Formats the owner's stored names as 'LastName, FirstName'. */
