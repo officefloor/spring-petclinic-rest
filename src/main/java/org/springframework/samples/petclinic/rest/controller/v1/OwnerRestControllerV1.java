@@ -132,6 +132,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
+        if (owner.getPostcode() != null && !isValidPostcode(owner.getPostcode(), owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
             effectiveRegistrationDate = LocalDate.now();
@@ -594,6 +597,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return digits.length() - 1 == 10;
         }
         return true;
+    }
+
+    /**
+     * Inclusive 4-digit postcode ranges permitted for each canonical region: NSW 2000-2099,
+     * VIC 3000-3099 and QLD 4000-4099. A region absent from this table (e.g. the {@code
+     * "UNKNOWN"} derived for a city with no known region) imposes no range restriction.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's postcode for creation. A postcode is only ever validated when
+     * present (an absent postcode is optional and accepted). When present it must be exactly
+     * four digits and, for a city whose {@link OwnerLocality#forCity region} has a known
+     * postcode range, must fall inside that inclusive range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
+     *
+     * @param postcode the supplied postcode (never {@code null} here)
+     * @param city     the owner's city, used to derive the region
+     * @return {@code true} when the postcode is valid for the city, {@code false} otherwise
+     *         (signalling a 400 Bad Request)
+     */
+    private static boolean isValidPostcode(String postcode, String city) {
+        if (!postcode.matches("[0-9]{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODES.get(
+            org.springframework.samples.petclinic.mapper.OwnerLocality.forCity(city));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /**
