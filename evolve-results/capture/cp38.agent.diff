@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerEmail.java
+index 264dfd10..ac472a10 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerEmail.java
+@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.lang.reflect.Method;
+ import java.util.Locale;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import net.officefloor.plugin.variable.Val;
+@@ -18,6 +19,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+  * <p>A value that is present but not a valid address is rejected as a 400, mirroring the schema-validation
+  * failures produced by {@link ValidateOwner}. Validation here is independent of the generated DTO's bean
+  * constraints so the rule holds regardless of how the request was bound.
++ *
++ * <p>An otherwise-valid address whose domain is a known disposable-email provider is likewise rejected as a
++ * 400: such addresses are throwaway and unsuitable for an owner record. The domain comparison is
++ * case-insensitive.
+  */
+ public class NormalizeOwnerEmail {
+ 
+@@ -28,6 +33,10 @@ public class NormalizeOwnerEmail {
+      */
+     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /** Disposable-email provider domains; an address in any of these is rejected. Stored lower-cased. */
++    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     private static final Method SERVICE_METHOD;
+ 
+     static {
+@@ -49,6 +58,13 @@ public class NormalizeOwnerEmail {
+             binding.rejectValue("email", "Email", "must be a valid email address");
+             throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
+         }
+-        request.setEmail(email.toLowerCase(Locale.ROOT));
++        String normalized = email.toLowerCase(Locale.ROOT);
++        String domain = normalized.substring(normalized.indexOf('@') + 1);
++        if (DISPOSABLE_DOMAINS.contains(domain)) {
++            BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
++            binding.rejectValue("email", "Email", "must not use a disposable email domain");
++            throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
++        }
++        request.setEmail(normalized);
+     }
+ }
