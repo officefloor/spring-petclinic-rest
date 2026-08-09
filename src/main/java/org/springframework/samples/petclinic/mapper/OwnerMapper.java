@@ -21,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -142,6 +143,50 @@ public interface OwnerMapper {
             }
         }
         return null;
+    }
+
+    /** Known E.164 country codes, longest first so '61' matches before the shorter '1', mirroring
+     *  the write-time normalization in NormalizeOwnerTelephone. */
+    List<String> COUNTRY_CODES = List.of("61", "1");
+
+    /**
+     * The stored E.164 {@code telephone} formatted for humans at read time: the country code, a single
+     * space, then the national digits grouped in threes from the left, e.g. {@code '+61412345678'} ->
+     * {@code '+61 412 345 678'}. The raw {@code telephone} is unchanged. Null when the owner is absent;
+     * a value that is not a recognizable E.164 string (no leading {@code '+'}, non-digits, or no known
+     * country code) is returned unchanged.
+     */
+    default String telephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        if (!digits.matches("[0-9]+")) {
+            return telephone;
+        }
+        String countryCode = null;
+        for (String code : COUNTRY_CODES) {
+            if (digits.startsWith(code)) {
+                countryCode = code;
+                break;
+            }
+        }
+        if (countryCode == null) {
+            return telephone;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + (grouped.length() == 0 ? "" : " " + grouped);
     }
 
     /** Formats the owner's stored names as 'LastName, FirstName'. */
