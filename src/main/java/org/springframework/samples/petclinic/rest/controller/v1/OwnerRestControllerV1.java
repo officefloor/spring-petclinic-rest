@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.MembershipPoints;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -95,7 +96,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+        Map<String, Integer> householdSizes = householdSizes();
+        List<OwnerDto> ownerDtos = new java.util.ArrayList<>();
+        for (Owner owner : owners) {
+            OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+            applyMembership(ownerDto, owner, householdSizes);
+            ownerDtos.add(ownerDto);
+        }
+        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -106,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyMembership(ownerDto, owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
@@ -198,6 +207,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyMembership(ownerDto, owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
@@ -560,6 +570,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return householdId(householdKey(owner.getLastName()), owner.getPostcode());
+    }
+
+    /**
+     * Populates an owner's {@code membershipPoints} and {@code membershipLevel} on the given
+     * dto, sizing the owner's household from all owners so the household-of-three-or-more
+     * factor is scored correctly. Use {@link #applyMembership(OwnerDto, Owner, Map)} instead
+     * when mapping a collection to size every household from a single scan.
+     *
+     * @param ownerDto the dto to populate
+     * @param owner    the owner being mapped
+     */
+    private void applyMembership(OwnerDto ownerDto, Owner owner) {
+        applyMembership(ownerDto, owner, householdSizes());
+    }
+
+    /**
+     * Populates an owner's {@code membershipPoints} and {@code membershipLevel} on the given
+     * dto using a pre-computed map of household id to member count.
+     *
+     * @param ownerDto       the dto to populate
+     * @param owner          the owner being mapped
+     * @param householdSizes household id to member count, as returned by {@link #householdSizes()}
+     */
+    private void applyMembership(OwnerDto ownerDto, Owner owner, Map<String, Integer> householdSizes) {
+        int householdSize = owner.getHouseholdId() == null ? 1
+            : householdSizes.getOrDefault(owner.getHouseholdId(), 1);
+        int points = MembershipPoints.points(owner, householdSize);
+        ownerDto.setMembershipPoints(points);
+        ownerDto.setMembershipLevel(MembershipPoints.level(points));
+    }
+
+    /**
+     * Counts how many owners belong to each household, keyed by household id. Owners without a
+     * household id (no postcode) are excluded — such an owner is its own single-member household.
+     *
+     * @return a map from household id to the number of owners sharing it
+     */
+    private Map<String, Integer> householdSizes() {
+        Map<String, Integer> sizes = new java.util.HashMap<>();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String householdId = existing.getHouseholdId();
+            if (householdId != null) {
+                sizes.merge(householdId, 1, Integer::sum);
+            }
+        }
+        return sizes;
     }
 
     /**

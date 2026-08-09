@@ -23,12 +23,10 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(4, 1 "
-            + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
-            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0) "
-            + "+ (owner.getRegistrationDate() != null "
-            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365 ? 1 : 0)))")
+    // membershipPoints & membershipLevel are populated by the controller, which can size the
+    // owner's household (the household-of-three-or-more factor needs the other owners).
+    @Mapping(target = "membershipPoints", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
