@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+new file mode 100644
+index 00000000..a805cf5b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+@@ -0,0 +1,60 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Caps the new owner's {@code membershipLevel} so it cannot exceed one above the current maximum
++ * {@code membershipLevel} among the other members of this owner's household — owners that already
++ * share this owner's {@code householdId}. The ceiling is {@code max + 1}; when the derived level is
++ * already at or below the ceiling it is left unchanged.
++ *
++ * <p>When the owner has no household ({@code householdId} is null) or no existing household member,
++ * no ceiling applies and the level is left as {@link AssignMembershipLevel} derived it. Members whose
++ * own {@code membershipLevel} is null (e.g. seed data) and soft-deleted owners are not counted.
++ *
++ * <p>Runs after {@link AssignMembershipLevel} (so the derived level exists) and before
++ * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
++ */
++public class CapMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            return; // no household -> no ceiling
++        }
++        Integer level = owner.getMembershipLevel();
++        if (level == null) {
++            return;
++        }
++
++        Integer maxMemberLevel = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue; // never compare against self
++            }
++            if (Boolean.TRUE.equals(existing.getDeleted())) {
++                continue;
++            }
++            if (!householdId.equals(existing.getHouseholdId())) {
++                continue;
++            }
++            Integer existingLevel = existing.getMembershipLevel();
++            if (existingLevel == null) {
++                continue;
++            }
++            if (maxMemberLevel == null || existingLevel > maxMemberLevel) {
++                maxMemberLevel = existingLevel;
++            }
++        }
++
++        if (maxMemberLevel == null) {
++            return; // no existing household member -> no ceiling
++        }
++        int ceiling = maxMemberLevel + 1;
++        if (level > ceiling) {
++            owner.setMembershipLevel(ceiling);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureHouseholdUnique.java
+index 2b71287d..a20ca5d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureHouseholdUnique.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Locale;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -7,11 +9,16 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Rejects creating an owner that would silently join an existing household. Because the
+- * {@code householdId} is now deterministic — computed from {@code (normalizedLastName, postcode)} by
+- * {@link AssignHouseholdId} — two owners with the same last name and postcode are, by definition, the
+- * same household. Creating a second such owner is therefore a household duplicate and is rejected with
+- * 409 (Conflict) via {@link DuplicateHouseholdException}.
++ * Rejects creating an owner that would silently join an existing household at the same residence.
++ * The {@code householdId} is deterministic — computed from {@code (normalizedLastName, postcode)} by
++ * {@link AssignHouseholdId} — but a postcode alone can be shared coincidentally by unrelated cities
++ * (an unknown-region city accepts any 4-digit postcode), so a shared {@code householdId} on its own
++ * does not prove a shared residence. A second owner is treated as a household duplicate only when it
++ * shares both the {@code householdId} <em>and</em> the same city as an existing member — same surname,
++ * same postcode, same city — and is then rejected with 409 (Conflict) via
++ * {@link DuplicateHouseholdException}. Same surname and postcode but a different city are distinct
++ * residences and are admitted (their {@code membershipLevel} is then capped against any true household
++ * member by {@link CapMembershipLevel}).
+  *
+  * <p>The request may acknowledge the shared household by setting {@code sharesHousehold} true; that
+  * bypasses this block and the owner is created as a declared household member (and, being declared, is
+@@ -35,6 +42,7 @@ public class EnsureHouseholdUnique {
+         if (householdId == null || householdId.isBlank()) {
+             return; // no household to clash with
+         }
++        String city = normalizeCity(owner.getCity());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                 continue;
+@@ -42,9 +50,15 @@ public class EnsureHouseholdUnique {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // a soft-deleted owner is treated as absent
+             }
+-            if (householdId.equals(existing.getHouseholdId())) {
++            if (householdId.equals(existing.getHouseholdId())
++                    && city.equals(normalizeCity(existing.getCity()))) {
+                 throw new DuplicateHouseholdException(householdId);
+             }
+         }
+     }
++
++    /** Trim and lower-case the city so residence comparison ignores casing and surrounding space. */
++    private static String normalizeCity(String value) {
++        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
++    }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 77eee62c..65dad710 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -97,6 +97,13 @@ assignPossibleDuplicate:
+ assignMembershipLevel:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
+   govern: [ transaction ]
++  next: capMembershipLevel
++
++# A new owner's level cannot exceed one above the current maximum among their existing household
++# members; with no existing member no cap applies.
++capMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ transaction ]
+   next: assignMembershipNumber
+ 
+ assignMembershipNumber:
