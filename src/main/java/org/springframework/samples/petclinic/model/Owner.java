@@ -140,6 +140,20 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
+    /**
+     * The owner's derived identity key, consolidating all duplicate detection into a single value:
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are the
+     * same identity only when their whole key matches, so members of one household (same
+     * {@code householdId}) with different telephones have distinct keys.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String em = this.email == null ? "" : this.email;
+        String household = this.householdId == null ? "" : this.householdId;
+        return tel + "|" + em + "|" + household;
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }

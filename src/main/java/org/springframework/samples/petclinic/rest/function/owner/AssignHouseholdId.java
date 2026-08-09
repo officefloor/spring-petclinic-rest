@@ -15,8 +15,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * When the request opts in with {@code sharesHousehold} true, gives the new owner a stable
  * {@code householdId} shared with the existing owner(s) at the same household — same last name and
- * same address, compared case-insensitively with collapsed whitespace, matching
- * {@link EnsureOwnerHouseholdUnique}.
+ * same address, compared case-insensitively with collapsed whitespace.
  *
  * <p>The identifier is deterministic (a hex prefix of SHA-256 over the normalized last name and
  * address), so every member of a household derives the same value and it stays stable as new members

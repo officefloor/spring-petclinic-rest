@@ -172,16 +172,18 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
-    void createOwnerRejectsDuplicateHousehold() throws Exception {
+    void createOwnerAllowsSameHouseholdWithDifferentTelephone() throws Exception {
         // Seed data already holds 'Franklin, 110 W. Liberty St.'. This body has the same last name
-        // and address differing only in case and collapsed whitespace, with a fresh telephone, so
-        // the household rule (not the telephone rule) makes it a 409.
+        // and address (differing only in case and collapsed whitespace) but a fresh telephone. All
+        // duplicate detection is now a single identityKey (telephone|email|householdId); since the
+        // telephone differs, the whole key differs, so this is no longer a household conflict and is
+        // created.
         String body = """
             {"firstName":"Jane","lastName":"Franklin","address":"110   w.  liberty st.","city":"Madison","telephone":"6085552001"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
-            .andExpect(status().isConflict());
+            .andExpect(status().isCreated());
     }
 
     @Test
