@@ -126,6 +126,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (countOwnersRegisteredToday() >= MAX_OWNERS_PER_DAY) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (telephone.equals(toE164(existing.getTelephone()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -278,6 +281,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int count = 0;
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * The maximum number of owners that may be created in a single day. Owner creation is
+     * rejected once this many owners already carry today's {@code registrationDate}.
+     */
+    private static final int MAX_OWNERS_PER_DAY = 100;
+
+    /**
+     * Counts how many existing owners were registered today, i.e. whose {@code
+     * registrationDate} equals the current date. This is evaluated before the new owner is
+     * persisted, so the owner being created is not included in the count.
+     *
+     * @return the number of existing owners registered today
+     */
+    private int countOwnersRegisteredToday() {
+        LocalDate today = LocalDate.now();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (today.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
