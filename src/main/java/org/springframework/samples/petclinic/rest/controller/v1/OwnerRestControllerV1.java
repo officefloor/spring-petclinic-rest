@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -719,18 +720,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Disposable email domains that are not accepted for owner creation. An owner whose
+     * email domain (compared case-insensitively) is in this set is rejected with a 400
+     * Bad Request.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Normalizes an owner email for creation. A present email must be a syntactically
-     * valid address; the returned value is lower-cased.
+     * valid address whose domain is not on the disposable-domain blocklist ({@link
+     * #DISPOSABLE_EMAIL_DOMAINS}); the returned value is lower-cased.
      *
      * @param email the raw email value supplied by the client (never {@code null} here)
      * @return the lower-cased email, or {@code null} when it is not a syntactically valid
-     *         address (signalling a 400 Bad Request)
+     *         address or its domain is a disposable domain (signalling a 400 Bad Request)
      */
     private static String normalizeEmail(String email) {
         String trimmed = email.trim();
         if (!trimmed.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
             return null;
         }
-        return trimmed.toLowerCase();
+        String normalized = trimmed.toLowerCase();
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            return null;
+        }
+        return normalized;
     }
 }
