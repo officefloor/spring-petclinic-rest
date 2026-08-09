@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index b7d9dbc7..c3187237 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -10,11 +10,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ public class BuildOwner {
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
++    public void service(@Val OwnerFieldsDto request, @Val LocalDate registrationDate,
++            OwnerMapper ownerMapper, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        // The effective registration date has already been resolved (supplied or defaulted) and
++        // rolled onto a business day by NormalizeRegistrationDate; store that adjusted value.
++        owner.setRegistrationDate(registrationDate);
+         built.set(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
+index a90c7181..cabb41d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyOwnerLimit.java
+@@ -2,23 +2,26 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Rejects creating an owner when {@value DailyOwnerLimitException#DAILY_OWNER_LIMIT} or more owners
+- * have already been created today, comparing each existing owner's {@link Owner#getRegistrationDate()}
+- * against the current date. Runs before {@link BuildOwner}/{@link SaveOwner} so the limit is a 429
++ * have already been created for the new owner's adjusted business day, comparing each existing
++ * owner's {@link Owner#getRegistrationDate()} against that date. The date comes from
++ * {@link NormalizeRegistrationDate} so the count is keyed on the same adjusted date the owner will be
++ * stored with. Runs before {@link BuildOwner}/{@link SaveOwner} so the limit is a 429
+  * (Too Many Requests) rather than a persisted row.
+  */
+ public class EnsureDailyOwnerLimit {
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
+-        LocalDate today = LocalDate.now();
++    public void service(@Val LocalDate registrationDate, OwnerRepository ownerRepository)
++            throws DailyOwnerLimitException {
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (today.equals(existing.getRegistrationDate())) {
++            if (registrationDate.equals(existing.getRegistrationDate())) {
+                 count++;
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java
+new file mode 100644
+index 00000000..4deb6d90
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Resolves the EFFECTIVE registration date and rolls it onto a business day.
++ *
++ * <p>The effective date is the one supplied in the request, or the server's current date when the
++ * request omits it. Either way, when that date lands on a Saturday or Sunday it is rolled forward to
++ * the next Monday. The adjusted date is published as a variable so every later step derives from the
++ * same value: the daily create-limit counts owners per adjusted business day, {@link BuildOwner}
++ * stores it as the owner's {@code registrationDate}, and {@link AssignMembershipNumber} takes the
++ * membership number's year segment from it.
++ *
++ * <p>Runs before {@link EnsureDailyOwnerLimit} so the limit is checked against the adjusted date.
++ */
++public class NormalizeRegistrationDate {
++
++    public void service(@Val OwnerFieldsDto request, Out<LocalDate> registrationDate) {
++        LocalDate effective = request.getRegistrationDate() != null
++                ? request.getRegistrationDate() : LocalDate.now();
++        registrationDate.set(toBusinessDay(effective));
++    }
++
++    private static LocalDate toBusinessDay(LocalDate date) {
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a5923a22..3226521b 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -34,6 +34,11 @@ ensureHouseholdUnique:
+ ensureCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerCityCapacity
+   govern: [ transaction ]
++  next: normalizeRegistrationDate
++
++normalizeRegistrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeRegistrationDate
++  govern: [ transaction ]
+   next: ensureDailyLimit
+ 
+ ensureDailyLimit:
