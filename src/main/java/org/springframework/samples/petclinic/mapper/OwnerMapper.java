@@ -27,13 +27,13 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".forCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+            + ".forMemberId(owner.getMemberId(), owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".timezoneForCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
+            + ".timezoneForMemberId(owner.getMemberId(), owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "ownerSegment",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".ownerSegment(owner.getMembershipLevel(), owner.getCustomerCode(), owner.getPostcode(), "
+            + ".ownerSegment(owner.getMembershipLevel(), owner.getMemberId(), owner.getPostcode(), "
             + "owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 

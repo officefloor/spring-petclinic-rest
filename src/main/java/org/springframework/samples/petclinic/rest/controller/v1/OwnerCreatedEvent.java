@@ -21,19 +21,18 @@ package org.springframework.samples.petclinic.rest.controller.v1;
  * human-readable audit line. Serialized to JSON on the dedicated {@code AUDIT} logger.
  *
  * <p>The {@code seq} is a monotonically increasing sequence across all creates. The
- * {@code customerCode} carries the owner's <em>current primary identifier</em>; today that is the
- * owner's customer code, and whatever replaces it later (for instance once the customer code is
- * unified into a member id) is what this field must carry.
+ * {@code memberId} carries the owner's <em>current primary identifier</em>; today that is the
+ * owner's unified member id.
  *
  * <p>Being a record, every field is final and the instance is immutable once constructed.
  *
  * @param seq             monotonically increasing sequence number across creates
  * @param ownerId         the newly created owner's id
- * @param customerCode    the owner's current primary identifier (the customer code)
+ * @param memberId        the owner's current primary identifier (the member id)
  * @param membershipLevel the owner's derived membership level
  * @param event           the event marker, always {@code OWNER_CREATED}
  */
-public record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel,
+public record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, Integer membershipLevel,
                                 String event) {
 
     /** The fixed event marker for an owner-create event. */

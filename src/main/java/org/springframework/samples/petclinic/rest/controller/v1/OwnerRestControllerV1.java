@@ -231,16 +231,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateIdentity(owner);
         applyPossibleDuplicate(owner, declaredHouseholdMember);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(
-            generateCustomerCode(owner.getPostcode(), owner.getCity(), normalizedTelephone, owner.getLastName()));
-        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMemberId(generateMemberId(owner.getPostcode(), owner.getCity(), normalizedTelephone,
+            owner.getLastName(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setIdempotencyKey(idempotencyKey);
         applyMembershipLevelCeiling(owner);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
-            owner.getMembershipNumber());
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
@@ -253,14 +251,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} logger, in
      * addition to the human-readable audit line. The event carries a monotonically increasing sequence
-     * number, the owner id, the owner's current primary identifier (the customer code) and the derived
+     * number, the owner id, the owner's current primary identifier (the member id) and the derived
      * membership level, serialized as a compact JSON object.
      *
      * @param owner the just-saved owner
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = OwnerCreatedEvent.of(OWNER_CREATE_SEQUENCE.incrementAndGet(),
-            owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel());
+            owner.getId(), owner.getMemberId(), owner.getMembershipLevel());
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
     }
 
@@ -564,63 +562,82 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds an owner's customer code, formatted '&lt;REGION&gt;-&lt;HASH8&gt;'. REGION is the region
-     * code derived from the owner's postcode (falling back to their city; see {@link LocalityLookup}),
-     * and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the owner's
-     * normalized telephone concatenated with their last name (e.g. 'NSW-1A2B3C4D'). Two owners resolve
-     * to the same base code only when they share a region and produce the same telephone-and-last-name
-     * hash; when the computed code collides with an existing owner's customer code it is de-duplicated
-     * by appending '-&lt;n&gt;' with the smallest {@code n} of 2 or more that makes it unique.
+     * Builds an owner's unified member id, formatted '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;'.
+     * REGION is the region code derived from the owner's postcode (falling back to their city; see
+     * {@link LocalityLookup}); FY is the two-digit fiscal year (the fiscal year starts on 1 July) that
+     * the business-day-adjusted registrationDate falls in; HASH8 is the first 8 upper-case hex
+     * characters of the SHA-256 digest over the owner's normalized telephone concatenated with their
+     * last name (the same hash used by the region-and-hash identity); and CHK is a single Luhn check
+     * digit computed over the digits of '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;' (e.g. 'NSW271A2B3C4D5').
+     * When the computed id collides with an existing owner's member id it is de-duplicated by appending
+     * '-&lt;n&gt;' with the smallest {@code n} of 2 or more that makes it unique.
      *
      * @param postcode the owner's postcode, used first to derive the region
      * @param city the owner's city, used to derive the region when the postcode maps to none
      * @param normalizedTelephone the owner's normalized (E.164) telephone
      * @param lastName the owner's last name
-     * @return the formatted, de-duplicated customer code
+     * @param registrationDate the owner's business-day-adjusted registration date
+     * @return the formatted, de-duplicated member id
      */
-    private String generateCustomerCode(String postcode, String city, String normalizedTelephone, String lastName) {
+    private String generateMemberId(String postcode, String city, String normalizedTelephone, String lastName,
+            LocalDate registrationDate) {
         String region = LocalityLookup.forPostcodeAndCity(postcode, city);
+        String fy = String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
         String hash8 = sha256UpperHex(normalizedTelephone + lastName, 8);
-        String baseCode = region + "-" + hash8;
-        return deduplicateCustomerCode(baseCode);
+        String base = region + fy + hash8;
+        String baseId = base + luhnCheckDigit(base);
+        return deduplicateMemberId(baseId);
     }
 
     /**
-     * De-duplicates a computed customer code against every existing owner's customer code. When no
-     * existing owner already carries the base code it is returned unchanged; otherwise '-&lt;n&gt;' is
-     * appended with the smallest {@code n} of 2 or more that yields a code no existing owner holds.
+     * De-duplicates a computed member id against every existing owner's member id. When no existing
+     * owner already carries the base id it is returned unchanged; otherwise '-&lt;n&gt;' is appended
+     * with the smallest {@code n} of 2 or more that yields an id no existing owner holds.
      *
-     * @param baseCode the computed, formatted customer code before de-duplication
-     * @return the base code when unique, otherwise the base code suffixed with '-&lt;n&gt;'
+     * @param baseId the computed, formatted member id before de-duplication
+     * @return the base id when unique, otherwise the base id suffixed with '-&lt;n&gt;'
      */
-    private String deduplicateCustomerCode(String baseCode) {
-        java.util.Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+    private String deduplicateMemberId(String baseId) {
+        java.util.Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
-        if (!existingCodes.contains(baseCode)) {
-            return baseCode;
+        if (!existingIds.contains(baseId)) {
+            return baseId;
         }
         int n = 2;
-        while (existingCodes.contains(baseCode + "-" + n)) {
+        while (existingIds.contains(baseId + "-" + n)) {
             n++;
         }
-        return baseCode + "-" + n;
+        return baseId + "-" + n;
     }
 
     /**
-     * Builds an owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where
-     * customerCode is the owner's customer code and YY is the last two digits of the fiscal year (the
-     * fiscal year starts on 1 July) that the business-day-adjusted registrationDate falls in
-     * (e.g. 'NSW-1A2B3C4D-M27').
+     * The single Luhn check digit (0-9) computed over the digits contained in the given string.
+     * Non-digit characters are ignored and the rightmost digit is doubled.
      *
-     * @param customerCode the owner's customer code
-     * @param registrationDate the owner's business-day-adjusted registration date
-     * @return the formatted membership number
+     * @param value the string whose digits the check digit is computed over
+     * @return the Luhn check digit (0-9)
      */
-    private String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
-        return customerCode + "-M" + yy;
+    private int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

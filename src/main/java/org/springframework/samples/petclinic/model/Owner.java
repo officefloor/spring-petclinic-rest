@@ -72,17 +72,14 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
@@ -246,12 +243,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -268,14 +265,6 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Boolean getPossibleDuplicate() {
@@ -422,36 +411,6 @@ public class Owner extends Person {
             return this.membershipLevelCeiling;
         }
         return level;
-    }
-
-    /**
-     * The Luhn check digit (0-9) computed over the digits contained in this owner's
-     * {@code customerCode}. Non-digit characters are ignored; the rightmost digit is doubled.
-     *
-     * @return the single Luhn check digit, or {@code null} when there is no customer code
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**

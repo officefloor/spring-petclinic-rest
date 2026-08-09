@@ -29,45 +29,48 @@ public final class LocalityLookup {
     }
 
     /**
-     * Returns an owner's locality from their region-and-hash customer code, falling back to the
-     * postcode-and-city derivation when no customer code is present.
+     * Returns an owner's locality from their unified member id, falling back to the postcode-and-city
+     * derivation when no member id is present.
      *
-     * <p>Since an owner's {@code customerCode} is formatted {@code <REGION>-<HASH8>}, the locality is
-     * the region component that precedes the first {@code '-'}. Owners without a customer code (for
-     * example seed data that predates identity assignment) fall back to
-     * {@link #forPostcodeAndCity(String, String)}.
+     * <p>Since an owner's {@code memberId} is formatted {@code <REGION><FY><HASH8><CHK>}, the locality
+     * is the region component: the leading run of letters that precedes the first digit (the two-digit
+     * fiscal year). Owners without a member id (for example seed data that predates identity
+     * assignment) fall back to {@link #forPostcodeAndCity(String, String)}.
      *
-     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param memberId the owner's unified member id, or {@code null}
      * @param postcode the owner's stored postcode, or {@code null} (used only for the fallback)
      * @param city the owner's stored city, or {@code null} (used only for the fallback)
-     * @return the region component of the customer code, or the postcode-and-city fallback
+     * @return the region component of the member id, or the postcode-and-city fallback
      */
-    public static String forCustomerCode(String customerCode, String postcode, String city) {
-        if (customerCode != null) {
-            int separator = customerCode.indexOf('-');
-            if (separator > 0) {
-                return customerCode.substring(0, separator);
+    public static String forMemberId(String memberId, String postcode, String city) {
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return forPostcodeAndCity(postcode, city);
     }
 
     /**
-     * Returns the IANA timezone name for the locality derived from the owner's customer code,
-     * postcode and city, using the same derivation as {@link #forCustomerCode(String, String, String)}.
+     * Returns the IANA timezone name for the locality derived from the owner's member id, postcode and
+     * city, using the same derivation as {@link #forMemberId(String, String, String)}.
      *
      * <p>The derived region is mapped through the fixed region-to-timezone table
      * (NSW -&gt; {@code Australia/Sydney}, VIC -&gt; {@code Australia/Melbourne},
      * QLD -&gt; {@code Australia/Brisbane}). Regions not in the table (including {@code "UNKNOWN"})
      * have no timezone and yield {@code null}.
      *
-     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param memberId the owner's unified member id, or {@code null}
      * @param postcode the owner's stored postcode, or {@code null}
      * @param city the owner's stored city, or {@code null}
      * @return the IANA timezone name for the derived region, or {@code null} when it has none
      */
-    public static String timezoneForCustomerCode(String customerCode, String postcode, String city) {
-        return REGION_TIMEZONE.get(forCustomerCode(customerCode, postcode, city));
+    public static String timezoneForMemberId(String memberId, String postcode, String city) {
+        return REGION_TIMEZONE.get(forMemberId(memberId, postcode, city));
     }
 
     /**
@@ -75,20 +78,20 @@ public final class LocalityLookup {
      * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
      *
      * <p>TIER is {@code PREMIUM} when the given membership level is 3 or more, otherwise
-     * {@code STANDARD}. AREA is {@code METRO} when the locality derived from the owner's customer
-     * code, postcode and city (see {@link #forCustomerCode(String, String, String)}) is a known
-     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     * {@code STANDARD}. AREA is {@code METRO} when the locality derived from the owner's member id,
+     * postcode and city (see {@link #forMemberId(String, String, String)}) is a known region
+     * (NSW, VIC or QLD), otherwise {@code REGIONAL}.
      *
      * @param membershipLevel the owner's derived membership level, or {@code null}
-     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param memberId the owner's unified member id, or {@code null}
      * @param postcode the owner's stored postcode, or {@code null}
      * @param city the owner's stored city, or {@code null}
      * @return the formatted owner segment
      */
-    public static String ownerSegment(Integer membershipLevel, String customerCode, String postcode,
+    public static String ownerSegment(Integer membershipLevel, String memberId, String postcode,
             String city) {
         String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
-        String locality = forCustomerCode(customerCode, postcode, city);
+        String locality = forMemberId(memberId, postcode, city);
         String area = REGION_POSTCODES.containsKey(locality) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
