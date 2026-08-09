@@ -195,7 +195,6 @@ It is specified in this [file](./src/main/resources/openapi.yml).
 Some of the required classes are generated during the build time. 
 Here are the generated file types:
 * DTOs
-* API template interfaces specifying methods to override in the controllers
 
 To see how to get them generated you can read the next chapter. 
 
@@ -231,9 +230,9 @@ This will secure all APIs and in order to access them, basic authentication is r
 Apart from authentication, APIs also require authorization. This is done via roles that a user can have.
 The existing roles are listed below with the corresponding permissions 
 
-* `OWNER_ADMIN` -> `OwnerController`, `PetController`, `PetTypeController` (`getAllPetTypes` and `getPetType`), `VisitController`
-* `VET_ADMIN`   -> `PetTypeController`, `SpecialityController`, `VetController`
-* `ADMIN`       -> `UserController`
+* `OWNER_ADMIN` -> owners, pets, pet types (read only), visits
+* `VET_ADMIN`   -> pet types, specialties, vets
+* `ADMIN`       -> users
 
 There is an existing user with the username `admin` and password `admin` that has access to all APIs.
  In order to add a new user, please make `POST /api/users` request with the following payload:
@@ -276,8 +275,6 @@ File -> Import -> Maven -> Existing Maven project
 
 | Layer | Source |
 |--|--|
-| REST API controllers | [REST folder](src/main/java/org/springframework/samples/petclinic/rest) |
-| Service | [ClinicServiceImpl.java](src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java) |
 | JDBC | [jdbc folder](src/main/java/org/springframework/samples/petclinic/repository/jdbc) |
 | JPA | [jpa folder](src/main/java/org/springframework/samples/petclinic/repository/jpa) |
 | Spring Data JPA | [springdatajpa folder](src/main/java/org/springframework/samples/petclinic/repository/springdatajpa) |
