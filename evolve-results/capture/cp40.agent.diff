@@ -1,0 +1,293 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPoints.java
+new file mode 100644
+index 00000000..82bf663e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPoints.java
+@@ -0,0 +1,68 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Computes an owner's {@code membershipPoints} and the {@code membershipLevel} derived from
++ * them. Points start at 0 and accrue: plus 2 when an email is present, plus 1 when the owner's
++ * namesakeCount is 0, plus 2 when the owner belongs to a household of three or more members,
++ * and plus 3 when the owner's tenure (days since its registration date) exceeds 365 days. The
++ * level maps the points as 1 (0-1), 2 (2-3), 3 (4-5) and 4 (6 or more).
++ *
++ * <p>Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit mapping
++ * method and apply it to every property.
++ */
++public final class MembershipPoints {
++
++    private MembershipPoints() {
++    }
++
++    /**
++     * Compute the owner's membership points.
++     *
++     * @param owner         the owner to score
++     * @param householdSize the number of members in the owner's household (the owner counts as
++     *                      one), used for the household-of-three-or-more factor
++     * @return the total membership points (never negative)
++     */
++    public static int points(Owner owner, int householdSize) {
++        int points = 0;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            points += 2;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            points += 1;
++        }
++        if (householdSize >= 3) {
++            points += 2;
++        }
++        if (owner.getRegistrationDate() != null
++            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Map membership points to a membership level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and
++     * 4 for 6 or more.
++     *
++     * @param points the membership points
++     * @return the membership level (1-4)
++     */
++    public static int level(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d88f5867..e41b1787 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,12 +23,10 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipLevel",
+-        expression = "java(Math.min(4, 1 "
+-            + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
+-            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0) "
+-            + "+ (owner.getRegistrationDate() != null "
+-            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), java.time.LocalDate.now()) > 365 ? 1 : 0)))")
++    // membershipPoints & membershipLevel are populated by the controller, which can size the
++    // owner's household (the household-of-three-or-more factor needs the other owners).
++    @Mapping(target = "membershipPoints", ignore = true)
++    @Mapping(target = "membershipLevel", ignore = true)
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ce4e5cb9..79e8069f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.mapper.MembershipPoints;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -95,7 +96,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owners.isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
++        Map<String, Integer> householdSizes = householdSizes();
++        List<OwnerDto> ownerDtos = new java.util.ArrayList<>();
++        for (Owner owner : owners) {
++            OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++            applyMembership(ownerDto, owner, householdSizes);
++            ownerDtos.add(ownerDto);
++        }
++        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -106,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        applyMembership(ownerDto, owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupDay());
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+@@ -198,6 +207,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        applyMembership(ownerDto, owner);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel());
+@@ -562,6 +572,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return householdId(householdKey(owner.getLastName()), owner.getPostcode());
+     }
+ 
++    /**
++     * Populates an owner's {@code membershipPoints} and {@code membershipLevel} on the given
++     * dto, sizing the owner's household from all owners so the household-of-three-or-more
++     * factor is scored correctly. Use {@link #applyMembership(OwnerDto, Owner, Map)} instead
++     * when mapping a collection to size every household from a single scan.
++     *
++     * @param ownerDto the dto to populate
++     * @param owner    the owner being mapped
++     */
++    private void applyMembership(OwnerDto ownerDto, Owner owner) {
++        applyMembership(ownerDto, owner, householdSizes());
++    }
++
++    /**
++     * Populates an owner's {@code membershipPoints} and {@code membershipLevel} on the given
++     * dto using a pre-computed map of household id to member count.
++     *
++     * @param ownerDto       the dto to populate
++     * @param owner          the owner being mapped
++     * @param householdSizes household id to member count, as returned by {@link #householdSizes()}
++     */
++    private void applyMembership(OwnerDto ownerDto, Owner owner, Map<String, Integer> householdSizes) {
++        int householdSize = owner.getHouseholdId() == null ? 1
++            : householdSizes.getOrDefault(owner.getHouseholdId(), 1);
++        int points = MembershipPoints.points(owner, householdSize);
++        ownerDto.setMembershipPoints(points);
++        ownerDto.setMembershipLevel(MembershipPoints.level(points));
++    }
++
++    /**
++     * Counts how many owners belong to each household, keyed by household id. Owners without a
++     * household id (no postcode) are excluded — such an owner is its own single-member household.
++     *
++     * @return a map from household id to the number of owners sharing it
++     */
++    private Map<String, Integer> householdSizes() {
++        Map<String, Integer> sizes = new java.util.HashMap<>();
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            String householdId = existing.getHouseholdId();
++            if (householdId != null) {
++                sizes.merge(householdId, 1, Integer::sum);
++            }
++        }
++        return sizes;
++    }
++
+     /**
+      * Applies soft-match (possible-duplicate) detection to a new owner that has already
+      * cleared hard {@code identityKey} duplicate rejection. The owner is flagged as a
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+index 85f14dc1..f9229200 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+@@ -1,13 +1,19 @@
+ package org.springframework.samples.petclinic.rest.controller.v2;
+ 
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.mapper.MembershipPoints;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.api.OwnerV2Api;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -36,6 +42,33 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
+         Page<Owner> owners = this.clinicService.findOwners(
+             lastName,
+             PageRequest.of(pageNumber, pageSize, Sort.by("id")));
+-        return new ResponseEntity<>(ownerMapper.toOwnerPageDto(owners), HttpStatus.OK);
++        OwnerPageDto pageDto = ownerMapper.toOwnerPageDto(owners);
++        applyMembership(pageDto.getContent(), owners.getContent());
++        return new ResponseEntity<>(pageDto, HttpStatus.OK);
++    }
++
++    /**
++     * Populates {@code membershipPoints} and {@code membershipLevel} on each dto in the page,
++     * sizing every household from a single scan of all owners so the household-of-three-or-more
++     * factor is scored correctly. The dtos and owners are in the same order.
++     *
++     * @param ownerDtos the page content to populate
++     * @param owners    the owners the dtos were mapped from, in matching order
++     */
++    private void applyMembership(List<OwnerDto> ownerDtos, List<Owner> owners) {
++        Map<String, Integer> householdSizes = new HashMap<>();
++        for (Owner owner : this.clinicService.findAllOwners()) {
++            if (owner.getHouseholdId() != null) {
++                householdSizes.merge(owner.getHouseholdId(), 1, Integer::sum);
++            }
++        }
++        for (int i = 0; i < ownerDtos.size() && i < owners.size(); i++) {
++            Owner owner = owners.get(i);
++            int householdSize = owner.getHouseholdId() == null ? 1
++                : householdSizes.getOrDefault(owner.getHouseholdId(), 1);
++            int points = MembershipPoints.points(owner, householdSize);
++            ownerDtos.get(i).setMembershipPoints(points);
++            ownerDtos.get(i).setMembershipLevel(MembershipPoints.level(points));
++        }
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 23b9d2e8..4724330a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2196,18 +2196,31 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The pet owner's membership points. Starts at 0, plus 2 when an
++                email is present, plus 1 when the owner's namesakeCount is 0,
++                plus 2 when the owner belongs to a household of three or more
++                members, plus 3 when the owner's tenure (days since its
++                registration date) exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The pet owner's numeric membership level, assigned at creation.
+-                Starts at 1, plus 1 when an email is present, plus 1 when the
+-                owner's namesakeCount is 0, capped at 3. (Level 4 is reserved
+-                for tenure.)
++                The pet owner's numeric membership level, derived from its
++                membershipPoints: level 1 for 0-1 points, level 2 for 2-3
++                points, level 3 for 4-5 points, and level 4 for 6 or more
++                points.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
