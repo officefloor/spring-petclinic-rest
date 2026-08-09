@@ -125,7 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String address = normalizeAddress(owner.getAddress());
+        String address = applyAddress(owner, ownerFieldsDto);
         if (address.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
@@ -521,6 +521,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param address the raw address value supplied by the client
      * @return the normalized address (empty string when {@code address} is null or blank)
      */
+    /**
+     * Normalizes the address an owner supplies, preferring the structured form, and stores the
+     * normalized structured lines on the owner. When a non-blank {@code addressLine1} is present
+     * the structured fields are used: {@code addressLine1} (and {@code addressLine2}, when
+     * present) are {@link #normalizeAddress normalized} and set on the owner, and the composed
+     * address returned is the normalized {@code addressLine1} with a single space and the
+     * normalized {@code addressLine2} appended when {@code addressLine2} is present. Otherwise
+     * the flat {@code address} is normalized and returned, and the structured lines are left
+     * unset. The returned value becomes the owner's stored {@code address}, read by everything
+     * downstream (household hash, postcode validation and locality); an owner that supplies
+     * neither form yields an empty string, failing the required-address check.
+     *
+     * @param owner          the owner being created, whose structured address lines are set here
+     * @param ownerFieldsDto the submitted owner fields
+     * @return the composed, normalized address (empty string when no address form is supplied)
+     */
+    private static String applyAddress(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        String addressLine1 = ownerFieldsDto.getAddressLine1();
+        if (addressLine1 != null && !addressLine1.isBlank()) {
+            String normalizedLine1 = normalizeAddress(addressLine1);
+            owner.setAddressLine1(normalizedLine1);
+            String addressLine2 = ownerFieldsDto.getAddressLine2();
+            if (addressLine2 != null && !addressLine2.isBlank()) {
+                String normalizedLine2 = normalizeAddress(addressLine2);
+                owner.setAddressLine2(normalizedLine2);
+                return normalizedLine1 + " " + normalizedLine2;
+            }
+            owner.setAddressLine2(null);
+            return normalizedLine1;
+        }
+        owner.setAddressLine1(null);
+        owner.setAddressLine2(null);
+        return normalizeAddress(ownerFieldsDto.getAddress());
+    }
+
     private static String normalizeAddress(String address) {
         if (address == null) {
             return "";
