@@ -21,7 +21,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -150,25 +149,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        // Owners sharing a household (same normalized last name and address) are given a
-        // stable shared householdId, which forms the household component of the identityKey.
-        String lastNameKey = householdKey(owner.getLastName());
-        String addressKey = householdKey(owner.getAddress());
-        List<Owner> householdMembers = new ArrayList<>();
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (lastNameKey.equals(householdKey(existing.getLastName()))
-                && addressKey.equals(householdKey(existing.getAddress()))) {
-                householdMembers.add(existing);
-            }
-        }
-        if (!householdMembers.isEmpty()) {
-            String householdId = householdId(lastNameKey, addressKey);
+        // The householdId is deterministic: the first twelve hex characters of SHA-256 over
+        // '<normalizedLastName>|<postcode>'. Owners sharing a last name and postcode therefore
+        // share the household automatically. An owner without a postcode has no household.
+        boolean declaredHouseholdMember = false;
+        if (owner.getPostcode() != null) {
+            String householdId = householdId(householdKey(owner.getLastName()), owner.getPostcode());
             owner.setHouseholdId(householdId);
-            for (Owner member : householdMembers) {
-                if (!householdId.equals(member.getHouseholdId())) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
+            // Because the household is now keyed on (lastName, postcode), a second owner in the
+            // same household is a household duplicate: rejected with 409 unless it opts in with
+            // 'sharesHousehold', in which case it is created as a declared household member.
+            boolean householdOccupied = false;
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (householdId.equals(computeHouseholdId(existing))) {
+                    householdOccupied = true;
+                    break;
                 }
+            }
+            if (householdOccupied) {
+                if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                    return new ResponseEntity<>(HttpStatus.CONFLICT);
+                }
+                declaredHouseholdMember = true;
             }
         }
         // Consolidated duplicate detection: reject only when the whole identityKey
@@ -182,8 +184,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Soft-match: the owner is not a hard (identityKey) duplicate, but if it shares an
         // existing owner's last name and postcode while having a different normalized
-        // telephone it is still created and flagged as a possible duplicate of that owner.
-        applyPossibleDuplicate(owner);
+        // telephone it is still created and flagged as a possible duplicate of that owner. A
+        // declared household member, however, is not a suspected duplicate, so it is never flagged.
+        if (declaredHouseholdMember) {
+            owner.setPossibleDuplicate(false);
+        }
+        else {
+            applyPossibleDuplicate(owner);
+        }
         owner.setCustomerCode(customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -511,19 +519,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the stable shared household identifier for the given normalized last name
-     * and address keys. The identifier is deterministic — the same household (same
-     * {@link #householdKey normalized} last name and address) always maps to the same
-     * value — so every owner who joins a household is assigned an identical id. It is the
+     * Derives the stable shared household identifier for the given normalized last name key
+     * and postcode. The identifier is deterministic — the same household (same
+     * {@link #householdKey normalized} last name and postcode) always maps to the same
+     * value — so every owner in a household is assigned an identical id. It is the
      * upper-cased first twelve hex characters of the SHA-256 digest of {@code
-     * '<lastNameKey>|<addressKey>'}.
+     * '<lastNameKey>|<postcode>'}.
      *
      * @param lastNameKey the normalized last name key
-     * @param addressKey  the normalized address key
+     * @param postcode    the owner's postcode
      * @return the shared household identifier
      */
-    private static String householdId(String lastNameKey, String addressKey) {
-        String source = lastNameKey + "|" + addressKey;
+    private static String householdId(String lastNameKey, String postcode) {
+        String source = lastNameKey + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(source.getBytes(StandardCharsets.UTF_8));
@@ -535,6 +543,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Computes the deterministic {@link #householdId household id} an existing owner belongs to,
+     * derived from its {@link #householdKey normalized} last name and its postcode. Returns
+     * {@code null} when the owner has no postcode (such an owner has no household), so it never
+     * collides with a computed household id.
+     *
+     * @param owner the existing owner
+     * @return the owner's household id, or {@code null} when it has no postcode
+     */
+    private static String computeHouseholdId(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return null;
+        }
+        return householdId(householdKey(owner.getLastName()), owner.getPostcode());
     }
 
     /**
