@@ -1,0 +1,175 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4b9710d9..d7da647c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,9 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier",
+-        expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\")")
++        expression = "java((owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) "
++            + "? \"GOLD\" : ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
++            + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup.forCity(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f075b460..4924ce7f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,14 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
++    /**
++     * The number of owners belonging to this owner's household (owners sharing the same
++     * {@code householdId}), including this owner. It is a derived, non-persistent value populated
++     * when an owner is mapped for a response and drives the 'GOLD' membership tier.
++     */
++    @Transient
++    private Integer householdMemberCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -141,6 +149,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public Integer getHouseholdMemberCount() {
++        return this.householdMemberCount;
++    }
++
++    public void setHouseholdMemberCount(Integer householdMemberCount) {
++        this.householdMemberCount = householdMemberCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a93e98a7..2945bdce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -128,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owners.isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        owners.forEach(owner -> owner.setHouseholdMemberCount(countHouseholdMembers(owner)));
+         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+     }
+ 
+@@ -138,7 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        OwnerDto ownerDto = toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+@@ -167,7 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        OwnerDto ownerDto = toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -187,7 +188,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+         currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         this.clinicService.saveOwner(currentOwner);
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
++        return new ResponseEntity<>(toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -541,6 +542,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and
+      *         address and {@code sharesHousehold} is not true
+      */
++    /**
++     * Maps an owner to its DTO, first populating the owner's {@link Owner#getHouseholdMemberCount()
++     * household member count} so the derived membership tier is computed correctly (an owner whose
++     * household holds three or more members is 'GOLD'; otherwise the SILVER/BRONZE rules apply).
++     *
++     * @param owner the owner to map
++     * @return the mapped owner DTO
++     */
++    private OwnerDto toOwnerDto(Owner owner) {
++        owner.setHouseholdMemberCount(countHouseholdMembers(owner));
++        return ownerMapper.toOwnerDto(owner);
++    }
++
++    /**
++     * Counts the members of the given owner's household - the owners that share this owner's
++     * {@code householdId}, including the owner itself. An owner with no household ({@code householdId}
++     * is {@code null}) is its own sole member, so the count is one.
++     *
++     * @param owner the owner whose household is being sized
++     * @return the number of owners sharing this owner's household (one when it has no household)
++     */
++    private int countHouseholdMembers(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return 1;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
++
+     private void applyHousehold(Owner owner, Boolean sharesHousehold) {
+         String lastName = normalizeHouseholdField(owner.getLastName());
+         String address = normalizeAddress(owner.getAddress());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+index 85f14dc1..6f7674c2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+@@ -36,6 +36,25 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
+         Page<Owner> owners = this.clinicService.findOwners(
+             lastName,
+             PageRequest.of(pageNumber, pageSize, Sort.by("id")));
++        owners.forEach(owner -> owner.setHouseholdMemberCount(countHouseholdMembers(owner)));
+         return new ResponseEntity<>(ownerMapper.toOwnerPageDto(owners), HttpStatus.OK);
+     }
++
++    /**
++     * Counts the members of the given owner's household - the owners that share this owner's
++     * {@code householdId}, including the owner itself - so the derived membership tier can promote a
++     * three-or-more-member household to 'GOLD'. An owner with no household is its own sole member.
++     *
++     * @param owner the owner whose household is being sized
++     * @return the number of owners sharing this owner's household (one when it has no household)
++     */
++    private int countHouseholdMembers(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return 1;
++        }
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 974bf787..b94b57a0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2154,9 +2154,10 @@ components:
+             membershipTier:
+               title: Membership tier
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner has no namesakes
+-                (namesakeCount is zero) and an email address is present, otherwise
+-                'BRONZE'.
++                The owner's membership tier: 'GOLD' when the owner's household (owners
++                sharing the same householdId) has three or more members; otherwise
++                'SILVER' when the owner has no namesakes (namesakeCount is zero) and an
++                email address is present, otherwise 'BRONZE'.
+               type: string
+               example: 'SILVER'
+               readOnly: true
