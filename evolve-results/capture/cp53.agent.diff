@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index a4128537..4283c5bb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,24 +1,44 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
++import tools.jackson.databind.ObjectMapper;
++
+ /**
+  * Emits an audit line to the dedicated {@code AUDIT} logger recording a successful owner
+  * create. Runs after {@link SaveOwner} (so the owner id is assigned) and before the
+  * responder. The line carries the owner id, the {@code customerCode}, the
+  * {@code registrationDate}, the {@code membershipLevel} and the
+  * {@code membershipNumber}.
++ *
++ * <p>Besides that human-readable line it emits an immutable structured {@link OwnerCreatedEvent}
++ * as JSON to the same logger, with a {@code seq} that increases monotonically across creates.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private static final ObjectMapper MAPPER = new ObjectMapper();
++
++    /** Monotonically increasing sequence across all owner creates. */
++    private static final AtomicLong SEQ = new AtomicLong();
++
+     public void service(@Val Owner owner) {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 owner.getMembershipLevel(), owner.getMembershipNumber());
++
++        // The owner's CURRENT primary identifier. Today that is the customerCode; when the
++        // customerCode is later unified into the memberId, this one accessor changes and the
++        // structured event automatically carries the memberId instead.
++        String primaryIdentifier = owner.getCustomerCode();
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
++                primaryIdentifier, owner.getMembershipLevel(), OwnerCreatedEvent.OWNER_CREATED);
++        AUDIT.info("{}", MAPPER.writeValueAsString(event));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 00000000..4ea45af9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Immutable structured audit event, emitted as JSON to the {@code AUDIT} logger alongside the
++ * human-readable audit line whenever an owner is created.
++ *
++ * <p>Carries the owner id and the owner's <em>current primary identifier</em>. Today that primary
++ * identifier is the {@code customerCode}; when the {@code customerCode} is later unified into the
++ * {@code memberId}, the producer sources the identifier from that field instead and the event
++ * automatically carries the {@code memberId}.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates. Being a record, an event
++ * cannot be mutated after construction.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++        Integer membershipLevel, String event) {
++
++    /** The single event type this record represents. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++}
