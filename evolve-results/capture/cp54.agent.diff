@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 57a2651b..a9a5585a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
+     @Mapping(target = "bulkSignupWarning",
+             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
++    @Mapping(target = "capacityWarning",
++            expression = "java(owner.getCapacityWarning() != null && owner.getCapacityWarning())")
+     @Mapping(target = "possibleDuplicate",
+             expression = "java(owner.getPossibleDuplicateOf() != null)")
+     @Mapping(target = "deleted",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f44d87fd..863793f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -100,6 +100,15 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    /**
++     * Derived, non-persisted flag recomputed on read and create: true when the owner's
++     * city already holds between 40 and 49 other owners (approaching the hard capacity
++     * limit of 50). Returned as {@code capacityWarning}; null (treated as false) when the
++     * warning step has not run for this instance.
++     */
++    @Transient
++    private Boolean capacityWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -260,6 +269,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java
+new file mode 100644
+index 00000000..125d37dd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCapacityWarning.java
+@@ -0,0 +1,53 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags an owner whose city is approaching the capacity limit. Counts the other owners
++ * already sharing this owner's city and sets {@code capacityWarning} to true when that
++ * count falls in the warning band {@value #WARNING_THRESHOLD}..{@value #CITY_CAPACITY}-1
++ * (40-49). The hard rejection at {@value #CITY_CAPACITY} is handled separately by
++ * {@link RejectOwnerCityAtCapacity}; this rule never rejects.
++ *
++ * <p>Cities are compared in the same normalized form the rejection rule uses — trimmed,
++ * internal whitespace runs collapsed to a single space, and lower-cased. The value is
++ * recomputed each time this step runs (on create and on read), so it always reflects the
++ * city's current membership.
++ */
++public class AssignOwnerCapacityWarning {
++
++    /** Other owners in the city must reach this count for the warning to be raised. */
++    static final int WARNING_THRESHOLD = 40;
++
++    /** Hard capacity limit; a city with this many owners accepts no more (see rejection rule). */
++    static final int CITY_CAPACITY = 50;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = normalize(owner.getCity());
++        if (city == null) {
++            owner.setCapacityWarning(false);
++            return; // no city to count against
++        }
++        long count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue; // never count the owner itself
++            }
++            if (city.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        owner.setCapacityWarning(count >= WARNING_THRESHOLD && count < CITY_CAPACITY);
++    }
++
++    /** City key: lower-cased, trimmed, with internal whitespace runs collapsed to one space. */
++    private static String normalize(String value) {
++        if (value == null) {
++            return null;
++        }
++        String collapsed = value.trim().replaceAll("\\s+", " ");
++        return collapsed.isEmpty() ? null : collapsed.toLowerCase();
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 48a544f7..feedc532 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -109,6 +109,13 @@ assignNamesakeCount:
+ assignBulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerBulkSignupWarning
+   govern: [ transaction ]
++  next: assignCapacityWarning
++
++# Flag when the city is approaching the hard capacity limit (already holds 40-49 other
++# owners). The hard rejection at 50 was already applied above by rejectCityCapacity.
++assignCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCapacityWarning
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 97ea1697..d336d09d 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -4,6 +4,12 @@ composition:
+ load:
+   class: org.springframework.samples.petclinic.rest.function.owner.LoadOwner
+   govern: [ readonly-transaction ]
++  next: assignCapacityWarning
++
++# Recompute the capacity warning on read so it reflects the city's current membership.
++assignCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCapacityWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c5c05ff7..720242d0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2313,6 +2313,14 @@ components:
+               type: boolean
+               readOnly: true
+               example: false
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 other
++                owners (approaching the hard capacity limit of 50), otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
