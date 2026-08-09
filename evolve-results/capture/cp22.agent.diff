@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a2504267..7857e73d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forCity(owner.getCity()))")
+     @Mapping(target = "sharesHousehold", ignore = true)
++    @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 77b72593..6b39a123 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -105,7 +105,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(isBulkSignupDay());
++        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -176,6 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setBulkSignupWarning(isBulkSignupDay());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -342,6 +345,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return count;
+     }
+ 
++    /**
++     * The number of owners that may be created on a single business day before a bulk-signup
++     * warning is raised. Once more than this many owners already fall on the current business
++     * day, {@code bulkSignupWarning} is reported as {@code true} in the owner response.
++     */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
++    /**
++     * Reports whether an unusually high number of owners have been created for today's business
++     * day, i.e. whether more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already fall on
++     * the business day that {@code LocalDate.now()} rolls forward to.
++     *
++     * @return {@code true} once more than 80 owners have been created today, otherwise {@code false}
++     */
++    private boolean isBulkSignupDay() {
++        return countOwnersRegisteredOn(toBusinessDay(LocalDate.now())) > BULK_SIGNUP_WARNING_THRESHOLD;
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted
+      * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 13afc328..53c6a13f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2166,6 +2166,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                Whether an unusually high number of owners have been created today.
++                True once more than 80 owners have already been created for the
++                current business day; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
