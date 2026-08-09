@@ -257,15 +257,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} logger, in
-     * addition to the human-readable audit line. The event carries a monotonically increasing sequence
-     * number, the owner id, the owner's current primary identifier (the member id) and the derived
-     * membership level, serialized as a compact JSON object.
+     * addition to the human-readable audit line. The version-2 event carries a monotonically increasing
+     * sequence number, the owner id, the owner's current primary identifier (the version-2 member id),
+     * the derived membership level, the owner segment recomputed from the version-2 identity and the
+     * fixed audit {@code schemaVersion} of 2, serialized as a compact JSON object.
      *
      * @param owner the just-saved owner
      */
     private void emitOwnerCreatedEvent(Owner owner) {
+        String ownerSegment = LocalityLookup.ownerSegment(owner.getMembershipLevel(),
+            owner.getPostcode(), owner.getCity());
         OwnerCreatedEvent event = OwnerCreatedEvent.of(OWNER_CREATE_SEQUENCE.incrementAndGet(),
-            owner.getId(), owner.getMemberId(), owner.getMembershipLevel());
+            owner.getId(), owner.getMemberId(), owner.getMembershipLevel(), ownerSegment);
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
     }
 
@@ -660,14 +663,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds an owner's unified member id, formatted '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;&lt;CHK&gt;'.
-     * REGION is the region code derived from the owner's postcode (falling back to their city; see
-     * {@link LocalityLookup}); FY is the two-digit fiscal year (the fiscal year starts on 1 July) that
+     * REGION is the version-2 region code: the plain region derived from the owner's postcode (falling
+     * back to their city; see {@link LocalityLookup}) with the fixed {@code 'V2'} version tag appended
+     * (e.g. {@code 'NSWV2'}); FY is the two-digit fiscal year (the fiscal year starts on 1 July) that
      * the business-day-adjusted registrationDate falls in; HASH8 is the first 8 upper-case hex
      * characters of the SHA-256 digest over the owner's normalized telephone concatenated with their
      * last name (the same hash used by the region-and-hash identity); and CHK is a single Luhn check
-     * digit computed over the digits of '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;' (e.g. 'NSW271A2B3C4D5').
-     * When the computed id collides with an existing owner's member id it is de-duplicated by appending
-     * '-&lt;n&gt;' with the smallest {@code n} of 2 or more that makes it unique.
+     * digit computed over the digits of '&lt;REGION&gt;&lt;FY&gt;&lt;HASH8&gt;' (e.g. 'NSWV2271A2B3C4D5').
+     * Mixing the version tag into the region rederives the member id for version 2, so no version-1
+     * member id is produced again. When the computed id collides with an existing owner's member id it
+     * is de-duplicated by appending '-&lt;n&gt;' with the smallest {@code n} of 2 or more that makes it
+     * unique.
      *
      * @param postcode the owner's postcode, used first to derive the region
      * @param city the owner's city, used to derive the region when the postcode maps to none
@@ -678,7 +684,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String generateMemberId(String postcode, String city, String normalizedTelephone, String lastName,
             LocalDate registrationDate) {
-        String region = LocalityLookup.forPostcodeAndCity(postcode, city);
+        String region = LocalityLookup.forPostcodeAndCity(postcode, city) + Owner.IDENTITY_VERSION_TAG;
         String fy = String.format("%02d", Owner.fiscalYear(registrationDate) % 100);
         String hash8 = sha256UpperHex(normalizedTelephone + lastName, 8);
         String base = region + fy + hash8;
@@ -1082,17 +1088,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the stable identifier shared by the members of one household. It is derived purely from
-     * the normalized last name and the postcode, so every owner sharing a last name and postcode
-     * resolves to the same value - the first 12 upper-case hex characters of the SHA-256 digest of the
-     * two fields joined by a single '|'.
+     * Builds the stable identifier shared by the members of one household. It is derived from the fixed
+     * {@code 'V2'} version tag, the normalized last name and the postcode, so every owner sharing a last
+     * name and postcode resolves to the same value - the first 12 upper-case hex characters of the
+     * SHA-256 digest of the three fields joined by a single '|'. Mixing in the version tag rederives the
+     * household id for version 2, so no version-1 household id is produced again.
      *
      * @param normalizedLastName the household's last name, already normalized for comparison
      * @param postcode the household's postcode
      * @return the shared household identifier
      */
     private String generateHouseholdId(String normalizedLastName, String postcode) {
-        String key = normalizedLastName + '|' + postcode;
+        String key = Owner.IDENTITY_VERSION_TAG + '|' + normalizedLastName + '|' + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));

@@ -448,18 +448,28 @@ public class Owner extends Person {
     }
 
     /**
+     * The fixed version tag mixed into the version-2 owner identifiers so no value produced under
+     * version 1 is produced again. It appears only inside the identifiers (the identity key, the
+     * household id and the member id's region code), never in the user-facing locality, timezone or
+     * owner segment.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * The owner's identity key: the single derived value used to detect duplicate owners. It is the
-     * lower-case SHA-256 hex digest over the owner's normalized telephone (empty when none), its
-     * lower-cased email (empty when none) and the Soundex code of its last name, joined by {@code '|'}.
-     * Because the telephone is part of the key, two members of the same household with different
-     * telephones have different identity keys; only owners whose whole key is identical are duplicates.
+     * lower-case SHA-256 hex digest over the fixed {@link #IDENTITY_VERSION_TAG version-2 tag}, the
+     * owner's normalized telephone (empty when none), its lower-cased email (empty when none) and the
+     * Soundex code of its last name, joined by {@code '|'}. Mixing in the version tag rederives the key
+     * for version 2, so no version-1 key is produced again. Because the telephone is part of the key,
+     * two members of the same household with different telephones have different identity keys; only
+     * owners whose whole key is identical are duplicates.
      *
-     * @return the SHA-256 hex identity key over {@code normalizedTelephone|lowerEmail|soundex(lastName)}
+     * @return the SHA-256 hex identity key over {@code V2|normalizedTelephone|lowerEmail|soundex(lastName)}
      */
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
-        String key = telephonePart + '|' + emailPart + '|' + soundex(getLastName());
+        String key = IDENTITY_VERSION_TAG + '|' + telephonePart + '|' + emailPart + '|' + soundex(getLastName());
         return sha256Hex(key);
     }
 

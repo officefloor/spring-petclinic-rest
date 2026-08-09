@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -27,16 +28,34 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".forMemberId(owner.getMemberId(), owner.getPostcode(), owner.getCity()))")
+            + ".locality(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".timezoneForMemberId(owner.getMemberId(), owner.getPostcode(), owner.getCity()))")
+            + ".timezone(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "ownerSegment",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".ownerSegment(owner.getMembershipLevel(), owner.getMemberId(), owner.getPostcode(), "
-            + "owner.getCity()))")
+            + ".ownerSegment(owner.getMembershipLevel(), owner.getPostcode(), owner.getCity()))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentity(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
+    /**
+     * Builds the nested {@code identity} object grouping the version-2 owner identifiers - the member
+     * id, the identity key and the household id - carried by the owner response.
+     *
+     * @param owner the owner being mapped
+     * @return the populated identity object
+     */
+    default OwnerIdentityDto toOwnerIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
+
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
