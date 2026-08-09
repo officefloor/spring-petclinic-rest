@@ -141,6 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         applyMembership(ownerDto, owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
+        ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -157,6 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
                     applyMembership(existingDto, existing);
                     existingDto.setBulkSignupWarning(isBulkSignupDay());
+                    existingDto.setCapacityWarning(isApproachingCapacity(existing.getCity()));
                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
                 }
             }
@@ -264,6 +266,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
         emitOwnerCreatedEvent(owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
+        ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -437,6 +440,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return count;
+    }
+
+    /**
+     * The number of owners in a city at or above which a capacity warning is raised. Once the
+     * owner's city holds at least this many owners (but is still below {@link #MAX_OWNERS_PER_CITY},
+     * the hard limit), the city is approaching capacity and {@code capacityWarning} is reported as
+     * {@code true} in the owner response.
+     */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Reports whether the given city is approaching the per-city capacity limit, i.e. whether it
+     * already holds between {@link #CAPACITY_WARNING_THRESHOLD} (40) and
+     * {@link #MAX_OWNERS_PER_CITY} minus one (49) owners inclusive. At the hard limit of 50 the
+     * create is rejected outright, so a full city never warns.
+     *
+     * @param city the owner's city
+     * @return {@code true} when the city holds 40-49 owners, otherwise {@code false}
+     */
+    private boolean isApproachingCapacity(String city) {
+        int count = countOwnersInCity(city);
+        return count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
 
     /**

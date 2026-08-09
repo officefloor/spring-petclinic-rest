@@ -54,6 +54,7 @@ public interface OwnerMapper {
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
