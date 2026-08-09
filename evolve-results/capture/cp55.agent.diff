@@ -1,0 +1,131 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 86cd5e9b..d18269d6 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,9 @@ public interface OwnerMapper {
+     // owner's household (the household-of-three-or-more factor needs the other owners).
+     @Mapping(target = "membershipPoints", ignore = true)
+     @Mapping(target = "membershipLevel", ignore = true)
++    // ownerSegment depends on the membershipLevel, so the controller populates it once the
++    // level is known.
++    @Mapping(target = "ownerSegment", ignore = true)
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 00000000..569cdf88
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Set;
++
++/**
++ * Derives an owner's {@code ownerSegment}, the marketing segment formatted
++ * {@code '<TIER>_<AREA>'}. TIER is {@code "PREMIUM"} when the owner's membershipLevel is 3 or
++ * more, otherwise {@code "STANDARD"}. AREA is {@code "METRO"} when the owner's locality is a
++ * known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. The four possible values are
++ * therefore {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} and
++ * {@code STANDARD_REGIONAL}.
++ *
++ * <p>Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit mapping
++ * method and apply it to every property. Because it depends on the membershipLevel (populated
++ * by the controller), the controller sets {@code ownerSegment} once the level is known.
++ */
++public final class OwnerSegment {
++
++    /** The localities (regions) that count as METRO; anything else is REGIONAL. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Compute the owner's segment from its membership level and locality.
++     *
++     * @param membershipLevel the owner's numeric membership level (1-4)
++     * @param locality        the owner's locality (canonical region, or {@code "UNKNOWN"})
++     * @return the segment formatted {@code '<TIER>_<AREA>'}
++     */
++    public static String segment(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = locality != null && METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4f8da2fe..4e431cf9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -261,6 +261,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Map<String, Integer> householdSizes = householdSizes();
+         applyMembership(ownerDto, owner, householdSizes);
+         capMembershipLevelToHousehold(ownerDto, owner, householdSizes);
++        applyOwnerSegment(ownerDto);
+         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
+@@ -799,6 +800,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         int points = MembershipPoints.points(owner, householdSize);
+         ownerDto.setMembershipPoints(points);
+         ownerDto.setMembershipLevel(MembershipPoints.level(points));
++        applyOwnerSegment(ownerDto);
++    }
++
++    /**
++     * Populates an owner's {@code ownerSegment} on the given dto from its already-applied
++     * {@code membershipLevel} and mapped {@code locality}. Call this whenever the membership
++     * level changes (e.g. after {@link #capMembershipLevelToHousehold}) so the segment stays
++     * consistent with the level.
++     *
++     * @param ownerDto the dto whose membershipLevel and locality are already populated
++     */
++    private void applyOwnerSegment(OwnerDto ownerDto) {
++        Integer membershipLevel = ownerDto.getMembershipLevel();
++        int level = membershipLevel == null ? 1 : membershipLevel;
++        ownerDto.setOwnerSegment(org.springframework.samples.petclinic.mapper.OwnerSegment.segment(
++            level, ownerDto.getLocality()));
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+index f9229200..75ffc347 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v2/OwnerRestControllerV2.java
+@@ -67,8 +67,11 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
+             int householdSize = owner.getHouseholdId() == null ? 1
+                 : householdSizes.getOrDefault(owner.getHouseholdId(), 1);
+             int points = MembershipPoints.points(owner, householdSize);
++            int level = MembershipPoints.level(points);
+             ownerDtos.get(i).setMembershipPoints(points);
+-            ownerDtos.get(i).setMembershipLevel(MembershipPoints.level(points));
++            ownerDtos.get(i).setMembershipLevel(level);
++            ownerDtos.get(i).setOwnerSegment(org.springframework.samples.petclinic.mapper.OwnerSegment
++                .segment(level, ownerDtos.get(i).getLocality()));
+         }
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d3ed4b4f..02a711d6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2298,6 +2298,17 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when the membershipLevel is 3 or more, otherwise
++                'STANDARD'. AREA is 'METRO' when the locality is a known region
++                (NSW, VIC or QLD), otherwise 'REGIONAL'. One of 'PREMIUM_METRO',
++                'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
