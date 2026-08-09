@@ -226,7 +226,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
@@ -689,6 +690,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(Owner owner) {
         String identityKey = owner.getIdentityKey();
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (inUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
@@ -721,6 +723,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner match = null;
         if (postcode != null && !postcode.isBlank()) {
             match = this.clinicService.findAllOwners().stream()
+                .filter(existing -> !existing.isDeleted())
                 .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName))
                 .filter(existing -> postcode.equals(existing.getPostcode()))
                 .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
@@ -794,6 +797,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = generateHouseholdId(lastName, postcode);
         owner.setHouseholdId(householdId);
         boolean hasExistingMember = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (!hasExistingMember) {
             return false;
