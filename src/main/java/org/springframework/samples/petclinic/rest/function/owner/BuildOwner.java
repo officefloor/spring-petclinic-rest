@@ -11,15 +11,20 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Builds the {@link Owner} entity from the request body already validated and published by
  * {@link ValidateOwnerFields} (the body can be bound with {@code @RequestBody} only once).
- * When the request omits a registration date, it defaults to the server's current date.
+ * When the request omits a registration date, it defaults to the server's current date. The
+ * effective registration date is then rolled forward to the next business day (see
+ * {@link RegistrationDates#toBusinessDay(LocalDate)}), so a weekend date — supplied or defaulted —
+ * lands on a Monday and every value derived from it uses the adjusted date.
  */
 public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = LocalDate.now();
         }
+        owner.setRegistrationDate(RegistrationDates.toBusinessDay(registrationDate));
         built.set(owner);
     }
 }
