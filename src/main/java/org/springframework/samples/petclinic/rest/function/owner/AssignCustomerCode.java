@@ -3,16 +3,25 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where REGION is the
  * region code derived from the owner's postcode (preferred), falling back to the city and then to
  * {@code UNKNOWN}, and HASH8 is the first eight UPPER-case hex characters of SHA-256 over
- * {@code normalizedTelephone + lastName} (e.g. 'NSW-1A2B3C4D'). No sequence numbers are involved.
+ * {@code normalizedTelephone + lastName} (e.g. 'NSW-1A2B3C4D').
+ *
+ * <p>The base code is a pure function of the region and hash, so two distinct owners can in principle
+ * derive the same code. When the computed code collides with an existing owner's {@code customerCode},
+ * this step de-duplicates it by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
+ * makes it unique (e.g. 'NSW-1A2B3C4D-2', then 'NSW-1A2B3C4D-3'), so every persisted owner keeps a
+ * distinct code.
  *
  * <p>Runs after {@link BuildOwner} and {@link NormalizeOwnerTelephone} (so the telephone is already
  * in canonical E.164 form) and before {@link SaveOwner}, mutating the not-yet-persisted owner in
@@ -28,8 +37,35 @@ public class AssignCustomerCode {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
-    public void service(@Val Owner owner) {
-        owner.setCustomerCode(region(owner) + "-" + hash8(owner));
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+        String base = region(owner) + "-" + hash8(owner);
+        owner.setCustomerCode(deduplicate(base, owner, ownerRepository));
+    }
+
+    /**
+     * Returns {@code base} when no existing owner already uses it, otherwise the first of
+     * {@code base-2, base-3, ...} that is free — so distinct owners keep distinct codes.
+     */
+    private static String deduplicate(String base, Owner owner, OwnerRepository ownerRepository) {
+        Set<String> taken = new HashSet<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                continue;
+            }
+            String code = existing.getCustomerCode();
+            if (code != null) {
+                taken.add(code);
+            }
+        }
+        if (!taken.contains(base)) {
+            return base;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = base + "-" + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
     }
 
     /** Region derived from the postcode when it falls in a known range, else the city, else UNKNOWN. */
