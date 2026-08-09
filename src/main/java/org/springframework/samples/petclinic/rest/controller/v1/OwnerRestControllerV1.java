@@ -142,7 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -259,20 +259,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number supplied on create by removing every non-digit character and
-     * requiring the result to be exactly ten digits. The normalized ten-digit value is what gets
+     * Normalizes a telephone number supplied on create into E.164 form. Spaces, dashes and brackets
+     * are stripped. When the value carries an explicit leading '+' its country code is kept as given;
+     * otherwise country code '+61' is assumed and a single leading '0' is dropped from the national
+     * digits. The result must be a '+' followed by 8 to 15 digits. This E.164 string is what gets
      * stored and returned.
      *
      * @param telephone the raw telephone value from the request
-     * @return the normalized ten-digit telephone
-     * @throws InvalidOwnerFieldsException if the value is not exactly ten digits after stripping
+     * @return the normalized E.164 telephone (a '+' followed by 8 to 15 digits)
+     * @throws InvalidOwnerFieldsException if the value cannot form a valid E.164 number
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = telephone == null ? "" : telephone.trim().replaceAll("[\\s()\\-]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = cleaned;
+        } else {
+            String national = cleaned;
+            if (national.startsWith("0")) {
+                national = national.substring(1);
+            }
+            e164 = "+61" + national;
+        }
+        if (!e164.matches("^\\+[0-9]{8,15}$")) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
-        return digits;
+        return e164;
     }
 
     /**
@@ -295,21 +307,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner create whose normalized telephone is already used by any other owner. Every
-     * existing owner's stored telephone is normalized the same way (non-digits stripped) before
-     * comparison so the uniqueness check is independent of the punctuation a caller supplied.
+     * Rejects an owner create whose E.164 telephone is already used by any other owner. Owners store
+     * their telephone in E.164 form, so the uniqueness check compares these canonical E.164 values
+     * directly and is therefore independent of the punctuation a caller supplied.
      *
-     * @param normalizedTelephone the normalized ten-digit telephone of the owner being created
+     * @param e164Telephone the E.164 telephone of the owner being created
      * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
      */
-    private void rejectDuplicateTelephone(String normalizedTelephone) {
+    private void rejectDuplicateTelephone(String e164Telephone) {
         boolean inUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
-            .anyMatch(normalizedTelephone::equals);
+            .anyMatch(e164Telephone::equals);
         if (inUse) {
-            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+            throw new DuplicateOwnerTelephoneException(e164Telephone);
         }
     }
 }
