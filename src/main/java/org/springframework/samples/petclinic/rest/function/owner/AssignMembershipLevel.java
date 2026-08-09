@@ -1,17 +1,24 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the new owner's numeric {@code membershipLevel} at creation. The level starts at 1,
- * gains 1 when an email is present and 1 more when the owner's {@code namesakeCount} is 0, and is
- * capped at 3 (level 4 is reserved for tenure).
+ * gains 1 when an email is present and 1 more when the owner's {@code namesakeCount} is 0; these
+ * pre-tenure factors are capped at 3. Level 4 requires tenure of more than 365 days (the days
+ * elapsed since the owner's {@code registrationDate}). Because a newly created owner has zero
+ * tenure, a new owner never exceeds level 3.
  *
  * <p>Runs after {@link AssignNamesakeCount} (so the namesake snapshot exists) and before
  * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
 public class AssignMembershipLevel {
+
+    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
 
     public void service(@Val Owner owner) {
         int level = 1;
@@ -23,6 +30,15 @@ public class AssignMembershipLevel {
         if (namesakeCount != null && namesakeCount == 0) {
             level++;
         }
-        owner.setMembershipLevel(Math.min(level, 3));
+        level = Math.min(level, 3);
+
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null) {
+            long tenureDays = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+            if (tenureDays > TENURE_DAYS_FOR_LEVEL_4) {
+                level++;
+            }
+        }
+        owner.setMembershipLevel(level);
     }
 }
