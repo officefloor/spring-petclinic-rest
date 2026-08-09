@@ -33,6 +33,11 @@ public class ValidationExceptionHandler {
                     })
                     .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            List<String> errors = bindingResult.getFieldErrors().stream()
+                    .map(org.springframework.validation.FieldError::getField)
+                    .distinct()
+                    .toList();
+            detail.setProperty("errors", errors);
         }
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
