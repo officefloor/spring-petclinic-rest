@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 36241ef1..57f75c4b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -5,18 +5,37 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'} where
+- * LAST3 is the upper-cased first three letters of the last name and NNNN is a global
+- * 4-digit zero-padded sequence equal to one more than the current number of owners
+- * (e.g. 'SMI-0007'). Runs after {@link BuildOwner} and before {@link SaveOwner}, so
+- * it mutates the not-yet-persisted owner in place.
++ * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where
++ * CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first three
++ * letters of the last name, and NNNN a per-city 4-digit zero-padded sequence equal to one more
++ * than the number of owners already in that city (e.g. 'SYD-SMI-0007'). Runs after
++ * {@link BuildOwner} and before {@link SaveOwner}, so it mutates the not-yet-persisted owner in
++ * place.
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String lastName = owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
++        String city = owner.getCity();
++        String city3 = prefix3(city);
++        String last3 = prefix3(owner.getLastName());
++        int sequence = countInCity(owner, city, ownerRepository) + 1;
++        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    }
++
++    private static String prefix3(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase();
++    }
++
++    private static int countInCity(Owner owner, String city, OwnerRepository ownerRepository) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
++                continue;
++            }
++            if (city == null ? existing.getCity() == null : city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+index 9cabbe29..fd6f6f93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -5,7 +5,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Assigns the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'} where
+- * YY is the last two digits of the {@code registrationDate} year (e.g. 'SMI-0007-M26').
++ * YY is the last two digits of the {@code registrationDate} year (e.g. 'SYD-SMI-0007-M26').
+  *
+  * <p>Runs after {@link AssignCustomerCode} (so the customer code exists) and {@link BuildOwner}
+  * (so the registration date is set), and before {@link SaveOwner}, mutating the not-yet-persisted
