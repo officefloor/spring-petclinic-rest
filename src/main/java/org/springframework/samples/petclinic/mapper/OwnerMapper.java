@@ -29,8 +29,8 @@ public interface OwnerMapper {
 
     /**
      * A single Luhn check digit (0-9) computed at read time over the digits contained in the
-     * owner's customerCode. Non-digit characters (the hyphens in '<CITY3>-<LAST3>-<NNNN>') are
-     * skipped. Null when the owner or its customerCode is absent.
+     * owner's customerCode. Non-digit characters (the hyphen and letters in '<REGION>-<HASH8>')
+     * are skipped. Null when the owner or its customerCode is absent.
      */
     default Integer checkDigit(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null) {
@@ -78,14 +78,23 @@ public interface OwnerMapper {
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     /**
-     * The owner's locality, derived at read time. The postcode is preferred: when it falls within a
-     * known region's inclusive range ({@link #REGION_POSTCODES}) that region wins. Otherwise it falls
-     * back to the city via the fixed {@link #CITY_REGION} table, or {@code UNKNOWN} when the city is
-     * not in the table. Preferring the postcode disambiguates cities that share a name.
+     * The owner's locality, derived at read time from the region-and-hash identity: the REGION
+     * prefix of the {@code customerCode} (everything before the first hyphen). That region was
+     * itself derived at write time from the postcode (preferred) or city, defaulting to
+     * {@code UNKNOWN}, so reading it back keeps locality and the identity in lock-step.
+     *
+     * <p>Owners predating the region-and-hash identity (e.g. seed data with no customerCode) fall
+     * back to the historical read-time derivation: postcode preferred, then city, then
+     * {@code UNKNOWN}.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            return dash > 0 ? code.substring(0, dash) : code;
         }
         String byPostcode = regionFromPostcode(owner.getPostcode());
         if (byPostcode != null) {
