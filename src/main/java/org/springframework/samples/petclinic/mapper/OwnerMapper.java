@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
@@ -168,6 +169,22 @@ public interface OwnerMapper {
             return byPostcode;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The owner's segment, derived at read time and formatted {@code <TIER>_<AREA>}. TIER is
+     * {@code PREMIUM} when the owner's {@code membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the owner's {@link #locality(Owner) locality} is a
+     * known region (NSW, VIC or QLD), otherwise {@code REGIONAL}. Null when the owner is absent.
+     */
+    default String ownerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = owner.getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
