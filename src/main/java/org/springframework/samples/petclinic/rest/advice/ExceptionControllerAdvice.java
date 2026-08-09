@@ -193,4 +193,27 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link InvalidOwnerFieldsException} raised when an owner create/update request supplies
+     * a mandatory field whose value violates a business rule that Bean Validation does not otherwise
+     * reject (for example a telephone that is not exactly ten digits after non-digit characters are
+     * stripped). Returns a 400 Bad Request whose {@code errors} array lists the name of each field.
+     *
+     * @param e The {@link InvalidOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidOwnerFieldsException(InvalidOwnerFieldsException e, HttpServletRequest request) {
+        logger.debug("Invalid owner fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getInvalidFields());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getInvalidFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }

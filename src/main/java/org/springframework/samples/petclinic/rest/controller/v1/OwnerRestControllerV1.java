@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -104,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredOwnerFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -236,5 +238,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Normalizes a telephone number supplied on create by removing every non-digit character and
+     * requiring the result to be exactly ten digits. The normalized ten-digit value is what gets
+     * stored and returned.
+     *
+     * @param telephone the raw telephone value from the request
+     * @return the normalized ten-digit telephone
+     * @throws InvalidOwnerFieldsException if the value is not exactly ten digits after stripping
+     */
+    private String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        return digits;
     }
 }
