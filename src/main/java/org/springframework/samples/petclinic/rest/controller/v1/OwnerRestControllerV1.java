@@ -91,6 +91,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * The number of owners that must already be registered on today's business day before a response
+     * carries a bulk-signup warning. Once more than this many owners already carry today's
+     * registration date, responses set {@code bulkSignupWarning} true.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -131,7 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -159,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -348,6 +358,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param date the effective registration date (supplied or defaulted)
      * @return the same date when it is a weekday, otherwise the following Monday
      */
+    /**
+     * Reports whether responses should carry a bulk-signup warning. The warning is active once more
+     * than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry today's business-day
+     * registration date (the same accumulation basis as the per-day create limit), signalling that the
+     * daily create volume is approaching {@link #MAX_OWNERS_PER_DAY}.
+     *
+     * @return {@code true} when more than the threshold number of owners are already registered on
+     *         today's business day, otherwise {@code false}
+     */
+    private boolean isBulkSignupWarningActive() {
+        LocalDate today = toBusinessDay(LocalDate.now());
+        long ownersToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        return ownersToday > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
     private LocalDate toBusinessDay(LocalDate date) {
         return switch (date.getDayOfWeek()) {
             case SATURDAY -> date.plusDays(2);
