@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forCity(owner.getCity()))")
     @Mapping(target = "sharesHousehold", ignore = true)
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
