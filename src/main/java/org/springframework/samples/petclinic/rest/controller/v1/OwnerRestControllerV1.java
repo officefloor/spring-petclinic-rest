@@ -176,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
         owner.setEmail(normalizeEmail(owner.getEmail()));
         rejectDuplicateIdentity(owner);
+        applyPossibleDuplicate(owner);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(
             generateCustomerCode(owner.getPostcode(), owner.getCity(), normalizedTelephone, owner.getLastName()));
@@ -620,6 +621,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (inUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
+        }
+    }
+
+    /**
+     * Flags an owner being created as a possible (soft) duplicate. A soft match is an existing owner
+     * that shares this owner's last name (compared case-insensitively with collapsed whitespace) and
+     * postcode but carries a different (normalized) telephone; such an owner is not a hard duplicate
+     * (its identity key differs) and is still created. When at least one soft match exists,
+     * {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to the lowest-id match;
+     * otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left unset.
+     *
+     * @param owner the owner being created, with its last name, postcode and normalized telephone resolved
+     */
+    private void applyPossibleDuplicate(Owner owner) {
+        String lastName = normalizeHouseholdField(owner.getLastName());
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        Owner match = null;
+        if (postcode != null && !postcode.isBlank()) {
+            match = this.clinicService.findAllOwners().stream()
+                .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName))
+                .filter(existing -> postcode.equals(existing.getPostcode()))
+                .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
+                .min(java.util.Comparator.comparing(Owner::getId))
+                .orElse(null);
+        }
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
+        } else {
+            owner.setPossibleDuplicate(false);
         }
     }
 

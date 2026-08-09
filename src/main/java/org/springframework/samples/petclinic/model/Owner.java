@@ -72,6 +72,12 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     /**
      * The number of owners belonging to this owner's household (owners sharing the same
      * {@code householdId}), including this owner. It is a derived, non-persistent value populated
@@ -169,6 +175,22 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public Integer getHouseholdMemberCount() {
