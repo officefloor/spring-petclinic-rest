@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.OwnerEmailInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerFieldsRequiredException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneInvalidException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws OwnerFieldsRequiredException, OwnerTelephoneInvalidException {
+            throws OwnerFieldsRequiredException, OwnerTelephoneInvalidException, OwnerEmailInvalidException {
         List<String> errors = new ArrayList<>();
         require("firstName", request.getFirstName(), errors);
         require("lastName", request.getLastName(), errors);
@@ -35,6 +36,7 @@ public class ValidateOwnerFields {
             throw new OwnerTelephoneInvalidException(request.getTelephone());
         }
         request.setTelephone(digits);
+        request.setEmail(OwnerEmail.normalize(request.getEmail()));
         validated.set(request);
     }
 
