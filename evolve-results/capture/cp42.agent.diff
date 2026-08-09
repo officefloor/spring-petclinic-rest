@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8cc5359e..6378a618 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -100,6 +101,10 @@ public interface OwnerMapper {
+     Map<String, int[]> REGION_POSTCODES = Map.of(
+         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+ 
++    /** Fixed region-to-timezone table, mapping each region to its IANA timezone name. */
++    Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
+     /**
+      * The owner's locality, derived at read time from the region-and-hash identity: the REGION
+      * prefix of the {@code customerCode} (everything before the first hyphen). That region was
+@@ -126,6 +131,19 @@ public interface OwnerMapper {
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
++    /**
++     * The owner's IANA timezone, derived at read time from the owner's locality/region via the fixed
++     * region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane).
++     * Null when the owner is absent or the region has no known timezone (e.g. {@code UNKNOWN}), so the
++     * field is simply omitted then.
++     */
++    default String timezone(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        return REGION_TIMEZONE.get(locality(owner));
++    }
++
+     /**
+      * The region whose postcode range contains {@code postcode}, or {@code null} when the postcode is
+      * absent, not four digits, or in no known range. Kept {@code private static} so MapStruct does not
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8941c93e..5ee3d4a0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2223,6 +2223,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone, derived at read time from the locality/region
++                via the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when the
++                region has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
