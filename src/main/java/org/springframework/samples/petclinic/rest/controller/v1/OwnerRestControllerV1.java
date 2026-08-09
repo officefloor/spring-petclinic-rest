@@ -22,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -202,7 +203,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         else {
             applyPossibleDuplicate(owner);
         }
-        owner.setCustomerCode(customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
+        owner.setCustomerCode(deduplicatedCustomerCode(
+            customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName())));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -413,6 +415,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static String customerCode(String postcode, String normalizedTelephone, String lastName) {
         String region = org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(postcode);
         return region + "-" + sha256Hex8(normalizedTelephone + lastName);
+    }
+
+    /**
+     * De-duplicates a freshly computed {@code base} customer code against the codes already
+     * assigned to existing owners. When {@code base} is free it is returned unchanged;
+     * otherwise {@code '-<n>'} is appended with the smallest {@code n} of two or more that
+     * yields a code no existing owner holds.
+     *
+     * @param base the computed {@code '<REGION>-<HASH8>'} customer code
+     * @return {@code base}, or {@code base + "-<n>"} de-duplicated to be unique
+     */
+    private String deduplicatedCustomerCode(String base) {
+        Set<String> existing = new HashSet<>();
+        for (Owner owner : this.clinicService.findAllOwners()) {
+            if (owner.getCustomerCode() != null) {
+                existing.add(owner.getCustomerCode());
+            }
+        }
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
