@@ -200,6 +200,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
+        ownerDto.setRiskFlag(isRiskFlagActive(owner));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -213,6 +214,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 OwnerDto existingDto = toOwnerDto(alreadyCreated);
                 existingDto.setBulkSignupWarning(isBulkSignupWarningActive());
                 existingDto.setCapacityWarning(isCapacityWarningActive(alreadyCreated.getCity()));
+                existingDto.setRiskFlag(isRiskFlagActive(alreadyCreated));
                 return new ResponseEntity<>(existingDto, HttpStatus.OK);
             }
         }
@@ -247,6 +249,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
+        ownerDto.setRiskFlag(isRiskFlagActive(owner));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -544,6 +547,86 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
             .count();
         return ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY;
+    }
+
+    /**
+     * Reports whether a response for the given owner should carry a risk flag. The flag is active when
+     * any single risk signal holds at the time of the response: the owner is a possible (soft) duplicate
+     * ({@link Owner#getPossibleDuplicate()} true), its email domain is disposable-adjacent (see
+     * {@link #isDisposableAdjacentEmail(String)}), or its city is over its soft capacity (see
+     * {@link #isCityOverSoftCapacity(String)}). When none hold the flag is false.
+     *
+     * @param owner the owner being reported
+     * @return {@code true} when any risk signal holds, otherwise {@code false}
+     */
+    private boolean isRiskFlagActive(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentEmail(owner.getEmail())
+            || isCityOverSoftCapacity(owner.getCity());
+    }
+
+    /**
+     * Reports whether the given city is over its soft capacity - the per-city warning threshold. A city
+     * is over its soft capacity once it already holds at least {@link #CITY_CAPACITY_WARNING_THRESHOLD}
+     * owners (whether or not it has also reached the hard {@link #MAX_OWNERS_PER_CITY} limit). Owners are
+     * grouped into a city case-insensitively after surrounding whitespace is trimmed and internal runs
+     * are collapsed, mirroring {@link #isCapacityWarningActive(String)}.
+     *
+     * @param city the city to evaluate
+     * @return {@code true} when the city holds at least the warning threshold of owners, otherwise
+     *         {@code false}
+     */
+    private boolean isCityOverSoftCapacity(String city) {
+        String normalizedCity = normalizeHouseholdField(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
+            .count();
+        return ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD;
+    }
+
+    /**
+     * The registrable base labels of the known disposable-address providers - each blocklisted domain in
+     * {@link #DISPOSABLE_EMAIL_DOMAINS} without its top-level label (e.g. {@code "mailinator.com"} yields
+     * {@code "mailinator"}). Used to detect disposable-adjacent domains.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_BASE_LABELS =
+        DISPOSABLE_EMAIL_DOMAINS.stream()
+            .map(domain -> domain.substring(0, domain.indexOf('.')))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /**
+     * Reports whether the given email's domain is disposable-adjacent: near enough to a known
+     * disposable-address provider ({@link #DISPOSABLE_EMAIL_DOMAINS}) to be treated as a risk without
+     * being an exact blocklist match (an exact match is already rejected on create, so it is never
+     * stored). A domain is disposable-adjacent when, compared case-insensitively, it is a subdomain of a
+     * blocklisted domain (e.g. {@code "mail.mailinator.com"}) or its registrable label - the label
+     * immediately before its top-level label - equals a known provider's base label (e.g.
+     * {@code "mailinator.net"} or {@code "tempmail.io"}). An absent (null or blank) email is never
+     * disposable-adjacent.
+     *
+     * @param email the owner's stored (lower-cased) email, or {@code null} when none is present
+     * @return {@code true} when the email's domain is disposable-adjacent, otherwise {@code false}
+     */
+    private boolean isDisposableAdjacentEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.indexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String blocked : DISPOSABLE_EMAIL_DOMAINS) {
+            if (domain.endsWith("." + blocked)) {
+                return true;
+            }
+        }
+        String[] labels = domain.split("\\.");
+        if (labels.length >= 2) {
+            String registrableLabel = labels[labels.length - 2];
+            return DISPOSABLE_EMAIL_BASE_LABELS.contains(registrableLabel);
+        }
+        return false;
     }
 
     private LocalDate toBusinessDay(LocalDate date) {
