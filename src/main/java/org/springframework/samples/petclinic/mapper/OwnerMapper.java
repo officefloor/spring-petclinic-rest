@@ -28,6 +28,8 @@ public interface OwnerMapper {
             + "&& owner.getEmail() != null && !owner.getEmail().isBlank() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER "
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE)")
+    @Mapping(target = "locality",
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.forCity(owner.getCity()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
