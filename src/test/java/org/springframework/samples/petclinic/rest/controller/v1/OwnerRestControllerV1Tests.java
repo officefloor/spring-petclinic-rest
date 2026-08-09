@@ -102,8 +102,9 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        // Distinct address so this household does not clash with the seeded 'Franklin, 110 W. Liberty St.'.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550001"}
+            {"firstName":"George","lastName":"Franklin","address":"1 Create Success Way","city":"Madison","telephone":"6085550001"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -115,8 +116,9 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerNormalizesTelephoneToE164() throws Exception {
+        // Distinct address so this household does not clash with the seeded 'Franklin, 110 W. Liberty St.'.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"(608) 555-0002"}
+            {"firstName":"George","lastName":"Franklin","address":"2 Normalize Ave","city":"Madison","telephone":"(608) 555-0002"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -166,6 +168,33 @@ class OwnerRestControllerV1Tests {
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectsDuplicateHousehold() throws Exception {
+        // Seed data already holds 'Franklin, 110 W. Liberty St.'. This body has the same last name
+        // and address differing only in case and collapsed whitespace, with a fresh telephone, so
+        // the household rule (not the telephone rule) makes it a 409.
+        String body = """
+            {"firstName":"Jane","lastName":"Franklin","address":"110   w.  liberty st.","city":"Madison","telephone":"6085552001"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowsSharedHouseholdWhenAcknowledged() throws Exception {
+        // Same household as the seeded 'Franklin, 110 W. Liberty St.', but the request acknowledges
+        // the shared household, so it is created.
+        String body = """
+            {"firstName":"Jane","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085552002","sharesHousehold":true}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
     }
 
     @Test
