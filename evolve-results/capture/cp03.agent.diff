@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerTelephoneException.java
+new file mode 100644
+index 00000000..336bfa1d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateOwnerTelephoneException.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a request to create an owner supplies a telephone whose normalized form is already
++ * used by another owner. Owner telephones are unique once normalized, so this conflict is reported
++ * to the caller as an HTTP 409.
++ */
++public class DuplicateOwnerTelephoneException extends RuntimeException {
++
++    private final String telephone;
++
++    public DuplicateOwnerTelephoneException(String telephone) {
++        super("Telephone already in use: " + telephone);
++        this.telephone = telephone;
++    }
++
++    public String getTelephone() {
++        return this.telephone;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index fbabca9f..fe4d5ce1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -52,6 +52,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
++    private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -216,4 +217,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateOwnerTelephoneException} raised when an owner create request supplies a
++     * telephone whose normalized form is already used by another owner. Returns a 409 Conflict.
++     *
++     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
++        logger.debug("Duplicate owner telephone at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getTelephone());
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
++        detail.setProperty("errors", List.of("telephone"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cb88ec6d..dfc195d2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+@@ -105,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredOwnerFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
++        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
++        owner.setTelephone(normalizedTelephone);
++        rejectDuplicateTelephone(normalizedTelephone);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -256,4 +259,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return digits;
+     }
++
++    /**
++     * Rejects an owner create whose normalized telephone is already used by any other owner. Every
++     * existing owner's stored telephone is normalized the same way (non-digits stripped) before
++     * comparison so the uniqueness check is independent of the punctuation a caller supplied.
++     *
++     * @param normalizedTelephone the normalized ten-digit telephone of the owner being created
++     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
++     */
++    private void rejectDuplicateTelephone(String normalizedTelephone) {
++        boolean inUse = this.clinicService.findAllOwners().stream()
++            .map(Owner::getTelephone)
++            .filter(existing -> existing != null)
++            .map(existing -> existing.replaceAll("\\D", ""))
++            .anyMatch(normalizedTelephone::equals);
++        if (inUse) {
++            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
++        }
++    }
+ }
