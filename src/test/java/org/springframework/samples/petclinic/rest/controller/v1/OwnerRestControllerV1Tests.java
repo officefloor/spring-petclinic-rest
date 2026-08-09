@@ -115,7 +115,7 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
-    void createOwnerHouseholdDuplicateReturnsConflict() throws Exception {
+    void createOwnerSameHouseholdDifferentTelephoneAllowed() throws Exception {
         String first = """
             {"firstName":"George","lastName":"Householder","address":"1 Shared Lane","city":"Madison","telephone":"6085550101"}
             """;
@@ -123,9 +123,32 @@ class OwnerRestControllerV1Tests {
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated());
 
-        // Same last name and address (differing only in case and whitespace) -> 409.
-        String duplicate = """
+        // Same last name and address (differing only in case and whitespace) but a DIFFERENT
+        // telephone: the telephone is part of the identityKey, so the whole keys differ -> created.
+        String sameHousehold = """
             {"firstName":"Jane","lastName":"householder","address":"1   Shared   Lane","city":"Madison","telephone":"6085550102"}
+            """;
+        mvc.perform(post("/api/owners").content(sameHousehold)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerIdentityKeyCollisionReturnsConflict() throws Exception {
+        // A fully unique owner is created and returns its derived identityKey.
+        String first = """
+            {"firstName":"George","lastName":"Collider","address":"5 Identity Way","city":"Madison","telephone":"6085550120"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.identityKey").value("+16085550120||"));
+
+        // Different name/address, but the SAME telephone, no email and no household: the whole
+        // identityKey matches -> 409.
+        String duplicate = """
+            {"firstName":"Jane","lastName":"Twin","address":"9 Other Road","city":"Madison","telephone":"6085550120"}
             """;
         mvc.perform(post("/api/owners").content(duplicate)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -154,7 +177,7 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
-    void createOwnerDuplicateEmailReturnsConflict() throws Exception {
+    void createOwnerSameEmailDifferentTelephoneAllowed() throws Exception {
         String first = """
             {"firstName":"George","lastName":"Mailer","address":"3 First Street","city":"Madison","telephone":"6085550301","email":"George.Mailer@Example.com"}
             """;
@@ -162,13 +185,14 @@ class OwnerRestControllerV1Tests {
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated());
 
-        // Same email differing only in case -> 409.
-        String duplicate = """
+        // Same email (differing only in case) but a DIFFERENT telephone: the telephone is part of
+        // the identityKey, so the whole keys differ -> created.
+        String sameEmail = """
             {"firstName":"Jane","lastName":"Poster","address":"7 Second Street","city":"Madison","telephone":"6085550302","email":"george.mailer@example.com"}
             """;
-        mvc.perform(post("/api/owners").content(duplicate)
+        mvc.perform(post("/api/owners").content(sameEmail)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
-            .andExpect(status().isConflict());
+            .andExpect(status().isCreated());
     }
 
     @Test

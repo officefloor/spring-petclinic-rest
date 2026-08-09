@@ -124,17 +124,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        owner.setTelephone(telephone);
         if (owner.getEmail() != null) {
             String email = normalizeEmail(owner.getEmail());
             if (email == null) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email);
-            for (Owner existing : this.clinicService.findAllOwners()) {
-                if (existing.getEmail() != null && email.equalsIgnoreCase(existing.getEmail())) {
-                    return new ResponseEntity<>(HttpStatus.CONFLICT);
-                }
-            }
         }
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
@@ -148,11 +144,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (telephone.equals(toE164(existing.getTelephone()))) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
+        // Owners sharing a household (same normalized last name and address) are given a
+        // stable shared householdId, which forms the household component of the identityKey.
         String lastNameKey = householdKey(owner.getLastName());
         String addressKey = householdKey(owner.getAddress());
         List<Owner> householdMembers = new ArrayList<>();
@@ -163,9 +156,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         if (!householdMembers.isEmpty()) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
             String householdId = householdId(lastNameKey, addressKey);
             owner.setHouseholdId(householdId);
             for (Owner member : householdMembers) {
@@ -175,7 +165,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
-        owner.setTelephone(telephone);
+        // Consolidated duplicate detection: reject only when the whole identityKey
+        // (normalized telephone | email | householdId) matches an existing owner's.
+        String identityKey = identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (identityKey.equals(identityKey(toE164(existing.getTelephone()),
+                emailForKey(existing.getEmail()), existing.getHouseholdId()))) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -510,6 +508,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Builds the derived duplicate-detection identity key from an owner's normalized
+     * telephone, email and household id, formatted {@code
+     * '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Two owners are
+     * duplicates only when their whole identity keys are equal; because the telephone is
+     * part of the key, members of the same household with different telephones produce
+     * different keys and are both allowed.
+     *
+     * @param normalizedTelephone the E.164 telephone (may be {@code null})
+     * @param email               the normalized (lower-cased) email, or {@code null} when absent
+     * @param householdId         the shared household id, or {@code null} when the owner is not in a household
+     * @return the identity key string
+     */
+    private static String identityKey(String normalizedTelephone, String email, String householdId) {
+        return (normalizedTelephone == null ? "" : normalizedTelephone)
+            + "|" + (email == null ? "" : email)
+            + "|" + (householdId == null ? "" : householdId);
+    }
+
+    /**
+     * Normalizes an existing owner's stored email for identity-key comparison: trimmed and
+     * lower-cased, mirroring {@link #normalizeEmail} without re-validating syntax. Returns
+     * {@code null} when the owner has no email.
+     *
+     * @param email the existing owner's stored email (may be {@code null})
+     * @return the trimmed, lower-cased email, or {@code null} when {@code email} is null
+     */
+    private static String emailForKey(String email) {
+        return email == null ? null : email.trim().toLowerCase();
     }
 
     /**
