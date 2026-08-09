@@ -71,6 +71,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; each successful owner create emits one line here. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; each successful owner create enqueues a welcome line here. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /**
      * Monotonically increasing sequence stamped onto each structured {@code OWNER_CREATED}
      * event, shared across every controller instance so the {@code seq} strictly increases
@@ -265,6 +268,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
         emitOwnerCreatedEvent(owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+        NOTIFY.info("welcome: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
         headers.setLocation(UriComponentsBuilder.newInstance()
