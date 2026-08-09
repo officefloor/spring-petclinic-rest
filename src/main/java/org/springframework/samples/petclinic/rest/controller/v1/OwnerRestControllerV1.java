@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.OptionalInt;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -61,6 +62,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * @author Vitaliy Fedoriv
@@ -102,6 +105,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; one line is emitted per successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence for structured owner-create events, shared across all creates
+     * regardless of which request or thread performs them. The first event carries {@code seq=1}.
+     */
+    private static final AtomicInteger OWNER_CREATE_SEQUENCE = new AtomicInteger();
+
+    /** Serializer for the immutable structured audit event. */
+    private static final ObjectMapper AUDIT_EVENT_MAPPER = JsonMapper.builder().build();
 
     /**
      * The maximum number of owners a single city may contain. Once a city already holds this many
@@ -219,11 +231,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the immutable structured {@code OWNER_CREATED} event on the {@code AUDIT} logger, in
+     * addition to the human-readable audit line. The event carries a monotonically increasing sequence
+     * number, the owner id, the owner's current primary identifier (the customer code) and the derived
+     * membership level, serialized as a compact JSON object.
+     *
+     * @param owner the just-saved owner
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(OWNER_CREATE_SEQUENCE.incrementAndGet(),
+            owner.getId(), owner.getCustomerCode(), owner.getMembershipLevel());
+        AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
     }
 
     /**
