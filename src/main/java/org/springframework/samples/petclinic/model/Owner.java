@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "postcode")
     private String postcode;
 
@@ -182,6 +185,29 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation, derived from the optional {@code title} and the stored last name. When a
+     * title (e.g. {@code MR}, {@code MRS}, {@code MS}, {@code DR}) is present it is the title, a single
+     * space, then the last name (e.g. {@code "DR who"}); when no title is present it is just the last
+     * name.
+     *
+     * @return the title and last name joined by a space, or just the last name when no title is present
+     */
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return getLastName();
+        }
+        return this.title + " " + getLastName();
     }
 
     public String getPostcode() {
