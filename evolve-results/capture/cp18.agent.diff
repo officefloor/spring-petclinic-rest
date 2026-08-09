@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+new file mode 100644
+index 00000000..77ae1070
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when creating an owner in a city that already holds the maximum number of owners (50).
++ * Handled globally by {@link CityAtCapacityExceptionHandler}, which responds 409 (Conflict).
++ */
++public class CityAtCapacityException extends Exception {
++
++    public CityAtCapacityException(String city, int limit) {
++        super("City '" + city + "' already contains " + limit
++                + " or more owners; no further owners can be created there");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+new file mode 100644
+index 00000000..fbcab97c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/CityAtCapacityExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class CityAtCapacityExceptionHandler {
++
++    public void handle(@Parameter CityAtCapacityException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java
+new file mode 100644
+index 00000000..b62fd671
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Rejects creating an owner when the owner's city already contains {@value #CITY_OWNER_LIMIT} or
++ * more owners, comparing cities case-insensitively. Runs before {@link BuildOwner}/{@link SaveOwner}
++ * so the clash is a 409 (Conflict) rather than a persisted row.
++ */
++public class EnsureOwnerCityCapacity {
++
++    /** Maximum number of owners permitted in a single city. */
++    static final int CITY_OWNER_LIMIT = 50;
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws CityAtCapacityException {
++        String city = request.getCity();
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city == null ? existing.getCity() == null : city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        if (count >= CITY_OWNER_LIMIT) {
++            throw new CityAtCapacityException(city, CITY_OWNER_LIMIT);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+new file mode 100644
+index 00000000..0a0bdf3c
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7d0be72a..8778ecbc 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -29,6 +29,11 @@ ensureTelephoneUnique:
+ ensureHouseholdUnique:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerHouseholdUnique
+   govern: [ transaction ]
++  next: ensureCityCapacity
++
++ensureCityCapacity:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerCityCapacity
++  govern: [ transaction ]
+   next: build
+ 
+ build:
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index e2d067e9..8771091a 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -197,6 +197,30 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectsCityAtCapacity() throws Exception {
++        // Fill a fresh city to its 50-owner capacity, each owner with a distinct household and
++        // telephone so only the city-capacity rule can reject the 51st create.
++        String city = "Capacity-" + System.nanoTime();
++        for (int i = 0; i < 50; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Resident" + i);
++            owner.setLastName("Resident" + i);
++            owner.setAddress(i + " Capacity Ln");
++            owner.setCity(city);
++            owner.setTelephone("+61608600" + String.format("%04d", i));
++            ownerRepository.save(owner);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Overflow","address":"999 Overflow Way","city":"%s","telephone":"6085559999"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
