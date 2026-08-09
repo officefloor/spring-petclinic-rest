@@ -195,9 +195,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getPostcode() != null) {
             String householdId = householdId(householdKey(owner.getLastName()), owner.getPostcode());
             owner.setHouseholdId(householdId);
-            // Because the household is now keyed on (lastName, postcode), a second owner in the
-            // same household is a household duplicate: rejected with 409 unless it opts in with
-            // 'sharesHousehold', in which case it is created as a declared household member.
+            // A second owner sharing a household (same lastName + postcode) but with a distinct
+            // identity is a legitimate additional household member — true duplicates are still
+            // caught by the identityKey check below. 'sharesHousehold' opts such an owner in as a
+            // declared member so it is not additionally flagged as a possible duplicate.
             boolean householdOccupied = false;
             for (Owner existing : this.clinicService.findAllOwners()) {
                 if (existing.isDeleted()) {
@@ -208,10 +209,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     break;
                 }
             }
-            if (householdOccupied) {
-                if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                    return new ResponseEntity<>(HttpStatus.CONFLICT);
-                }
+            if (householdOccupied && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
                 declaredHouseholdMember = true;
             }
         }
@@ -246,7 +244,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             idempotentCreates.put(idempotencyKey, owner.getId());
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        applyMembership(ownerDto, owner);
+        Map<String, Integer> householdSizes = householdSizes();
+        applyMembership(ownerDto, owner, householdSizes);
+        capMembershipLevelToHousehold(ownerDto, owner, householdSizes);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
@@ -731,6 +731,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int points = MembershipPoints.points(owner, householdSize);
         ownerDto.setMembershipPoints(points);
         ownerDto.setMembershipLevel(MembershipPoints.level(points));
+    }
+
+    /**
+     * Caps a newly created owner's {@code membershipLevel} at one above the highest
+     * {@code membershipLevel} among the other current members of its household, writing the
+     * capped value back onto the dto and returning it. A member's current level is scored the
+     * same way as {@link #applyMembership}, using {@code householdSizes} so the
+     * household-of-three-or-more factor reflects the household as it now stands. When the owner
+     * has no household, or is the only member of its household, no cap applies and the level is
+     * returned unchanged.
+     *
+     * @param ownerDto       the newly created owner's dto, with its uncapped membership already applied
+     * @param owner          the newly created owner (already saved, so it has an id)
+     * @param householdSizes household id to member count, as returned by {@link #householdSizes()}
+     * @return the resulting (possibly capped) membership level
+     */
+    private int capMembershipLevelToHousehold(OwnerDto ownerDto, Owner owner,
+        Map<String, Integer> householdSizes) {
+        int level = ownerDto.getMembershipLevel();
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return level;
+        }
+        Integer maxMemberLevel = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted() || existing.getId().equals(owner.getId())) {
+                continue;
+            }
+            if (householdId.equals(existing.getHouseholdId())) {
+                int size = householdSizes.getOrDefault(householdId, 1);
+                int memberLevel = MembershipPoints.level(MembershipPoints.points(existing, size));
+                maxMemberLevel = maxMemberLevel == null ? memberLevel
+                    : Math.max(maxMemberLevel, memberLevel);
+            }
+        }
+        if (maxMemberLevel != null && level > maxMemberLevel + 1) {
+            level = maxMemberLevel + 1;
+            ownerDto.setMembershipLevel(level);
+        }
+        return level;
     }
 
     /**
