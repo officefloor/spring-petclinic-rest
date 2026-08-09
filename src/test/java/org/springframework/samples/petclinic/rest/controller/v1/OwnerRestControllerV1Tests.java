@@ -136,23 +136,48 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerIdentityKeyCollisionReturnsConflict() throws Exception {
-        // A fully unique owner is created and returns its derived identityKey.
+        // A fully unique owner is created and returns its derived identityKey: the full
+        // lower-case hex SHA-256 over normalizedTelephone | lowerEmail | soundex(lastName).
         String first = """
             {"firstName":"George","lastName":"Collider","address":"5 Identity Way","city":"Madison","telephone":"6085550120"}
             """;
         mvc.perform(post("/api/owners").content(first)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.identityKey").value("+16085550120||"));
+            .andExpect(jsonPath("$.identityKey").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")));
 
-        // Different name/address, but the SAME telephone, no email and no household: the whole
-        // identityKey matches -> 409.
+        // Different first name/address, but the SAME telephone, no email and a last name with the
+        // SAME soundex: the whole identityKey matches -> 409.
         String duplicate = """
-            {"firstName":"Jane","lastName":"Twin","address":"9 Other Road","city":"Madison","telephone":"6085550120"}
+            {"firstName":"Jane","lastName":"Collider","address":"9 Other Road","city":"Madison","telephone":"6085550120"}
             """;
         mvc.perform(post("/api/owners").content(duplicate)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerSameHouseholdDifferentTelephoneIsSoftMatchNotConflict() throws Exception {
+        // First owner in a household (same last name + postcode identify the household).
+        String first = """
+            {"firstName":"George","lastName":"Neighbour","addressLine1":"1 Namesake Court","city":"Sydney","postcode":"2000","telephone":"6085550401"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Same last name and postcode but a DIFFERENT telephone: the telephone is part of the
+        // identityKey so the keys differ. This is no longer a hard household duplicate (409); it
+        // is created and flagged as a possible (soft) duplicate because soundex(lastName) and the
+        // postcode match.
+        String softMatch = """
+            {"firstName":"Jane","lastName":"Neighbour","addressLine1":"1 Namesake Court","city":"Sydney","postcode":"2000","telephone":"6085550402"}
+            """;
+        mvc.perform(post("/api/owners").content(softMatch)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.possibleDuplicate").value(true));
     }
 
     @Test

@@ -33,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.MembershipPoints;
+import org.springframework.samples.petclinic.mapper.OwnerIdentity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -214,14 +215,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         // Consolidated duplicate detection: reject only when the whole identityKey
-        // (normalized telephone | email | householdId) matches an existing owner's.
-        String identityKey = identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+        // (SHA-256 over normalizedTelephone | lowerEmail | soundex(lastName)) matches an
+        // existing owner's. This is the single duplicate check; owners sharing a household
+        // (same last name and postcode) but with different telephones produce different keys
+        // and are no longer rejected here — they surface as soft matches below.
+        String identityKey = OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (existing.isDeleted()) {
                 continue;
             }
-            if (identityKey.equals(identityKey(toE164(existing.getTelephone()),
-                emailForKey(existing.getEmail()), existing.getHouseholdId()))) {
+            if (identityKey.equals(OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                existing.getEmail(), existing.getLastName()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
@@ -793,13 +797,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Applies soft-match (possible-duplicate) detection to a new owner that has already
      * cleared hard {@code identityKey} duplicate rejection. The owner is flagged as a
-     * possible duplicate when an existing owner shares its last name (compared
-     * case-insensitively with collapsed whitespace) and its postcode while having a
-     * different normalized telephone; {@code possibleDuplicateOf} is then set to that
-     * existing owner's id. When several existing owners match, the one with the lowest id
-     * is chosen so the result is deterministic. When no such owner exists — or the new
-     * owner has no postcode to compare — {@code possibleDuplicate} is set to {@code false}
-     * and no matching id is recorded.
+     * possible duplicate when a non-deleted existing owner shares its {@link
+     * OwnerIdentity#soundex soundex(lastName)} and its postcode while producing a different
+     * {@code identityKey}; {@code possibleDuplicateOf} is then set to that existing owner's id.
+     * Because the telephone is part of the identity key, two owners with the same last name and
+     * postcode but different telephones differ in their keys and so surface here as a soft match
+     * rather than a hard duplicate. When several existing owners match, the one with the lowest
+     * id is chosen so the result is deterministic. When no such owner exists — or the new owner
+     * has no postcode to compare — {@code possibleDuplicate} is set to {@code false} and no
+     * matching id is recorded.
      *
      * @param owner the new owner, already normalized (E.164 telephone, validated postcode)
      */
@@ -808,12 +814,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getPostcode() == null) {
             return;
         }
-        String lastNameKey = householdKey(owner.getLastName());
+        String soundex = OwnerIdentity.soundex(owner.getLastName());
+        String identityKey = OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
         Owner match = null;
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (lastNameKey.equals(householdKey(existing.getLastName()))
+            if (existing.isDeleted()) {
+                continue;
+            }
+            if (soundex.equals(OwnerIdentity.soundex(existing.getLastName()))
                 && owner.getPostcode().equals(existing.getPostcode())
-                && !owner.getTelephone().equals(toE164(existing.getTelephone()))) {
+                && !identityKey.equals(OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                    existing.getEmail(), existing.getLastName()))) {
                 if (match == null || (existing.getId() != null
                     && existing.getId() < match.getId())) {
                     match = existing;
@@ -824,37 +835,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(match.getId());
         }
-    }
-
-    /**
-     * Builds the derived duplicate-detection identity key from an owner's normalized
-     * telephone, email and household id, formatted {@code
-     * '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Two owners are
-     * duplicates only when their whole identity keys are equal; because the telephone is
-     * part of the key, members of the same household with different telephones produce
-     * different keys and are both allowed.
-     *
-     * @param normalizedTelephone the E.164 telephone (may be {@code null})
-     * @param email               the normalized (lower-cased) email, or {@code null} when absent
-     * @param householdId         the shared household id, or {@code null} when the owner is not in a household
-     * @return the identity key string
-     */
-    private static String identityKey(String normalizedTelephone, String email, String householdId) {
-        return (normalizedTelephone == null ? "" : normalizedTelephone)
-            + "|" + (email == null ? "" : email)
-            + "|" + (householdId == null ? "" : householdId);
-    }
-
-    /**
-     * Normalizes an existing owner's stored email for identity-key comparison: trimmed and
-     * lower-cased, mirroring {@link #normalizeEmail} without re-validating syntax. Returns
-     * {@code null} when the owner has no email.
-     *
-     * @param email the existing owner's stored email (may be {@code null})
-     * @return the trimmed, lower-cased email, or {@code null} when {@code email} is null
-     */
-    private static String emailForKey(String email) {
-        return email == null ? null : email.trim().toLowerCase();
     }
 
     /**
