@@ -31,7 +31,7 @@ public class AssignHouseholdId {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
 
         List<Owner> household = new ArrayList<>();
         String existingId = null;
@@ -40,7 +40,7 @@ public class AssignHouseholdId {
                 continue;
             }
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 household.add(existing);
                 if (existingId == null && existing.getHouseholdId() != null
                         && !existing.getHouseholdId().isBlank()) {
