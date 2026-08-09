@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java
+index 4deb6d90..d397980d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeRegistrationDate.java
+@@ -1,29 +1,54 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.lang.reflect.Method;
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Out;
+ import net.officefloor.plugin.variable.Val;
++import org.springframework.core.MethodParameter;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.validation.BeanPropertyBindingResult;
++import org.springframework.validation.BindingResult;
++import org.springframework.web.bind.MethodArgumentNotValidException;
+ 
+ /**
+  * Resolves the EFFECTIVE registration date and rolls it onto a business day.
+  *
+  * <p>The effective date is the one supplied in the request, or the server's current date when the
+- * request omits it. Either way, when that date lands on a Saturday or Sunday it is rolled forward to
+- * the next Monday. The adjusted date is published as a variable so every later step derives from the
+- * same value: the daily create-limit counts owners per adjusted business day, {@link BuildOwner}
+- * stores it as the owner's {@code registrationDate}, and {@link AssignMembershipNumber} takes the
+- * membership number's year segment from it.
++ * request omits it. A supplied date later than the server's current date is rejected with 400 via
++ * {@link MethodArgumentNotValidException} — an owner cannot be registered in the future. Otherwise,
++ * when that date lands on a Saturday or Sunday it is rolled forward to the next Monday. The adjusted
++ * date is published as a variable so every later step derives from the same value: the daily
++ * create-limit counts owners per adjusted business day, {@link BuildOwner} stores it as the owner's
++ * {@code registrationDate}, and {@link AssignMembershipNumber} takes the membership number's year
++ * segment from it.
+  *
+  * <p>Runs before {@link EnsureDailyOwnerLimit} so the limit is checked against the adjusted date.
+  */
+ public class NormalizeRegistrationDate {
+ 
+-    public void service(@Val OwnerFieldsDto request, Out<LocalDate> registrationDate) {
+-        LocalDate effective = request.getRegistrationDate() != null
+-                ? request.getRegistrationDate() : LocalDate.now();
++    private static final Method SERVICE_METHOD;
++
++    static {
++        try {
++            SERVICE_METHOD = NormalizeRegistrationDate.class.getMethod("service", OwnerFieldsDto.class, Out.class);
++        }
++        catch (NoSuchMethodException ex) {
++            throw new ExceptionInInitializerError(ex);
++        }
++    }
++
++    public void service(@Val OwnerFieldsDto request, Out<LocalDate> registrationDate)
++            throws MethodArgumentNotValidException {
++        LocalDate supplied = request.getRegistrationDate();
++        if (supplied != null && supplied.isAfter(LocalDate.now())) {
++            BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
++            binding.rejectValue("registrationDate", "FutureDate",
++                "registration date must not be later than the current date");
++            throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
++        }
++        LocalDate effective = supplied != null ? supplied : LocalDate.now();
+         registrationDate.set(toBusinessDay(effective));
+     }
+ 
