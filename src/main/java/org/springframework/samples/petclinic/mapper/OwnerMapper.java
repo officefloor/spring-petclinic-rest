@@ -22,8 +22,21 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's preferred contact channel, derived at read time: {@code EMAIL}
+     * when an email address is present, otherwise {@code PHONE}.
+     */
+    default String contactPreference(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String email = owner.getEmail();
+        return (email != null && !email.isBlank()) ? "EMAIL" : "PHONE";
+    }
 
     /** Fixed city-to-region table used to derive an owner's locality at read time. */
     Map<String, String> CITY_REGION = Map.of(
