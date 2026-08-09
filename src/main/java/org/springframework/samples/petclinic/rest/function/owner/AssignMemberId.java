@@ -16,15 +16,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Assigns the owner's unified {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'}:
  * <ul>
- *   <li>REGION — the region code derived from the owner's postcode (preferred), falling back to the
- *       city and then to {@code UNKNOWN};</li>
+ *   <li>REGION — the version-2 region code: the plain region derived from the owner's postcode
+ *       (preferred), falling back to the city and then to {@code UNKNOWN}, with the fixed {@code 'V2'}
+ *       version tag mixed in (e.g. {@code 'NSWV2'}) so the id differs from its version-1 value;</li>
  *   <li>FY — the two-digit FISCAL YEAR of the {@code registrationDate} (the fiscal year starts on
  *       1 July, so a registration date on or after 1 July belongs to the next calendar year);</li>
  *   <li>HASH8 — the first eight UPPER-case hex characters of SHA-256 over
  *       {@code normalizedTelephone + lastName} (the same hash used by the region-and-hash identity);</li>
  *   <li>CHK — a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * e.g. {@code 'NSW271A2B3C4D5'} for an NSW owner registered in fiscal year 27.
+ * e.g. {@code 'NSWV2271A2B3C4D5'} for an NSW owner registered in fiscal year 27.
  *
  * <p>The core code is a pure function of the region, fiscal year and hash, so two distinct owners can
  * in principle derive the same {@code memberId}. When the computed id collides with an existing
@@ -37,6 +38,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
 public class AssignMemberId {
+
+    /**
+     * Fixed version tag mixed into the region code used inside the identifiers, so every identity-v2
+     * identifier differs from its version-1 value. It is mixed into the identifier only, never into
+     * the user-facing plain region ('locality').
+     */
+    private static final String VERSION_TAG = "V2";
 
     /** Fixed city-to-region table, mirroring the read-time locality derivation. */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -78,8 +86,19 @@ public class AssignMemberId {
         }
     }
 
-    /** Region derived from the postcode when it falls in a known range, else the city, else UNKNOWN. */
+    /**
+     * The version-2 region code used inside the member id: the plain region (from the postcode when
+     * it falls in a known range, else the city, else UNKNOWN) with the fixed {@code 'V2'} tag mixed
+     * in, e.g. {@code 'NSWV2'}. Mixing the tag in here is what shifts every member id off its
+     * version-1 value. The plain region without the tag still surfaces separately in the read-time
+     * {@code locality}.
+     */
     private static String region(Owner owner) {
+        return plainRegion(owner) + VERSION_TAG;
+    }
+
+    /** The plain region derived from the postcode when it falls in a known range, else the city, else UNKNOWN. */
+    private static String plainRegion(Owner owner) {
         String byPostcode = regionFromPostcode(owner.getPostcode());
         if (byPostcode != null) {
             return byPostcode;

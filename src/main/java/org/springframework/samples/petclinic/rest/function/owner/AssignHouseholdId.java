@@ -10,9 +10,11 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the new owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256
- * over {@code normalizedLastName + '|' + postcode}. Because the identifier is a pure function of the
- * last name and postcode, every owner with the same last name and postcode derives the same value and
- * so belongs to the same household automatically — there is no linking step and no back-fill.
+ * over {@code 'V2' + '|' + normalizedLastName + '|' + postcode}. Because the identifier is a pure
+ * function of the last name and postcode (under the fixed version-2 tag), every owner with the same
+ * last name and postcode derives the same value and so belongs to the same household automatically —
+ * there is no linking step and no back-fill. The {@code 'V2'} version tag shifts every household id
+ * off its version-1 value while preserving that grouping.
  *
  * <p>The last name is normalized (trimmed, internal whitespace collapsed, lower-cased) before hashing,
  * so trivially different spellings map to one household. The identifier keys off the postcode alone,
@@ -27,6 +29,13 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
 public class AssignHouseholdId {
+
+    /**
+     * Fixed version tag mixed into the household id so every identity-v2 value differs from its
+     * version-1 value. Being constant, it preserves the household grouping (same last name + postcode
+     * still map to one id).
+     */
+    private static final String VERSION_TAG = "V2";
 
     public void service(@Val Owner owner) {
         String postcode = owner.getPostcode();
@@ -45,11 +54,11 @@ public class AssignHouseholdId {
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    /** First 12 hex characters of SHA-256 over the normalized last name and the postcode. */
+    /** First 12 hex characters of SHA-256 over the 'V2' version tag, the normalized last name and the postcode. */
     private static String stableId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest((VERSION_TAG + "|" + lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));

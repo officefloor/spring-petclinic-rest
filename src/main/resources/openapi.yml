@@ -2122,6 +2122,49 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's derived identifiers, grouped together under the identity-v2 response shape. All
+        three are rederived with a version-2 algorithm that mixes in a fixed 'V2' version tag, so
+        every identifier changes and no value produced under version 1 recurs. The plain region code
+        still surfaces, unversioned, in the owner's 'locality'.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member identifier, formatted '<REGION><FY><HASH8><CHK>' and assigned
+            at creation. REGION is the version-2 region code: the plain region (from postcode, else
+            city, else UNKNOWN) with the fixed 'V2' tag mixed in (e.g. 'NSWV2'). FY is the 2-digit
+            fiscal year of the registrationDate (the fiscal year starts on 1 July); HASH8 is the
+            first eight upper-case hex characters of SHA-256 over (normalizedTelephone + lastName);
+            and CHK is a single Luhn check digit over the digits of '<REGION><FY><HASH8>'. On
+            collision with an existing member id a '-<n>' suffix (smallest n of 2 or more) is appended.
+          type: string
+          example: 'NSWV2271A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable shared identifier for the owner's household: the first 12 hex characters of
+            SHA-256 over the fixed 'V2' version tag, the normalized last name and the postcode. It is
+            deterministic, so every owner with the same last name and postcode derives the same value
+            automatically. Owners created without a postcode have no household and no householdId.
+          type: string
+          example: 'A1B2C3D4E5F6'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key, consolidating all duplicate detection into a single
+            value: the lower-case hex SHA-256 over the fixed 'V2' version tag, the normalized
+            telephone, the lower-cased email and the Soundex code of the last name. Two owners are the
+            same identity only when their whole key matches; a create is rejected with 409 only on an
+            exact full-key match.
+          type: string
+          example: 'e3b0c44298fc1c149afbf4c8996fb924'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2180,19 +2223,19 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The owner's unified member identifier, formatted '<REGION><FY><HASH8><CHK>' and
-                assigned at creation: REGION is the region code (from postcode, else city, else
-                UNKNOWN); FY is the 2-digit fiscal year of the registrationDate (the fiscal year
-                starts on 1 July); HASH8 is the first eight upper-case hex characters of SHA-256
-                over (normalizedTelephone + lastName); and CHK is a single Luhn check digit over
-                the digits of '<REGION><FY><HASH8>'. On collision with an existing member id a
-                '-<n>' suffix (smallest n of 2 or more) is appended.
-              type: string
-              example: 'NSW271A2B3C4D5'
+                The owner API contract version. Fixed at 2 for the identity-v2 response shape, in
+                which the owner's derived identifiers are grouped under the nested 'identity' object
+                (rather than at the top level) and every identifier is rederived with a version-2
+                algorithm that mixes in a fixed 'V2' tag.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             fiscalYear:
               title: Fiscal year
               description: >-
@@ -2204,28 +2247,6 @@ components:
                 year (e.g. 2026-06-30 -> 'FY26'). Absent when the owner has no registrationDate.
               type: string
               example: 'FY26'
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A stable shared identifier for the owner's household: the first 12 hex
-                characters of SHA-256 over the normalized last name and the postcode. It is
-                deterministic, so every owner with the same last name and postcode derives
-                the same value automatically. Owners created without a postcode have no
-                household and no householdId.
-              type: string
-              example: 'A1B2C3D4E5F6'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key, consolidating all duplicate detection into a
-                single value formatted 'normalizedTelephone|email|householdId' (the email and
-                householdId components are empty when absent). Two owners are the same identity only
-                when their whole key matches; a create is rejected with 409 only on an exact
-                full-key match.
-              type: string
-              example: '+616085550002||A1B2C3D4E5F6'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2265,9 +2286,11 @@ components:
             locality:
               title: Locality
               description: >-
-                The owner's locality, derived at read time from the city via the fixed
-                city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or
-                'UNKNOWN' when the city is not in the table.
+                The owner's locality: the plain region code, derived at read time from the postcode
+                (preferred) or the city via the fixed city-to-region table (Sydney->NSW,
+                Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when neither maps to a known region.
+                This is not an identifier, so the identity-v2 'V2' tag never appears here — it stays
+                the plain region code (e.g. 'NSW').
               type: string
               example: 'NSW'
               readOnly: true

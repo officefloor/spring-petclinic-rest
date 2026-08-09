@@ -200,19 +200,28 @@ public class Owner extends Person {
     }
 
     /**
+     * The fixed version tag mixed into the derived {@code identityKey}, so every identity-v2 key
+     * differs from its version-1 value. Being a constant prefix it leaves the equality relationship
+     * between keys unchanged, so duplicate and soft-match detection behave exactly as before.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * The owner's derived identity key, consolidating all duplicate detection into a single value: the
-     * lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
-     * Two owners are the same identity only when their whole key matches, so two people who share a
-     * surname (same {@link Soundex} code) and residence but have different telephones have distinct keys
-     * — they are a soft match, not a hard duplicate. The surname contributes only via its Soundex code,
-     * so trivially different spellings of the same-sounding name collide.
+     * lower-case hex SHA-256 of
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners
+     * are the same identity only when their whole key matches, so two people who share a surname (same
+     * {@link Soundex} code) and residence but have different telephones have distinct keys — they are a
+     * soft match, not a hard duplicate. The surname contributes only via its Soundex code, so trivially
+     * different spellings of the same-sounding name collide. The fixed {@code 'V2'} version tag mixes
+     * in so the key differs from its version-1 value while preserving those relationships.
      */
     @Transient
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
         String em = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
         String surname = Soundex.encode(this.getLastName());
-        return sha256Hex(tel + "|" + em + "|" + surname);
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + tel + "|" + em + "|" + surname);
     }
 
     /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */

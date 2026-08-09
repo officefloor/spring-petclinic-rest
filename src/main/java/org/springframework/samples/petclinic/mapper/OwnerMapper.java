@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -30,10 +31,30 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's identity-v2 identifiers, grouped into the nested {@code identity} object: the
+     * {@code memberId}, {@code householdId} and derived {@code identityKey}. Each was rederived at
+     * write time (or, for {@code identityKey}, on read) with the version-2 algorithm that mixes in
+     * the fixed {@code 'V2'} tag, so none coincides with its version-1 value. Null when the owner is
+     * absent so the whole object is simply omitted then.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
 
     /**
      * The owner's canonical self link, derived at read time as {@code '/api/owners/'} followed by
@@ -47,45 +68,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year, derived at read time and formatted {@code FY<YY>}. It references the
-     * {@code memberId}: the two FY digits sit between the REGION prefix and the HASH8 segment, so this
-     * reads them straight back out (2026-07-01 registration -> {@code memberId} 'NSW27...' -> {@code
-     * FY27}). Owners predating the unified {@code memberId} (e.g. seed data) fall back to the
-     * (business-day-adjusted) {@code registrationDate}, where the fiscal year starts on 1 July.
-     * Null when neither source is available, so the field is simply omitted then.
+     * The owner's fiscal year, derived at read time from the (business-day-adjusted)
+     * {@code registrationDate} and formatted {@code FY<YY>}, where {@code YY} is the last two digits
+     * of the fiscal year and the fiscal year starts on 1 July (a date on or after 1 July belongs to
+     * the next calendar year). Null when the owner has no {@code registrationDate}, so the field is
+     * simply omitted then.
+     *
+     * <p>Read straight from the {@code registrationDate} rather than the {@code memberId}: under
+     * identity-v2 the {@code memberId}'s leading REGION segment carries the {@code 'V2'} tag, so it
+     * is no longer a clean source for the fiscal-year digits.
      */
     default String fiscalYear(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        String fromMember = fiscalYearFromMemberId(owner.getMemberId());
-        if (fromMember != null) {
-            return fromMember;
-        }
-        if (owner.getRegistrationDate() == null) {
+        if (owner == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Reads the {@code FY<YY>} value out of the {@code memberId}: the two digits immediately after the
-     * leading REGION letters. Null when the {@code memberId} is absent or does not have two digits in
-     * that position. Kept {@code private static} so MapStruct does not treat it as a property mapping.
-     */
-    private static String fiscalYearFromMemberId(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        if (i == 0 || memberId.length() < i + 2) {
-            return null;
-        }
-        String yy = memberId.substring(i, i + 2);
-        return yy.matches("[0-9]{2}") ? "FY" + yy : null;
     }
 
     /**
@@ -143,43 +140,20 @@ public interface OwnerMapper {
         "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
 
     /**
-     * The owner's locality, derived at read time from the {@code memberId}: its leading REGION prefix
-     * (the run of letters before the FY digits). That region was itself derived at write time from the
-     * postcode (preferred) or city, defaulting to {@code UNKNOWN}, so reading it back keeps locality
-     * and the member identity in lock-step.
-     *
-     * <p>Owners predating the unified {@code memberId} (e.g. seed data with no memberId) fall back to
-     * the historical read-time derivation: postcode preferred, then city, then {@code UNKNOWN}.
+     * The owner's locality: the <em>plain</em> region code, derived at read time from the postcode
+     * (preferred) or the city, defaulting to {@code UNKNOWN}. This is a user-facing field, not an
+     * identifier, so it stays the plain region code (e.g. {@code 'NSW'}) — the identity-v2 {@code
+     * 'V2'} tag that is mixed into the {@code memberId}'s REGION segment never appears here.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
-        }
-        String region = regionFromMemberId(owner.getMemberId());
-        if (region != null) {
-            return region;
         }
         String byPostcode = regionFromPostcode(owner.getPostcode());
         if (byPostcode != null) {
             return byPostcode;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * The leading REGION prefix of a {@code memberId}: its run of leading letters, which sits before
-     * the two FY digits. Null when the {@code memberId} is absent or does not start with a letter.
-     * Kept {@code private static} so MapStruct does not treat it as a property mapping method.
-     */
-    private static String regionFromMemberId(String memberId) {
-        if (memberId == null || memberId.isEmpty()) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i > 0 ? memberId.substring(0, i) : null;
     }
 
     /**
@@ -310,6 +284,8 @@ public interface OwnerMapper {
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
     }
 
+    @Mapping(target = "memberId", ignore = true)
+    @Mapping(target = "householdId", ignore = true)
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)

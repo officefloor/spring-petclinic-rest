@@ -235,8 +235,8 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerAllowsHouseholdDuplicateWhenSharesHousehold() throws Exception {
         // The same household as above, but the second owner acknowledges it with 'sharesHousehold':
-        // it is created as a declared household member (with a householdId) and a declared member is
-        // not flagged as a possible duplicate.
+        // it is created as a declared household member (with a householdId, now grouped under the
+        // identity-v2 'identity' object) and a declared member is not flagged as a possible duplicate.
         String lastName = "Sharedhousehold";
         String first = """
             {"firstName":"George","lastName":"%s","address":"1 First St","city":"Madison","telephone":"6085554001","postcode":"2000"}
@@ -251,7 +251,7 @@ class OwnerRestControllerV1Tests {
         mvc.perform(post("/api/owners").content(second)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.householdId").exists())
+            .andExpect(jsonPath("$.identity.householdId").exists())
             .andExpect(jsonPath("$.possibleDuplicate").value(false));
     }
 
