@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -56,6 +58,14 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic check for an email address: a non-empty local part, an '@', a domain with at least
+     * one dot and a two-or-more letter top-level label. Case-insensitive; the accepted value is
+     * stored lower-cased.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     private final ClinicService clinicService;
 
@@ -109,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         rejectDuplicateTelephone(normalizedTelephone);
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -258,6 +269,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Normalizes an optional email address supplied on create. An absent email (null or blank) is
+     * left unset. When a value is present it must be a syntactically valid address; the normalized
+     * form stored and returned is the value lower-cased.
+     *
+     * @param email the raw email value from the request, or {@code null} when none was supplied
+     * @return the lower-cased email, or {@code null} when no email was supplied
+     * @throws InvalidOwnerFieldsException if a non-blank value is not a syntactically valid address
+     */
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return email.toLowerCase(Locale.ROOT);
     }
 
     /**
