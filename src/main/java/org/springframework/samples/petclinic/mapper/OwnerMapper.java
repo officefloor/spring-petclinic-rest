@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -100,6 +101,10 @@ public interface OwnerMapper {
     Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Fixed region-to-timezone table, mapping each region to its IANA timezone name. */
+    Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     /**
      * The owner's locality, derived at read time from the region-and-hash identity: the REGION
      * prefix of the {@code customerCode} (everything before the first hyphen). That region was
@@ -124,6 +129,19 @@ public interface OwnerMapper {
             return byPostcode;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The owner's IANA timezone, derived at read time from the owner's locality/region via the fixed
+     * region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane).
+     * Null when the owner is absent or the region has no known timezone (e.g. {@code UNKNOWN}), so the
+     * field is simply omitted then.
+     */
+    default String timezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return REGION_TIMEZONE.get(locality(owner));
     }
 
     /**
