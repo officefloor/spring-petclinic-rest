@@ -23,8 +23,6 @@ public interface OwnerMapper {
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -91,17 +89,6 @@ public interface OwnerMapper {
                 + "." + owner.getLastName().substring(0, 1).toUpperCase() + ".";
     }
 
-    /** Membership number '<customerCode>-M<YY>', YY = last two digits of the
-     *  fiscal year of the (business-day-adjusted) registrationDate, where the fiscal
-     *  year starts on 1 July. Null unless both source fields are present. */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-                fiscalYearOf(owner.getRegistrationDate()) % 100);
-    }
-
     /** The fiscal year of the (business-day-adjusted) registrationDate as 'FY<YY>',
      *  where the fiscal year starts on 1 July and is labelled by the calendar year in
      *  which it ends (e.g. 2 Jul 2025 -> FY26, 30 Jun 2026 -> FY26). Null when there is
@@ -119,33 +106,6 @@ public interface OwnerMapper {
     static int fiscalYearOf(java.time.LocalDate date) {
         return date.getMonthValue() >= java.time.Month.JULY.getValue()
                 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /** A single Luhn check digit (0-9) computed over the digits contained in the
-     *  owner's customerCode. Null when the customerCode is absent. */
-    default Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /** Membership points: starts at 0, adds 2 when an email is present, adds 1 when
@@ -201,17 +161,20 @@ public interface OwnerMapper {
         return 4;
     }
 
-    /** The owner's locality: the REGION component of the customerCode ('<REGION>-<HASH8>'),
-     *  which is derived from the postcode at creation. 'UNKNOWN' when the customerCode is absent
-     *  or carries no region prefix. Derived from the region-and-hash identity so it always agrees
-     *  with the code, membership number and check digit. */
+    /** The owner's locality: the REGION prefix of the memberId ('<REGION><FY><HASH8><CHK>'),
+     *  which is derived from the postcode at creation. 'UNKNOWN' when the memberId is absent or
+     *  carries no known region prefix. Derived from the same region-and-hash identity as the
+     *  memberId so it always agrees with it. */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return "UNKNOWN";
+        String id = owner.getMemberId();
+        if (id != null) {
+            for (String region : new String[] {"NSW", "VIC", "QLD"}) {
+                if (id.startsWith(region)) {
+                    return region;
+                }
+            }
         }
-        int dash = code.indexOf('-');
-        return dash <= 0 ? "UNKNOWN" : code.substring(0, dash);
+        return "UNKNOWN";
     }
 
     /** The owner's segment, formatted '<TIER>_<AREA>': TIER is 'PREMIUM' when
