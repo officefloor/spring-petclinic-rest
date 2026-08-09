@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ccc9ea31..428132c5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -130,6 +130,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+             }
+             owner.setEmail(email);
++            for (Owner existing : this.clinicService.findAllOwners()) {
++                if (existing.getEmail() != null && email.equalsIgnoreCase(existing.getEmail())) {
++                    return new ResponseEntity<>(HttpStatus.CONFLICT);
++                }
++            }
+         }
+         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
+         if (effectiveRegistrationDate == null) {
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index ca4b4e5a..56b27f4c 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -152,6 +152,25 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("Jane"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerDuplicateEmailReturnsConflict() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Mailer","address":"3 First Street","city":"Madison","telephone":"6085550301","email":"George.Mailer@Example.com"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Same email differing only in case -> 409.
++        String duplicate = """
++            {"firstName":"Jane","lastName":"Poster","address":"7 Second Street","city":"Madison","telephone":"6085550302","email":"george.mailer@example.com"}
++            """;
++        mvc.perform(post("/api/owners").content(duplicate)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerRejectedWhenCityAtCapacity() throws Exception {
