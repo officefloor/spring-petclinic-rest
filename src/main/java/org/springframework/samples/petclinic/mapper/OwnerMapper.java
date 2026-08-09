@@ -23,8 +23,39 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * A single Luhn check digit (0-9) computed at read time over the digits contained in the
+     * owner's customerCode. Non-digit characters (the hyphens in '<CITY3>-<LAST3>-<NNNN>') are
+     * skipped. Null when the owner or its customerCode is absent.
+     */
+    default Integer checkDigit(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null) {
+            return null;
+        }
+        String code = owner.getCustomerCode();
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
 
     /**
      * The owner's preferred contact channel, derived at read time: {@code EMAIL}
