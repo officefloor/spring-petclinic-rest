@@ -1,0 +1,198 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
+new file mode 100644
+index 00000000..a76106d1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdException.java
+@@ -0,0 +1,15 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when creating an owner whose last name and address match an existing owner (compared
++ * case-insensitively with collapsed whitespace) and the request did not acknowledge the shared
++ * household. Handled globally by {@link DuplicateHouseholdExceptionHandler}, which responds 409
++ * (Conflict).
++ */
++public class DuplicateHouseholdException extends Exception {
++
++    public DuplicateHouseholdException(String lastName, String address) {
++        super("An owner with last name '" + lastName + "' already lives at '" + address
++                + "'; set 'sharesHousehold' true to allow another owner at the same household");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
+new file mode 100644
+index 00000000..abe2a5d4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateHouseholdExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateHouseholdExceptionHandler {
++
++    public void handle(@Parameter DuplicateHouseholdException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java
+new file mode 100644
+index 00000000..e62528dc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Rejects creating an owner who shares a household — same last name and same address — with an
++ * existing owner, comparing both fields case-insensitively and with collapsed whitespace.
++ *
++ * <p>The request can opt out by setting {@code sharesHousehold} true, which acknowledges that two
++ * owners genuinely live at the same address. Runs before {@link BuildOwner}/{@link SaveOwner} so a
++ * clash is a 409 (Conflict) rather than a persisted row.
++ */
++public class EnsureOwnerHouseholdUnique {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateHouseholdException {
++        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
++            return;
++        }
++        String lastName = normalize(request.getLastName());
++        String address = normalize(request.getAddress());
++        for (Owner existing : ownerRepository.findAll()) {
++            if (lastName.equals(normalize(existing.getLastName()))
++                    && address.equals(normalize(existing.getAddress()))) {
++                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
++            }
++        }
++    }
++
++    /** Trim, collapse internal whitespace to a single space and lower-case for comparison. */
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
+new file mode 100644
+index 00000000..0e536703
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 2ce96376..2e4a12e8 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -19,6 +19,11 @@ normalizeEmail:
+ ensureTelephoneUnique:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerTelephoneUnique
+   govern: [ transaction ]
++  next: ensureHouseholdUnique
++
++ensureHouseholdUnique:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerHouseholdUnique
++  govern: [ transaction ]
+   next: build
+ 
+ build:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3d130ba8..7bdaa9dd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2053,6 +2053,17 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Write-only flag set on create to acknowledge that this owner shares a
++            household with an existing owner. When omitted or false, creating an owner
++            whose last name and address match an existing owner (compared
++            case-insensitively with collapsed whitespace) is rejected with 409; when
++            true the create is allowed.
++          type: boolean
++          writeOnly: true
++          example: false
+       required:
+         - firstName
+         - lastName
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index aaec7c14..e2d067e9 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -102,8 +102,9 @@ class OwnerRestControllerV1Tests {
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
++        // Distinct address so this household does not clash with the seeded 'Franklin, 110 W. Liberty St.'.
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550001"}
++            {"firstName":"George","lastName":"Franklin","address":"1 Create Success Way","city":"Madison","telephone":"6085550001"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -115,8 +116,9 @@ class OwnerRestControllerV1Tests {
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerNormalizesTelephoneToE164() throws Exception {
++        // Distinct address so this household does not clash with the seeded 'Franklin, 110 W. Liberty St.'.
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"(608) 555-0002"}
++            {"firstName":"George","lastName":"Franklin","address":"2 Normalize Ave","city":"Madison","telephone":"(608) 555-0002"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -168,6 +170,33 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isConflict());
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectsDuplicateHousehold() throws Exception {
++        // Seed data already holds 'Franklin, 110 W. Liberty St.'. This body has the same last name
++        // and address differing only in case and collapsed whitespace, with a fresh telephone, so
++        // the household rule (not the telephone rule) makes it a 409.
++        String body = """
++            {"firstName":"Jane","lastName":"Franklin","address":"110   w.  liberty st.","city":"Madison","telephone":"6085552001"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowsSharedHouseholdWhenAcknowledged() throws Exception {
++        // Same household as the seeded 'Franklin, 110 W. Liberty St.', but the request acknowledges
++        // the shared household, so it is created.
++        String body = """
++            {"firstName":"Jane","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085552002","sharesHousehold":true}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
