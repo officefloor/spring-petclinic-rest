@@ -2,23 +2,26 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
 
+import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Rejects creating an owner when {@value DailyOwnerLimitException#DAILY_OWNER_LIMIT} or more owners
- * have already been created today, comparing each existing owner's {@link Owner#getRegistrationDate()}
- * against the current date. Runs before {@link BuildOwner}/{@link SaveOwner} so the limit is a 429
+ * have already been created for the new owner's adjusted business day, comparing each existing
+ * owner's {@link Owner#getRegistrationDate()} against that date. The date comes from
+ * {@link NormalizeRegistrationDate} so the count is keyed on the same adjusted date the owner will be
+ * stored with. Runs before {@link BuildOwner}/{@link SaveOwner} so the limit is a 429
  * (Too Many Requests) rather than a persisted row.
  */
 public class EnsureDailyOwnerLimit {
 
-    public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+    public void service(@Val LocalDate registrationDate, OwnerRepository ownerRepository)
+            throws DailyOwnerLimitException {
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            if (registrationDate.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }

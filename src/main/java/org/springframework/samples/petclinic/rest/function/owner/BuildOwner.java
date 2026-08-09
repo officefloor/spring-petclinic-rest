@@ -10,11 +10,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 public class BuildOwner {
 
-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+    public void service(@Val OwnerFieldsDto request, @Val LocalDate registrationDate,
+            OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        // The effective registration date has already been resolved (supplied or defaulted) and
+        // rolled onto a business day by NormalizeRegistrationDate; store that adjusted value.
+        owner.setRegistrationDate(registrationDate);
         built.set(owner);
     }
 }
