@@ -34,9 +34,9 @@ public interface OwnerMapper {
     // level is known.
     @Mapping(target = "ownerSegment", ignore = true)
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromMemberId(owner.getMemberId()))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneFromCustomerCode(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneFromMemberId(owner.getMemberId()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay",
@@ -44,9 +44,6 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerIdentity.identityKey("
             + "owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
-    @Mapping(target = "checkDigit",
-        expression = "java(owner.getCustomerCode() == null ? null "
-            + ": org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(owner.getCustomerCode()))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.forBirthDate("
             + "owner.getBirthDate(), owner.getRegistrationDate()))")

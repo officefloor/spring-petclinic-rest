@@ -48,7 +48,7 @@ public final class OwnerLocality {
      * Return the canonical region derived from the {@code postcode} alone (NSW 2000-2099,
      * VIC 3000-3099, QLD 4000-4099), or {@code "UNKNOWN"} when the postcode is absent,
      * malformed, or in no known range. This is the REGION component of an owner's
-     * {@code customerCode}.
+     * {@code memberId}.
      */
     public static String forPostcodeOrUnknown(String postcode) {
         String region = forPostcode(postcode);
@@ -56,26 +56,30 @@ public final class OwnerLocality {
     }
 
     /**
-     * Return the REGION component of a {@code customerCode} formatted {@code '<REGION>-<HASH8>'},
-     * i.e. the text before the first {@code '-'}. Returns {@code "UNKNOWN"} when the customer
-     * code is null or carries no region prefix. This is the owner's derived {@code locality}.
+     * Return the REGION component of a {@code memberId} formatted
+     * {@code '<REGION><FY><HASH8><CHK>'}, i.e. the leading run of letters before the two-digit
+     * fiscal year. Returns {@code "UNKNOWN"} when the member id is null or carries no region
+     * prefix. This is the owner's derived {@code locality}.
      */
-    public static String regionFromCustomerCode(String customerCode) {
-        if (customerCode == null) {
+    public static String regionFromMemberId(String memberId) {
+        if (memberId == null) {
             return "UNKNOWN";
         }
-        int dash = customerCode.indexOf('-');
-        return dash > 0 ? customerCode.substring(0, dash) : "UNKNOWN";
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i > 0 ? memberId.substring(0, i) : "UNKNOWN";
     }
 
     /**
-     * Return the IANA timezone name for the owner's {@code customerCode}, derived from its
+     * Return the IANA timezone name for the owner's {@code memberId}, derived from its
      * REGION component via the fixed region-to-timezone table (NSW -> Australia/Sydney,
      * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). Returns {@code null} when the
      * region is unknown, so the {@code timezone} field is omitted from the response.
      */
-    public static String timezoneFromCustomerCode(String customerCode) {
-        return REGION_TIMEZONE.get(regionFromCustomerCode(customerCode));
+    public static String timezoneFromMemberId(String memberId) {
+        return REGION_TIMEZONE.get(regionFromMemberId(memberId));
     }
 
     /**

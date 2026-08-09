@@ -249,9 +249,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         else {
             applyPossibleDuplicate(owner);
         }
-        owner.setCustomerCode(deduplicatedCustomerCode(
-            customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName())));
-        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        owner.setMemberId(deduplicatedMemberId(memberId(
+            owner.getPostcode(), owner.getTelephone(), owner.getLastName(), owner.getRegistrationDate())));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
@@ -262,9 +261,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         applyMembership(ownerDto, owner, householdSizes);
         capMembershipLevelToHousehold(ownerDto, owner, householdSizes);
         applyOwnerSegment(ownerDto);
-        AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         emitOwnerCreatedEvent(owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
@@ -275,31 +274,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The owner's current primary identifier, as carried by the structured {@code OWNER_CREATED}
-     * event. Today that is the {@link Owner#getCustomerCode() customerCode}; when the customer code
-     * is later unified into the member id this is the single place that switches to the member id,
-     * so the event automatically carries whatever the current primary identifier is.
+     * event. This is the owner's unified {@link Owner#getMemberId() memberId}.
      *
      * @param owner the newly created, saved owner
      * @return the owner's current primary identifier
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Emits the immutable, structured {@code OWNER_CREATED} audit event via the {@code AUDIT}
      * logger, in addition to the human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where {@code seq}
-     * is a process-wide monotonically increasing integer across creates, and the {@code customerCode}
+     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq}
+     * is a process-wide monotonically increasing integer across creates, and the {@code memberId}
      * slot carries the owner's {@link #primaryIdentifier current primary identifier}.
      *
      * @param ownerId         the newly created owner's id
-     * @param primaryId       the owner's current primary identifier (customerCode today)
+     * @param primaryId       the owner's current primary identifier (the memberId)
      * @param membershipLevel the owner's resolved membership level
      */
     private static void emitOwnerCreatedEvent(int ownerId, String primaryId, int membershipLevel) {
         long seq = AUDIT_EVENT_SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},"
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},"
             + "\"event\":\"OWNER_CREATED\"}", seq, ownerId, primaryId, membershipLevel);
     }
 
@@ -535,38 +532,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a newly created owner, formatted
-     * {@code '<REGION>-<HASH8>'} where {@code REGION} is the canonical region
+     * Builds the unified member id for a newly created owner, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the canonical region
      * {@link OwnerLocality#forPostcodeOrUnknown derived from the postcode} (or
-     * {@code "UNKNOWN"} when the postcode resolves no region) and {@code HASH8} is the
-     * first eight upper-case hex characters of the SHA-256 digest of
-     * {@code normalizedTelephone + lastName}. The code carries no sequence number, so it is
-     * stable for a given telephone and last name rather than dependent on creation order.
+     * {@code "UNKNOWN"} when the postcode resolves no region), {@code FY} is the last two
+     * digits of the fiscal year of the business-day-adjusted registration date (fiscal year
+     * starts 1 July, named by the year it ends in), {@code HASH8} is the first eight
+     * upper-case hex characters of the SHA-256 digest of {@code normalizedTelephone + lastName}
+     * (the same hash used by the region-and-hash identity), and {@code CHK} is a single Luhn
+     * check digit computed over the digits of {@code '<REGION><FY><HASH8>'}. The id carries no
+     * sequence number, so it is stable for a given telephone, last name and fiscal year rather
+     * than dependent on creation order.
      *
      * @param postcode            the owner's postcode (may be {@code null})
      * @param normalizedTelephone the owner's normalized E.164 telephone
      * @param lastName            the owner's last name
-     * @return the assigned customer code (e.g. {@code 'NSW-1A2B3C4D'})
+     * @param registrationDate    the owner's business-day-adjusted registration date
+     * @return the assigned member id (e.g. {@code 'NSW271A2B3C4D5'})
      */
-    private static String customerCode(String postcode, String normalizedTelephone, String lastName) {
+    private static String memberId(String postcode, String normalizedTelephone, String lastName,
+        LocalDate registrationDate) {
         String region = org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(postcode);
-        return region + "-" + sha256Hex8(normalizedTelephone + lastName);
+        int fiscalYear = org.springframework.samples.petclinic.mapper.FiscalYear.yearValue(registrationDate);
+        String fy = String.format("%02d", Math.floorMod(fiscalYear, 100));
+        String base = region + fy + sha256Hex8(normalizedTelephone + lastName);
+        int chk = org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(base);
+        return base + chk;
     }
 
     /**
-     * De-duplicates a freshly computed {@code base} customer code against the codes already
+     * De-duplicates a freshly computed {@code base} member id against the ids already
      * assigned to existing owners. When {@code base} is free it is returned unchanged;
      * otherwise {@code '-<n>'} is appended with the smallest {@code n} of two or more that
-     * yields a code no existing owner holds.
+     * yields an id no existing owner holds.
      *
-     * @param base the computed {@code '<REGION>-<HASH8>'} customer code
+     * @param base the computed {@code '<REGION><FY><HASH8><CHK>'} member id
      * @return {@code base}, or {@code base + "-<n>"} de-duplicated to be unique
      */
-    private String deduplicatedCustomerCode(String base) {
+    private String deduplicatedMemberId(String base) {
         Set<String> existing = new HashSet<>();
         for (Owner owner : this.clinicService.findAllOwners()) {
-            if (owner.getCustomerCode() != null) {
-                existing.add(owner.getCustomerCode());
+            if (owner.getMemberId() != null) {
+                existing.add(owner.getMemberId());
             }
         }
         if (!existing.contains(base)) {
@@ -581,7 +588,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Returns the first eight upper-case hex characters of the SHA-256 digest of the UTF-8
-     * bytes of {@code source} — the {@code HASH8} component of an owner's customer code.
+     * bytes of {@code source} — the {@code HASH8} component of an owner's member id.
      *
      * @param source the string to hash
      * @return the first eight upper-case hex characters of {@code SHA-256(source)}
@@ -598,22 +605,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
-    }
-
-    /**
-     * Builds the membership number for a newly created owner, formatted
-     * {@code '<customerCode>-M<YY>'} where {@code customerCode} is the owner's assigned
-     * customer code and {@code YY} is the last two digits of the fiscal year of the owner's
-     * business-day-adjusted registration date, zero-padded to two digits. The fiscal year
-     * starts on 1 July and is named by the calendar year it ends in.
-     *
-     * @param customerCode     the owner's assigned customer code (e.g. {@code 'NSW-1A2B3C4D'})
-     * @param registrationDate the owner's business-day-adjusted registration date
-     * @return the assigned membership number (e.g. {@code 'NSW-1A2B3C4D-M27'})
-     */
-    private String membershipNumber(String customerCode, LocalDate registrationDate) {
-        int fiscalYear = org.springframework.samples.petclinic.mapper.FiscalYear.yearValue(registrationDate);
-        return String.format("%s-M%02d", customerCode, Math.floorMod(fiscalYear, 100));
     }
 
     /**
