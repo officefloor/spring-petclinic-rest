@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+index 701d0b59..fd4f14ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/ValidationExceptionHandler.java
+@@ -33,6 +33,11 @@ public class ValidationExceptionHandler {
+                     })
+                     .toList();
+             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
++            List<String> errors = bindingResult.getFieldErrors().stream()
++                    .map(org.springframework.validation.FieldError::getField)
++                    .distinct()
++                    .toList();
++            detail.setProperty("errors", errors);
+         }
+         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 87ace058..2342f86f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -1,17 +1,14 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import jakarta.validation.Valid;
+ import net.officefloor.plugin.variable.Out;
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.validation.annotation.Validated;
+-import org.springframework.web.bind.annotation.RequestBody;
+ 
+-@Validated
+ public class BuildOwner {
+ 
+-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
++    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         built.set(ownerMapper.toOwner(request));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index 536a86bc..d05a4810 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -1,18 +1,56 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.lang.reflect.Method;
++
+ import jakarta.validation.Valid;
+ import net.officefloor.plugin.variable.Out;
++import org.springframework.core.MethodParameter;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.validation.BeanPropertyBindingResult;
++import org.springframework.validation.BindingResult;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.RequestBody;
+ 
+ /**
+  * Validates before {@link LoadOwner} runs, so an invalid body is a 400 even when the owner does not exist.
++ *
++ * <p>Bean validation ({@code @Valid}) rejects missing or malformed fields. It does not, however, reject a
++ * value that is present but blank (whitespace only) when the field has no pattern constraint — {@code address}
++ * and {@code city}. This step additionally rejects any of the required owner fields that are missing or blank,
++ * so a create/update never persists an owner with an empty required field.
+  */
+ @Validated
+ public class ValidateOwner {
+ 
+-    public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated) {
++    private static final Method SERVICE_METHOD;
++
++    static {
++        try {
++            SERVICE_METHOD = ValidateOwner.class.getMethod("service", OwnerFieldsDto.class, Out.class);
++        }
++        catch (NoSuchMethodException ex) {
++            throw new ExceptionInInitializerError(ex);
++        }
++    }
++
++    public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
++            throws MethodArgumentNotValidException {
++        BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
++        rejectIfBlank(binding, "firstName", request.getFirstName());
++        rejectIfBlank(binding, "lastName", request.getLastName());
++        rejectIfBlank(binding, "address", request.getAddress());
++        rejectIfBlank(binding, "city", request.getCity());
++        rejectIfBlank(binding, "telephone", request.getTelephone());
++        if (binding.hasErrors()) {
++            throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
++        }
+         validated.set(request);
+     }
++
++    private static void rejectIfBlank(BindingResult binding, String field, String value) {
++        if (value == null || value.isBlank()) {
++            binding.rejectValue(field, "NotBlank", "must not be blank");
++        }
++    }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 4d4b2868..da733ee2 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,11 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++validate:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
++  govern: [ transaction ]
++  next: build
++
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
