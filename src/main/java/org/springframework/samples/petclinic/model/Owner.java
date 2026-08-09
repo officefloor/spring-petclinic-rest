@@ -113,6 +113,47 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * The known E.164 country calling codes this owner's telephone may carry, used only to split the
+     * stored number into its country code and national digits for display. Australia ('+61') and the
+     * North American Numbering Plan ('+1') mirror the codes the create endpoint recognises.
+     */
+    private static final String[] KNOWN_COUNTRY_CODES = {"61", "1"};
+
+    /**
+     * The stored E.164 {@code telephone} formatted for human reading: the country calling code (kept
+     * with its leading {@code '+'}), a space, then the national digits grouped in threes from the left
+     * and separated by spaces (e.g. {@code +61412345678} becomes {@code "+61 412 345 678"}). The
+     * country code is taken as the longest {@link #KNOWN_COUNTRY_CODES} match, defaulting to a
+     * two-digit code when none is recognised. It is a derived value; the raw {@code telephone} stays in
+     * E.164 form.
+     *
+     * @return the human-formatted telephone, or the raw {@code telephone} when it is {@code null} or
+     *         not in E.164 form
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+[0-9]+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        String countryCode = null;
+        for (String code : KNOWN_COUNTRY_CODES) {
+            if (digits.startsWith(code) && digits.length() > code.length()
+                && (countryCode == null || code.length() > countryCode.length())) {
+                countryCode = code;
+            }
+        }
+        if (countryCode == null) {
+            countryCode = digits.substring(0, Math.min(2, digits.length()));
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
+    }
+
     public String getEmail() {
         return this.email;
     }
