@@ -3,59 +3,38 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * When the request opts in with {@code sharesHousehold} true, gives the new owner a stable
- * {@code householdId} shared with the existing owner(s) at the same household — same last name and
- * same address, compared case-insensitively with collapsed whitespace.
+ * Assigns the new owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256
+ * over {@code normalizedLastName + '|' + postcode}. Because the identifier is a pure function of the
+ * last name and postcode, every owner with the same last name and postcode derives the same value and
+ * so belongs to the same household automatically — there is no linking step and no back-fill.
  *
- * <p>The identifier is deterministic (a hex prefix of SHA-256 over the normalized last name and
- * address), so every member of a household derives the same value and it stays stable as new members
- * join. Any pre-existing household member that has no identifier yet is back-filled with the same
- * value so the whole household shares it. Runs after {@link BuildOwner} (so the entity exists) and
- * before {@link SaveOwner}, mutating the not-yet-persisted owner in place.
+ * <p>The last name is normalized (trimmed, internal whitespace collapsed, lower-cased) before hashing,
+ * so trivially different spellings map to one household. The identifier keys off the postcode alone,
+ * not the free-text address, so a household needs a postcode: when the request has no postcode the
+ * owner has no household and {@code householdId} is left null.
+ *
+ * <p>Note the change from earlier behaviour: {@code sharesHousehold} no longer creates the household
+ * link (the link is now automatic); it only bypasses the household-duplicate block in
+ * {@link EnsureHouseholdUnique}.
+ *
+ * <p>Runs after {@link BuildOwner} (so the entity, its last name and postcode exist) and before both
+ * {@link EnsureHouseholdUnique} and {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
 public class AssignHouseholdId {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
+    public void service(@Val Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return; // no postcode -> no household
         }
         String lastName = normalize(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-
-        List<Owner> household = new ArrayList<>();
-        String existingId = null;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (owner.getId() != null && owner.getId().equals(existing.getId())) {
-                continue;
-            }
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
-                household.add(existing);
-                if (existingId == null && existing.getHouseholdId() != null
-                        && !existing.getHouseholdId().isBlank()) {
-                    existingId = existing.getHouseholdId();
-                }
-            }
-        }
-
-        String householdId = existingId != null ? existingId : stableId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner member : household) {
-            if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
+        owner.setHouseholdId(stableId(lastName, postcode.trim()));
     }
 
     /** Trim, collapse internal whitespace to a single space and lower-case for comparison. */
@@ -66,16 +45,16 @@ public class AssignHouseholdId {
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    /** First 12 upper-case hex characters of SHA-256 over the normalized last name and address. */
-    private static String stableId(String lastName, String address) {
+    /** First 12 hex characters of SHA-256 over the normalized last name and the postcode. */
+    private static String stableId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + address).getBytes(StandardCharsets.UTF_8));
+                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, 12).toUpperCase(Locale.ROOT);
+            return sb.substring(0, 12);
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);

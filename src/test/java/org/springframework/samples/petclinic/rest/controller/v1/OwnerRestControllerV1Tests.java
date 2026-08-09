@@ -201,6 +201,52 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectsHouseholdDuplicate() throws Exception {
+        // householdId is now deterministic from (lastName, postcode): a second owner with the same
+        // last name and postcode is the same household, so even with a different telephone/address it
+        // is rejected as a household duplicate (409) when 'sharesHousehold' is not set.
+        String lastName = "Householdtest";
+        String first = """
+            {"firstName":"George","lastName":"%s","address":"1 First St","city":"Madison","telephone":"6085553001","postcode":"2000"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        String second = """
+            {"firstName":"Jane","lastName":"%s","address":"2 Second St","city":"Madison","telephone":"6085553002","postcode":"2000"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerAllowsHouseholdDuplicateWhenSharesHousehold() throws Exception {
+        // The same household as above, but the second owner acknowledges it with 'sharesHousehold':
+        // it is created as a declared household member (with a householdId) and a declared member is
+        // not flagged as a possible duplicate.
+        String lastName = "Sharedhousehold";
+        String first = """
+            {"firstName":"George","lastName":"%s","address":"1 First St","city":"Madison","telephone":"6085554001","postcode":"2000"}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        String second = """
+            {"firstName":"Jane","lastName":"%s","address":"2 Second St","city":"Madison","telephone":"6085554002","postcode":"2000","sharesHousehold":true}
+            """.formatted(lastName);
+        mvc.perform(post("/api/owners").content(second)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.householdId").exists())
+            .andExpect(jsonPath("$.possibleDuplicate").value(false));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectsCityAtCapacity() throws Exception {
         // Fill a fresh city to its 50-owner capacity, each owner with a distinct household and
         // telephone so only the city-capacity rule can reject the 51st create.

@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
@@ -9,12 +10,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * identity match yet shares an existing owner's last name and postcode while having a different
  * telephone, it is recorded as a possible duplicate of that owner.
  *
- * <p>Sets {@code possibleDuplicate} true and {@code possibleDuplicateOf} to the matching owner's id
- * (the lowest-id match when several qualify, so the value is deterministic); otherwise
+ * <p>A <em>declared</em> household member — a request that set {@code sharesHousehold} to join a known
+ * household — is never a suspected duplicate: it was accepted deliberately, so this step clears the
+ * flag and returns. (Without {@code sharesHousehold}, a second owner sharing the household is instead
+ * rejected outright by {@link EnsureHouseholdUnique}, so it never reaches this step.)
+ *
+ * <p>Otherwise sets {@code possibleDuplicate} true and {@code possibleDuplicateOf} to the matching
+ * owner's id (the lowest-id match when several qualify, so the value is deterministic); otherwise
  * {@code possibleDuplicate} is set false and {@code possibleDuplicateOf} left null. Hard duplicates —
  * an exact identity-key match — never reach here: they are rejected earlier by
- * {@link EnsureOwnerIdentityUnique}, and sharing the last name and postcode but with a <em>different</em>
- * telephone yields a different identity key, so this is always a create-and-flag, never a reject.
+ * {@link EnsureOwnerIdentityUnique}.
  *
  * <p>Runs after {@link NormalizeOwnerTelephone} (so telephones compare in canonical form) and after
  * {@link BuildOwner} (so the entity, its last name and postcode exist), and before {@link SaveOwner}
@@ -22,7 +27,12 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();
