@@ -30,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
     @Mapping(target = "bulkSignupWarning",
@@ -211,6 +212,17 @@ public interface OwnerMapper {
         }
         int dash = code.indexOf('-');
         return dash <= 0 ? "UNKNOWN" : code.substring(0, dash);
+    }
+
+    /** The owner's segment, formatted '<TIER>_<AREA>': TIER is 'PREMIUM' when
+     *  membershipLevel is 3 or more, otherwise 'STANDARD'; AREA is 'METRO' when the
+     *  locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'. */
+    default String ownerSegment(Owner owner) {
+        Integer level = membershipLevel(owner);
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String area = org.springframework.samples.petclinic.rest.function.owner.PostcodeRegions
+                .timezoneForRegion(locality(owner)) != null ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /** The IANA timezone name derived from the owner's locality/region using the fixed
