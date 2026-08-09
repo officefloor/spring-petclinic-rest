@@ -37,6 +37,7 @@ public interface OwnerMapper {
             expression = "java(owner.getCapacityWarning() != null && owner.getCapacityWarning())")
     @Mapping(target = "possibleDuplicate",
             expression = "java(owner.getPossibleDuplicateOf() != null)")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "deleted",
             expression = "java(owner.getDeleted() != null && owner.getDeleted())")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -66,6 +67,21 @@ public interface OwnerMapper {
             return "ADULT";
         }
         return "SENIOR";
+    }
+
+    /**
+     * The owner's risk flag: true when any of three signals hold — the owner is a possible
+     * duplicate ({@code possibleDuplicateOf} set), the email domain is disposable-adjacent (its
+     * second-level label matches a known disposable service), or the owner's city is over its soft
+     * capacity (the {@code capacityWarning} band: 40 or more other owners already share the city).
+     * Otherwise false.
+     */
+    default Boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = owner.getPossibleDuplicateOf() != null;
+        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner
+                .DisposableEmailDomains.isDisposableAdjacent(owner.getEmail());
+        boolean overSoftCapacity = owner.getCapacityWarning() != null && owner.getCapacityWarning();
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
     }
 
     /** 'EMAIL' when the owner has a non-blank email address, otherwise 'PHONE'. */
