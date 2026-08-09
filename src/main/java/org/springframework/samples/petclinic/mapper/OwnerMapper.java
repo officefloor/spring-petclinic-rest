@@ -29,8 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "bulkSignupWarning",
             expression = "java(owner.getBulkSignupWarning() != null && owner.getBulkSignupWarning())")
     @Mapping(target = "capacityWarning",
@@ -44,6 +44,19 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's grouped version-2 identity: the memberId and householdId assigned at
+     *  creation plus the derived identityKey, all rederived with the version-2 region code.
+     *  These three are no longer top-level fields; they live under the response 'identity' object. */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.rest.function.owner
+                .OwnerIdentity.identityKey(owner));
+        return identity;
+    }
 
     /** The stored E.164 'telephone' formatted for humans: the country code, a space, then the
      *  national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' stays

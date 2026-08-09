@@ -33,6 +33,31 @@ public final class PostcodeRegions {
         return region == null ? null : REGION_TIMEZONE.get(region);
     }
 
+    /** Fixed version-2 tag mixed into the region code used inside owner identifiers. */
+    private static final String VERSION_TAG = "V2";
+
+    /**
+     * The plain region code for a postcode: the canonical region (NSW, VIC, QLD) whose
+     * range contains it, or {@code "UNKNOWN"} when there is none. This is the value that
+     * surfaces user-facing as {@code locality}/{@code timezone} and in the owner segment,
+     * and forms the plain REGION prefix of the memberId — it never carries the version tag.
+     */
+    public static String regionCode(String postcode) {
+        String region = regionForPostcode(postcode);
+        return region == null ? "UNKNOWN" : region;
+    }
+
+    /**
+     * The version-2 region code: the plain {@link #regionCode(String) region code} combined
+     * with the fixed {@code 'V2'} version tag. It is mixed <em>inside</em> the owner
+     * identifiers (memberId hash, householdId and identityKey) so every version-2 identifier
+     * differs from the value version 1 produced, while {@code locality}, {@code timezone} and
+     * the owner segment keep the plain region code.
+     */
+    public static String regionCodeV2(String postcode) {
+        return regionCode(postcode) + "-" + VERSION_TAG;
+    }
+
     /** Canonical region for the city, or null when the city has no known region. */
     public static String regionFor(String city) {
         return CITY_REGION.get(city);

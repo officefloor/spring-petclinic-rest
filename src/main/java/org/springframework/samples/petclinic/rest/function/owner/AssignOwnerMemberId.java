@@ -17,8 +17,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner's postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, otherwise {@code UNKNOWN}); FY is
  * the two-digit fiscal year of the (business-day-adjusted) registrationDate (the fiscal year
  * starting 1 July); HASH8 is the first eight UPPER-case hex characters of the SHA-256 digest over
- * the normalized (E.164) telephone concatenated with the owner's last name — the same HASH8 used by
- * the region-and-hash identity; and CHK is a single Luhn check digit computed over the digits of
+ * the version-2 region code (the plain region combined with a fixed {@code 'V2'} tag) followed by the
+ * normalized (E.164) telephone and the owner's last name, so the identity is rederived for version 2
+ * while the REGION prefix stays the plain region; and CHK is a single Luhn check digit over the digits of
  * {@code <REGION><FY><HASH8>}. This unifies the former customerCode, membershipNumber and standalone
  * checkDigit into one identifier.
  *
@@ -32,15 +33,15 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignOwnerMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = PostcodeRegions.regionForPostcode(owner.getPostcode());
-        if (region == null) {
-            region = "UNKNOWN";
-        }
+        // Plain region code is the visible REGION prefix (and feeds locality); the
+        // version-2 region code is mixed into HASH8 so the whole memberId is rederived.
+        String region = PostcodeRegions.regionCode(owner.getPostcode());
+        String regionV2 = PostcodeRegions.regionCodeV2(owner.getPostcode());
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String fy = owner.getRegistrationDate() == null ? "00"
                 : String.format("%02d", OwnerMapper.fiscalYearOf(owner.getRegistrationDate()) % 100);
-        String base = region + fy + hash8(telephone + lastName);
+        String base = region + fy + hash8(regionV2 + "|" + telephone + lastName);
         String memberId = base + luhn(base);
         owner.setMemberId(deduplicate(memberId, owner, ownerRepository));
     }

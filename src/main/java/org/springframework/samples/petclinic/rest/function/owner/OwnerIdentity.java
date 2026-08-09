@@ -10,8 +10,10 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Derives the single {@code identityKey} used for all owner duplicate detection.
  *
- * <p>The key is the lower-case SHA-256 hex digest of {@code normalizedTelephone + '|' +
- * lowerEmail + '|' + soundex(lastName)}. A create is a duplicate only when a new owner's
+ * <p>The key is the lower-case SHA-256 hex digest of {@code regionCodeV2 + '|' +
+ * normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the leading
+ * version-2 region code (derived from the postcode) rederives every key for version 2.
+ * A create is a duplicate only when a new owner's
  * WHOLE identityKey equals an existing owner's — the former separate telephone, email and
  * household checks are now expressed through this one hashed key. Because the telephone is
  * part of the key, two owners with the same last name and postcode but different
@@ -30,7 +32,11 @@ public final class OwnerIdentity {
 
     /** The owner's derived identity key: a 64-character lower-case SHA-256 hex digest. */
     public static String identityKey(Owner owner) {
-        String raw = telephone(owner) + "|" + email(owner) + "|" + Soundex.encode(owner.getLastName());
+        // Version-2: mix the version-2 region code into the key so it is rederived and no
+        // value produced under version 1 recurs. Both sides of a duplicate comparison
+        // canonicalize identically, so the check stays consistent.
+        String raw = PostcodeRegions.regionCodeV2(owner.getPostcode()) + "|" + telephone(owner)
+                + "|" + email(owner) + "|" + Soundex.encode(owner.getLastName());
         return sha256hex(raw);
     }
 

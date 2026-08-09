@@ -18,10 +18,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * <li>a human-readable audit line carrying the owner id, the assigned
  * {@code memberId}, the effective {@code registrationDate} and the numeric
  * {@code membershipLevel}; and</li>
- * <li>an immutable structured event as a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}},
- * where {@code seq} is a process-wide monotonically increasing integer across
- * creates.</li>
+ * <li>an immutable structured schema-version-2 event as a JSON object
+ * {@code {schemaVersion:2, seq, ownerId, customerCode, membershipLevel, ownerSegment,
+ * event:'OWNER_CREATED'}}, where {@code seq} is a process-wide monotonically
+ * increasing integer across creates and {@code ownerSegment} is recomputed from the
+ * version-2 identity.</li>
  * </ul>
  *
  * <p>The structured event carries the owner's <em>current primary identifier</em>,
@@ -43,7 +44,7 @@ public class AuditOwnerCreated {
 
         long seq = SEQUENCE.incrementAndGet();
         AUDIT.info(event(seq, owner.getId(), primaryIdentifier(owner),
-                ownerMapper.membershipLevel(owner)));
+                ownerMapper.membershipLevel(owner), ownerMapper.ownerSegment(owner)));
     }
 
     /**
@@ -56,15 +57,20 @@ public class AuditOwnerCreated {
     }
 
     /**
-     * Render the immutable structured event as a JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
+     * Render the immutable structured event as a schema-version-2 JSON object
+     * {@code {schemaVersion:2, seq, ownerId, customerCode, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}}. Version 2 adds {@code schemaVersion} and the
+     * {@code ownerSegment}, recomputed from the version-2 identity.
      */
-    private static String event(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+    private static String event(long seq, Integer ownerId, String customerCode,
+            Integer membershipLevel, String ownerSegment) {
         return "{"
+                + "\"schemaVersion\":2,"
                 + "\"seq\":" + seq + ","
                 + "\"ownerId\":" + ownerId + ","
                 + "\"customerCode\":" + quote(customerCode) + ","
                 + "\"membershipLevel\":" + membershipLevel + ","
+                + "\"ownerSegment\":" + quote(ownerSegment) + ","
                 + "\"event\":\"OWNER_CREATED\""
                 + "}";
     }

@@ -11,7 +11,8 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Assigns the new owner a deterministic {@code householdId} derived purely from its
  * {@code lastName} and {@code postcode}: the first twelve UPPER-case hex characters of
- * SHA-256 over {@code normalizedLastName + '|' + postcode}. Because the id is a pure
+ * SHA-256 over {@code regionCodeV2 + '|' + normalizedLastName + '|' + postcode}, where the
+ * version-2 region code is itself a pure function of the postcode. Because the id is a pure
  * function of those two fields, every owner with the same (normalized) last name and
  * postcode resolves to the same {@code householdId} automatically — they are, by
  * definition, the same household — regardless of registration order and independent of
@@ -38,11 +39,17 @@ public class AssignOwnerHousehold {
         owner.setHouseholdId(deriveHouseholdId(lastName, postcode));
     }
 
-    /** First twelve UPPER-case hex characters of SHA-256 over {@code lastName + '|' + postcode}. */
+    /**
+     * First twelve UPPER-case hex characters of SHA-256 over
+     * {@code regionCodeV2 + '|' + lastName + '|' + postcode}. The version-2 region code (a
+     * pure function of the postcode) rederives the householdId for version 2 while keeping
+     * owners with the same last name and postcode on the same value.
+     */
     private static String deriveHouseholdId(String lastName, String postcode) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+            String raw = PostcodeRegions.regionCodeV2(postcode) + "|" + lastName + "|" + postcode;
+            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", hash[i]));
