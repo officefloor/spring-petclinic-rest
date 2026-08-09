@@ -37,6 +37,9 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit",
         expression = "java(owner.getCustomerCode() == null ? null "
             + ": org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(owner.getCustomerCode()))")
+    @Mapping(target = "ageBand",
+        expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.forBirthDate("
+            + "owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
