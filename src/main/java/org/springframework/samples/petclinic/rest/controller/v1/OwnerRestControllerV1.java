@@ -161,6 +161,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredOwnerFields(ownerFieldsDto);
+        rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate suppliedOrDefaultDate =
             ownerFieldsDto.getRegistrationDate() != null ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
@@ -315,6 +316,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Rejects an owner create whose supplied {@code registrationDate} is later than the server's
+     * current date. A registration date may not lie in the future; a value equal to today or in the
+     * past is accepted, and an absent date is left to default to the server date.
+     *
+     * @param registrationDate the supplied registration date, or {@code null} when none was supplied
+     * @throws InvalidOwnerFieldsException if the supplied date is after the server's current date
+     */
+    private void rejectFutureRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new InvalidOwnerFieldsException(List.of("registrationDate"));
+        }
     }
 
     /**
