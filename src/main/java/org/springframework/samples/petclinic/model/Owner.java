@@ -100,6 +100,15 @@ public class Owner extends Person {
     @Transient
     private Boolean bulkSignupWarning;
 
+    /**
+     * Derived, non-persisted flag recomputed on read and create: true when the owner's
+     * city already holds between 40 and 49 other owners (approaching the hard capacity
+     * limit of 50). Returned as {@code capacityWarning}; null (treated as false) when the
+     * warning step has not run for this instance.
+     */
+    @Transient
+    private Boolean capacityWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -258,6 +267,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     protected Set<Pet> getPetsInternal() {
