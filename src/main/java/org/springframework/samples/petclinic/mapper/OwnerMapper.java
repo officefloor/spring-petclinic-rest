@@ -21,7 +21,6 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
@@ -39,26 +38,6 @@ public interface OwnerMapper {
             return null;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * The owner's membership tier, derived at read time: {@code GOLD} when the owner's household
-     * (owners sharing the same householdId) has 3 or more members, otherwise {@code SILVER} when the
-     * owner's namesakeCount is 0 and an email is present, otherwise {@code BRONZE}.
-     */
-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
-        if (owner == null) {
-            return null;
-        }
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return OwnerDto.MembershipTierEnum.GOLD;
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean silver = namesakeCount != null && namesakeCount == 0
-            && email != null && !email.isEmpty();
-        return silver ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
     }
 
     /** Formats the owner's stored names as 'LastName, FirstName'. */

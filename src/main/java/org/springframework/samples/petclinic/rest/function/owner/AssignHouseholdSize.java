@@ -11,8 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the size is 1.
  *
  * <p>The value is a snapshot taken while the new row is still unsaved, so it captures the household's
- * membership immediately after this create. A household of 3 or more members earns the {@code GOLD}
- * membership tier at read time.
+ * membership immediately after this create.
  *
  * <p>Runs after {@link AssignHouseholdId} (so the {@code householdId} is set and any pre-existing
  * members are back-filled) and before {@link SaveOwner}, mutating the not-yet-persisted owner in
