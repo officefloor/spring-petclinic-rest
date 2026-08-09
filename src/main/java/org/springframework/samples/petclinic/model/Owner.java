@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -487,18 +490,102 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used to detect duplicate owners. It is the
-     * owner's normalized telephone, its email (empty when none) and its {@code householdId} (empty
-     * when none) joined by {@code '|'}. Because the telephone is part of the key, two members of the
-     * same household with different telephones have different identity keys; only owners whose whole
-     * key is identical are duplicates.
+     * lower-case SHA-256 hex digest over the owner's normalized telephone (empty when none), its
+     * lower-cased email (empty when none) and the Soundex code of its last name, joined by {@code '|'}.
+     * Because the telephone is part of the key, two members of the same household with different
+     * telephones have different identity keys; only owners whose whole key is identical are duplicates.
      *
-     * @return the {@code normalizedTelephone|email|householdId} identity key
+     * @return the SHA-256 hex identity key over {@code normalizedTelephone|lowerEmail|soundex(lastName)}
      */
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
-        String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + '|' + emailPart + '|' + householdPart;
+        String emailPart = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String key = telephonePart + '|' + emailPart + '|' + soundex(getLastName());
+        return sha256Hex(key);
+    }
+
+    /** Lower-case index (a=0 .. z=25) to Soundex digit, using the standard Soundex code table. */
+    private static final char[] SOUNDEX_MAP = "01230120022455012623010202".toCharArray();
+
+    /**
+     * The standard (American) Soundex code of a name: its first letter followed by three digits, so
+     * names that sound alike share a code (e.g. {@code "Robert"} and {@code "Rupert"} both yield
+     * {@code "R163"}). Non-letters are ignored and case is irrelevant; a value with no letters yields
+     * an empty string.
+     *
+     * @param value the name to encode, or {@code null}
+     * @return the four-character Soundex code, or an empty string when the value holds no letters
+     */
+    public static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c >= 'A' && c <= 'Z') {
+                letters.append(c);
+            } else if (c >= 'a' && c <= 'z') {
+                letters.append((char) (c - ('a' - 'A')));
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        String s = letters.toString();
+        char[] out = {'0', '0', '0', '0'};
+        out[0] = s.charAt(0);
+        char last = soundexCode(s, 0);
+        int count = 1;
+        for (int i = 1; i < s.length() && count < out.length; i++) {
+            char mapped = soundexCode(s, i);
+            if (mapped != 0) {
+                if (mapped != '0' && mapped != last) {
+                    out[count++] = mapped;
+                }
+                last = mapped;
+            }
+        }
+        return new String(out);
+    }
+
+    /**
+     * The Soundex digit contributed by the letter at {@code index}, honouring the rule that two
+     * like-coded consonants separated only by {@code 'H'} or {@code 'W'} count once: such a letter
+     * returns the null character {@code 0} so the caller skips it without resetting the running code.
+     */
+    private static char soundexCode(String s, int index) {
+        char mapped = SOUNDEX_MAP[s.charAt(index) - 'A'];
+        if (index > 1 && mapped != '0') {
+            char hw = s.charAt(index - 1);
+            if (hw == 'H' || hw == 'W') {
+                char pre = s.charAt(index - 2);
+                if (SOUNDEX_MAP[pre - 'A'] == mapped || pre == 'H' || pre == 'W') {
+                    return 0;
+                }
+            }
+        }
+        return mapped;
+    }
+
+    /**
+     * The lower-case SHA-256 hex digest of the given string's UTF-8 bytes, used to derive the
+     * {@link #getIdentityKey() identity key}.
+     *
+     * @param input the string to digest
+     * @return the 64-character lower-case hex SHA-256 digest
+     */
+    private static String sha256Hex(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

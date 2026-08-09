@@ -746,15 +746,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner create whose {@code identityKey} exactly matches an existing owner's. The
-     * identity key - the owner's normalized telephone, email (empty when none) and {@code householdId}
-     * (empty when none) joined by {@code '|'} - is the single derived value that subsumes the former
-     * separate telephone, email and household duplicate checks. Only a whole-key match is a conflict,
-     * so two members of one household with different telephones have different keys and are both
-     * allowed; only an owner whose entire key is identical is a duplicate.
+     * Rejects an owner create whose {@code identityKey} exactly matches a non-deleted existing owner's.
+     * The identity key - the SHA-256 hex digest over the owner's normalized telephone, lower-cased email
+     * (empty when none) and the Soundex code of its last name, joined by {@code '|'} - is the single
+     * derived value used for duplicate detection; owners flagged deleted are ignored. Only a whole-key
+     * match is a conflict, so two owners with the same last name and postcode but different telephones
+     * have different keys and are both allowed; only an owner whose entire key is identical is a
+     * duplicate.
      *
-     * @param owner the owner being created, with its telephone, email and householdId already resolved
-     * @throws DuplicateOwnerIdentityException if another owner already has this exact identity key
+     * @param owner the owner being created, with its telephone, email and last name already resolved
+     * @throws DuplicateOwnerIdentityException if another non-deleted owner already has this exact identity key
      */
     private void rejectDuplicateIdentity(Owner owner) {
         String identityKey = owner.getIdentityKey();
@@ -768,17 +769,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Flags an owner being created as a possible (soft) duplicate. A soft match is an existing owner
-     * that shares this owner's last name (compared case-insensitively with collapsed whitespace) and
-     * postcode but carries a different (normalized) telephone; such an owner is not a hard duplicate
-     * (its identity key differs) and is still created. When at least one soft match exists,
-     * {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to the lowest-id match;
-     * otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is left unset.
+     * whose last name shares this owner's Soundex code and whose postcode matches, yet whose
+     * {@code identityKey} differs; such an owner is not a hard duplicate (its whole identity key
+     * differs) and is still created. When at least one soft match exists, {@code possibleDuplicate} is
+     * set true and {@code possibleDuplicateOf} to the lowest-id match; otherwise {@code possibleDuplicate}
+     * is false and {@code possibleDuplicateOf} is left unset.
      * <p>
      * A declared household member - an owner that acknowledged sharing an existing household via
      * {@code sharesHousehold} - is never flagged: having deliberately joined the household it is not a
      * suspected duplicate, so {@code possibleDuplicate} is set false without inspecting other owners.
      *
-     * @param owner the owner being created, with its last name, postcode and normalized telephone resolved
+     * @param owner the owner being created, with its last name, postcode, email and normalized
+     *        telephone resolved
      * @param declaredHouseholdMember whether the owner joined an existing household by acknowledging it
      */
     private void applyPossibleDuplicate(Owner owner, boolean declaredHouseholdMember) {
@@ -786,16 +788,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(false);
             return;
         }
-        String lastName = normalizeHouseholdField(owner.getLastName());
+        String soundex = Owner.soundex(owner.getLastName());
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
+        String identityKey = owner.getIdentityKey();
         Owner match = null;
         if (postcode != null && !postcode.isBlank()) {
             match = this.clinicService.findAllOwners().stream()
                 .filter(existing -> !existing.isDeleted())
-                .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName))
+                .filter(existing -> Owner.soundex(existing.getLastName()).equals(soundex))
                 .filter(existing -> postcode.equals(existing.getPostcode()))
-                .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
+                .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
                 .min(java.util.Comparator.comparing(Owner::getId))
                 .orElse(null);
         }
