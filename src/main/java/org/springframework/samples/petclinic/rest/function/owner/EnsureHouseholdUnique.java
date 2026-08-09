@@ -39,6 +39,9 @@ public class EnsureHouseholdUnique {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is treated as absent
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateHouseholdException(householdId);
             }

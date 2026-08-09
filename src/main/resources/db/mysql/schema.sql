@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_points INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  deleted BOOLEAN DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;
 
