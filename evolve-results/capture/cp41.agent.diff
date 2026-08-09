@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 99331782..86e6bcf5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -438,20 +438,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Builds an owner's customer code, formatted '&lt;REGION&gt;-&lt;HASH8&gt;'. REGION is the region
+      * code derived from the owner's postcode (falling back to their city; see {@link LocalityLookup}),
+      * and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the owner's
+-     * normalized telephone concatenated with their last name (e.g. 'NSW-1A2B3C4D'). The code carries no
+-     * sequence number; two owners resolve to the same code only when they share a region and produce the
+-     * same telephone-and-last-name hash.
++     * normalized telephone concatenated with their last name (e.g. 'NSW-1A2B3C4D'). Two owners resolve
++     * to the same base code only when they share a region and produce the same telephone-and-last-name
++     * hash; when the computed code collides with an existing owner's customer code it is de-duplicated
++     * by appending '-&lt;n&gt;' with the smallest {@code n} of 2 or more that makes it unique.
+      *
+      * @param postcode the owner's postcode, used first to derive the region
+      * @param city the owner's city, used to derive the region when the postcode maps to none
+      * @param normalizedTelephone the owner's normalized (E.164) telephone
+      * @param lastName the owner's last name
+-     * @return the formatted customer code
++     * @return the formatted, de-duplicated customer code
+      */
+     private String generateCustomerCode(String postcode, String city, String normalizedTelephone, String lastName) {
+         String region = LocalityLookup.forPostcodeAndCity(postcode, city);
+         String hash8 = sha256UpperHex(normalizedTelephone + lastName, 8);
+-        return region + "-" + hash8;
++        String baseCode = region + "-" + hash8;
++        return deduplicateCustomerCode(baseCode);
++    }
++
++    /**
++     * De-duplicates a computed customer code against every existing owner's customer code. When no
++     * existing owner already carries the base code it is returned unchanged; otherwise '-&lt;n&gt;' is
++     * appended with the smallest {@code n} of 2 or more that yields a code no existing owner holds.
++     *
++     * @param baseCode the computed, formatted customer code before de-duplication
++     * @return the base code when unique, otherwise the base code suffixed with '-&lt;n&gt;'
++     */
++    private String deduplicateCustomerCode(String baseCode) {
++        java.util.Set<String> existingCodes = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(java.util.Objects::nonNull)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existingCodes.contains(baseCode)) {
++            return baseCode;
++        }
++        int n = 2;
++        while (existingCodes.contains(baseCode + "-" + n)) {
++            n++;
++        }
++        return baseCode + "-" + n;
+     }
+ 
+     /**
