@@ -131,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -263,6 +264,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Counts the existing owners who, before this create, already share the given first and last name.
+     * Both names are compared case-insensitively (after trimming surrounding whitespace and collapsing
+     * internal runs of whitespace, mirroring the other name comparisons), so cosmetic differences in
+     * case or spacing still count as the same name.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of existing owners sharing both names (zero when none)
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        String first = normalizeHouseholdField(firstName);
+        String last = normalizeHouseholdField(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getFirstName()).equals(first)
+                && normalizeHouseholdField(existing.getLastName()).equals(last))
+            .count();
     }
 
     /**
