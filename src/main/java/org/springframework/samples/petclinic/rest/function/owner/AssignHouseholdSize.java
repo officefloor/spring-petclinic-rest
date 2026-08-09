@@ -15,8 +15,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner does not join a household ({@code householdId} is {@code null}), it is the sole member and
  * the count is {@code 1}.
  *
- * <p>The count is what drives the {@code GOLD} membership tier (3 or more members); see
- * {@link org.springframework.samples.petclinic.mapper.OwnerMapper}.
+ * <p>The count is persisted on the owner as {@code householdMemberCount} for reporting; it no
+ * longer influences the membership level (see
+ * {@link org.springframework.samples.petclinic.model.MembershipLevel}).
  */
 public class AssignHouseholdSize {
 
