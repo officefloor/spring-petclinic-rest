@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 822673ed..0f9512e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -121,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredOwnerFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setAddress(normalizeAddress(owner.getAddress()));
+         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+         owner.setTelephone(normalizedTelephone);
+         rejectDuplicateTelephone(normalizedTelephone);
+@@ -246,7 +247,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isBlank(ownerFieldsDto.getLastName())) {
+             missingFields.add("lastName");
+         }
+-        if (isBlank(ownerFieldsDto.getAddress())) {
++        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+             missingFields.add("address");
+         }
+         if (isBlank(ownerFieldsDto.getCity())) {
+@@ -326,6 +327,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email.toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Normalizes an address supplied on create. Surrounding whitespace is trimmed, each internal run
++     * of whitespace is collapsed to a single space, the value is upper-cased and common abbreviations
++     * are expanded to their full words (ST -&gt; STREET, RD -&gt; ROAD, AVE -&gt; AVENUE). This
++     * normalized form is what gets stored, returned and used for every address comparison (the
++     * required-field check, household duplicate detection and the shared household id).
++     *
++     * @param address the raw address value from the request, or {@code null}
++     * @return the normalized address (empty string when {@code address} is {@code null} or blank)
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        for (int i = 0; i < tokens.length; i++) {
++            switch (tokens[i]) {
++                case "ST" -> tokens[i] = "STREET";
++                case "RD" -> tokens[i] = "ROAD";
++                case "AVE" -> tokens[i] = "AVENUE";
++                default -> { }
++            }
++        }
++        return String.join(" ", tokens);
++    }
++
+     /**
+      * Rejects an owner create whose E.164 telephone is already used by any other owner. Owners store
+      * their telephone in E.164 form, so the uniqueness check compares these canonical E.164 values
+@@ -346,9 +377,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Applies the household rule to an owner being created. A household is the set of owners sharing a
+-     * last name and address, compared case-insensitively after surrounding whitespace is trimmed and
+-     * each internal run of whitespace is collapsed to a single space, so purely cosmetic differences in
+-     * spacing or letter case still count as the same household.
++     * last name and a normalized address: last names are compared case-insensitively after whitespace
++     * is trimmed and collapsed, and addresses are compared in their normalized form (see
++     * {@link #normalizeAddress(String)}), so purely cosmetic differences in spacing, letter case or
++     * abbreviation still count as the same household.
+      * <p>
+      * When the owner's last name and address already belong to at least one other owner the behaviour
+      * depends on {@code sharesHousehold}. If it is not true the create is rejected as a duplicate
+@@ -363,10 +395,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private void applyHousehold(Owner owner, Boolean sharesHousehold) {
+         String lastName = normalizeHouseholdField(owner.getLastName());
+-        String address = normalizeHouseholdField(owner.getAddress());
++        String address = normalizeAddress(owner.getAddress());
+         List<Owner> housemates = this.clinicService.findAllOwners().stream()
+             .filter(existing -> normalizeHouseholdField(existing.getLastName()).equals(lastName)
+-                && normalizeHouseholdField(existing.getAddress()).equals(address))
++                && normalizeAddress(existing.getAddress()).equals(address))
+             .toList();
+         if (housemates.isEmpty()) {
+             return;
+@@ -413,10 +445,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Normalizes a last name or address for household comparison: surrounding whitespace is trimmed,
+-     * each internal run of whitespace is collapsed to a single space and the result is lower-cased.
++     * Normalizes a last name for household comparison: surrounding whitespace is trimmed, each
++     * internal run of whitespace is collapsed to a single space and the result is lower-cased.
++     * Addresses use {@link #normalizeAddress(String)} instead, which additionally upper-cases and
++     * expands common abbreviations.
+      *
+-     * @param value the raw last name or address, or {@code null}
++     * @param value the raw last name, or {@code null}
+      * @return the normalized comparison key (empty string when {@code value} is {@code null})
+      */
+     private String normalizeHouseholdField(String value) {
