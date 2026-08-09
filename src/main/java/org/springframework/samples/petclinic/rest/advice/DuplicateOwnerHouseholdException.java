@@ -17,28 +17,28 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a request to create an owner supplies a lastName and address that already belong to
- * another owner (compared case-insensitively with collapsed whitespace). Two owners sharing a
- * surname and address are treated as the same household, so this conflict is reported to the caller
- * as an HTTP 409 unless the request explicitly acknowledges the shared household.
+ * Thrown when a request to create an owner supplies a lastName and postcode that already belong to
+ * another owner (the lastName compared case-insensitively with collapsed whitespace). Two owners
+ * sharing a surname and postcode are treated as the same household, so this conflict is reported to
+ * the caller as an HTTP 409 unless the request explicitly acknowledges the shared household.
  */
 public class DuplicateOwnerHouseholdException extends RuntimeException {
 
     private final String lastName;
 
-    private final String address;
+    private final String postcode;
 
-    public DuplicateOwnerHouseholdException(String lastName, String address) {
-        super("Owner already exists for household: " + lastName + ", " + address);
+    public DuplicateOwnerHouseholdException(String lastName, String postcode) {
+        super("Owner already exists for household: " + lastName + ", " + postcode);
         this.lastName = lastName;
-        this.address = address;
+        this.postcode = postcode;
     }
 
     public String getLastName() {
         return this.lastName;
     }
 
-    public String getAddress() {
-        return this.address;
+    public String getPostcode() {
+        return this.postcode;
     }
 }

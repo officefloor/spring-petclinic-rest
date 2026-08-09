@@ -266,8 +266,9 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateOwnerHouseholdException} raised when an owner create request supplies a
-     * last name and address that already belong to another owner (compared case-insensitively with
-     * collapsed whitespace) without acknowledging the shared household. Returns a 409 Conflict.
+     * last name and postcode that already belong to another owner (the last name compared
+     * case-insensitively with collapsed whitespace) without acknowledging the shared household.
+     * Returns a 409 Conflict.
      *
      * @param e The {@link DuplicateOwnerHouseholdException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
@@ -280,10 +281,10 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getLastName(),
-            e.getAddress());
+            e.getPostcode());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
-        detail.setProperty("errors", List.of("lastName", "address"));
+        detail.setProperty("errors", List.of("lastName", "postcode"));
         return ResponseEntity.status(status).body(detail);
     }
 
