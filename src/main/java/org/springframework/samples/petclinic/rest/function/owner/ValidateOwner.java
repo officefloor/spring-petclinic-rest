@@ -39,9 +39,15 @@ public class ValidateOwner {
         BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
         rejectIfBlank(binding, "firstName", request.getFirstName());
         rejectIfBlank(binding, "lastName", request.getLastName());
-        // Address is required after normalization: a value that collapses to empty (e.g. whitespace
-        // only) is rejected, matching how it will be stored and compared.
-        rejectIfBlank(binding, "address", AddressNormalizer.normalize(request.getAddress()));
+        // An address is required after normalization, supplied in EITHER form: the structured
+        // 'addressLine1' (preferred) or the flat 'address'. A value that collapses to empty (e.g.
+        // whitespace only) does not count, matching how it will be stored and compared. Requiring
+        // only one of the two keeps earlier flat-address owners accepted (backward-compatible).
+        String normalizedLine1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String normalizedAddress = AddressNormalizer.normalize(request.getAddress());
+        if (normalizedLine1.isBlank() && normalizedAddress.isBlank()) {
+            binding.rejectValue("address", "NotBlank", "must not be blank");
+        }
         rejectIfBlank(binding, "city", request.getCity());
         rejectIfBlank(binding, "telephone", request.getTelephone());
         if (binding.hasErrors()) {
