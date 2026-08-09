@@ -139,6 +139,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (effectiveRegistrationDate == null) {
             effectiveRegistrationDate = LocalDate.now();
         }
+        else if (effectiveRegistrationDate.isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         LocalDate registrationDate = toBusinessDay(effectiveRegistrationDate);
         owner.setRegistrationDate(registrationDate);
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
