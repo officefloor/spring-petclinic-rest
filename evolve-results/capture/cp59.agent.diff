@@ -1,0 +1,238 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/BadRequestException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/BadRequestException.java
+new file mode 100644
+index 00000000..b74cc781
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/BadRequestException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Signals that a request was rejected because it is malformed or violates a business rule,
++ * resulting in a {@code 400 Bad Request}. Handled by {@link ExceptionControllerAdvice} which
++ * renders it as an RFC 7807 {@code application/problem+json} response.
++ */
++public class BadRequestException extends RuntimeException {
++
++    public BadRequestException(String detail) {
++        super(detail);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ConflictException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ConflictException.java
+new file mode 100644
+index 00000000..3e8669c8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ConflictException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Signals that a request could not be completed because it conflicts with the current state of
++ * the resource, resulting in a {@code 409 Conflict}. Handled by {@link ExceptionControllerAdvice}
++ * which renders it as an RFC 7807 {@code application/problem+json} response.
++ */
++public class ConflictException extends RuntimeException {
++
++    public ConflictException(String detail) {
++        super(detail);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a4860efd..c3d03051 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -124,6 +124,56 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link BadRequestException} raised when a request is malformed or violates a
++     * business rule. Returns a 400 Bad Request as an RFC 7807 {@code application/problem+json}
++     * response.
++     *
++     * @param e The {@link BadRequestException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status
++     */
++    @ExceptionHandler(BadRequestException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleBadRequestException(BadRequestException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
++    /**
++     * Handles {@link ConflictException} raised when a request conflicts with the current state of
++     * the resource. Returns a 409 Conflict as an RFC 7807 {@code application/problem+json}
++     * response.
++     *
++     * @param e The {@link ConflictException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
++     */
++    @ExceptionHandler(ConflictException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleConflictException(ConflictException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
++    /**
++     * Handles {@link RateLimitExceededException} raised when a rate limit has been exceeded.
++     * Returns a 429 Too Many Requests as an RFC 7807 {@code application/problem+json} response.
++     *
++     * @param e The {@link RateLimitExceededException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status
++     */
++    @ExceptionHandler(RateLimitExceededException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRateLimitExceededException(RateLimitExceededException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/RateLimitExceededException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/RateLimitExceededException.java
+new file mode 100644
+index 00000000..51bd7047
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/RateLimitExceededException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Signals that a request was rejected because a rate limit has been exceeded, resulting in a
++ * {@code 429 Too Many Requests}. Handled by {@link ExceptionControllerAdvice} which renders it
++ * as an RFC 7807 {@code application/problem+json} response.
++ */
++public class RateLimitExceededException extends RuntimeException {
++
++    public RateLimitExceededException(String detail) {
++        super(detail);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 14af0310..55d313eb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,9 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.BadRequestException;
++import org.springframework.samples.petclinic.rest.advice.ConflictException;
++import org.springframework.samples.petclinic.rest.advice.RateLimitExceededException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -171,38 +174,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         String address = applyAddress(owner, ownerFieldsDto);
+         if (address.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new BadRequestException("The owner's address is missing or could not be resolved to a valid address");
+         }
+         owner.setAddress(address);
+         String telephone = toE164(owner.getTelephone());
+         if (telephone == null) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new BadRequestException("The owner's telephone number is not a valid phone number");
+         }
+         owner.setTelephone(telephone);
+         if (owner.getEmail() != null) {
+             String email = normalizeEmail(owner.getEmail());
+             if (email == null) {
+-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++                throw new BadRequestException("The owner's email address is invalid or uses a disallowed domain");
+             }
+             owner.setEmail(email);
+         }
+         if (owner.getPostcode() != null && !isValidPostcode(owner.getPostcode(), owner.getCity())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new BadRequestException("The owner's postcode is not valid for the given city");
+         }
+         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
+         if (effectiveRegistrationDate == null) {
+             effectiveRegistrationDate = LocalDate.now();
+         }
+         else if (effectiveRegistrationDate.isAfter(LocalDate.now())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new BadRequestException("The owner's registration date cannot be in the future");
+         }
+         LocalDate registrationDate = toBusinessDay(effectiveRegistrationDate);
+         owner.setRegistrationDate(registrationDate);
+         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ConflictException("The maximum number of owners for this city has been reached");
+         }
+         if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new RateLimitExceededException("The maximum number of owner registrations for this day has been reached");
+         }
+         // The householdId is deterministic: the first twelve hex characters of SHA-256 over
+         // '<normalizedLastName>|<postcode>'. Owners sharing a last name and postcode therefore
+@@ -241,7 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+             if (identityKey.equals(OwnerIdentity.identityKey(toE164(existing.getTelephone()),
+                 existing.getEmail(), existing.getLastName()))) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
++                throw new ConflictException("An owner with the same identity already exists");
+             }
+         }
+         // Soft-match: the owner is not a hard (identityKey) duplicate, but if it shares an
