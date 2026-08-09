@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -208,17 +211,35 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived identity key, consolidating all duplicate detection into a single value:
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are the
-     * same identity only when their whole key matches, so members of one household (same
-     * {@code householdId}) with different telephones have distinct keys.
+     * The owner's derived identity key, consolidating all duplicate detection into a single value: the
+     * lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+     * Two owners are the same identity only when their whole key matches, so two people who share a
+     * surname (same {@link Soundex} code) and residence but have different telephones have distinct keys
+     * — they are a soft match, not a hard duplicate. The surname contributes only via its Soundex code,
+     * so trivially different spellings of the same-sounding name collide.
      */
     @Transient
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
-        String em = this.email == null ? "" : this.email;
-        String household = this.householdId == null ? "" : this.householdId;
-        return tel + "|" + em + "|" + household;
+        String em = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String surname = Soundex.encode(this.getLastName());
+        return sha256Hex(tel + "|" + em + "|" + surname);
+    }
+
+    /** Lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     public Integer getNamesakeCount() {

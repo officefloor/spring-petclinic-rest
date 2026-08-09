@@ -20,11 +20,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * owner has no household and {@code householdId} is left null.
  *
  * <p>Note the change from earlier behaviour: {@code sharesHousehold} no longer creates the household
- * link (the link is now automatic); it only bypasses the household-duplicate block in
- * {@link EnsureHouseholdUnique}.
+ * link (the link is now automatic); it only clears the soft-duplicate flag in
+ * {@link AssignPossibleDuplicate}.
  *
- * <p>Runs after {@link BuildOwner} (so the entity, its last name and postcode exist) and before both
- * {@link EnsureHouseholdUnique} and {@link SaveOwner}, mutating the not-yet-persisted owner in place.
+ * <p>Runs after {@link BuildOwner} (so the entity, its last name and postcode exist) and before
+ * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
 public class AssignHouseholdId {
 

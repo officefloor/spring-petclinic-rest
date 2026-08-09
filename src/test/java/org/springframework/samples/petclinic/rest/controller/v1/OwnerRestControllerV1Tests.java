@@ -201,24 +201,34 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
-    void createOwnerRejectsHouseholdDuplicate() throws Exception {
-        // householdId is now deterministic from (lastName, postcode): a second owner with the same
-        // last name and postcode is the same household, so even with a different telephone/address it
-        // is rejected as a household duplicate (409) when 'sharesHousehold' is not set.
+    void createOwnerAllowsHouseholdSoftMatchWithDifferentTelephone() throws Exception {
+        // Duplicate detection is now the single identityKey (SHA-256 over
+        // telephone|email|soundex(lastName)). Two owners with the same last name and postcode but
+        // DIFFERENT telephones have different keys, so the second is no longer a hard household
+        // duplicate: it is created (201) and flagged as a possible duplicate of the first (soft match,
+        // because soundex(lastName) and postcode match).
         String lastName = "Householdtest";
         String first = """
             {"firstName":"George","lastName":"%s","address":"1 First St","city":"Madison","telephone":"6085553001","postcode":"2000"}
             """.formatted(lastName);
-        mvc.perform(post("/api/owners").content(first)
+        int firstId = extractId(mvc.perform(post("/api/owners").content(first)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
-            .andExpect(status().isCreated());
+            .andExpect(status().isCreated()));
 
         String second = """
             {"firstName":"Jane","lastName":"%s","address":"2 Second St","city":"Madison","telephone":"6085553002","postcode":"2000"}
             """.formatted(lastName);
         mvc.perform(post("/api/owners").content(second)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
-            .andExpect(status().isConflict());
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.possibleDuplicate").value(true))
+            .andExpect(jsonPath("$.possibleDuplicateOf").value(firstId));
+    }
+
+    /** Extract the numeric id of a created owner from the create response's Location header. */
+    private int extractId(org.springframework.test.web.servlet.ResultActions ra) throws Exception {
+        String location = ra.andReturn().getResponse().getHeader("Location");
+        return Integer.parseInt(location.substring(location.lastIndexOf('/') + 1));
     }
 
     @Test
