@@ -66,6 +66,16 @@ public interface OwnerRepository {
      */
     Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
 
+    /**
+     * Retrieve <code>Owner</code>s from the data store by email, matching case-insensitively
+     * (the lower-cased stored email against the lower-cased given value).
+     *
+     * @param email the email to search for
+     * @return a <code>Collection</code> of matching <code>Owner</code>s (or an empty
+     * <code>Collection</code> if none found)
+     */
+    Collection<Owner> findByEmail(String email) throws DataAccessException;
+
 
     /**
      * Save an <code>Owner</code> to the data store, either inserting or updating it.

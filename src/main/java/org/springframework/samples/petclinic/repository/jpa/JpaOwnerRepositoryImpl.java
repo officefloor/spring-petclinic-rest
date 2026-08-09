@@ -97,6 +97,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
         return query.getResultList();
     }
 
+    @SuppressWarnings("unchecked")
+    @Override
+    public Collection<Owner> findByEmail(String email) throws DataAccessException {
+        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE LOWER(owner.email) = LOWER(:email)");
+        query.setParameter("email", email);
+        return query.getResultList();
+    }
+
     @Override
     public void save(Owner owner) {
         if (owner.getId() == null) {
