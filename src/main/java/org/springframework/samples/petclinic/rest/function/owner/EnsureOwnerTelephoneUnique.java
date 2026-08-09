@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Rejects creating an owner whose (already normalized) telephone is used by an existing owner.
  *
- * <p>Runs after {@link NormalizeOwnerTelephone} so the lookup uses the 10-digit form, and before
- * {@link BuildOwner}/{@link SaveOwner} so a duplicate is a 409 (Conflict) rather than a persisted row.
+ * <p>Runs after {@link NormalizeOwnerTelephone} so the lookup compares canonical E.164 values, and
+ * before {@link BuildOwner}/{@link SaveOwner} so a duplicate is a 409 (Conflict) rather than a
+ * persisted row.
  */
 public class EnsureOwnerTelephoneUnique {
 

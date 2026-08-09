@@ -114,21 +114,22 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
-    void createOwnerNormalizesTelephoneToTenDigits() throws Exception {
+    void createOwnerNormalizesTelephoneToE164() throws Exception {
         String body = """
             {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"(608) 555-0002"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.telephone").value("6085550002"));
+            .andExpect(jsonPath("$.telephone").value("+616085550002"));
     }
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectsTelephoneWithTooFewDigits() throws Exception {
+        // Too short to form E.164: assuming '+61' yields '+6112', only 4 digits after the '+'.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"608-555-102"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"12"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -140,8 +141,9 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectsTelephoneWithTooManyDigits() throws Exception {
+        // 16 digits after an explicit '+' exceeds the 15-digit E.164 maximum.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023456"}
+            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"+1234567890123456"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
@@ -153,10 +155,11 @@ class OwnerRestControllerV1Tests {
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectsDuplicateNormalizedTelephone() throws Exception {
         Owner existing = newOwner("Franklin-" + System.nanoTime());
-        existing.setTelephone("6085551999");
+        existing.setTelephone("+616085551999");
         ownerRepository.save(existing);
 
-        // Same telephone as the existing owner, just formatted differently: a 409 after normalization.
+        // Same telephone as the existing owner, just formatted differently: '(608) 555-1999'
+        // normalizes to the same E.164 value '+616085551999', so a 409 after normalization.
         String body = """
             {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"(608) 555-1999"}
             """;
