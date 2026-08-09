@@ -27,7 +27,6 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -47,18 +46,45 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year, derived at read time from the (business-day-adjusted)
-     * {@code registrationDate} and formatted {@code FY<YY>}, where YY is the last two digits of the
-     * fiscal year. The fiscal year starts on 1 July, so a date on or after 1 July belongs to the
-     * fiscal year labelled with the next calendar year (2026-07-01 -> {@code FY27}) and an earlier
-     * date to the current calendar year (2026-06-30 -> {@code FY26}). Null when the owner or its
-     * {@code registrationDate} is absent, so the field is simply omitted then.
+     * The owner's fiscal year, derived at read time and formatted {@code FY<YY>}. It references the
+     * {@code memberId}: the two FY digits sit between the REGION prefix and the HASH8 segment, so this
+     * reads them straight back out (2026-07-01 registration -> {@code memberId} 'NSW27...' -> {@code
+     * FY27}). Owners predating the unified {@code memberId} (e.g. seed data) fall back to the
+     * (business-day-adjusted) {@code registrationDate}, where the fiscal year starts on 1 July.
+     * Null when neither source is available, so the field is simply omitted then.
      */
     default String fiscalYear(Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        if (owner == null) {
+            return null;
+        }
+        String fromMember = fiscalYearFromMemberId(owner.getMemberId());
+        if (fromMember != null) {
+            return fromMember;
+        }
+        if (owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Reads the {@code FY<YY>} value out of the {@code memberId}: the two digits immediately after the
+     * leading REGION letters. Null when the {@code memberId} is absent or does not have two digits in
+     * that position. Kept {@code private static} so MapStruct does not treat it as a property mapping.
+     */
+    private static String fiscalYearFromMemberId(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        if (i == 0 || memberId.length() < i + 2) {
+            return null;
+        }
+        String yy = memberId.substring(i, i + 2);
+        return yy.matches("[0-9]{2}") ? "FY" + yy : null;
     }
 
     /**
@@ -92,36 +118,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * A single Luhn check digit (0-9) computed at read time over the digits contained in the
-     * owner's customerCode. Non-digit characters (the hyphen and letters in '<REGION>-<HASH8>')
-     * are skipped. Null when the owner or its customerCode is absent.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * The owner's preferred contact channel, derived at read time: {@code EMAIL}
      * when an email address is present, otherwise {@code PHONE}.
      */
@@ -146,29 +142,43 @@ public interface OwnerMapper {
         "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
 
     /**
-     * The owner's locality, derived at read time from the region-and-hash identity: the REGION
-     * prefix of the {@code customerCode} (everything before the first hyphen). That region was
-     * itself derived at write time from the postcode (preferred) or city, defaulting to
-     * {@code UNKNOWN}, so reading it back keeps locality and the identity in lock-step.
+     * The owner's locality, derived at read time from the {@code memberId}: its leading REGION prefix
+     * (the run of letters before the FY digits). That region was itself derived at write time from the
+     * postcode (preferred) or city, defaulting to {@code UNKNOWN}, so reading it back keeps locality
+     * and the member identity in lock-step.
      *
-     * <p>Owners predating the region-and-hash identity (e.g. seed data with no customerCode) fall
-     * back to the historical read-time derivation: postcode preferred, then city, then
-     * {@code UNKNOWN}.
+     * <p>Owners predating the unified {@code memberId} (e.g. seed data with no memberId) fall back to
+     * the historical read-time derivation: postcode preferred, then city, then {@code UNKNOWN}.
      */
     default String locality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            return dash > 0 ? code.substring(0, dash) : code;
+        String region = regionFromMemberId(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         String byPostcode = regionFromPostcode(owner.getPostcode());
         if (byPostcode != null) {
             return byPostcode;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The leading REGION prefix of a {@code memberId}: its run of leading letters, which sits before
+     * the two FY digits. Null when the {@code memberId} is absent or does not start with a letter.
+     * Kept {@code private static} so MapStruct does not treat it as a property mapping method.
+     */
+    private static String regionFromMemberId(String memberId) {
+        if (memberId == null || memberId.isEmpty()) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i > 0 ? memberId.substring(0, i) : null;
     }
 
     /**
@@ -303,8 +313,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
-    @Mapping(target = "membershipNumber", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)

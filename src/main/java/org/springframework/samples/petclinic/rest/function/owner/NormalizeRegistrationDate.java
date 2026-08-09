@@ -23,8 +23,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
  * next non-holiday business day. The adjusted
  * date is published as a variable so every later step derives from the same value: the daily
  * create-limit counts owners per adjusted business day, {@link BuildOwner} stores it as the owner's
- * {@code registrationDate}, and {@link AssignMembershipNumber} takes the membership number's year
- * segment from it.
+ * {@code registrationDate}, and {@link AssignMemberId} takes the member id's fiscal-year segment
+ * from it.
  *
  * <p>Runs before {@link EnsureDailyOwnerLimit} so the limit is checked against the adjusted date.
  */

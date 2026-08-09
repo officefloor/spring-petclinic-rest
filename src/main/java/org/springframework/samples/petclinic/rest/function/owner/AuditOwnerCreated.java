@@ -12,9 +12,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Emits an audit line to the dedicated {@code AUDIT} logger recording a successful owner
  * create. Runs after {@link SaveOwner} (so the owner id is assigned) and before the
- * responder. The line carries the owner id, the {@code customerCode}, the
- * {@code registrationDate}, the {@code membershipLevel} and the
- * {@code membershipNumber}.
+ * responder. The line carries the owner id, the {@code memberId}, the
+ * {@code registrationDate} and the {@code membershipLevel}.
  *
  * <p>Besides that human-readable line it emits an immutable structured {@link OwnerCreatedEvent}
  * as JSON to the same logger, with a {@code seq} that increases monotonically across creates.
@@ -29,16 +28,13 @@ public class AuditOwnerCreated {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
-        // The owner's CURRENT primary identifier. Today that is the customerCode; when the
-        // customerCode is later unified into the memberId, this one accessor changes and the
-        // structured event automatically carries the memberId instead.
-        String primaryIdentifier = owner.getCustomerCode();
+        // The owner's primary identifier is the unified memberId.
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                primaryIdentifier, owner.getMembershipLevel(), OwnerCreatedEvent.OWNER_CREATED);
+                owner.getMemberId(), owner.getMembershipLevel(), OwnerCreatedEvent.OWNER_CREATED);
         AUDIT.info("{}", MAPPER.writeValueAsString(event));
     }
 }

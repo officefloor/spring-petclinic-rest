@@ -3,6 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.Month;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -12,22 +14,29 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where REGION is the
- * region code derived from the owner's postcode (preferred), falling back to the city and then to
- * {@code UNKNOWN}, and HASH8 is the first eight UPPER-case hex characters of SHA-256 over
- * {@code normalizedTelephone + lastName} (e.g. 'NSW-1A2B3C4D').
+ * Assigns the owner's unified {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'}:
+ * <ul>
+ *   <li>REGION — the region code derived from the owner's postcode (preferred), falling back to the
+ *       city and then to {@code UNKNOWN};</li>
+ *   <li>FY — the two-digit FISCAL YEAR of the {@code registrationDate} (the fiscal year starts on
+ *       1 July, so a registration date on or after 1 July belongs to the next calendar year);</li>
+ *   <li>HASH8 — the first eight UPPER-case hex characters of SHA-256 over
+ *       {@code normalizedTelephone + lastName} (the same hash used by the region-and-hash identity);</li>
+ *   <li>CHK — a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
+ * </ul>
+ * e.g. {@code 'NSW271A2B3C4D5'} for an NSW owner registered in fiscal year 27.
  *
- * <p>The base code is a pure function of the region and hash, so two distinct owners can in principle
- * derive the same code. When the computed code collides with an existing owner's {@code customerCode},
- * this step de-duplicates it by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
- * makes it unique (e.g. 'NSW-1A2B3C4D-2', then 'NSW-1A2B3C4D-3'), so every persisted owner keeps a
- * distinct code.
+ * <p>The core code is a pure function of the region, fiscal year and hash, so two distinct owners can
+ * in principle derive the same {@code memberId}. When the computed id collides with an existing
+ * owner's {@code memberId}, this step de-duplicates it by appending {@code '-<n>'} with the smallest
+ * {@code n} of 2 or more that makes it unique (e.g. 'NSW271A2B3C4D5-2', then 'NSW271A2B3C4D5-3'), so
+ * every persisted owner keeps a distinct id.
  *
- * <p>Runs after {@link BuildOwner} and {@link NormalizeOwnerTelephone} (so the telephone is already
- * in canonical E.164 form) and before {@link SaveOwner}, mutating the not-yet-persisted owner in
- * place.
+ * <p>Runs after {@link BuildOwner} (so the registration date is set) and
+ * {@link NormalizeOwnerTelephone} (so the telephone is already in canonical E.164 form) and before
+ * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
  */
-public class AssignCustomerCode {
+public class AssignMemberId {
 
     /** Fixed city-to-region table, mirroring the read-time locality derivation. */
     private static final Map<String, String> CITY_REGION = Map.of(
@@ -38,13 +47,14 @@ public class AssignCustomerCode {
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String base = region(owner) + "-" + hash8(owner);
-        owner.setCustomerCode(deduplicate(base, owner, ownerRepository));
+        String core = region(owner) + fiscalYear(owner) + hash8(owner);
+        String base = core + luhn(core);
+        owner.setMemberId(deduplicate(base, owner, ownerRepository));
     }
 
     /**
      * Returns {@code base} when no existing owner already uses it, otherwise the first of
-     * {@code base-2, base-3, ...} that is free — so distinct owners keep distinct codes.
+     * {@code base-2, base-3, ...} that is free — so distinct owners keep distinct member ids.
      */
     private static String deduplicate(String base, Owner owner, OwnerRepository ownerRepository) {
         Set<String> taken = new HashSet<>();
@@ -52,9 +62,9 @@ public class AssignCustomerCode {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
-            String code = existing.getCustomerCode();
-            if (code != null) {
-                taken.add(code);
+            String memberId = existing.getMemberId();
+            if (memberId != null) {
+                taken.add(memberId);
             }
         }
         if (!taken.contains(base)) {
@@ -91,6 +101,17 @@ public class AssignCustomerCode {
         return null;
     }
 
+    /**
+     * The two-digit fiscal year of the owner's registration date. The fiscal year starts on 1 July,
+     * so a date in July or later belongs to the next calendar year and an earlier date to the current
+     * calendar year; the two digits are the last two of that year.
+     */
+    private static String fiscalYear(Owner owner) {
+        LocalDate date = owner.getRegistrationDate();
+        int fy = date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+        return String.format("%02d", fy % 100);
+    }
+
     /** First eight UPPER-case hex characters of SHA-256 over (normalized telephone + last name). */
     private static String hash8(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
@@ -108,5 +129,27 @@ public class AssignCustomerCode {
             sb.append(String.format("%02X", digest[i]));
         }
         return sb.toString();
+    }
+
+    /** Single Luhn check digit (0-9) over the digits contained in {@code s}; non-digits are skipped. */
+    private static int luhn(String s) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 }
