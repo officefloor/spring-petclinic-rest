@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -37,7 +38,6 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -214,6 +214,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setIdempotencyKey(idempotencyKey);
+        applyMembershipLevelCeiling(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
@@ -837,24 +838,60 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Caps the membership level of an owner being created so it can never exceed one above the current
+     * maximum membership level among the other members of its household. The ceiling stored is that
+     * maximum plus one; the owner's derived {@link Owner#getMembershipLevel() membership level} is then
+     * never reported above it. An owner that joined no existing household - it has no {@code householdId}
+     * or is the sole member of its household - is left uncapped so no ceiling applies.
+     *
+     * @param owner the owner being created, with its {@code householdId} already resolved
+     */
+    private void applyMembershipLevelCeiling(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return;
+        }
+        OptionalInt maxLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(this::currentMembershipLevel)
+            .max();
+        if (maxLevel.isPresent()) {
+            owner.setMembershipLevelCeiling(maxLevel.getAsInt() + 1);
+        }
+    }
+
+    /**
+     * The membership level an existing owner currently reports, computed the same way as for a response
+     * by first populating its {@link Owner#getHouseholdMemberCount() household member count}.
+     *
+     * @param member the existing household member whose membership level is needed
+     * @return the member's current membership level
+     */
+    private int currentMembershipLevel(Owner member) {
+        member.setHouseholdMemberCount(countHouseholdMembers(member));
+        return member.getMembershipLevel();
+    }
+
+    /**
      * Applies the household rule to an owner being created. A household is the set of owners sharing a
      * last name and a postcode: the {@code householdId} is derived deterministically from the
      * normalized last name and the postcode (see {@link #generateHouseholdId(String, String)}), so two
      * owners with the same last name and postcode always resolve to the same identifier and belong to
      * the same household automatically - no acknowledgement is needed to create the link.
      * <p>
-     * When the owner supplies a postcode its {@code householdId} is always assigned. If that household
-     * already has at least one member, the create is a household duplicate: it is rejected with a 409
-     * unless {@code sharesHousehold} is true, in which case the owner is created as a declared member
-     * of that household. An owner with no postcode belongs to no household and is left without an
-     * identifier.
+     * When the owner supplies a postcode its {@code householdId} is always assigned; an owner with no
+     * postcode belongs to no household and is left without an identifier. Joining an existing household
+     * is not itself a conflict: hard duplicate detection is handled solely by the identity key (see
+     * {@link #rejectDuplicateIdentity(Owner)}), so two members of one household with different
+     * telephones are both created. An owner that explicitly acknowledges an existing household via
+     * {@code sharesHousehold} is reported as a declared member so it is not flagged as a possible
+     * duplicate.
      *
      * @param owner the owner being created
      * @param sharesHousehold the request's shared-household acknowledgement, or {@code null} when absent
      * @return {@code true} when the owner joined an existing household as a declared member, otherwise
      *         {@code false}
-     * @throws DuplicateOwnerHouseholdException when the household already exists and the create did not
-     *         acknowledge it via {@code sharesHousehold}
      */
     private boolean applyHousehold(Owner owner, Boolean sharesHousehold) {
         String postcode = owner.getPostcode();
@@ -867,13 +904,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean hasExistingMember = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (!hasExistingMember) {
-            return false;
-        }
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            throw new DuplicateOwnerHouseholdException(owner.getLastName(), postcode);
-        }
-        return true;
+        return hasExistingMember && Boolean.TRUE.equals(sharesHousehold);
     }
 
     /**

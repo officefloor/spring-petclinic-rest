@@ -93,6 +93,9 @@ public class Owner extends Person {
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 
+    @Column(name = "membership_level_ceiling")
+    private Integer membershipLevelCeiling;
+
     /**
      * The number of owners belonging to this owner's household (owners sharing the same
      * {@code householdId}), including this owner. It is a derived, non-persistent value populated
@@ -311,6 +314,22 @@ public class Owner extends Person {
         this.idempotencyKey = idempotencyKey;
     }
 
+    /**
+     * The ceiling applied to this owner's derived {@link #getMembershipLevel() membership level}, set
+     * when the owner is created as one above the highest membership level then held by any other member
+     * of its household. The reported membership level is never allowed above this value. It is
+     * {@code null} when the owner joined no existing household, in which case no ceiling applies.
+     *
+     * @return the membership-level ceiling fixed at creation, or {@code null} when uncapped
+     */
+    public Integer getMembershipLevelCeiling() {
+        return this.membershipLevelCeiling;
+    }
+
+    public void setMembershipLevelCeiling(Integer membershipLevelCeiling) {
+        this.membershipLevelCeiling = membershipLevelCeiling;
+    }
+
     public Integer getHouseholdMemberCount() {
         return this.householdMemberCount;
     }
@@ -378,22 +397,28 @@ public class Owner extends Person {
     /**
      * The owner's membership level, a number from 1 to 4, derived from {@link #getMembershipPoints()}:
      * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more
-     * points.
+     * points. The result is then capped at the owner's {@link #getMembershipLevelCeiling() membership
+     * level ceiling} when one is set, so a new owner never exceeds one above the highest level among the
+     * other members of its household at the time it was created.
      *
-     * @return the derived membership level (1 to 4)
+     * @return the derived membership level (1 to 4), capped at the membership-level ceiling when set
      */
     public Integer getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points >= 6) {
-            return 4;
+            level = 4;
+        } else if (points >= 4) {
+            level = 3;
+        } else if (points >= 2) {
+            level = 2;
+        } else {
+            level = 1;
         }
-        if (points >= 4) {
-            return 3;
+        if (this.membershipLevelCeiling != null && level > this.membershipLevelCeiling) {
+            return this.membershipLevelCeiling;
         }
-        if (points >= 2) {
-            return 2;
-        }
-        return 1;
+        return level;
     }
 
     /**

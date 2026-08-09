@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
   address_line2 VARCHAR(255),
   title VARCHAR(10),
   idempotency_key VARCHAR(255),
+  membership_level_ceiling INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 
