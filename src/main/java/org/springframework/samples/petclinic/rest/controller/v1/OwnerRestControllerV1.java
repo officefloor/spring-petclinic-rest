@@ -122,6 +122,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * The number of owners a city must already hold before a response carries a capacity warning.
+     * Once a city holds at least this many owners (but fewer than {@link #MAX_OWNERS_PER_CITY}),
+     * responses naming that city set {@code capacityWarning} true, signalling that the city is
+     * approaching its per-city capacity limit.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * The maximum number of owners that may be registered in a single day. Once this many owners
      * already carry today's registration date, any further create is rejected as too many requests.
      */
@@ -188,6 +196,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
+        ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -200,6 +209,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (alreadyCreated != null) {
                 OwnerDto existingDto = toOwnerDto(alreadyCreated);
                 existingDto.setBulkSignupWarning(isBulkSignupWarningActive());
+                existingDto.setCapacityWarning(isCapacityWarningActive(alreadyCreated.getCity()));
                 return new ResponseEntity<>(existingDto, HttpStatus.OK);
             }
         }
@@ -234,6 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
+        ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -501,6 +512,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
         return ownersToday > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Reports whether a response naming the given city should carry a capacity warning. The warning is
+     * active once the city already holds between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and one fewer
+     * than {@link #MAX_OWNERS_PER_CITY} owners (40-49), signalling that it is approaching the per-city
+     * capacity limit. Owners are grouped into a city case-insensitively after surrounding whitespace is
+     * trimmed and internal runs are collapsed, mirroring {@link #rejectCityAtCapacity}. The hard
+     * rejection at {@link #MAX_OWNERS_PER_CITY} is unaffected.
+     *
+     * @param city the city to evaluate
+     * @return {@code true} when the city holds between the warning threshold and the capacity limit
+     *         (exclusive) owners, otherwise {@code false}
+     */
+    private boolean isCapacityWarningActive(String city) {
+        String normalizedCity = normalizeHouseholdField(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
+            .count();
+        return ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY;
     }
 
     private LocalDate toBusinessDay(LocalDate date) {
