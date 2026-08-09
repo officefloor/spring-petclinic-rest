@@ -8,7 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConfl
 
 /**
  * Rejects a create-owner request that would share a household with an existing owner — the same
- * lastName and the same address, compared case-insensitively with collapsed whitespace. Throws
+ * lastName (compared case-insensitively with collapsed whitespace) and the same address, compared
+ * in normalized form (see {@link OwnerAddress#normalize(String)}). Throws
  * {@link OwnerHouseholdConflictException} (handled as 409) on a match, unless the request opted in
  * with {@code sharesHousehold: true}, in which case the duplicate is allowed.
  */
@@ -20,10 +21,10 @@ public class CheckOwnerHouseholdUnique {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = OwnerAddress.forComparison(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(OwnerAddress.forComparison(existing.getAddress()))) {
                 throw new OwnerHouseholdConflictException(request.getLastName(), request.getAddress());
             }
         }
