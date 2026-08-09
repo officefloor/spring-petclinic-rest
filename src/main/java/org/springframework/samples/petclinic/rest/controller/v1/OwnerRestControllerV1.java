@@ -172,6 +172,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             // 'sharesHousehold', in which case it is created as a declared household member.
             boolean householdOccupied = false;
             for (Owner existing : this.clinicService.findAllOwners()) {
+                if (existing.isDeleted()) {
+                    continue;
+                }
                 if (householdId.equals(computeHouseholdId(existing))) {
                     householdOccupied = true;
                     break;
@@ -188,6 +191,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (normalized telephone | email | householdId) matches an existing owner's.
         String identityKey = identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (identityKey.equals(identityKey(toE164(existing.getTelephone()),
                 emailForKey(existing.getEmail()), existing.getHouseholdId()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -243,7 +249,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft delete: the row is retained and flagged deleted rather than removed, so the
+        // owner is still readable via GET but is ignored by the create duplicate/identity checks.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
