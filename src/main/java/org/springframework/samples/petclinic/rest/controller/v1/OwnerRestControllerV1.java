@@ -50,6 +50,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.LocalityLookup;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -74,6 +75,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /** A well-formed postcode: exactly four digits. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
+    /**
+     * Region -&gt; inclusive 4-digit postcode range {@code {low, high}}. A postcode supplied for an
+     * owner whose city maps to one of these regions (see {@link LocalityLookup}) must fall within the
+     * region's range; a city with no known region ({@code "UNKNOWN"}) accepts any 4-digit postcode.
+     */
+    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     /** Dedicated audit logger; one line is emitted per successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
@@ -154,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        validatePostcode(owner.getCity(), owner.getPostcode());
         owner.setAddress(normalizeAddress(owner.getAddress()));
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
@@ -510,6 +525,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Validates an optional postcode supplied on create. A postcode is validated only when present:
+     * an absent (null or blank) postcode is accepted, keeping the create request backward-compatible.
+     * When present it must be exactly four digits and, when the owner's city maps to a known region
+     * (see {@link LocalityLookup}), must fall within that region's inclusive range
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). A city with no known
+     * region accepts any four-digit postcode.
+     *
+     * @param city the owner's city, used to derive the region whose range the postcode must satisfy
+     * @param postcode the raw postcode value from the request, or {@code null} when none was supplied
+     * @throws InvalidOwnerFieldsException if a supplied postcode is not four digits or is out of range
+     *         for the city's region
+     */
+    private void validatePostcode(String city, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(LocalityLookup.forCity(city));
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
     }
 
     /**
