@@ -180,6 +180,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
+        // Soft-match: the owner is not a hard (identityKey) duplicate, but if it shares an
+        // existing owner's last name and postcode while having a different normalized
+        // telephone it is still created and flagged as a possible duplicate of that owner.
+        applyPossibleDuplicate(owner);
         owner.setCustomerCode(customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -530,6 +534,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return hex.substring(0, 12).toUpperCase();
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
+     * Applies soft-match (possible-duplicate) detection to a new owner that has already
+     * cleared hard {@code identityKey} duplicate rejection. The owner is flagged as a
+     * possible duplicate when an existing owner shares its last name (compared
+     * case-insensitively with collapsed whitespace) and its postcode while having a
+     * different normalized telephone; {@code possibleDuplicateOf} is then set to that
+     * existing owner's id. When several existing owners match, the one with the lowest id
+     * is chosen so the result is deterministic. When no such owner exists — or the new
+     * owner has no postcode to compare — {@code possibleDuplicate} is set to {@code false}
+     * and no matching id is recorded.
+     *
+     * @param owner the new owner, already normalized (E.164 telephone, validated postcode)
+     */
+    private void applyPossibleDuplicate(Owner owner) {
+        owner.setPossibleDuplicate(false);
+        if (owner.getPostcode() == null) {
+            return;
+        }
+        String lastNameKey = householdKey(owner.getLastName());
+        Owner match = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastNameKey.equals(householdKey(existing.getLastName()))
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !owner.getTelephone().equals(toE164(existing.getTelephone()))) {
+                if (match == null || (existing.getId() != null
+                    && existing.getId() < match.getId())) {
+                    match = existing;
+                }
+            }
+        }
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
         }
     }
 
