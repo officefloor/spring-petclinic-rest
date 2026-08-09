@@ -37,9 +37,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityCapacityExceededException;
@@ -159,10 +157,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setAddress(normalizeAddress(owner.getAddress()));
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
-        rejectDuplicateTelephone(normalizedTelephone);
         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
         owner.setEmail(normalizeEmail(owner.getEmail()));
-        rejectDuplicateEmail(owner.getEmail());
+        rejectDuplicateIdentity(owner);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
@@ -546,42 +543,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an owner create whose E.164 telephone is already used by any other owner. Owners store
-     * their telephone in E.164 form, so the uniqueness check compares these canonical E.164 values
-     * directly and is therefore independent of the punctuation a caller supplied.
+     * Rejects an owner create whose {@code identityKey} exactly matches an existing owner's. The
+     * identity key - the owner's normalized telephone, email (empty when none) and {@code householdId}
+     * (empty when none) joined by {@code '|'} - is the single derived value that subsumes the former
+     * separate telephone, email and household duplicate checks. Only a whole-key match is a conflict,
+     * so two members of one household with different telephones have different keys and are both
+     * allowed; only an owner whose entire key is identical is a duplicate.
      *
-     * @param e164Telephone the E.164 telephone of the owner being created
-     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
+     * @param owner the owner being created, with its telephone, email and householdId already resolved
+     * @throws DuplicateOwnerIdentityException if another owner already has this exact identity key
      */
-    private void rejectDuplicateTelephone(String e164Telephone) {
+    private void rejectDuplicateIdentity(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .anyMatch(e164Telephone::equals);
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (inUse) {
-            throw new DuplicateOwnerTelephoneException(e164Telephone);
-        }
-    }
-
-    /**
-     * Rejects an owner create whose lower-cased email is already used by any other owner. Owners
-     * store their email in lower-cased form, so the uniqueness check compares these canonical values
-     * directly and is therefore independent of the letter case a caller supplied. An owner with no
-     * email supplied ({@code null}) is not subject to this check, since there is no value to collide.
-     *
-     * @param email the lower-cased email of the owner being created, or {@code null} when none was supplied
-     * @throws DuplicateOwnerEmailException if another owner already uses this email
-     */
-    private void rejectDuplicateEmail(String email) {
-        if (email == null) {
-            return;
-        }
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .anyMatch(email::equalsIgnoreCase);
-        if (inUse) {
-            throw new DuplicateOwnerEmailException(email);
+            throw new DuplicateOwnerIdentityException(identityKey);
         }
     }
 
@@ -592,16 +569,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link #normalizeAddress(String)}), so purely cosmetic differences in spacing, letter case or
      * abbreviation still count as the same household.
      * <p>
-     * When the owner's last name and address already belong to at least one other owner the behaviour
-     * depends on {@code sharesHousehold}. If it is not true the create is rejected as a duplicate
-     * household. If it is true the create is allowed and every member of the household - the existing
-     * owners and this joiner - is assigned the same stable {@code householdId}, which is returned on
-     * read. When no other owner shares the last name and address no identifier is assigned.
+     * When the owner's last name and address already belong to at least one other owner and
+     * {@code sharesHousehold} is true, every member of the household - the existing owners and this
+     * joiner - is assigned the same stable {@code householdId}, which is returned on read and forms
+     * the third component of the {@code identityKey}. When {@code sharesHousehold} is not true, or no
+     * other owner shares the last name and address, no identifier is assigned. Household membership no
+     * longer rejects a create on its own; duplicates are detected solely through the identity key.
      *
      * @param owner the owner being created
      * @param sharesHousehold the request's shared-household acknowledgement, or {@code null} when absent
-     * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and
-     *         address and {@code sharesHousehold} is not true
      */
     /**
      * Maps an owner to its DTO, first populating the owner's {@link Owner#getHouseholdMemberCount()
@@ -644,7 +620,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         if (!Boolean.TRUE.equals(sharesHousehold)) {
-            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+            return;
         }
         String householdId = generateHouseholdId(lastName, address);
         owner.setHouseholdId(householdId);
