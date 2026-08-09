@@ -353,19 +353,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_DAY = 100;
 
     /**
-     * Rolls a date forward to the next business day: a Saturday or Sunday is moved forward
-     * to the following Monday, while a weekday is returned unchanged.
+     * The fixed list of public holidays that the business-day roll skips over. A date that
+     * lands on one of these is rolled forward to the next non-holiday business day.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
+    /**
+     * Rolls a date forward to the next business day: a Saturday, Sunday or listed public
+     * holiday is moved forward one day at a time until a non-holiday weekday is reached,
+     * while a date that is already a non-holiday weekday is returned unchanged.
      *
      * @param date the date to adjust
-     * @return the same date if it is a weekday, otherwise the following Monday
+     * @return the same date if it is a non-holiday weekday, otherwise the next such day
      */
     private LocalDate toBusinessDay(LocalDate date) {
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (dayOfWeek == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY
+                || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
         }
         return date;
     }
