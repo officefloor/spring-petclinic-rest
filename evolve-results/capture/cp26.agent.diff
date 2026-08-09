@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2dabb304..7102657f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -430,16 +430,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return customerCode + "-M" + yy;
+     }
+ 
++    /**
++     * The exact number of national (subscriber) digits an E.164 telephone must carry for a given
++     * country calling code. Australia ('+61') uses 9 national digits and the North American
++     * Numbering Plan ('+1') uses 10. Country codes not listed here are only bound by the generic
++     * E.164 length (8 to 15 digits overall).
++     */
++    private static final java.util.Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
++        java.util.Map.of("61", 9, "1", 10);
++
+     /**
+      * Normalizes a telephone number supplied on create into E.164 form. Spaces, dashes and brackets
+      * are stripped. When the value carries an explicit leading '+' its country code is kept as given;
+      * otherwise country code '+61' is assumed and a single leading '0' is dropped from the national
+-     * digits. The result must be a '+' followed by 8 to 15 digits. This E.164 string is what gets
+-     * stored and returned.
++     * digits. The result must be a '+' followed by 8 to 15 digits, and its national number must have
++     * the exact length its country code requires ('+61' needs 9 national digits, '+1' needs 10). This
++     * E.164 string is what gets stored and returned.
+      *
+      * @param telephone the raw telephone value from the request
+      * @return the normalized E.164 telephone (a '+' followed by 8 to 15 digits)
+-     * @throws InvalidOwnerFieldsException if the value cannot form a valid E.164 number
++     * @throws InvalidOwnerFieldsException if the value cannot form a valid E.164 number or its
++     *         national number has the wrong length for its country code
+      */
+     private String normalizeTelephone(String telephone) {
+         String cleaned = telephone == null ? "" : telephone.trim().replaceAll("[\\s()\\-]", "");
+@@ -456,9 +467,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!e164.matches("^\\+[0-9]{8,15}$")) {
+             throw new InvalidOwnerFieldsException(List.of("telephone"));
+         }
++        validateNationalNumberLength(e164);
+         return e164;
+     }
+ 
++    /**
++     * Rejects an E.164 telephone whose national number does not have the exact length its country
++     * calling code requires. The digits after the leading '+' are split into the longest matching
++     * country code from {@link #NATIONAL_NUMBER_LENGTHS} and the remaining national number; when the
++     * code is known and the national number's length differs from the required count the telephone is
++     * rejected. Numbers whose country code is not listed are left to the generic E.164 length rule.
++     *
++     * @param e164 the normalized E.164 telephone (a '+' followed by 8 to 15 digits)
++     * @throws InvalidOwnerFieldsException if the national number has the wrong length for its country code
++     */
++    private void validateNationalNumberLength(String e164) {
++        String digits = e164.substring(1);
++        for (int codeLength = Math.min(3, digits.length()); codeLength >= 1; codeLength--) {
++            String countryCode = digits.substring(0, codeLength);
++            Integer requiredNationalLength = NATIONAL_NUMBER_LENGTHS.get(countryCode);
++            if (requiredNationalLength != null) {
++                int nationalLength = digits.length() - codeLength;
++                if (nationalLength != requiredNationalLength) {
++                    throw new InvalidOwnerFieldsException(List.of("telephone"));
++                }
++                return;
++            }
++        }
++    }
++
+     /**
+      * Normalizes an optional email address supplied on create. An absent email (null or blank) is
+      * left unset. When a value is present it must be a syntactically valid address; the normalized
