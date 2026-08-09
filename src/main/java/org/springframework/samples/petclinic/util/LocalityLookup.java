@@ -71,6 +71,29 @@ public final class LocalityLookup {
     }
 
     /**
+     * Returns the owner's segment, formatted {@code <TIER>_<AREA>}, one of {@code PREMIUM_METRO},
+     * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
+     *
+     * <p>TIER is {@code PREMIUM} when the given membership level is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the locality derived from the owner's customer
+     * code, postcode and city (see {@link #forCustomerCode(String, String, String)}) is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     *
+     * @param membershipLevel the owner's derived membership level, or {@code null}
+     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param postcode the owner's stored postcode, or {@code null}
+     * @param city the owner's stored city, or {@code null}
+     * @return the formatted owner segment
+     */
+    public static String ownerSegment(Integer membershipLevel, String customerCode, String postcode,
+            String city) {
+        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
+        String locality = forCustomerCode(customerCode, postcode, city);
+        String area = REGION_POSTCODES.containsKey(locality) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Returns the canonical region for the given postcode and city, preferring the postcode.
      *
      * <p>The postcode is looked up by range first; only when it is absent or in no known range does
