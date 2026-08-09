@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictException.java
+new file mode 100644
+index 00000000..e471d7dc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictException.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request would duplicate an existing owner's household — the same
++ * lastName and the same address (compared case-insensitively with collapsed whitespace) — and the
++ * request did not opt in via {@code sharesHousehold: true}. Handled globally by
++ * {@link OwnerHouseholdConflictExceptionHandler}, which responds 409.
++ */
++public class OwnerHouseholdConflictException extends Exception {
++
++    public OwnerHouseholdConflictException(String lastName, String address) {
++        super("Another owner already lives at this household: " + lastName + ", " + address);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictExceptionHandler.java
+new file mode 100644
+index 00000000..3d5dc133
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/OwnerHouseholdConflictExceptionHandler.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 409 with a JSON body {@code {"errors": ["household"]}} when the create request would
++ * duplicate another owner's household (same lastName and address) without opting in via
++ * {@code sharesHousehold}.
++ */
++public class OwnerHouseholdConflictExceptionHandler {
++
++    public void handle(@Parameter OwnerHouseholdConflictException ex,
++            ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT)
++                .body(Map.of("errors", List.of("household"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+new file mode 100644
+index 00000000..80c943c5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+@@ -0,0 +1,39 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConflictException;
++
++/**
++ * Rejects a create-owner request that would share a household with an existing owner — the same
++ * lastName and the same address, compared case-insensitively with collapsed whitespace. Throws
++ * {@link OwnerHouseholdConflictException} (handled as 409) on a match, unless the request opted in
++ * with {@code sharesHousehold: true}, in which case the duplicate is allowed.
++ */
++public class CheckOwnerHouseholdUnique {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws OwnerHouseholdConflictException {
++        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
++            return;
++        }
++        String lastName = normalize(request.getLastName());
++        String address = normalize(request.getAddress());
++        for (Owner existing : ownerRepository.findAll()) {
++            if (lastName.equals(normalize(existing.getLastName()))
++                    && address.equals(normalize(existing.getAddress()))) {
++                throw new OwnerHouseholdConflictException(request.getLastName(), request.getAddress());
++            }
++        }
++    }
++
++    /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConflictException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConflictException.yml
+new file mode 100644
+index 00000000..920049fb
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConflictException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConflictExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7ce970d2..e6d63586 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ validate:
+ checkTelephoneUnique:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerTelephoneUnique
+   govern: [ transaction ]
++  next: checkHouseholdUnique
++
++checkHouseholdUnique:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerHouseholdUnique
++  govern: [ transaction ]
+   next: build
+ 
+ build:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0686a17d..a4c643a6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2048,6 +2048,15 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Write-only request flag. When true, the create request is allowed even if
++            another owner has the same lastName and address (case-insensitive, with
++            collapsed whitespace); otherwise such a request is rejected with 409.
++          type: boolean
++          writeOnly: true
++          example: true
+       required:
+         - firstName
+         - lastName
