@@ -20,7 +20,23 @@ public final class OwnerCityCapacity {
     /** A city holding this many owners (up to, but not including, the limit) raises the warning. */
     public static final int CITY_WARNING_THRESHOLD = 40;
 
+    /**
+     * The per-city soft capacity: the number of owners at which a city is first considered to be
+     * running up against its limit. Equal to {@link #CITY_WARNING_THRESHOLD}; a city holding this
+     * many owners or more is "over soft capacity" (see {@link #isOverSoftCapacity}).
+     */
+    public static final int CITY_SOFT_CAPACITY = CITY_WARNING_THRESHOLD;
+
     private OwnerCityCapacity() {
+    }
+
+    /**
+     * Whether {@code city} is over its soft capacity: {@code true} once it already holds at least
+     * {@link #CITY_SOFT_CAPACITY} owners. Unlike {@link #isWarning} this stays {@code true} at or
+     * beyond the hard limit, so a read-time risk signal keeps firing for an over-full city.
+     */
+    public static boolean isOverSoftCapacity(OwnerRepository ownerRepository, String city) {
+        return countOwnersInCity(ownerRepository, city) >= CITY_SOFT_CAPACITY;
     }
 
     /** Whether {@code city} already holds {@link #CITY_OWNER_LIMIT} or more owners. */

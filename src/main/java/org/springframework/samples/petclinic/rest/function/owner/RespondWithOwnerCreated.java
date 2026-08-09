@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
         dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
+        dto.setRiskFlag(OwnerRiskFlag.isRisk(owner, ownerRepository));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

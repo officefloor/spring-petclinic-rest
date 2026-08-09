@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "capacityWarning", ignore = true)
+    @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     /**
