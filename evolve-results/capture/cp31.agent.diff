@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 00b43f41..04c9aef3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,9 +23,40 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * A single Luhn check digit (0-9) computed at read time over the digits contained in the
++     * owner's customerCode. Non-digit characters (the hyphens in '<CITY3>-<LAST3>-<NNNN>') are
++     * skipped. Null when the owner or its customerCode is absent.
++     */
++    default Integer checkDigit(Owner owner) {
++        if (owner == null || owner.getCustomerCode() == null) {
++            return null;
++        }
++        String code = owner.getCustomerCode();
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * The owner's preferred contact channel, derived at read time: {@code EMAIL}
+      * when an email address is present, otherwise {@code PHONE}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f75e8c5b..d2e01502 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,6 +2121,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed at read time over the digits
++                contained in the owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
