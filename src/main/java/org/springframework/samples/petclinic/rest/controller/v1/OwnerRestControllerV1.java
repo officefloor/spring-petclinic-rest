@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHousehold
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -71,6 +72,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * The maximum number of owners a single city may contain. Once a city already holds this many
+     * owners, any further create naming that city is rejected as a conflict.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -119,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredOwnerFields(ownerFieldsDto);
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizeAddress(owner.getAddress()));
@@ -284,6 +292,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeHouseholdField(existing.getFirstName()).equals(first)
                 && normalizeHouseholdField(existing.getLastName()).equals(last))
             .count();
+    }
+
+    /**
+     * Rejects an owner create whose city already holds the maximum number of owners. Owners are
+     * grouped into a city case-insensitively after surrounding whitespace is trimmed and internal
+     * runs are collapsed (mirroring the other city comparisons), so cosmetic differences in case or
+     * spacing count as the same city. When the city already contains {@link #MAX_OWNERS_PER_CITY} or
+     * more owners the create is rejected as a conflict.
+     *
+     * @param city the city of the owner being created
+     * @throws OwnerCityCapacityExceededException if the city already contains the maximum number of owners
+     */
+    private void rejectCityAtCapacity(String city) {
+        String normalizedCity = normalizeHouseholdField(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
+            .count();
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
+            throw new OwnerCityCapacityExceededException(city, MAX_OWNERS_PER_CITY);
+        }
     }
 
     /**
