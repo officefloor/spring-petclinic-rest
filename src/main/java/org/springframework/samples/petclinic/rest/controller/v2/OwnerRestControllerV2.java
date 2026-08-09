@@ -42,8 +42,8 @@ public class OwnerRestControllerV2 implements OwnerV2Api {
 
     /**
      * Counts the members of the given owner's household - the owners that share this owner's
-     * {@code householdId}, including the owner itself - so the derived membership tier can promote a
-     * three-or-more-member household to 'GOLD'. An owner with no household is its own sole member.
+     * {@code householdId}, including the owner itself. An owner with no household is its own sole
+     * member.
      *
      * @param owner the owner whose household is being sized
      * @return the number of owners sharing this owner's household (one when it has no household)

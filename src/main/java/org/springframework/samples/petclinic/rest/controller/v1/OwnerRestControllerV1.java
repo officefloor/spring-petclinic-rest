@@ -166,8 +166,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -544,8 +544,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     /**
      * Maps an owner to its DTO, first populating the owner's {@link Owner#getHouseholdMemberCount()
-     * household member count} so the derived membership tier is computed correctly (an owner whose
-     * household holds three or more members is 'GOLD'; otherwise the SILVER/BRONZE rules apply).
+     * household member count} for the response.
      *
      * @param owner the owner to map
      * @return the mapped owner DTO

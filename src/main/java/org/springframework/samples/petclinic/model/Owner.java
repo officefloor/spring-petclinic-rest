@@ -69,7 +69,7 @@ public class Owner extends Person {
     /**
      * The number of owners belonging to this owner's household (owners sharing the same
      * {@code householdId}), including this owner. It is a derived, non-persistent value populated
-     * when an owner is mapped for a response and drives the 'GOLD' membership tier.
+     * when an owner is mapped for a response.
      */
     @Transient
     private Integer householdMemberCount;
@@ -155,6 +155,24 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 3 fixed at creation. It starts at 1, gains a
+     * level when an email address is present, and gains a level when the owner has no namesakes
+     * ({@code namesakeCount} is zero); it is capped at 3. Level 4 is reserved for tenure.
+     *
+     * @return the derived membership level (1 to 3)
+     */
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isBlank()) {
+            level++;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     protected Set<Pet> getPetsInternal() {
