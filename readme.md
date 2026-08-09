@@ -8,14 +8,6 @@
 This backend version of the Spring Petclinic application only provides a REST API. **There is no UI**.
 The [spring-petclinic-angular project](https://github.com/spring-petclinic/spring-petclinic-angular) is a Angular front-end application which consumes the REST API.
 
-> **This fork replaces Spring MVC request handling with [OfficeFloor](https://officefloor.net)
-> function injection.** Each REST endpoint is a pipeline of small function classes wired together
-> in YAML under `src/main/resources/officefloor/rest/` (one file per `path.METHOD`), instead of a
-> `@RestController` method. Spring's dependency injection, security, persistence and DTOs are
-> unchanged — only the request layer differs. There is no `@RestController`, no `@ControllerAdvice`
-> and no `ClinicService` facade; error handling lives in `src/main/resources/officefloor/escalation/`.
-> See `AGENTS.md` for the endpoint conventions.
-
 ## Understanding the Spring Petclinic application with a few diagrams
 
 [See the presentation of the Spring Petclinic Framework version](http://fr.slideshare.net/AntoineRey/spring-framework-petclinic-sample-application)
@@ -204,11 +196,6 @@ Some of the required classes are generated during the build time.
 Here are the generated file types:
 * DTOs
 
-The request DTOs are generated from the OpenAPI specification and consumed by the OfficeFloor
-functions. (Unlike the Spring MVC version, the endpoints are not implemented by controllers
-overriding generated API interfaces — they are function pipelines wired in YAML; see the note at
-the top of this file.)
-
 To see how to get them generated you can read the next chapter. 
 
 ## Generated code
@@ -243,9 +230,9 @@ This will secure all APIs and in order to access them, basic authentication is r
 Apart from authentication, APIs also require authorization. This is done via roles that a user can have.
 The existing roles are listed below with the corresponding permissions 
 
-* `OWNER_ADMIN` -> `owners`, `pets`, `pettypes` (`GET` only), `visits` endpoints
-* `VET_ADMIN`   -> `pettypes`, `specialties`, `vets` endpoints
-* `ADMIN`       -> `users` endpoints
+* `OWNER_ADMIN` -> owners, pets, pet types (read only), visits
+* `VET_ADMIN`   -> pet types, specialties, vets
+* `ADMIN`       -> users
 
 There is an existing user with the username `admin` and password `admin` that has access to all APIs.
  In order to add a new user, please make `POST /api/users` request with the following payload:
@@ -288,9 +275,6 @@ File -> Import -> Maven -> Existing Maven project
 
 | Layer | Source |
 |--|--|
-| REST endpoint wiring (YAML) | [officefloor/rest folder](src/main/resources/officefloor/rest) |
-| REST endpoint functions | [rest/function folder](src/main/java/org/springframework/samples/petclinic/rest/function) |
-| Error handling (escalations) | [officefloor/escalation folder](src/main/resources/officefloor/escalation) · [rest/escalation folder](src/main/java/org/springframework/samples/petclinic/rest/escalation) |
 | JDBC | [jdbc folder](src/main/java/org/springframework/samples/petclinic/repository/jdbc) |
 | JPA | [jpa folder](src/main/java/org/springframework/samples/petclinic/repository/jpa) |
 | Spring Data JPA | [springdatajpa folder](src/main/java/org/springframework/samples/petclinic/repository/springdatajpa) |
