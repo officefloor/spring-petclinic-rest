@@ -1,0 +1,245 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7fc8da29..1190b4bb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,6 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+@@ -41,26 +40,6 @@ public interface OwnerMapper {
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
+-    /**
+-     * The owner's membership tier, derived at read time: {@code GOLD} when the owner's household
+-     * (owners sharing the same householdId) has 3 or more members, otherwise {@code SILVER} when the
+-     * owner's namesakeCount is 0 and an email is present, otherwise {@code BRONZE}.
+-     */
+-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+-        if (owner == null) {
+-            return null;
+-        }
+-        Integer householdSize = owner.getHouseholdSize();
+-        if (householdSize != null && householdSize >= 3) {
+-            return OwnerDto.MembershipTierEnum.GOLD;
+-        }
+-        Integer namesakeCount = owner.getNamesakeCount();
+-        String email = owner.getEmail();
+-        boolean silver = namesakeCount != null && namesakeCount == 0
+-            && email != null && !email.isEmpty();
+-        return silver ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE;
+-    }
+-
+     /** Formats the owner's stored names as 'LastName, FirstName'. */
+     default String displayName(Owner owner) {
+         if (owner == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d4b0f774..601ccaa0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -153,6 +156,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+index 6aa32dee..1ade4033 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+@@ -11,8 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * the size is 1.
+  *
+  * <p>The value is a snapshot taken while the new row is still unsaved, so it captures the household's
+- * membership immediately after this create. A household of 3 or more members earns the {@code GOLD}
+- * membership tier at read time.
++ * membership immediately after this create.
+  *
+  * <p>Runs after {@link AssignHouseholdId} (so the {@code householdId} is set and any pre-existing
+  * members are back-filled) and before {@link SaveOwner}, mutating the not-yet-persisted owner in
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+new file mode 100644
+index 00000000..72ed31bf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Assigns the new owner's numeric {@code membershipLevel} at creation. The level starts at 1,
++ * gains 1 when an email is present and 1 more when the owner's {@code namesakeCount} is 0, and is
++ * capped at 3 (level 4 is reserved for tenure).
++ *
++ * <p>Runs after {@link AssignNamesakeCount} (so the namesake snapshot exists) and before
++ * {@link SaveOwner}, mutating the not-yet-persisted owner in place.
++ */
++public class AssignMembershipLevel {
++
++    public void service(@Val Owner owner) {
++        int level = 1;
++        String email = owner.getEmail();
++        if (email != null && !email.isEmpty()) {
++            level++;
++        }
++        Integer namesakeCount = owner.getNamesakeCount();
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        owner.setMembershipLevel(Math.min(level, 3));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 8ea3a8d5..a23ad218 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -8,15 +8,16 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Emits an audit line to the dedicated {@code AUDIT} logger recording a successful owner
+  * create. Runs after {@link SaveOwner} (so the owner id is assigned) and before the
+- * responder. The line carries the owner id, the {@code customerCode} and the
+- * {@code registrationDate}.
++ * responder. The line carries the owner id, the {@code customerCode}, the
++ * {@code registrationDate} and the {@code membershipLevel}.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index b64fa910..650e0d10 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER
++  household_size INTEGER,
++  membership_level INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 771b0902..cf883160 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE owners (
+   membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  household_size INTEGER
++  household_size INTEGER,
++  membership_level INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4c0efb70..3c103f70 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index e5c8ae27..4f47e0ca 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+-                                      household_size INTEGER
++                                      household_size INTEGER,
++                                      membership_level INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 9dc47428..0fcec639 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -69,6 +69,11 @@ assignHouseholdSize:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignNamesakeCount
+   govern: [ transaction ]
++  next: assignMembershipLevel
++
++assignMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel
++  govern: [ transaction ]
+   next: assignMembershipNumber
+ 
+ assignMembershipNumber:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d7aa8e9d..9800d0f4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2139,19 +2139,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier, derived at read time: 'GOLD' when the owner's
+-                household (owners sharing the same householdId) has 3 or more members,
+-                otherwise 'SILVER' when the owner's namesakeCount is 0 and an email is
+-                present, otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned at creation. Starts at 1,
++                gains 1 when an email is present and 1 more when the owner's namesakeCount
++                is 0, capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
