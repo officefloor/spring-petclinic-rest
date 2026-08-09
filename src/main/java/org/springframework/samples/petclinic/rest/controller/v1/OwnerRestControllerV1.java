@@ -106,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyGoldTier(ownerDto, owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
@@ -178,6 +179,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyGoldTier(ownerDto, owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -418,6 +420,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return count;
+    }
+
+    /**
+     * The number of owners that must share a household before its members are promoted to the
+     * {@code GOLD} membership tier. Once an owner's household (owners sharing the same {@code
+     * householdId}) reaches this many members, that owner is reported as {@code GOLD}.
+     */
+    private static final int HOUSEHOLD_GOLD_THRESHOLD = 3;
+
+    /**
+     * Promotes the owner's membership tier to {@code GOLD} when the owner's household — the set of
+     * owners sharing the same non-null {@code householdId} — has {@link #HOUSEHOLD_GOLD_THRESHOLD}
+     * or more members. Otherwise the tier assigned by the mapper (the existing {@code SILVER} and
+     * {@code BRONZE} rules) is left unchanged.
+     *
+     * @param ownerDto the mapped owner response whose tier may be promoted
+     * @param owner    the owner entity supplying the {@code householdId}
+     */
+    private void applyGoldTier(OwnerDto ownerDto, Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return;
+        }
+        int members = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                members++;
+            }
+        }
+        if (members >= HOUSEHOLD_GOLD_THRESHOLD) {
+            ownerDto.setMembershipTier(OwnerDto.MembershipTierEnum.GOLD);
+        }
     }
 
     /**
