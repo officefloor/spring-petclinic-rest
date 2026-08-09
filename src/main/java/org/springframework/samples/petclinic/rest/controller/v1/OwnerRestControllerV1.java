@@ -102,7 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = normalizeTelephone(owner.getTelephone());
+        String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
@@ -114,7 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setEmail(email);
         }
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (telephone.equals(normalizeTelephone(existing.getTelephone()))) {
+            if (telephone.equals(toE164(existing.getTelephone()))) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
@@ -223,19 +223,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number for owner creation by removing every non-digit
-     * character. The result must be exactly 10 digits.
+     * Normalizes a telephone number for owner creation into E.164 form. Spaces, dashes
+     * and brackets are stripped. When the number already carries a leading {@code '+'}
+     * and country code these are kept; otherwise Australia's country code {@code '+61'}
+     * is assumed and a single leading {@code '0'} is dropped from the national digits.
+     * The resulting number must have between 8 and 15 digits after the {@code '+'}.
      *
      * @param telephone the raw telephone value supplied by the client
-     * @return the 10-digit telephone, or {@code null} when it does not contain exactly
-     *         10 digits after stripping (signalling a 400 Bad Request)
+     * @return the E.164 telephone (e.g. {@code +61412345678}), or {@code null} when it
+     *         cannot form a valid E.164 number (signalling a 400 Bad Request)
      */
-    private static String normalizeTelephone(String telephone) {
+    private static String toE164(String telephone) {
         if (telephone == null) {
             return null;
         }
-        String digits = telephone.replaceAll("\\D", "");
-        return digits.length() == 10 ? digits : null;
+        String cleaned = telephone.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
     }
 
     /**
