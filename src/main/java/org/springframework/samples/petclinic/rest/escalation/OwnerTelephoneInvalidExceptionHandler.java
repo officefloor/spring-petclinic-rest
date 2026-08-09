@@ -9,7 +9,7 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Responds 400 with a JSON body {@code {"errors": ["telephone"]}} when the supplied
- * telephone is not exactly ten digits once non-digit characters are removed.
+ * telephone cannot be normalized into a valid E.164 number.
  */
 public class OwnerTelephoneInvalidExceptionHandler {
 

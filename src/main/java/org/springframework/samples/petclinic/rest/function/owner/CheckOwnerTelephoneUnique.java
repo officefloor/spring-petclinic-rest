@@ -7,10 +7,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneConflictException;
 
 /**
- * Rejects a create-owner request whose normalized telephone is already used by any other owner.
- * The telephone was normalized to ten digits by {@link ValidateOwnerFields} and published on the
- * body; this step compares it (digits only, to be robust) against every existing owner and throws
- * {@link OwnerTelephoneConflictException} (handled as 409) on a match.
+ * Rejects a create-owner request whose telephone is already used by any other owner.
+ * The telephone was normalized to E.164 form by {@link ValidateOwnerFields} and published on the
+ * body; this step compares that E.164 value against the E.164 form of every existing owner's
+ * telephone and throws {@link OwnerTelephoneConflictException} (handled as 409) on a match.
  */
 public class CheckOwnerTelephoneUnique {
 
@@ -18,13 +18,19 @@ public class CheckOwnerTelephoneUnique {
             throws OwnerTelephoneConflictException {
         String telephone = normalize(request.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
-            if (telephone.equals(normalize(existing.getTelephone()))) {
+            if (telephone != null && telephone.equals(normalize(existing.getTelephone()))) {
                 throw new OwnerTelephoneConflictException(request.getTelephone());
             }
         }
     }
 
+    /** Best-effort E.164 form for comparison; falls back to the raw value when unparseable. */
     private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+        try {
+            return OwnerTelephone.toE164(telephone);
+        }
+        catch (Exception ex) {
+            return telephone;
+        }
     }
 }
