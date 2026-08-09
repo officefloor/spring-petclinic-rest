@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -123,10 +124,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
+        LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
+        if (effectiveRegistrationDate == null) {
+            effectiveRegistrationDate = LocalDate.now();
+        }
+        LocalDate registrationDate = toBusinessDay(effectiveRegistrationDate);
+        owner.setRegistrationDate(registrationDate);
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (countOwnersRegisteredToday() >= MAX_OWNERS_PER_DAY) {
+        if (countOwnersRegisteredOn(registrationDate) >= MAX_OWNERS_PER_DAY) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         for (Owner existing : this.clinicService.findAllOwners()) {
@@ -157,9 +164,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setTelephone(telephone);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -288,23 +292,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The maximum number of owners that may be created in a single day. Owner creation is
-     * rejected once this many owners already carry today's {@code registrationDate}.
+     * The maximum number of owners that may be created in a single business day. Owner
+     * creation is rejected once this many owners already fall on the new owner's adjusted
+     * business day {@code registrationDate}.
      */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
     /**
-     * Counts how many existing owners were registered today, i.e. whose {@code
-     * registrationDate} equals the current date. This is evaluated before the new owner is
-     * persisted, so the owner being created is not included in the count.
+     * Rolls a date forward to the next business day: a Saturday or Sunday is moved forward
+     * to the following Monday, while a weekday is returned unchanged.
      *
-     * @return the number of existing owners registered today
+     * @param date the date to adjust
+     * @return the same date if it is a weekday, otherwise the following Monday
      */
-    private int countOwnersRegisteredToday() {
-        LocalDate today = LocalDate.now();
+    private LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
+    }
+
+    /**
+     * Counts how many existing owners fall on the given business day, i.e. whose {@code
+     * registrationDate} rolls forward to the same business day. This is evaluated before the
+     * new owner is persisted, so the owner being created is not included in the count.
+     *
+     * @param businessDay the adjusted business day to count against
+     * @return the number of existing owners registered on that business day
+     */
+    private int countOwnersRegisteredOn(LocalDate businessDay) {
         int count = 0;
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            LocalDate existingDate = existing.getRegistrationDate();
+            if (existingDate != null && businessDay.equals(toBusinessDay(existingDate))) {
                 count++;
             }
         }
