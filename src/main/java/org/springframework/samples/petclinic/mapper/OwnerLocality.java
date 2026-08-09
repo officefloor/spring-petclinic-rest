@@ -41,6 +41,33 @@ public final class OwnerLocality {
     }
 
     /**
+     * Compute the single Luhn check digit (0-9) over the digits contained in {@code s}.
+     * Non-digit characters are ignored; the rightmost digit is doubled first. Kept here,
+     * alongside the other derived-field helpers, so MapStruct does not treat it as an
+     * implicit mapping method.
+     */
+    public static int luhn(String s) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * Return the canonical region whose postcode range contains {@code postcode}, or
      * {@code null} when the postcode is absent, malformed, or in no known range.
      */

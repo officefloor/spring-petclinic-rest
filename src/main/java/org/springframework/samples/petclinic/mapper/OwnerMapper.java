@@ -34,6 +34,9 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey",
         expression = "java(owner.getTelephone() + \"|\" + (owner.getEmail() == null ? \"\" : owner.getEmail()) "
             + "+ \"|\" + (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
+    @Mapping(target = "checkDigit",
+        expression = "java(owner.getCustomerCode() == null ? null "
+            + ": org.springframework.samples.petclinic.mapper.OwnerLocality.luhn(owner.getCustomerCode()))")
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
