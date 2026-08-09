@@ -81,6 +81,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
 
     /**
+     * Email domains belonging to disposable-address providers. An owner whose email domain (the part
+     * after the '@', compared case-insensitively) is one of these is rejected: such addresses are
+     * throwaway and unsuitable for a durable owner record.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Region -&gt; inclusive 4-digit postcode range {@code {low, high}}. A postcode supplied for an
      * owner whose city maps to one of these regions (see {@link LocalityLookup}) must fall within the
      * region's range; a city with no known region ({@code "UNKNOWN"}) accepts any 4-digit postcode.
@@ -528,12 +536,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Normalizes an optional email address supplied on create. An absent email (null or blank) is
-     * left unset. When a value is present it must be a syntactically valid address; the normalized
-     * form stored and returned is the value lower-cased.
+     * left unset. When a value is present it must be a syntactically valid address whose domain is not
+     * on the disposable-domain blocklist ({@link #DISPOSABLE_EMAIL_DOMAINS}); the normalized form
+     * stored and returned is the value lower-cased.
      *
      * @param email the raw email value from the request, or {@code null} when none was supplied
      * @return the lower-cased email, or {@code null} when no email was supplied
-     * @throws InvalidOwnerFieldsException if a non-blank value is not a syntactically valid address
+     * @throws InvalidOwnerFieldsException if a non-blank value is not a syntactically valid address or
+     *         its domain is on the disposable-domain blocklist
      */
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
@@ -542,7 +552,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
-        return email.toLowerCase(Locale.ROOT);
+        String normalized = email.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return normalized;
     }
 
     /**
