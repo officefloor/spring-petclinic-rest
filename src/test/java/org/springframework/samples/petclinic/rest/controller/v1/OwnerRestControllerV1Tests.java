@@ -199,6 +199,30 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerRejectsCityAtCapacity() throws Exception {
+        // Fill a fresh city to its 50-owner capacity, each owner with a distinct household and
+        // telephone so only the city-capacity rule can reject the 51st create.
+        String city = "Capacity-" + System.nanoTime();
+        for (int i = 0; i < 50; i++) {
+            Owner owner = new Owner();
+            owner.setFirstName("Resident" + i);
+            owner.setLastName("Resident" + i);
+            owner.setAddress(i + " Capacity Ln");
+            owner.setCity(city);
+            owner.setTelephone("+61608600" + String.format("%04d", i));
+            ownerRepository.save(owner);
+        }
+
+        String body = """
+            {"firstName":"George","lastName":"Overflow","address":"999 Overflow Way","city":"%s","telephone":"6085559999"}
+            """.formatted(city);
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerValidationError() throws Exception {
         String body = """
             {"lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085551023"}
