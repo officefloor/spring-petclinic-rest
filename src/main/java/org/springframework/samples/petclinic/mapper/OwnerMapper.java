@@ -42,12 +42,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier, derived at read time: {@code SILVER} when the owner's
-     * namesakeCount is 0 and an email is present, otherwise {@code BRONZE}.
+     * The owner's membership tier, derived at read time: {@code GOLD} when the owner's household
+     * (owners sharing the same householdId) has 3 or more members, otherwise {@code SILVER} when the
+     * owner's namesakeCount is 0 and an email is present, otherwise {@code BRONZE}.
      */
     default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            return OwnerDto.MembershipTierEnum.GOLD;
         }
         Integer namesakeCount = owner.getNamesakeCount();
         String email = owner.getEmail();
@@ -84,6 +89,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
