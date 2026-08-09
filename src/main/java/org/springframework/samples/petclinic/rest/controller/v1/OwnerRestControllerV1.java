@@ -16,7 +16,11 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -118,13 +122,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastNameKey = householdKey(owner.getLastName());
-            String addressKey = householdKey(owner.getAddress());
-            for (Owner existing : this.clinicService.findAllOwners()) {
-                if (lastNameKey.equals(householdKey(existing.getLastName()))
-                    && addressKey.equals(householdKey(existing.getAddress()))) {
-                    return new ResponseEntity<>(HttpStatus.CONFLICT);
+        String lastNameKey = householdKey(owner.getLastName());
+        String addressKey = householdKey(owner.getAddress());
+        List<Owner> householdMembers = new ArrayList<>();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastNameKey.equals(householdKey(existing.getLastName()))
+                && addressKey.equals(householdKey(existing.getAddress()))) {
+                householdMembers.add(existing);
+            }
+        }
+        if (!householdMembers.isEmpty()) {
+            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+            String householdId = householdId(lastNameKey, addressKey);
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (!householdId.equals(member.getHouseholdId())) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
                 }
             }
         }
@@ -262,6 +278,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Derives the stable shared household identifier for the given normalized last name
+     * and address keys. The identifier is deterministic — the same household (same
+     * {@link #householdKey normalized} last name and address) always maps to the same
+     * value — so every owner who joins a household is assigned an identical id. It is the
+     * upper-cased first twelve hex characters of the SHA-256 digest of {@code
+     * '<lastNameKey>|<addressKey>'}.
+     *
+     * @param lastNameKey the normalized last name key
+     * @param addressKey  the normalized address key
+     * @return the shared household identifier
+     */
+    private static String householdId(String lastNameKey, String addressKey) {
+        String source = lastNameKey + "|" + addressKey;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(source.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 12).toUpperCase();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
