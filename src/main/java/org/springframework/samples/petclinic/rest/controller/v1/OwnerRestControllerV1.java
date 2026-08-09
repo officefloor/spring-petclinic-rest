@@ -118,6 +118,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String lastNameKey = householdKey(owner.getLastName());
+            String addressKey = householdKey(owner.getAddress());
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (lastNameKey.equals(householdKey(existing.getLastName()))
+                    && addressKey.equals(householdKey(existing.getAddress()))) {
+                    return new ResponseEntity<>(HttpStatus.CONFLICT);
+                }
+            }
+        }
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -236,6 +246,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Normalizes a last name or address for household-duplicate comparison: leading and
+     * trailing whitespace is trimmed, every run of internal whitespace is collapsed to a
+     * single space and the result is lower-cased. Two owners are considered to share a
+     * household when both their last names and addresses produce the same key.
+     *
+     * @param value the raw last name or address value
+     * @return the normalized comparison key (empty string when {@code value} is null)
+     */
+    private static String householdKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**

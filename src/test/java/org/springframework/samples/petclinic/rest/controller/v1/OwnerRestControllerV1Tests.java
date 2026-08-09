@@ -102,14 +102,54 @@ class OwnerRestControllerV1Tests {
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerSuccess() throws Exception {
+        // Distinct address from the seeded George Franklin so it is not rejected as a household duplicate.
         String body = """
-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
+            {"firstName":"George","lastName":"Franklin","address":"200 E. Washington Ave.","city":"Madison","telephone":"6085550000"}
             """;
         mvc.perform(post("/api/owners").content(body)
                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/owners/")))
             .andExpect(jsonPath("$.firstName").value("George"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerHouseholdDuplicateReturnsConflict() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Householder","address":"1 Shared Lane","city":"Madison","telephone":"6085550101"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Same last name and address (differing only in case and whitespace) -> 409.
+        String duplicate = """
+            {"firstName":"Jane","lastName":"householder","address":"1   Shared   Lane","city":"Madison","telephone":"6085550102"}
+            """;
+        mvc.perform(post("/api/owners").content(duplicate)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerHouseholdDuplicateAllowedWhenSharesHousehold() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Cohabitant","address":"9 Oak Street","city":"Madison","telephone":"6085550201"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Same household, but sharesHousehold=true opts in -> created.
+        String sameHousehold = """
+            {"firstName":"Jane","lastName":"Cohabitant","address":"9 Oak Street","city":"Madison","telephone":"6085550202","sharesHousehold":true}
+            """;
+        mvc.perform(post("/api/owners").content(sameHousehold)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.firstName").value("Jane"));
     }
 
     @Test
