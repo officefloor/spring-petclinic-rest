@@ -31,6 +31,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.regionFromCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.mapper.TelephoneFormat.display(owner.getTelephone()))")
     @Mapping(target = "identityKey",
         expression = "java(owner.getTelephone() + \"|\" + (owner.getEmail() == null ? \"\" : owner.getEmail()) "
             + "+ \"|\" + (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
