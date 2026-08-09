@@ -483,15 +483,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Builds the membership number for a newly created owner, formatted
      * {@code '<customerCode>-M<YY>'} where {@code customerCode} is the owner's assigned
-     * customer code and {@code YY} is the last two digits of the owner's registration
-     * date year, zero-padded to two digits.
+     * customer code and {@code YY} is the last two digits of the fiscal year of the owner's
+     * business-day-adjusted registration date, zero-padded to two digits. The fiscal year
+     * starts on 1 July and is named by the calendar year it ends in.
      *
      * @param customerCode     the owner's assigned customer code (e.g. {@code 'NSW-1A2B3C4D'})
-     * @param registrationDate the owner's registration date
-     * @return the assigned membership number (e.g. {@code 'NSW-1A2B3C4D-M26'})
+     * @param registrationDate the owner's business-day-adjusted registration date
+     * @return the assigned membership number (e.g. {@code 'NSW-1A2B3C4D-M27'})
      */
     private String membershipNumber(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        int fiscalYear = org.springframework.samples.petclinic.mapper.FiscalYear.yearValue(registrationDate);
+        return String.format("%s-M%02d", customerCode, Math.floorMod(fiscalYear, 100));
     }
 
     /**

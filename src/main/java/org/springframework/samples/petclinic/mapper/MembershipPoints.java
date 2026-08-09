@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -9,8 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * Computes an owner's {@code membershipPoints} and the {@code membershipLevel} derived from
  * them. Points start at 0 and accrue: plus 2 when an email is present, plus 1 when the owner's
  * namesakeCount is 0, plus 2 when the owner belongs to a household of three or more members,
- * and plus 3 when the owner's tenure (days since its registration date) exceeds 365 days. The
- * level maps the points as 1 (0-1), 2 (2-3), 3 (4-5) and 4 (6 or more).
+ * and plus 3 when the owner's tenure (elapsed fiscal years since its registration date)
+ * exceeds one fiscal year. The level maps the points as 1 (0-1), 2 (2-3), 3 (4-5) and
+ * 4 (6 or more).
  *
  * <p>Kept out of {@link OwnerMapper} so MapStruct does not mistake it for an implicit mapping
  * method and apply it to every property.
@@ -40,7 +40,7 @@ public final class MembershipPoints {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+            && FiscalYear.elapsed(owner.getRegistrationDate(), LocalDate.now()) > 1) {
             points += 3;
         }
         return points;
