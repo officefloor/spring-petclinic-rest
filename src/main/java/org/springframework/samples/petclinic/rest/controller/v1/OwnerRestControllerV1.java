@@ -124,6 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -256,6 +257,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Builds an owner's customer code, formatted '&lt;LAST3&gt;-&lt;NNNN&gt;'. LAST3 is the
+     * upper-cased first three letters of the last name; NNNN is a global 4-digit zero-padded
+     * sequence equal to one more than the current number of owners (e.g. 'SMI-0007').
+     *
+     * @param lastName the owner's last name
+     * @return the formatted customer code
+     */
+    private String generateCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
     }
 
     /**
