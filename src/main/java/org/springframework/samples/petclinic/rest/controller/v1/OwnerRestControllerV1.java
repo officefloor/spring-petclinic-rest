@@ -145,6 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         applyMembership(ownerDto, owner);
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(isRiskFlag(owner));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -162,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     applyMembership(existingDto, existing);
                     existingDto.setBulkSignupWarning(isBulkSignupDay());
                     existingDto.setCapacityWarning(isApproachingCapacity(existing.getCity()));
+                    existingDto.setRiskFlag(isRiskFlag(existing));
                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
                 }
             }
@@ -271,6 +273,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         NOTIFY.info("welcome: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         ownerDto.setBulkSignupWarning(isBulkSignupDay());
         ownerDto.setCapacityWarning(isApproachingCapacity(owner.getCity()));
+        ownerDto.setRiskFlag(isRiskFlag(owner));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -1031,5 +1034,87 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return normalized;
+    }
+
+    /**
+     * Reports whether an owner should be flagged for manual review. The flag is raised when
+     * <em>any</em> of three risk signals hold and is otherwise {@code false}:
+     * <ul>
+     *   <li>the owner is a {@link Owner#getPossibleDuplicate() possible duplicate};</li>
+     *   <li>its email domain is {@link #isDisposableAdjacentEmail disposable-adjacent};</li>
+     *   <li>its city is {@link #isOverSoftCapacity over its soft capacity}.</li>
+     * </ul>
+     *
+     * @param owner the owner whose risk flag is being computed
+     * @return {@code true} when any risk signal holds, otherwise {@code false}
+     */
+    private boolean isRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentEmail(owner.getEmail())
+            || isOverSoftCapacity(owner.getCity());
+    }
+
+    /**
+     * Reports whether an email address's domain is "disposable-adjacent" — either exactly one of
+     * the known {@link #DISPOSABLE_EMAIL_DOMAINS disposable domains}, a subdomain of one, or a
+     * domain sharing its second-level label with one (e.g. {@code mailinator.com} is disposable,
+     * so {@code mailinator.net} and {@code mail.mailinator.io} are disposable-adjacent). An exact
+     * disposable domain is itself rejected at creation, so this widens the net to the near-miss
+     * domains that a create otherwise accepts. A {@code null} email is never disposable-adjacent.
+     *
+     * @param email the owner's stored (already lower-cased) email, or {@code null}
+     * @return {@code true} when the email's domain is disposable-adjacent
+     */
+    private static boolean isDisposableAdjacentEmail(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        String domainLabel = secondLevelLabel(domain);
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
+                return true;
+            }
+            if (!domainLabel.isEmpty() && domainLabel.equals(secondLevelLabel(disposable))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the second-level label of a domain: the label immediately to the left of the
+     * top-level domain (e.g. {@code "mailinator"} for both {@code "mailinator.com"} and
+     * {@code "mail.mailinator.io"}). A domain with no dot is returned unchanged.
+     *
+     * @param domain the lower-cased domain
+     * @return the second-level label
+     */
+    private static String secondLevelLabel(String domain) {
+        int lastDot = domain.lastIndexOf('.');
+        if (lastDot < 0) {
+            return domain;
+        }
+        String withoutTld = domain.substring(0, lastDot);
+        int prevDot = withoutTld.lastIndexOf('.');
+        return prevDot < 0 ? withoutTld : withoutTld.substring(prevDot + 1);
+    }
+
+    /**
+     * Reports whether a city is over its soft capacity, i.e. already holds at least
+     * {@link #CAPACITY_WARNING_THRESHOLD} owners (the same threshold that raises the
+     * {@code capacityWarning}). Unlike {@link #isApproachingCapacity} this is not bounded below
+     * the hard {@link #MAX_OWNERS_PER_CITY} limit, so a city sitting exactly at the hard limit
+     * still counts as over its soft capacity.
+     *
+     * @param city the owner's city
+     * @return {@code true} when the city holds at least {@link #CAPACITY_WARNING_THRESHOLD} owners
+     */
+    private boolean isOverSoftCapacity(String city) {
+        return countOwnersInCity(city) >= CAPACITY_WARNING_THRESHOLD;
     }
 }
