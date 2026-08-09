@@ -25,7 +25,7 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.LocalityLookup"
-            + ".forPostcodeAndCity(owner.getPostcode(), owner.getCity()))")
+            + ".forCustomerCode(owner.getCustomerCode(), owner.getPostcode(), owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

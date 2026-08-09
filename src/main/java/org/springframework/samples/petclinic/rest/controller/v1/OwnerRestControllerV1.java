@@ -176,7 +176,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(owner.getEmail()));
         rejectDuplicateIdentity(owner);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(
+            generateCustomerCode(owner.getPostcode(), owner.getCity(), normalizedTelephone, owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -409,29 +410,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds an owner's customer code, formatted '&lt;CITY3&gt;-&lt;LAST3&gt;-&lt;NNNN&gt;'. CITY3 is
-     * the upper-cased first three letters of the city; LAST3 is the upper-cased first three letters of
-     * the last name; NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number
-     * of owners already in that city (e.g. 'SYD-SMI-0007').
+     * Builds an owner's customer code, formatted '&lt;REGION&gt;-&lt;HASH8&gt;'. REGION is the region
+     * code derived from the owner's postcode (falling back to their city; see {@link LocalityLookup}),
+     * and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest over the owner's
+     * normalized telephone concatenated with their last name (e.g. 'NSW-1A2B3C4D'). The code carries no
+     * sequence number; two owners resolve to the same code only when they share a region and produce the
+     * same telephone-and-last-name hash.
      *
-     * @param city the owner's city
+     * @param postcode the owner's postcode, used first to derive the region
+     * @param city the owner's city, used to derive the region when the postcode maps to none
+     * @param normalizedTelephone the owner's normalized (E.164) telephone
      * @param lastName the owner's last name
      * @return the formatted customer code
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        String normalizedCity = normalizeHouseholdField(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String generateCustomerCode(String postcode, String city, String normalizedTelephone, String lastName) {
+        String region = LocalityLookup.forPostcodeAndCity(postcode, city);
+        String hash8 = sha256UpperHex(normalizedTelephone + lastName, 8);
+        return region + "-" + hash8;
     }
 
     /**
      * Builds an owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where
      * customerCode is the owner's customer code and YY is the last two digits of the
-     * registrationDate year (e.g. 'SMI-0007-M26').
+     * registrationDate year (e.g. 'NSW-1A2B3C4D-M26').
      *
      * @param customerCode the owner's customer code
      * @param registrationDate the owner's registration date
@@ -700,6 +701,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
             return hex.substring(0, 12);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
+    }
+
+    /**
+     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the given
+     * input's UTF-8 bytes. Used to derive the customer code's stable, deterministic hash component from
+     * the owner's normalized telephone and last name.
+     *
+     * @param input the string to digest
+     * @param length the number of leading upper-case hex characters to return
+     * @return the first {@code length} upper-case hex characters of the SHA-256 digest
+     */
+    private String sha256UpperHex(String input, int length) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02X", b));
+                if (hex.length() >= length) {
+                    break;
+                }
+            }
+            return hex.substring(0, length);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }

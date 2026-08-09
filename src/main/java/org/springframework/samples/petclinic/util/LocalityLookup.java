@@ -25,6 +25,30 @@ public final class LocalityLookup {
     }
 
     /**
+     * Returns an owner's locality from their region-and-hash customer code, falling back to the
+     * postcode-and-city derivation when no customer code is present.
+     *
+     * <p>Since an owner's {@code customerCode} is formatted {@code <REGION>-<HASH8>}, the locality is
+     * the region component that precedes the first {@code '-'}. Owners without a customer code (for
+     * example seed data that predates identity assignment) fall back to
+     * {@link #forPostcodeAndCity(String, String)}.
+     *
+     * @param customerCode the owner's region-and-hash customer code, or {@code null}
+     * @param postcode the owner's stored postcode, or {@code null} (used only for the fallback)
+     * @param city the owner's stored city, or {@code null} (used only for the fallback)
+     * @return the region component of the customer code, or the postcode-and-city fallback
+     */
+    public static String forCustomerCode(String customerCode, String postcode, String city) {
+        if (customerCode != null) {
+            int separator = customerCode.indexOf('-');
+            if (separator > 0) {
+                return customerCode.substring(0, separator);
+            }
+        }
+        return forPostcodeAndCity(postcode, city);
+    }
+
+    /**
      * Returns the canonical region for the given postcode and city, preferring the postcode.
      *
      * <p>The postcode is looked up by range first; only when it is absent or in no known range does
