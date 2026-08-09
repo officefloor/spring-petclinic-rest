@@ -154,6 +154,25 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerDuplicateEmailReturnsConflict() throws Exception {
+        String first = """
+            {"firstName":"George","lastName":"Mailer","address":"3 First Street","city":"Madison","telephone":"6085550301","email":"George.Mailer@Example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(first)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isCreated());
+
+        // Same email differing only in case -> 409.
+        String duplicate = """
+            {"firstName":"Jane","lastName":"Poster","address":"7 Second Street","city":"Madison","telephone":"6085550302","email":"george.mailer@example.com"}
+            """;
+        mvc.perform(post("/api/owners").content(duplicate)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void createOwnerRejectedWhenCityAtCapacity() throws Exception {
         // A city that already holds 50 owners is full: the next creation is a 409.
         String city = "Capville-" + System.nanoTime();

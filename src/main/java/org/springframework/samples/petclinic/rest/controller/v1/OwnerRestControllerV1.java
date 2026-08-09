@@ -130,6 +130,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email);
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (existing.getEmail() != null && email.equalsIgnoreCase(existing.getEmail())) {
+                    return new ResponseEntity<>(HttpStatus.CONFLICT);
+                }
+            }
         }
         LocalDate effectiveRegistrationDate = owner.getRegistrationDate();
         if (effectiveRegistrationDate == null) {
