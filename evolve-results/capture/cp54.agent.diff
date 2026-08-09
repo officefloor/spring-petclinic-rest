@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 28b2e432..e579ca69 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -121,6 +121,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /**
++     * The number of owners a city must already hold before a response carries a capacity warning.
++     * Once a city holds at least this many owners (but fewer than {@link #MAX_OWNERS_PER_CITY}),
++     * responses naming that city set {@code capacityWarning} true, signalling that the city is
++     * approaching its per-city capacity limit.
++     */
++    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
++
+     /**
+      * The maximum number of owners that may be registered in a single day. Once this many owners
+      * already carry today's registration date, any further create is rejected as too many requests.
+@@ -188,6 +196,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         OwnerDto ownerDto = toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
++        ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -200,6 +209,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             if (alreadyCreated != null) {
+                 OwnerDto existingDto = toOwnerDto(alreadyCreated);
+                 existingDto.setBulkSignupWarning(isBulkSignupWarningActive());
++                existingDto.setCapacityWarning(isCapacityWarningActive(alreadyCreated.getCity()));
+                 return new ResponseEntity<>(existingDto, HttpStatus.OK);
+             }
+         }
+@@ -234,6 +244,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         emitOwnerCreatedEvent(owner);
+         OwnerDto ownerDto = toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
++        ownerDto.setCapacityWarning(isCapacityWarningActive(owner.getCity()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -503,6 +514,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return ownersToday > BULK_SIGNUP_WARNING_THRESHOLD;
+     }
+ 
++    /**
++     * Reports whether a response naming the given city should carry a capacity warning. The warning is
++     * active once the city already holds between {@link #CITY_CAPACITY_WARNING_THRESHOLD} and one fewer
++     * than {@link #MAX_OWNERS_PER_CITY} owners (40-49), signalling that it is approaching the per-city
++     * capacity limit. Owners are grouped into a city case-insensitively after surrounding whitespace is
++     * trimmed and internal runs are collapsed, mirroring {@link #rejectCityAtCapacity}. The hard
++     * rejection at {@link #MAX_OWNERS_PER_CITY} is unaffected.
++     *
++     * @param city the city to evaluate
++     * @return {@code true} when the city holds between the warning threshold and the capacity limit
++     *         (exclusive) owners, otherwise {@code false}
++     */
++    private boolean isCapacityWarningActive(String city) {
++        String normalizedCity = normalizeHouseholdField(city);
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
++            .count();
++        return ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY;
++    }
++
+     private LocalDate toBusinessDay(LocalDate date) {
+         LocalDate adjusted = switch (date.getDayOfWeek()) {
+             case SATURDAY -> date.plusDays(2);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5b16f73c..58e58542 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2318,6 +2318,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 owners at the
++                time of this response (approaching the per-city capacity limit of 50);
++                otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
