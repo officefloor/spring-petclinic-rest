@@ -1,0 +1,102 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7e09eb64..db2c3fc2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+             owner.setEmail(email);
+         }
++        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (telephone.equals(toE164(existing.getTelephone()))) {
+                 return new ResponseEntity<>(HttpStatus.CONFLICT);
+@@ -257,6 +260,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /**
++     * The maximum number of owners permitted per city. Owner creation is rejected once the
++     * owner's city already contains this many owners.
++     */
++    private static final int MAX_OWNERS_PER_CITY = 50;
++
++    /**
++     * Counts how many existing owners live in the given city, compared case-insensitively.
++     * This is evaluated before the new owner is persisted, so the owner being created is not
++     * included in the count.
++     *
++     * @param city the new owner's city
++     * @return the number of existing owners in that city
++     */
++    private int countOwnersInCity(String city) {
++        int count = 0;
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted
+      * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 88dccd17..99583281 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -152,6 +152,52 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("Jane"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenCityAtCapacity() throws Exception {
++        // A city that already holds 50 owners is full: the next creation is a 409.
++        String city = "Capville-" + System.nanoTime();
++        for (int i = 0; i < 50; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Resident" + i);
++            owner.setLastName("Full-" + System.nanoTime() + "-" + i);
++            owner.setAddress(i + " Capacity Street");
++            owner.setCity(city);
++            owner.setTelephone("60855" + String.format("%05d", i));
++            ownerRepository.save(owner);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Overflow","address":"999 Capacity Street","city":"%s","telephone":"6085559999"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedWhenCityBelowCapacity() throws Exception {
++        // A city with 49 owners still has room: the next creation succeeds.
++        String city = "Roomyville-" + System.nanoTime();
++        for (int i = 0; i < 49; i++) {
++            Owner owner = new Owner();
++            owner.setFirstName("Resident" + i);
++            owner.setLastName("Room-" + System.nanoTime() + "-" + i);
++            owner.setAddress(i + " Roomy Street");
++            owner.setCity(city);
++            owner.setTelephone("60856" + String.format("%05d", i));
++            ownerRepository.save(owner);
++        }
++
++        String body = """
++            {"firstName":"George","lastName":"Newcomer","address":"999 Roomy Street","city":"%s","telephone":"6085558888"}
++            """.formatted(city);
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
