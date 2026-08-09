@@ -50,6 +50,8 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.label("
             + "owner.getRegistrationDate()))")
+    @Mapping(target = "selfLink",
+        expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "sharesHousehold", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
