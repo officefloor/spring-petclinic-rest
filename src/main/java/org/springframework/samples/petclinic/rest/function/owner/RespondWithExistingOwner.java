@@ -19,6 +19,7 @@ public class RespondWithExistingOwner {
             OwnerRepository ownerRepository, ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
+        dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
         response.send(dto);
     }
 }
