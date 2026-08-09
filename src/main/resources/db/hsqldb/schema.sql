@@ -52,6 +52,7 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   household_size INTEGER,
   membership_level INTEGER,
+  membership_points INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER
 );
