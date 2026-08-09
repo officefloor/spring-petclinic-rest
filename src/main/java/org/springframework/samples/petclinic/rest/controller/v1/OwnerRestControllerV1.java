@@ -192,8 +192,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
         OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         headers.setLocation(UriComponentsBuilder.newInstance()
