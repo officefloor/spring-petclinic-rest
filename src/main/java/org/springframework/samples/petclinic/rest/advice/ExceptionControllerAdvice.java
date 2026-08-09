@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -68,6 +69,7 @@ public class ExceptionControllerAdvice {
         problemDetail.setDetail(detail);
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
+        problemDetail.setProperty("errors", List.<String>of());
         return problemDetail;
     }
 
@@ -152,11 +154,16 @@ public class ExceptionControllerAdvice {
                         .putAdditionalProperty("defaultMessage", defaultMessage);
                 })
                 .toList();
+            List<String> errorFields = bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
             logger.debug("Validation error at {} {}: {}",
                 request.getMethod(),
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", errorFields);
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);

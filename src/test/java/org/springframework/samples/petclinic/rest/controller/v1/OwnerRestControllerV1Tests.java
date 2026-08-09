@@ -127,6 +127,19 @@ class OwnerRestControllerV1Tests {
 
     @Test
     @WithMockUser(roles = "OWNER_ADMIN")
+    void createOwnerMissingAndBlankFieldsListedInErrors() throws Exception {
+        // firstName missing, address blank (whitespace), city empty -> all three must be reported.
+        String body = """
+            {"lastName":"Franklin","address":"   ","city":"","telephone":"6085551023"}
+            """;
+        mvc.perform(post("/api/owners").content(body)
+                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors", org.hamcrest.Matchers.containsInAnyOrder("firstName", "address", "city")));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER_ADMIN")
     void updateOwnerSuccess() throws Exception {
         Owner owner = newOwner("Franklin-" + System.nanoTime());
         String body = """
