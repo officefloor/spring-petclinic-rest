@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -105,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredOwnerFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+        owner.setTelephone(normalizedTelephone);
+        rejectDuplicateTelephone(normalizedTelephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -255,5 +258,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         return digits;
+    }
+
+    /**
+     * Rejects an owner create whose normalized telephone is already used by any other owner. Every
+     * existing owner's stored telephone is normalized the same way (non-digits stripped) before
+     * comparison so the uniqueness check is independent of the punctuation a caller supplied.
+     *
+     * @param normalizedTelephone the normalized ten-digit telephone of the owner being created
+     * @throws DuplicateOwnerTelephoneException if another owner already uses this telephone
+     */
+    private void rejectDuplicateTelephone(String normalizedTelephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (inUse) {
+            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
     }
 }
