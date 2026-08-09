@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(32),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INT(4),
+  address_line1 VARCHAR(255),
+  address_line2 VARCHAR(255),
   INDEX(last_name)
 ) engine=InnoDB;
 

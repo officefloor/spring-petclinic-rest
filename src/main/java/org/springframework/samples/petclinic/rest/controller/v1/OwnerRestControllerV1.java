@@ -179,7 +179,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         validatePostcode(owner.getCity(), owner.getPostcode());
-        owner.setAddress(normalizeAddress(owner.getAddress()));
+        applyAddress(owner);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         boolean declaredHouseholdMember = applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
@@ -311,7 +311,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+        if (isBlank(ownerFieldsDto.getAddressLine1())
+            && isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
             missingFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -613,6 +614,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int value = Integer.parseInt(postcode);
         if (value < range[0] || value > range[1]) {
             throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+    }
+
+    /**
+     * Resolves an owner's address from the supplied structured and flat fields, preferring the
+     * structured form. Whichever address fields were supplied are normalized (see
+     * {@link #normalizeAddress(String)}). When a non-blank {@code addressLine1} is supplied the
+     * structured form wins: {@code addressLine1} and {@code addressLine2} are stored normalized (an
+     * absent or blank {@code addressLine2} is cleared) and the composed {@code address} is the
+     * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended when the latter is present. When no {@code addressLine1} is supplied the flat
+     * {@code address} is used unchanged for backward compatibility and the structured lines are
+     * cleared. The composed {@code address} is what every later step reads.
+     *
+     * @param owner the owner being created, mapped from the request but not yet normalized
+     */
+    private void applyAddress(Owner owner) {
+        String line1 = normalizeAddress(owner.getAddressLine1());
+        String line2 = normalizeAddress(owner.getAddressLine2());
+        String flat = normalizeAddress(owner.getAddress());
+        if (!line1.isEmpty()) {
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+            owner.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(flat);
         }
     }
 
