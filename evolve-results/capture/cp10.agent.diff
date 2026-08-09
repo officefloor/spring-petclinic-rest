@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 153a88fc..d464f259 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
++    @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0d85a765..056c42dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -118,6 +118,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 return new ResponseEntity<>(HttpStatus.CONFLICT);
+             }
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++            String lastNameKey = householdKey(owner.getLastName());
++            String addressKey = householdKey(owner.getAddress());
++            for (Owner existing : this.clinicService.findAllOwners()) {
++                if (lastNameKey.equals(householdKey(existing.getLastName()))
++                    && addressKey.equals(householdKey(existing.getAddress()))) {
++                    return new ResponseEntity<>(HttpStatus.CONFLICT);
++                }
++            }
++        }
+         owner.setTelephone(telephone);
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+@@ -238,6 +248,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%04d", last3, sequence);
+     }
+ 
++    /**
++     * Normalizes a last name or address for household-duplicate comparison: leading and
++     * trailing whitespace is trimmed, every run of internal whitespace is collapsed to a
++     * single space and the result is lower-cased. Two owners are considered to share a
++     * household when both their last names and addresses produce the same key.
++     *
++     * @param value the raw last name or address value
++     * @return the normalized comparison key (empty string when {@code value} is null)
++     */
++    private static String householdKey(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
+     /**
+      * Normalizes a telephone number for owner creation into E.164 form. Spaces, dashes
+      * and brackets are stripped. When the number already carries a leading {@code '+'}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7926a782..c998e7f4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2057,6 +2057,17 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            Write-only hint used only when creating an owner. When true, an owner
++            may be created even though another owner already has the same last name
++            and address (compared case-insensitively with collapsed whitespace);
++            otherwise such a request is rejected with 409 Conflict. This flag is
++            never persisted or returned.
++          type: boolean
++          writeOnly: true
++          example: false
+       required:
+         - firstName
+         - lastName
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 15744818..88dccd17 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -102,8 +102,9 @@ class OwnerRestControllerV1Tests {
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerSuccess() throws Exception {
++        // Distinct address from the seeded George Franklin so it is not rejected as a household duplicate.
+         String body = """
+-            {"firstName":"George","lastName":"Franklin","address":"110 W. Liberty St.","city":"Madison","telephone":"6085550000"}
++            {"firstName":"George","lastName":"Franklin","address":"200 E. Washington Ave.","city":"Madison","telephone":"6085550000"}
+             """;
+         mvc.perform(post("/api/owners").content(body)
+                 .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
+@@ -112,6 +113,45 @@ class OwnerRestControllerV1Tests {
+             .andExpect(jsonPath("$.firstName").value("George"));
+     }
+ 
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerHouseholdDuplicateReturnsConflict() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Householder","address":"1 Shared Lane","city":"Madison","telephone":"6085550101"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Same last name and address (differing only in case and whitespace) -> 409.
++        String duplicate = """
++            {"firstName":"Jane","lastName":"householder","address":"1   Shared   Lane","city":"Madison","telephone":"6085550102"}
++            """;
++        mvc.perform(post("/api/owners").content(duplicate)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isConflict());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerHouseholdDuplicateAllowedWhenSharesHousehold() throws Exception {
++        String first = """
++            {"firstName":"George","lastName":"Cohabitant","address":"9 Oak Street","city":"Madison","telephone":"6085550201"}
++            """;
++        mvc.perform(post("/api/owners").content(first)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++
++        // Same household, but sharesHousehold=true opts in -> created.
++        String sameHousehold = """
++            {"firstName":"Jane","lastName":"Cohabitant","address":"9 Oak Street","city":"Madison","telephone":"6085550202","sharesHousehold":true}
++            """;
++        mvc.perform(post("/api/owners").content(sameHousehold)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated())
++            .andExpect(jsonPath("$.firstName").value("Jane"));
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
