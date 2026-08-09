@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
   title VARCHAR(10),
+  idempotency_key VARCHAR(255),
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 

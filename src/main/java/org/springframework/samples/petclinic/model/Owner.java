@@ -90,6 +90,9 @@ public class Owner extends Person {
     @Column(name = "deleted", nullable = false)
     private boolean deleted = false;
 
+    @Column(name = "idempotency_key")
+    private String idempotencyKey;
+
     /**
      * The number of owners belonging to this owner's household (owners sharing the same
      * {@code householdId}), including this owner. It is a derived, non-persistent value populated
@@ -291,6 +294,21 @@ public class Owner extends Person {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    /**
+     * The idempotency key the owner was created under, taken from the create request's
+     * {@code Idempotency-Key} header, or {@code null} when the create carried no key. A repeated create
+     * presenting the same key returns this originally created owner instead of creating a duplicate.
+     *
+     * @return the idempotency key this owner was created under, or {@code null} when none was supplied
+     */
+    public String getIdempotencyKey() {
+        return this.idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     public Integer getHouseholdMemberCount() {

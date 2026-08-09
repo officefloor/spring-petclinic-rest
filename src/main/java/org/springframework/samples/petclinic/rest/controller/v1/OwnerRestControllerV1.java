@@ -56,6 +56,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -180,6 +182,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Owner alreadyCreated = findOwnerByIdempotencyKey(idempotencyKey);
+            if (alreadyCreated != null) {
+                OwnerDto existingDto = toOwnerDto(alreadyCreated);
+                existingDto.setBulkSignupWarning(isBulkSignupWarningActive());
+                return new ResponseEntity<>(existingDto, HttpStatus.OK);
+            }
+        }
         validateRequiredOwnerFields(ownerFieldsDto);
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate suppliedOrDefaultDate =
@@ -202,6 +213,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             generateCustomerCode(owner.getPostcode(), owner.getCity(), normalizedTelephone, owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setIdempotencyKey(idempotencyKey);
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
@@ -211,6 +223,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The idempotency key supplied on the current create request, read from its {@code Idempotency-Key}
+     * header. A blank value is treated as absent.
+     *
+     * @return the trimmed {@code Idempotency-Key} header, or {@code null} when it is absent or blank
+     */
+    private String currentIdempotencyKey() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            String header = attributes.getRequest().getHeader("Idempotency-Key");
+            if (header != null && !header.isBlank()) {
+                return header.trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Finds the owner originally created under the given idempotency key, so a repeated create carrying
+     * an already-seen key returns that owner instead of creating a duplicate. The lowest-id match is
+     * returned when more than one owner somehow carries the key.
+     *
+     * @param idempotencyKey the create request's idempotency key
+     * @return the owner first created under the key, or {@code null} when the key has not been seen
+     */
+    private Owner findOwnerByIdempotencyKey(String idempotencyKey) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> idempotencyKey.equals(existing.getIdempotencyKey()))
+            .min(java.util.Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
