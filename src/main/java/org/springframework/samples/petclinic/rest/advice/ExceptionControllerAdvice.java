@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
+    private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners for today has already been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -282,6 +283,28 @@ public class ExceptionControllerAdvice {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
         detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link OwnerDailyLimitExceededException} raised when an owner create request would
+     * exceed the maximum number of owners that may be registered today (grouped by
+     * {@code registrationDate}). Returns a 429 Too Many Requests.
+     *
+     * @param e The {@link OwnerDailyLimitExceededException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(OwnerDailyLimitExceededException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerDailyLimitExceededException(OwnerDailyLimitExceededException e, HttpServletRequest request) {
+        logger.debug("Owner daily limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT_REACHED);
+        detail.setProperty("errors", List.of("registrationDate"));
         return ResponseEntity.status(status).body(detail);
     }
 
