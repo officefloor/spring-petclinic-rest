@@ -1,0 +1,216 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8fe37bd6..84167785 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
+@@ -108,6 +111,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+index 833bd076..01860238 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ApplyOwner.java
+@@ -13,5 +13,6 @@ public class ApplyOwner {
+         owner.setLastName(request.getLastName());
+         owner.setTelephone(request.getTelephone());
+         owner.setEmail(request.getEmail());
++        owner.setPostcode(request.getPostcode());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidatePostcode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidatePostcode.java
+new file mode 100644
+index 00000000..13c7c702
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidatePostcode.java
+@@ -0,0 +1,68 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.lang.reflect.Method;
++import java.util.Map;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.core.MethodParameter;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.validation.BeanPropertyBindingResult;
++import org.springframework.validation.BindingResult;
++import org.springframework.web.bind.MethodArgumentNotValidException;
++
++/**
++ * Validates the optional {@code postcode} against the owner's city.
++ *
++ * <p>Postcode is validated <strong>only when present</strong> and is optional when absent, so an owner
++ * created without a postcode is still accepted. When supplied it must be four digits (enforced by the
++ * schema pattern and re-checked defensively here) and, when the city maps to a known region, must fall
++ * within that region's inclusive range per the fixed table:
++ * NSW 2000-2099, VIC 3000-3099, QLD 4000-4099. A city with no known region accepts any 4-digit
++ * postcode. An out-of-range postcode is rejected with 400 via {@link MethodArgumentNotValidException}.
++ */
++public class ValidatePostcode {
++
++    private static final Method SERVICE_METHOD;
++
++    static {
++        try {
++            SERVICE_METHOD = ValidatePostcode.class.getMethod("service", OwnerFieldsDto.class);
++        }
++        catch (NoSuchMethodException ex) {
++            throw new ExceptionInInitializerError(ex);
++        }
++    }
++
++    /** Fixed city-to-region table, mirroring the read-time locality derivation. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    /** Region to its inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    public void service(@Val OwnerFieldsDto request) throws MethodArgumentNotValidException {
++        String postcode = request.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return; // optional when absent — nothing to validate
++        }
++        BindingResult binding = new BeanPropertyBindingResult(request, "ownerFieldsDto");
++        if (!postcode.matches("[0-9]{4}")) {
++            binding.rejectValue("postcode", "Pattern", "must be a 4-digit postcode");
++        }
++        else {
++            String region = CITY_REGION.get(request.getCity());
++            int[] range = region == null ? null : REGION_POSTCODES.get(region);
++            if (range != null) {
++                int value = Integer.parseInt(postcode);
++                if (value < range[0] || value > range[1]) {
++                    binding.rejectValue("postcode", "PostcodeOutOfRange",
++                        "postcode " + postcode + " is not valid for region " + region);
++                }
++            }
++        }
++        if (binding.hasErrors()) {
++            throw new MethodArgumentNotValidException(new MethodParameter(SERVICE_METHOD, 0), binding);
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 650e0d10..28db0b2c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index cf883160..3de39621 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 3c103f70..f6831aa8 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   membership_number VARCHAR(30),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 4f47e0ca..e45a25fb 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       membership_number TEXT,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7f919908..0d7c92f5 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
+   govern: [ transaction ]
++  next: validatePostcode
++
++validatePostcode:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidatePostcode
++  govern: [ transaction ]
+   next: normalizeTelephone
+ 
+ normalizeTelephone:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+index dee87067..c0d259b7 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.PUT.yml
+@@ -4,6 +4,11 @@ composition:
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwner
+   govern: [ transaction ]
++  next: validatePostcode
++
++validatePostcode:
++  class: org.springframework.samples.petclinic.rest.function.owner.ValidatePostcode
++  govern: [ transaction ]
+   next: normalizeEmail
+ 
+ normalizeEmail:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c9902a51..f75e8c5b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2023,6 +2023,17 @@ components:
+           minLength: 1
+           maxLength: 80
+           example: Madison
++        postcode:
++          title: Postcode
++          description: >-
++            Optional 4-digit postcode of the pet owner. When present it must be valid for
++            the owner's city per the fixed region table (Sydney->NSW 2000-2099,
++            Melbourne->VIC 3000-3099, Brisbane->QLD 4000-4099); a city with no known region
++            accepts any 4-digit postcode. Out-of-range postcodes are rejected with 400. When
++            omitted the owner is still accepted. Stored and returned as given.
++          type: string
++          pattern: "^[0-9]{4}$"
++          example: '2000'
+         telephone:
+           title: Telephone number
+           description: >-
