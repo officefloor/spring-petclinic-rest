@@ -41,6 +41,30 @@ public final class OwnerLocality {
     }
 
     /**
+     * Return the canonical region derived from the {@code postcode} alone (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), or {@code "UNKNOWN"} when the postcode is absent,
+     * malformed, or in no known range. This is the REGION component of an owner's
+     * {@code customerCode}.
+     */
+    public static String forPostcodeOrUnknown(String postcode) {
+        String region = forPostcode(postcode);
+        return region != null ? region : "UNKNOWN";
+    }
+
+    /**
+     * Return the REGION component of a {@code customerCode} formatted {@code '<REGION>-<HASH8>'},
+     * i.e. the text before the first {@code '-'}. Returns {@code "UNKNOWN"} when the customer
+     * code is null or carries no region prefix. This is the owner's derived {@code locality}.
+     */
+    public static String regionFromCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = customerCode.indexOf('-');
+        return dash > 0 ? customerCode.substring(0, dash) : "UNKNOWN";
+    }
+
+    /**
      * Compute the single Luhn check digit (0-9) over the digits contained in {@code s}.
      * Non-digit characters are ignored; the rightmost digit is doubled first. Kept here,
      * alongside the other derived-field helpers, so MapStruct does not treat it as an

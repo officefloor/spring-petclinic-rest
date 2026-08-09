@@ -177,7 +177,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -372,25 +372,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the customer code for a newly created owner, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
-     * three letters of the city, {@code LAST3} the upper-cased first three letters of
-     * the last name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal
-     * to one more than the number of owners already in that city.
+     * {@code '<REGION>-<HASH8>'} where {@code REGION} is the canonical region
+     * {@link OwnerLocality#forPostcodeOrUnknown derived from the postcode} (or
+     * {@code "UNKNOWN"} when the postcode resolves no region) and {@code HASH8} is the
+     * first eight upper-case hex characters of the SHA-256 digest of
+     * {@code normalizedTelephone + lastName}. The code carries no sequence number, so it is
+     * stable for a given telephone and last name rather than dependent on creation order.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
-     * @return the assigned customer code (e.g. {@code 'SYD-SMI-0007'})
+     * @param postcode            the owner's postcode (may be {@code null})
+     * @param normalizedTelephone the owner's normalized E.164 telephone
+     * @param lastName            the owner's last name
+     * @return the assigned customer code (e.g. {@code 'NSW-1A2B3C4D'})
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = 1;
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (city.equalsIgnoreCase(existing.getCity())) {
-                sequence++;
+    private static String customerCode(String postcode, String normalizedTelephone, String lastName) {
+        String region = org.springframework.samples.petclinic.mapper.OwnerLocality.forPostcodeOrUnknown(postcode);
+        return region + "-" + sha256Hex8(normalizedTelephone + lastName);
+    }
+
+    /**
+     * Returns the first eight upper-case hex characters of the SHA-256 digest of the UTF-8
+     * bytes of {@code source} — the {@code HASH8} component of an owner's customer code.
+     *
+     * @param source the string to hash
+     * @return the first eight upper-case hex characters of {@code SHA-256(source)}
+     */
+    private static String sha256Hex8(String source) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(source.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
             }
+            return hex.substring(0, 8).toUpperCase();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
-        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
@@ -399,9 +416,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * customer code and {@code YY} is the last two digits of the owner's registration
      * date year, zero-padded to two digits.
      *
-     * @param customerCode     the owner's assigned customer code (e.g. {@code 'SYD-SMI-0007'})
+     * @param customerCode     the owner's assigned customer code (e.g. {@code 'NSW-1A2B3C4D'})
      * @param registrationDate the owner's registration date
-     * @return the assigned membership number (e.g. {@code 'SYD-SMI-0007-M26'})
+     * @return the assigned membership number (e.g. {@code 'NSW-1A2B3C4D-M26'})
      */
     private String membershipNumber(String customerCode, LocalDate registrationDate) {
         return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
