@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index db2c3fc2..06fc11ea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -126,6 +126,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (countOwnersRegisteredToday() >= MAX_OWNERS_PER_DAY) {
++            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++        }
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (telephone.equals(toE164(existing.getTelephone()))) {
+                 return new ResponseEntity<>(HttpStatus.CONFLICT);
+@@ -284,6 +287,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return count;
+     }
+ 
++    /**
++     * The maximum number of owners that may be created in a single day. Owner creation is
++     * rejected once this many owners already carry today's {@code registrationDate}.
++     */
++    private static final int MAX_OWNERS_PER_DAY = 100;
++
++    /**
++     * Counts how many existing owners were registered today, i.e. whose {@code
++     * registrationDate} equals the current date. This is evaluated before the new owner is
++     * persisted, so the owner being created is not included in the count.
++     *
++     * @return the number of existing owners registered today
++     */
++    private int countOwnersRegisteredToday() {
++        LocalDate today = LocalDate.now();
++        int count = 0;
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (today.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        return count;
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted
+      * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
+diff --git a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+index 99583281..ca4b4e5a 100644
+--- a/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
++++ b/src/test/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1Tests.java
+@@ -198,6 +198,48 @@ class OwnerRestControllerV1Tests {
+             .andExpect(status().isCreated());
+     }
+ 
++    private void seedOwnersRegisteredToday(int count) {
++        for (int i = 0; i < count; i++) {
++            long tag = System.nanoTime();
++            Owner owner = new Owner();
++            owner.setFirstName("Daily" + i);
++            owner.setLastName("Today-" + tag + "-" + i);
++            owner.setAddress(i + " Today Street " + tag);
++            owner.setCity("Dayville-" + tag + "-" + i);
++            owner.setTelephone("60857" + String.format("%05d", i));
++            owner.setRegistrationDate(LocalDate.now());
++            ownerRepository.save(owner);
++        }
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerRejectedWhenDailyLimitReached() throws Exception {
++        // Once 100 owners already carry today's registration date, the next creation is a 429.
++        seedOwnersRegisteredToday(100);
++
++        String body = """
++            {"firstName":"George","lastName":"Latecomer","address":"999 Daily Street","city":"Freshville","telephone":"6085557777"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isTooManyRequests());
++    }
++
++    @Test
++    @WithMockUser(roles = "OWNER_ADMIN")
++    void createOwnerAllowedWhenBelowDailyLimit() throws Exception {
++        // With only 99 owners registered today there is still room: the next creation succeeds.
++        seedOwnersRegisteredToday(99);
++
++        String body = """
++            {"firstName":"George","lastName":"Earlybird","address":"1000 Daily Street","city":"Freshville","telephone":"6085556666"}
++            """;
++        mvc.perform(post("/api/owners").content(body)
++                .accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON))
++            .andExpect(status().isCreated());
++    }
++
+     @Test
+     @WithMockUser(roles = "OWNER_ADMIN")
+     void createOwnerValidationError() throws Exception {
