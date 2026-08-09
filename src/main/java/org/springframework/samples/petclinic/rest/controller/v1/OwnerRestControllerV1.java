@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -106,6 +107,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String address = normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -262,6 +268,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Canonical expansions applied to common street-type abbreviations during address
+     * normalization. Keys and values are upper-cased so the lookup runs after the address
+     * has itself been upper-cased.
+     */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
+    /**
+     * Normalizes an owner address for creation. Leading and trailing whitespace is trimmed,
+     * every run of internal whitespace is collapsed to a single space, the result is
+     * upper-cased and common street-type abbreviations are expanded ({@code ST -> STREET},
+     * {@code RD -> ROAD}, {@code AVE -> AVENUE}). An abbreviation is recognized as a whole
+     * token, optionally carrying a single trailing full stop (so both {@code 'St'} and
+     * {@code 'St.'} become {@code 'STREET'}). The normalized value is what gets stored,
+     * returned and compared for household duplicates; an address that is blank once
+     * normalized fails the required-field check.
+     *
+     * @param address the raw address value supplied by the client
+     * @return the normalized address (empty string when {@code address} is null or blank)
+     */
+    private static String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase();
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        StringBuilder normalized = new StringBuilder(collapsed.length());
+        for (String token : collapsed.split(" ")) {
+            String core = token.endsWith(".") ? token.substring(0, token.length() - 1) : token;
+            String expanded = ADDRESS_ABBREVIATIONS.get(core);
+            if (normalized.length() > 0) {
+                normalized.append(' ');
+            }
+            normalized.append(expanded != null ? expanded : token);
+        }
+        return normalized.toString();
     }
 
     /**
