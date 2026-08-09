@@ -130,7 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -287,17 +287,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds an owner's customer code, formatted '&lt;LAST3&gt;-&lt;NNNN&gt;'. LAST3 is the
-     * upper-cased first three letters of the last name; NNNN is a global 4-digit zero-padded
-     * sequence equal to one more than the current number of owners (e.g. 'SMI-0007').
+     * Builds an owner's customer code, formatted '&lt;CITY3&gt;-&lt;LAST3&gt;-&lt;NNNN&gt;'. CITY3 is
+     * the upper-cased first three letters of the city; LAST3 is the upper-cased first three letters of
+     * the last name; NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number
+     * of owners already in that city (e.g. 'SYD-SMI-0007').
      *
+     * @param city the owner's city
      * @param lastName the owner's last name
      * @return the formatted customer code
      */
-    private String generateCustomerCode(String lastName) {
+    private String generateCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String normalizedCity = normalizeHouseholdField(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHouseholdField(existing.getCity()).equals(normalizedCity))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
