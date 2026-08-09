@@ -66,6 +66,14 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    /**
+     * The number of owners belonging to this owner's household (owners sharing the same
+     * {@code householdId}), including this owner. It is a derived, non-persistent value populated
+     * when an owner is mapped for a response and drives the 'GOLD' membership tier.
+     */
+    @Transient
+    private Integer householdMemberCount;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -139,6 +147,14 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    public Integer getHouseholdMemberCount() {
+        return this.householdMemberCount;
+    }
+
+    public void setHouseholdMemberCount(Integer householdMemberCount) {
+        this.householdMemberCount = householdMemberCount;
     }
 
     protected Set<Pet> getPetsInternal() {

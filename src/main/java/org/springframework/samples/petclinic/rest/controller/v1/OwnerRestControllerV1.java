@@ -128,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owners.forEach(owner -> owner.setHouseholdMemberCount(countHouseholdMembers(owner)));
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
@@ -138,7 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
@@ -167,7 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarningActive());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -187,7 +188,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+        return new ResponseEntity<>(toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -541,6 +542,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DuplicateOwnerHouseholdException if another owner already shares this last name and
      *         address and {@code sharesHousehold} is not true
      */
+    /**
+     * Maps an owner to its DTO, first populating the owner's {@link Owner#getHouseholdMemberCount()
+     * household member count} so the derived membership tier is computed correctly (an owner whose
+     * household holds three or more members is 'GOLD'; otherwise the SILVER/BRONZE rules apply).
+     *
+     * @param owner the owner to map
+     * @return the mapped owner DTO
+     */
+    private OwnerDto toOwnerDto(Owner owner) {
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner));
+        return ownerMapper.toOwnerDto(owner);
+    }
+
+    /**
+     * Counts the members of the given owner's household - the owners that share this owner's
+     * {@code householdId}, including the owner itself. An owner with no household ({@code householdId}
+     * is {@code null}) is its own sole member, so the count is one.
+     *
+     * @param owner the owner whose household is being sized
+     * @return the number of owners sharing this owner's household (one when it has no household)
+     */
+    private int countHouseholdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 1;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+    }
+
     private void applyHousehold(Owner owner, Boolean sharesHousehold) {
         String lastName = normalizeHouseholdField(owner.getLastName());
         String address = normalizeAddress(owner.getAddress());
