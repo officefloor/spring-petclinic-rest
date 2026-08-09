@@ -1,0 +1,180 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0c1401f4..f22c0dcf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java
+index b62fd671..f91024de 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerCityCapacity.java
+@@ -1,32 +1,23 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Rejects creating an owner when the owner's city already contains {@value #CITY_OWNER_LIMIT} or
+- * more owners, comparing cities case-insensitively. Runs before {@link BuildOwner}/{@link SaveOwner}
+- * so the clash is a 409 (Conflict) rather than a persisted row.
++ * Rejects creating an owner when the owner's city already contains
++ * {@value OwnerCityCapacity#CITY_OWNER_LIMIT} or more owners, comparing cities case-insensitively.
++ * Runs before {@link BuildOwner}/{@link SaveOwner} so the clash is a 409 (Conflict) rather than a
++ * persisted row. The counting and the companion read-time warning live in {@link OwnerCityCapacity}.
+  */
+ public class EnsureOwnerCityCapacity {
+ 
+-    /** Maximum number of owners permitted in a single city. */
+-    static final int CITY_OWNER_LIMIT = 50;
+-
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws CityAtCapacityException {
+         String city = request.getCity();
+-        int count = 0;
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (city == null ? existing.getCity() == null : city.equalsIgnoreCase(existing.getCity())) {
+-                count++;
+-            }
+-        }
+-        if (count >= CITY_OWNER_LIMIT) {
+-            throw new CityAtCapacityException(city, CITY_OWNER_LIMIT);
++        if (OwnerCityCapacity.isAtCapacity(ownerRepository, city)) {
++            throw new CityAtCapacityException(city, OwnerCityCapacity.CITY_OWNER_LIMIT);
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCapacity.java
+new file mode 100644
+index 00000000..13a94e70
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCapacity.java
+@@ -0,0 +1,51 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Per-city capacity rules shared between the create-time guard {@link EnsureOwnerCityCapacity} and
++ * the read-time {@code capacityWarning} surfaced on the owner response.
++ *
++ * <p>A city holds at most {@value #CITY_OWNER_LIMIT} owners; once it already contains that many a new
++ * owner is rejected. The warning flags the run-up to that limit: {@code true} once a city holds
++ * between {@value #CITY_WARNING_THRESHOLD} and {@code CITY_OWNER_LIMIT - 1} owners (inclusive).
++ * Cities are compared case-insensitively, matching how owners are counted for the hard limit.
++ */
++public final class OwnerCityCapacity {
++
++    /** Maximum number of owners permitted in a single city. */
++    public static final int CITY_OWNER_LIMIT = 50;
++
++    /** A city holding this many owners (up to, but not including, the limit) raises the warning. */
++    public static final int CITY_WARNING_THRESHOLD = 40;
++
++    private OwnerCityCapacity() {
++    }
++
++    /** Whether {@code city} already holds {@link #CITY_OWNER_LIMIT} or more owners. */
++    public static boolean isAtCapacity(OwnerRepository ownerRepository, String city) {
++        return countOwnersInCity(ownerRepository, city) >= CITY_OWNER_LIMIT;
++    }
++
++    /**
++     * Whether {@code city} is approaching the capacity limit: {@code true} when it already holds
++     * between {@value #CITY_WARNING_THRESHOLD} and {@code CITY_OWNER_LIMIT - 1} owners (inclusive).
++     * At or beyond the hard limit this is {@code false} — the city is at capacity, not merely
++     * approaching it.
++     */
++    public static boolean isWarning(OwnerRepository ownerRepository, String city) {
++        int count = countOwnersInCity(ownerRepository, city);
++        return count >= CITY_WARNING_THRESHOLD && count < CITY_OWNER_LIMIT;
++    }
++
++    private static int countOwnersInCity(OwnerRepository ownerRepository, String city) {
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city == null ? existing.getCity() == null : city.equalsIgnoreCase(existing.getCity())) {
++                count++;
++            }
++        }
++        return count;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+index 77f1990b..9cd15cc9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+@@ -19,6 +19,7 @@ public class RespondWithExistingOwner {
+             OwnerRepository ownerRepository, ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
++        dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 9f0733f1..45d09f3c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,6 +13,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
++        dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 210eebe8..a71a6dc4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,6 +16,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
++        dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index b0b6ac98..7eca364b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -15,6 +15,7 @@ public class RespondWithOwnerUpdated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(OwnerBulkSignup.isWarning(ownerRepository, owner.getRegistrationDate()));
++        dto.setCapacityWarning(OwnerCityCapacity.isWarning(ownerRepository, owner.getCity()));
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9e591f6b..342d549a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2314,6 +2314,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Derived at read time: true when the owner's city already holds between 40 and
++                49 owners (inclusive), approaching the per-city capacity limit of 50, otherwise
++                false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
