@@ -24,8 +24,30 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's age band, derived at read time from {@code birthDate} relative to the
+     * {@code registrationDate}: {@code MINOR} under 18, {@code ADULT} from 18 to 64 and
+     * {@code SENIOR} at 65 or older. Null when the owner or its {@code birthDate} (or the
+     * {@code registrationDate} it is measured against) is absent, so the field is simply
+     * omitted for owners without a birth date.
+     */
+    default String ageBand(Owner owner) {
+        if (owner == null || owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int years = java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
+        if (years < 18) {
+            return "MINOR";
+        }
+        if (years < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
+    }
 
     /**
      * A single Luhn check digit (0-9) computed at read time over the digits contained in the
