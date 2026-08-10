@@ -1,0 +1,66 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 84e23eb1..a73cd4e1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+@@ -156,6 +157,33 @@ public interface OwnerMapper {
+         return (10 - (sum % 10)) % 10;
+     }
+ 
++    /**
++     * Formats the owner's stored E.164 {@code telephone} for humans: the country code, a space, then
++     * the national digits grouped in threes separated by spaces, e.g. {@code '+61 412 345 678'} for a
++     * stored {@code '+61412345678'}. The country code is the single digit for the {@code +1} and
++     * {@code +7} plans and two digits otherwise. Returns the raw value unchanged when it is not a
++     * {@code '+'}-prefixed digit string, or {@code null} when absent.
++     */
++    default @Nullable String telephoneDisplay(@Nullable Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        String telephone = owner.getTelephone();
++        if (telephone == null || !telephone.matches("\\+\\d+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        int countryCodeLength = (digits.startsWith("1") || digits.startsWith("7")) ? 1 : 2;
++        countryCodeLength = Math.min(countryCodeLength, digits.length());
++        String countryCode = digits.substring(0, countryCodeLength);
++        String national = digits.substring(countryCodeLength);
++        StringBuilder sb = new StringBuilder("+").append(countryCode);
++        for (int i = 0; i < national.length(); i += 3) {
++            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Formats an owner's stored names as {@code 'LastName, FirstName'}.
+      */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8ec49818..d1a3a670 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2114,6 +2114,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 telephone formatted for humans: the country code,
++                a space, then the national digits grouped in threes separated by
++                spaces. The raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
