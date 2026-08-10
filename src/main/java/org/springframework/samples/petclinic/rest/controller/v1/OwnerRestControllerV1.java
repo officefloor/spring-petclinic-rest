@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -299,6 +300,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects a create when an existing owner already belongs to the same household (i.e. carries the
+     * same computed {@code householdId}, derived from last name and postcode), unless the request
+     * knowingly opts in via {@code sharesHousehold}. Setting {@code sharesHousehold} bypasses this
+     * block so the owner is created as a declared member of the existing household; without it, a
+     * second owner in the same household is a conflict.
+     *
+     * @param householdId the computed household identifier of the owner being created
+     * @param sharesHousehold whether the request opted in to sharing an existing household
+     * @throws DuplicateHouseholdException if the household already exists and the request did not opt in
+     */
+    private void rejectDuplicateHousehold(String householdId, boolean sharesHousehold) {
+        if (sharesHousehold) {
+            return;
+        }
+        boolean exists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+        if (exists) {
+            throw new DuplicateHouseholdException(
+                "An owner with the same last name and postcode already exists");
+        }
+    }
+
+    /**
      * Finds a soft-match "possible duplicate" for the owner being created: an existing owner that is
      * not a hard identity duplicate but shares this owner's last name (compared case-insensitively) and
      * postcode while carrying a different telephone. When the postcode is absent no owner can share it,
@@ -326,41 +350,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a value for household comparison by trimming, collapsing every run of whitespace to
-     * a single space and lower-casing, so the comparison is case-insensitive with collapsed whitespace.
-     *
-     * @param value the raw value, may be {@code null}
-     * @return the normalized value ({@code ""} when {@code value} is {@code null})
-     */
-    private static String normalizeForHousehold(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Derives the stable household identifier for an owner from the normalized last name and address.
-     * The value is a deterministic function of those two fields (compared case-insensitively with
-     * collapsed whitespace), so every owner in the same
-     * household — including owners who knowingly join it via {@code sharesHousehold} — is assigned the
-     * same identifier without any existing record having to be updated. Formatted {@code 'HH-<HEX12>'}
-     * where {@code HEX12} is the upper-cased first twelve hex characters of the SHA-256 of the two
-     * normalized fields.
+     * Derives the stable household identifier for an owner from its last name and postcode. The value
+     * is the first twelve hex characters of the SHA-256 of {@code normalizedLastName + '|' + postcode}
+     * (the last name normalized case-insensitively with surrounding whitespace trimmed; an absent
+     * postcode contributes the empty string). Because it is a pure function of those two fields, every
+     * owner with the same last name and postcode is assigned the same identifier automatically, without
+     * any existing record having to be updated.
      *
      * @param lastName the last name of the owner being created
-     * @param address the address of the owner being created
+     * @param postcode the postcode of the owner being created, may be {@code null}
      * @return the stable household identifier
      */
-    private static String householdId(String lastName, String address) {
-        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+    private static String householdId(String lastName, String postcode) {
+        String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode);
+        return sha256HexPrefix(key, 12);
     }
 
     /**
@@ -543,13 +546,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Counts the members of the owner-to-be's household after this create, i.e. one more than the
-     * number of existing owners already carrying the same {@code householdId}. A household identifier
-     * is only assigned to owners who knowingly share a household via {@code sharesHousehold}; a solo
-     * owner has no household identifier ({@code null}) and is therefore always a household of one. The
-     * count includes the owner being created (hence the {@code + 1}).
+     * number of existing owners already carrying the same {@code householdId}. The household
+     * identifier is a deterministic function of last name and postcode, so a solo owner (the only one
+     * with that identifier) is a household of one. The count includes the owner being created (hence
+     * the {@code + 1}).
      *
-     * @param householdId the stable household identifier of the owner being created, or {@code null}
-     *     when the owner does not share a household
+     * @param householdId the stable household identifier of the owner being created
      * @return the number of household members after this create (always at least 1)
      */
     private int householdSize(String householdId) {
@@ -648,11 +650,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setTelephone(normalizedTelephone);
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
         ownerFieldsDto.setEmail(normalizedEmail);
-        String ownerHouseholdId = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            ? householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())
-            : null;
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        String ownerHouseholdId = householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
         rejectDuplicateIdentity(deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerHouseholdId));
-        Integer possibleDuplicateOf = findPossibleDuplicateOf(
+        rejectDuplicateHousehold(ownerHouseholdId, sharesHousehold);
+        Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(
             ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(), normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);

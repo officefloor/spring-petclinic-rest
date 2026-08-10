@@ -17,11 +17,12 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown on create when another owner already has the same last name and address (compared
- * case-insensitively with collapsed whitespace) and the request did not set {@code sharesHousehold}
- * to {@code true}. Carries the offending field names so the {@link ExceptionControllerAdvice} can
- * report them in the {@code errors} array of a 409 Conflict response, mirroring
- * {@link DuplicateTelephoneException}.
+ * Thrown on create when another owner already belongs to the same household — i.e. shares the same
+ * computed {@code householdId}, derived deterministically from last name (compared case-insensitively
+ * with surrounding whitespace trimmed) and postcode — and the request did not set
+ * {@code sharesHousehold} to {@code true}. Carries the offending field names so the
+ * {@link ExceptionControllerAdvice} can report them in the {@code errors} array of a 409 Conflict
+ * response, mirroring {@link DuplicateTelephoneException}.
  */
 public class DuplicateHouseholdException extends RuntimeException {
 
