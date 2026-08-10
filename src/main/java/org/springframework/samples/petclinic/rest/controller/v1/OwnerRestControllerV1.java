@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -52,6 +53,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -109,6 +112,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** HTTP header carrying the client-supplied idempotency key for owner creation. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers the owner created for each seen {@code Idempotency-Key}, so a create that
+     * repeats with an already-seen key returns the originally created owner (200) instead of
+     * creating a duplicate. Kept in-memory and keyed by the raw header value.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -155,6 +168,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Idempotent create: when the request carries an 'Idempotency-Key' already seen on a
+        // previous successful create, return the originally created owner with 200 instead of
+        // creating a duplicate.
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         // Validate & normalize the optional email; reject the create when it is present but invalid.
         if (!normalizeEmail(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -269,10 +295,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        // Remember this create against its idempotency key so a later repeat returns the same
+        // owner instead of creating a duplicate.
+        if (idempotencyKey != null) {
+            idempotentCreates.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The non-blank {@code Idempotency-Key} header of the current request, or {@code null} when
+     * absent, blank, or there is no bound request.
+     */
+    private static String currentIdempotencyKey() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servletAttributes)) {
+            return null;
+        }
+        String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return (key == null || key.isBlank()) ? null : key;
     }
 
     /**
