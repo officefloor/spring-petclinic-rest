@@ -152,6 +152,21 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * Derived duplicate-detection key that consolidates the telephone, email and household checks
+     * into one value: the normalized telephone, the email (or empty) and the householdId (or empty),
+     * joined by {@code '|'}. Two owners are duplicates only when their WHOLE identityKey matches, so
+     * two members of the same household with different telephones have different keys and are both
+     * allowed. Telephone and email are already stored normalized (E.164 / lower-cased) and
+     * householdId is null unless the owner belongs to a shared household.
+     */
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String mail = this.email == null ? "" : this.email;
+        String household = this.householdId == null ? "" : this.householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

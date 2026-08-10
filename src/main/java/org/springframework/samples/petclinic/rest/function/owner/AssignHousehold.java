@@ -14,8 +14,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Assigns a shared {@code householdId} when a create request opts in with
  * {@code sharesHousehold: true} and an existing owner already shares the household — the same
  * lastName (compared case-insensitively with collapsed whitespace) and the same address, compared
- * in normalized form (see {@link OwnerAddress#normalize(String)}), matching
- * {@link CheckOwnerHouseholdUnique}, which allows the duplicate through in that case.
+ * in normalized form (see {@link OwnerAddress#normalize(String)}). Duplicate detection is handled
+ * separately by {@link CheckOwnerIdentityUnique}: household members with different telephones have
+ * different identityKeys and are all allowed.
  *
  * <p>The identifier is a <em>stable</em> value derived deterministically from the normalized
  * lastName and address, so every owner in the same household receives the same id regardless of
