@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d9c3c16a..a699444a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,8 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$",
++        message = "Phone number must be in E.164 form: '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2a3c7742..18baa097 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -113,17 +113,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+-        // Normalize the telephone by stripping every non-digit character, then require exactly 10 digits.
+-        String telephone = ownerFieldsDto.getTelephone();
+-        String normalizedTelephone = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        if (normalizedTelephone.length() != 10) {
++        // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
++        String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
++        if (normalizedTelephone == null) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+-        // Reject the create if any existing owner already uses this normalized telephone.
++        // Reject the create if any existing owner already uses this telephone (compared in E.164 form).
+         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+             .map(Owner::getTelephone)
++            .map(OwnerRestControllerV1::toE164)
+             .filter(existing -> existing != null)
+-            .map(existing -> existing.replaceAll("\\D", ""))
+             .anyMatch(normalizedTelephone::equals);
+         if (telephoneInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+@@ -164,6 +163,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return true;
+     }
+ 
++    /**
++     * Normalize a telephone number to E.164 form.
++     *
++     * <p>Spaces, dashes and brackets are stripped. When the number carries an
++     * explicit leading {@code '+'} and country code it is kept; otherwise the
++     * country code {@code '+61'} is assumed and a single leading {@code '0'} is
++     * dropped from the national digits. The result must contain 8 to 15 digits
++     * after the {@code '+'}.
++     *
++     * @return the E.164 string (e.g. {@code +61412345678}), or {@code null} when
++     *         the input is absent or cannot form a valid E.164 number.
++     */
++    private static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String trimmed = raw.trim();
++        boolean hasCountryCode = trimmed.startsWith("+");
++        // Strip spaces, dashes and brackets.
++        String stripped = trimmed.replaceAll("[\\s()\\-]", "");
++        String digits;
++        if (hasCountryCode) {
++            // Keep the explicit country code; drop the leading '+' for validation.
++            digits = stripped.substring(1);
++        } else {
++            // No country code: assume '+61' and drop a single leading '0'.
++            String national = stripped.startsWith("0") ? stripped.substring(1) : stripped;
++            digits = "61" + national;
++        }
++        if (!digits.matches("\\d{8,15}")) {
++            return null;
++        }
++        return "+" + digits;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+@@ -174,11 +208,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
++        if (normalizedTelephone == null) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizedTelephone);
+         currentOwner.setEmail(ownerFieldsDto.getEmail());
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
