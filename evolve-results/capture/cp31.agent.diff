@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c877886f..d4b931fd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
+     @Mapping(target = "identityKey",
+             expression = "java(org.springframework.samples.petclinic.util.OwnerIdentities.identityKey(owner))")
++    @Mapping(target = "checkDigit",
++            expression = "java(org.springframework.samples.petclinic.util.CheckDigits.checkDigitFor(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+new file mode 100644
+index 00000000..e5e3edae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over the
++ * decimal digits contained in the owner's {@code customerCode}.
++ *
++ * <p>Non-digit characters (such as the '-' separators) are ignored; the remaining digits are
++ * processed right-to-left, doubling every second digit starting with the rightmost and casting
++ * out nines, and the check digit is {@code (10 - (sum % 10)) % 10}.
++ */
++public final class CheckDigits {
++
++    private CheckDigits() {
++    }
++
++    public static int checkDigitFor(Owner owner) {
++        return luhn(owner.getCustomerCode());
++    }
++
++    /** Luhn check digit (0-9) over the decimal digits contained in {@code s}. */
++    public static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1bef22a6..22cf7888 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,6 +2119,17 @@ components:
+               type: string
+               example: 'SPR-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the decimal digits of the
++                customerCode (non-digit characters such as '-' are ignored).
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
