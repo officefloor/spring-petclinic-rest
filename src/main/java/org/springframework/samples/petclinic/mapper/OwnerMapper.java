@@ -35,6 +35,8 @@ public interface OwnerMapper {
             expression = "java(MembershipLevel.of(owner))")
     @Mapping(target = "locality",
             expression = "java(Locality.of(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+            expression = "java(Timezone.of(Locality.of(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
             expression = "java(ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand",
