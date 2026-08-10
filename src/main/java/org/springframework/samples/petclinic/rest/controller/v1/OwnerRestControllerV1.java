@@ -127,6 +127,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Reject the create when another owner already shares this owner's last name and address
+        // (compared case-insensitively with collapsed whitespace), unless the request opts into
+        // sharing a household.
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String normalizedLastName = normalizeHouseholdKey(ownerFieldsDto.getLastName());
+            String normalizedAddress = normalizeHouseholdKey(ownerFieldsDto.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing ->
+                    normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
+                        && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress));
+            if (householdInUse) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -164,6 +178,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         ownerFieldsDto.setEmail(normalized);
         return true;
+    }
+
+    /**
+     * Normalize an owner household field (last name or address) for duplicate detection:
+     * trimmed, lower-cased and with all runs of whitespace collapsed to a single space.
+     * A {@code null} value normalizes to the empty string.
+     */
+    private static String normalizeHouseholdKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
