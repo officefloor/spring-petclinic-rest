@@ -129,6 +129,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         ownerFieldsDto.setAddress(canonicalAddress);
+        // Reject the create when the owner's city is already at capacity, i.e. it already
+        // contains 50 or more owners (compared case-insensitively).
+        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
