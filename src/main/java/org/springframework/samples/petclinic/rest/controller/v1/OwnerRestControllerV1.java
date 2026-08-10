@@ -31,6 +31,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
@@ -281,6 +282,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects an email that, compared case-insensitively, is already used by any existing owner.
+     * Existing owners' emails are lower-cased before comparison so that addresses differing only in
+     * letter case are treated as duplicates. A {@code null} email (none supplied) is never a
+     * duplicate.
+     *
+     * @param email the normalized (lower-cased) email of the owner being created, may be {@code null}
+     * @throws DuplicateOwnerEmailException if another owner already uses the email
+     */
+    private void requireUniqueEmail(String email) {
+        if (email == null) {
+            return;
+        }
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.toLowerCase(Locale.ROOT))
+            .anyMatch(email::equals);
+        if (taken) {
+            throw new DuplicateOwnerEmailException(email);
+        }
+    }
+
+    /**
      * Rejects a telephone that, once normalized, is already used by any existing owner. Existing
      * owners' telephones are normalized the same way before comparison so differently-formatted
      * values representing the same number are treated as duplicates.
@@ -416,6 +440,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         requireCityHasCapacity(ownerFieldsDto.getCity());
         String email = normalizeEmail(ownerFieldsDto.getEmail());
+        requireUniqueEmail(email);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);

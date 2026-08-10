@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+    private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its owner capacity";
     private static final String ERROR_DAILY_OWNER_LIMIT = "The daily owner registration limit has been reached";
@@ -235,6 +236,28 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getTelephone());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerEmailException} raised when an owner is created with a
+     * lower-cased email that is already used by another owner. Returns a 409 Conflict whose
+     * body's {@code errors} array names the offending {@code email} field.
+     *
+     * @param e The {@link DuplicateOwnerEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerEmailException(DuplicateOwnerEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_EMAIL);
+        detail.setProperty("errors", List.of("email"));
+        logger.debug("Duplicate owner email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getEmail());
         return ResponseEntity.status(status).body(detail);
     }
 
