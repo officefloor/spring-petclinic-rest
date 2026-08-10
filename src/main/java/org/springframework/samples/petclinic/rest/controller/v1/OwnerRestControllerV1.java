@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -200,6 +201,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects a create that would place the owner in a household already occupied by another owner,
+     * i.e. one whose last name and address match the supplied values. The two fields are compared
+     * case-insensitively after whitespace is collapsed (leading/trailing whitespace trimmed and each
+     * run of internal whitespace reduced to a single space), so {@code '110 W.  Liberty St. '} and
+     * {@code '110 w. liberty st.'} are treated as the same address. The caller may bypass this check
+     * by setting {@code sharesHousehold} to {@code true}.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @throws DuplicateHouseholdException if another owner already shares this last name and address
+     */
+    private void rejectDuplicateHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForHousehold(lastName);
+        String normalizedAddress = normalizeForHousehold(address);
+        boolean inHousehold = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing ->
+                normalizedLastName.equals(normalizeForHousehold(existing.getLastName()))
+                    && normalizedAddress.equals(normalizeForHousehold(existing.getAddress())));
+        if (inHousehold) {
+            throw new DuplicateHouseholdException(
+                "An owner with the same last name and address already exists");
+        }
+    }
+
+    /**
+     * Normalizes a value for household comparison by trimming, collapsing every run of whitespace to
+     * a single space and lower-casing, so the comparison is case-insensitive with collapsed whitespace.
+     *
+     * @param value the raw value, may be {@code null}
+     * @return the normalized value ({@code ""} when {@code value} is {@code null})
+     */
+    private static String normalizeForHousehold(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
      * Builds the customer code assigned to an owner on create, formatted {@code '<LAST3>-<NNNN>'}
      * where {@code LAST3} is the upper-cased first three letters of the owner's last name and
      * {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than the current
@@ -228,6 +265,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
