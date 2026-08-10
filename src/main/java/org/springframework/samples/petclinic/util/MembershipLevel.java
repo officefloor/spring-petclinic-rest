@@ -1,14 +1,13 @@
 package org.springframework.samples.petclinic.util;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's membership standing from a points score. Points start at 0 and accrue: +2 for a
  * usable email address, +1 when the owner has no namesakes, +2 for a household of three or more, and
- * +3 for a tenure of more than 365 days measured from the registration date. The points are mapped to
- * a membership level of 1 to 4: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more. Because a
- * newly created owner has zero tenure, a new owner scores at most 5 points (level 3).
+ * +3 for a tenure of more than one elapsed fiscal year measured from the registration date. The points
+ * are mapped to a membership level of 1 to 4: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or
+ * more. Because a newly created owner has zero tenure, a new owner scores at most 5 points (level 3).
  */
 public final class MembershipLevel {
 
@@ -30,7 +29,7 @@ public final class MembershipLevel {
             points += 2;
         }
         if (registrationDate != null && today != null
-            && ChronoUnit.DAYS.between(registrationDate, today) > 365) {
+            && FiscalYear.elapsed(registrationDate, today) > 1) {
             points += 3;
         }
         return points;

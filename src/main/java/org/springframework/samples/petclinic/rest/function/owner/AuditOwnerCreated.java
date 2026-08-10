@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 /**
@@ -21,7 +22,7 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         String membershipNumber = owner.getCustomerCode() + "-M"
-            + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+            + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         int membershipLevel = MembershipLevel.level(MembershipLevel.points(owner.getEmail(),
             owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate(),
             LocalDate.now()));

@@ -29,9 +29,13 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit",
         expression = "java(org.springframework.samples.petclinic.util.CustomerCode"
             + ".checkDigit(owner.getCustomerCode()))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label("
+            + "owner.getRegistrationDate()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            + "+ String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.of("
+            + "owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points("
             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
