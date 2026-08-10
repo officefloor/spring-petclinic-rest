@@ -330,16 +330,29 @@ public interface OwnerMapper {
 
     /**
      * The owner's derived identity key: the single value onto which all duplicate
-     * detection is consolidated, formatted
-     * '&lt;normalizedTelephone&gt;|&lt;email or empty&gt;|&lt;householdId&gt;'.
+     * detection is consolidated. It is the full lower-case hex SHA-256 digest of
+     * '&lt;normalizedTelephone&gt;|&lt;lowerEmail&gt;|&lt;soundex(lastName)&gt;'.
      * The telephone and email are the owner's stored (already normalized) values;
-     * a {@code null} email contributes the empty string. Two owners are duplicates
-     * only when their whole identity keys are equal.
+     * a {@code null} email contributes the empty string, and the last name is reduced
+     * to its Soundex code so surnames that sound alike share the same segment. Two
+     * owners are duplicates only when their whole identity keys are equal.
      */
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        return telephone + "|" + email + "|" + householdId(owner);
+        String key = telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String normalizeHouseholdKey(String value) {
