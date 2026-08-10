@@ -9,8 +9,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -21,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "householdId", expression = "java(householdId(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -30,6 +34,36 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /**
+     * A stable identifier for the owner's household, derived deterministically from the
+     * normalized last name and address (trimmed, lower-cased, whitespace collapsed).
+     * Every owner sharing a household therefore receives the same identifier: the first
+     * eight upper-case hex characters of the SHA-256 of '&lt;lastName&gt;|&lt;address&gt;'.
+     */
+    default String householdId(Owner owner) {
+        String key = normalizeHouseholdKey(owner.getLastName()) + "|"
+            + normalizeHouseholdKey(owner.getAddress());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String normalizeHouseholdKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     Owner toOwner(OwnerDto ownerDto);
