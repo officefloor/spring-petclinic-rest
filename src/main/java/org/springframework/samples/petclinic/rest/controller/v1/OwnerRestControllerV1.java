@@ -194,6 +194,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) at the moment before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        // Flag a bulk sign-up when more than 80 owners have already been created today, i.e.
+        // registered on this (adjusted) business day before this owner is created.
+        owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
         this.clinicService.saveOwner(owner);
         // Emit an audit line recording the new owner's id, customer code and registration date.
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
