@@ -31,7 +31,20 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's preferred contact channel: {@code "EMAIL"} when the owner has a non-blank
+     * email, otherwise {@code "PHONE"}.
+     *
+     * @param owner the owner to derive the contact preference for
+     * @return {@code "EMAIL"} when an email is present, otherwise {@code "PHONE"}
+     */
+    default String contactPreference(Owner owner) {
+        String email = owner.getEmail();
+        return (email != null && !email.isBlank()) ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Derives an owner's locality from its city using a fixed city-to-region table
