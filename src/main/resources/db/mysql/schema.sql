@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
   telephone VARCHAR(20),
   email VARCHAR(255),
   registration_date DATE,
+  birth_date DATE,
   customer_code VARCHAR(20),
   namesake_count INT,
   bulk_signup_warning BIT,
