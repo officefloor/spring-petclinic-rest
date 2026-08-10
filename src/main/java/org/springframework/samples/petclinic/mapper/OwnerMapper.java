@@ -42,6 +42,11 @@ public interface OwnerMapper {
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
+    @Mapping(target = "ageBand",
+        expression = "java(owner.getBirthDate() == null ? null "
+            + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.fromValue("
+            + "org.springframework.samples.petclinic.util.AgeBand.of("
+            + "owner.getBirthDate(), owner.getRegistrationDate())))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
