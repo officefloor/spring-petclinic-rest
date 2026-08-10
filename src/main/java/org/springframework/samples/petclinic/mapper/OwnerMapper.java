@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.mapper;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
@@ -18,7 +19,18 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "displayName", expression = "java(displayName(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats an owner's stored names as {@code 'LastName, FirstName'}.
+     */
+    default @Nullable String displayName(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return owner.getLastName() + ", " + owner.getFirstName();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
