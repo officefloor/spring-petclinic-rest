@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -13,12 +14,17 @@ import org.springframework.web.bind.annotation.RequestBody;
  * firstName, lastName, address, city or telephone. Throwing lists every offending field, so the
  * client sees them all at once. It also normalizes the telephone by stripping every non-digit
  * character and requiring exactly 10 digits, rejecting with 400 otherwise; the normalized value is
- * written back onto the body. On success it publishes the body for {@link BuildOwner} to map.
+ * written back onto the body. When an optional {@code email} is present it must be a syntactically
+ * valid address (else 400); it is lower-cased and written back. On success it publishes the body for
+ * {@link BuildOwner} to map.
  */
 public class ValidateOwnerFields {
 
     /** Owner telephone must be exactly this many digits after non-digits are stripped. */
     private static final int TELEPHONE_DIGITS = 10;
+
+    /** Syntactic email check: a non-empty local part, an {@code @}, then a dotted domain. */
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsInvalidException {
@@ -36,6 +42,14 @@ public class ValidateOwnerFields {
             throw new OwnerFieldsInvalidException(List.of("telephone"));
         }
         request.setTelephone(telephone);
+        String email = request.getEmail();
+        if (email != null && !email.trim().isEmpty()) {
+            email = email.trim();
+            if (!EMAIL.matcher(email).matches()) {
+                throw new OwnerFieldsInvalidException(List.of("email"));
+            }
+            request.setEmail(email.toLowerCase());
+        }
         validated.set(request);
     }
 
