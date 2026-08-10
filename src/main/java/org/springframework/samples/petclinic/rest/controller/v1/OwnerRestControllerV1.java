@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -57,6 +59,14 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic email check: a non-empty local part, an {@code @}, and a dotted domain, with no
+     * whitespace or additional {@code @} characters. Deliberately permissive - it enforces basic
+     * address shape rather than full RFC 5322 conformance.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final ClinicService clinicService;
 
@@ -147,6 +157,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalizes an optional email address. Email is not required, so a missing or blank value is
+     * accepted and yields {@code null} (no email stored). When a non-blank value is supplied it must
+     * be a syntactically valid address; the accepted value is returned lower-cased.
+     *
+     * @param email the raw email value from the request, may be {@code null}
+     * @return the lower-cased email, or {@code null} when none was supplied
+     * @throws InvalidFieldsException if a non-blank value is not a syntactically valid address
+     */
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidFieldsException(List.of("email"));
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    /**
      * Rejects a telephone that, once normalized, is already used by any existing owner. Existing
      * owners' telephones are normalized the same way before comparison so differently-formatted
      * values representing the same number are treated as duplicates.
@@ -171,9 +201,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(telephone);
+        String email = normalizeEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
+        owner.setEmail(email);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -193,6 +225,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
