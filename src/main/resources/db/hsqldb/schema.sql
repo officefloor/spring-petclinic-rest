@@ -54,7 +54,8 @@ CREATE TABLE owners (
   birth_date DATE,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
-  title VARCHAR(10)
+  title VARCHAR(10),
+  deleted BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

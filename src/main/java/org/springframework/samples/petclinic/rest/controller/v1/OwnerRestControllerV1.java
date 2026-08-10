@@ -395,9 +395,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param owner the owner being created, with its normalized telephone and email already applied
      * @throws DuplicateOwnerIdentityException if another owner already shares the identity key
      */
+    /**
+     * Tests whether an existing owner is not soft-deleted, so that duplicate and identity detection
+     * can ignore owners flagged {@code deleted}. An owner whose {@code deleted} flag is {@code null}
+     * or {@code false} is considered active; only an explicit {@code true} excludes it.
+     *
+     * @param owner an existing owner from the data store
+     * @return {@code true} when the owner is not flagged deleted, otherwise {@code false}
+     */
+    private static boolean isNotDeleted(Owner owner) {
+        return !Boolean.TRUE.equals(owner.getDeleted());
+    }
+
     private void requireUniqueIdentity(Owner owner) {
         String telephone = owner.getTelephone();
         boolean taken = this.clinicService.findAllOwners().stream()
+            .filter(OwnerRestControllerV1::isNotDeleted)
             .map(Owner::getTelephone)
             .anyMatch(existing -> existing != null && existing.equals(telephone));
         if (taken) {
@@ -424,6 +437,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String householdId = ownerMapper.householdId(owner);
         boolean taken = this.clinicService.findAllOwners().stream()
+            .filter(OwnerRestControllerV1::isNotDeleted)
             .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
         if (taken) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getPostcode());
@@ -464,6 +478,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephone = owner.getTelephone();
         return this.clinicService.findAllOwners().stream()
+            .filter(OwnerRestControllerV1::isNotDeleted)
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> existing.getTelephone() == null
@@ -568,6 +583,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
         owner.setEmail(email);
+        owner.setDeleted(false);
         requireUniqueIdentity(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (!sharesHousehold) {
@@ -618,7 +634,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
