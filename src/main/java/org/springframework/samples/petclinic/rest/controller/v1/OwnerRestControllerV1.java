@@ -196,6 +196,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (registrationDate == null) {
             registrationDate = LocalDate.now();
         }
+        // Reject a supplied registration date that lies in the future (later than the
+        // server's current date): an owner cannot be registered ahead of time.
+        else if (registrationDate.isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         registrationDate = toBusinessDay(registrationDate);
         // Reject the create when the daily sign-up limit has been reached, i.e. 100 or more
         // owners have already been registered on this (adjusted) business day.
