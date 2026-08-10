@@ -136,19 +136,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeEmail(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        // Reject the create when another owner already uses this email (compared case-insensitively
-        // by lower-cased email). The DTO email is already normalized to its lower-cased form here.
-        String normalizedEmail = ownerFieldsDto.getEmail();
-        if (normalizedEmail != null) {
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(existing -> existing != null)
-                .map(existing -> existing.toLowerCase(Locale.ROOT))
-                .anyMatch(normalizedEmail::equals);
-            if (emailInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
         // Normalize the required address (trim/collapse whitespace, upper-case, expand
         // abbreviations) and store the normalized form back on the DTO so it is what gets
         // persisted and compared. Reject the create when the address is blank once normalized.
@@ -167,28 +154,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        // Reject the create if any existing owner already uses this telephone (compared in E.164 form).
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .map(OwnerRestControllerV1::toE164)
-            .filter(existing -> existing != null)
-            .anyMatch(normalizedTelephone::equals);
-        if (telephoneInUse) {
+        ownerFieldsDto.setTelephone(normalizedTelephone);
+        // Consolidated duplicate detection. All former separate telephone, email and household
+        // duplicate checks are now expressed through the single derived identity key
+        // '<normalizedTelephone>|<email or empty>|<householdId>' (see OwnerMapper#identityKey).
+        // A create is rejected only when the new owner's identity collides with an existing owner's.
+        // Because the telephone is part of the identity, two members of the same household with
+        // different telephones no longer collide and are both allowed; only owners that share the
+        // same normalized telephone and email are treated as the same identity.
+        Owner candidate = ownerMapper.toOwner(ownerFieldsDto);
+        String contactIdentity = identityContact(candidate);
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> contactIdentity.equals(identityContact(existing)));
+        if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        // Reject the create when another owner already shares this owner's last name and address
-        // (compared case-insensitively with collapsed whitespace), unless the request opts into
-        // sharing a household.
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String normalizedLastName = normalizeHouseholdKey(ownerFieldsDto.getLastName());
-            String normalizedAddress = normalizeHouseholdKey(ownerFieldsDto.getAddress());
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing ->
-                    normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
-                        && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress));
-            if (householdInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
         }
         // Determine the effective registration date — the value supplied on the request, or the
         // server's current date when none was supplied — and roll it forward to the next business
@@ -205,9 +184,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
-        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        Owner owner = candidate;
         owner.setRegistrationDate(registrationDate);
         // Assign the customer code as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
         // letters of the city, the upper-cased first three letters of the last name, and a
@@ -279,6 +257,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return sb.toString();
+    }
+
+    /**
+     * The contact portion of an owner's derived identity key: its normalized telephone and
+     * email ('&lt;normalizedTelephone&gt;|&lt;email or empty&gt;'), i.e. the identity key
+     * without the household segment. Two owners share an identity when this value is equal;
+     * because the telephone is part of it, members of one household with different telephones
+     * do not collide. A {@code null} email contributes the empty string.
+     */
+    private static String identityContact(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        return telephone + "|" + email;
     }
 
     /**

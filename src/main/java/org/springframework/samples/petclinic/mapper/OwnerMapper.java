@@ -29,6 +29,7 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -113,6 +114,20 @@ public interface OwnerMapper {
         catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * The owner's derived identity key: the single value onto which all duplicate
+     * detection is consolidated, formatted
+     * '&lt;normalizedTelephone&gt;|&lt;email or empty&gt;|&lt;householdId&gt;'.
+     * The telephone and email are the owner's stored (already normalized) values;
+     * a {@code null} email contributes the empty string. Two owners are duplicates
+     * only when their whole identity keys are equal.
+     */
+    default String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        return telephone + "|" + email + "|" + householdId(owner);
     }
 
     private static String normalizeHouseholdKey(String value) {
