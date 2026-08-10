@@ -263,11 +263,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
         }
         this.clinicService.saveOwner(owner);
-        // Emit an audit line recording the new owner's id, customer code, registration date
-        // and membership level.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        // Emit an audit line recording the new owner's id, customer code, registration date,
+        // membership level and membership number.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner));
+            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
