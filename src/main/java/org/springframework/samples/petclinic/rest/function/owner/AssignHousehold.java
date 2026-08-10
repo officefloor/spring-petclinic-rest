@@ -4,11 +4,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
- * the normalized lastName, a {@code '|'} separator and the postcode. The household is therefore
+ * the fixed {@link IdentityVersion#TAG "V2"} version tag, the normalized lastName and the postcode,
+ * each {@code '|'}-separated. Mixing the version tag in means no householdId produced under version 1
+ * is ever produced again. The household is therefore
  * keyed on {@code (lastName, postcode)} alone — owners with the same lastName (compared
  * case-insensitively with collapsed whitespace) and the same postcode receive the same id
  * automatically, regardless of creation order and without inspecting or updating any other owner.
@@ -36,12 +39,14 @@ public class AssignHousehold {
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
-    /** The first 12 hex characters of SHA-256(normalizedLastName {@code '|'} postcode), so it is
-     *  identical for every owner sharing that lastName and postcode. */
+    /** The first 12 hex characters of SHA-256({@code "V2"} {@code '|'} normalizedLastName {@code '|'}
+     *  postcode), so it is identical for every owner sharing that lastName and postcode yet distinct
+     *  from any version-1 value. */
     private static String deriveHouseholdId(String normalizedLastName, String postcode) {
         try {
+            String input = IdentityVersion.TAG + "|" + normalizedLastName + "|" + postcode;
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest(input.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02x", digest[i]));

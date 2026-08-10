@@ -8,20 +8,24 @@ import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.FiscalYear;
+import org.springframework.samples.petclinic.model.IdentityVersion;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>}:
  * <ul>
- *   <li>REGION — the region code derived from the owner's postcode (its inclusive range:
- *   {@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}, else {@code UNKNOWN});</li>
+ *   <li>REGION — the version-2 region code used inside the identifier: the fixed
+ *   {@link IdentityVersion#TAG "V2"} version tag followed by the region derived from the owner's
+ *   postcode (its inclusive range: {@code NSW 2000-2099}, {@code VIC 3000-3099},
+ *   {@code QLD 4000-4099}, else {@code UNKNOWN}) — e.g. {@code V2NSW}. Mixing the tag in here means
+ *   no memberId produced under version 1 is ever produced again;</li>
  *   <li>FY — the two-digit fiscal year (starting 1 July) of the owner's registrationDate;</li>
  *   <li>HASH8 — the first 8 upper-case hex characters of {@code SHA-256} over the owner's normalized
  *   telephone concatenated with its last name;</li>
  *   <li>CHK — a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * (e.g. {@code NSW261A2B3C4D5}.)
+ * (e.g. {@code V2NSW261A2B3C4D5}.)
  *
  * <p>The identity is derived deterministically from the owner's own fields — no sequence numbers —
  * so it does not depend on other owners or on creation order. The telephone has already been
@@ -30,7 +34,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Should the deterministic id collide with an existing owner's {@code memberId}, it is
  * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
- * unique (e.g. {@code NSW261A2B3C4D5}, then {@code NSW261A2B3C4D5-2}, {@code NSW261A2B3C4D5-3}, …).
+ * unique (e.g. {@code V2NSW261A2B3C4D5}, then {@code V2NSW261A2B3C4D5-2}, …).
  */
 public class AssignMemberId {
 
@@ -41,7 +45,7 @@ public class AssignMemberId {
     private static final String UNKNOWN = "UNKNOWN";
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = regionOf(owner.getPostcode());
+        String region = IdentityVersion.TAG + regionOf(owner.getPostcode());
         String fy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
         String withoutCheck = region + fy + hash8;

@@ -33,8 +33,9 @@ public class AuditOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
                 MembershipLevel.of(owner));
 
-        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                owner.getPrimaryIdentifier(), MembershipLevel.of(owner));
+        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(),
+                OwnerCreatedEvent.SCHEMA_VERSION, owner.getId(), owner.getPrimaryIdentifier(),
+                MembershipLevel.of(owner));
         AUDIT.info(event.toJson());
     }
 }

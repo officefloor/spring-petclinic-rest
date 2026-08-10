@@ -2,11 +2,15 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.List;
 
+import org.springframework.samples.petclinic.model.IdentityVersion;
+
 /**
  * Derives an owner's canonical region ('locality') from its {@code memberId}. Owner identity is
- * {@code <REGION><FY><HASH8><CHK>} (assigned at registration from the owner's postcode, registration
- * date and a hash of its telephone and last name), so the locality is the leading REGION component.
- * It is {@code "UNKNOWN"} when no id has been assigned or the id carries no known region prefix.
+ * {@code <REGION><FY><HASH8><CHK>} where REGION is the {@code "V2"} version tag followed by the plain
+ * region derived from the postcode. The user-facing locality is that <em>plain</em> region — the
+ * version tag is an internal identifier detail and never appears in the locality — so the tag is
+ * stripped before matching. It is {@code "UNKNOWN"} when no id has been assigned or the id carries no
+ * known region.
  *
  * <p>Kept as a standalone helper (referenced from {@link OwnerMapper}'s
  * {@code locality} expression) rather than a mapper {@code default} method: a
@@ -24,15 +28,17 @@ final class Locality {
     }
 
     /**
-     * The REGION component of the owner's {@code memberId} — its leading region prefix — or
-     * {@code "UNKNOWN"} when the id is absent or begins with no known region.
+     * The plain REGION component of the owner's {@code memberId} — its leading region prefix once the
+     * {@code "V2"} version tag is stripped — or {@code "UNKNOWN"} when the id is absent or begins with
+     * no known region.
      */
     static String of(String memberId) {
         if (memberId == null) {
             return UNKNOWN;
         }
+        String body = IdentityVersion.stripTag(memberId);
         for (String region : REGIONS) {
-            if (memberId.startsWith(region)) {
+            if (body.startsWith(region)) {
                 return region;
             }
         }

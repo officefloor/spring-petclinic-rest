@@ -281,19 +281,21 @@ public class Owner extends Person {
     }
 
     /**
-     * Derived duplicate-detection key: the lower-case SHA-256 hex (64 chars) of the normalized
-     * telephone, the email (or empty) and the Soundex of the lastName, joined by {@code '|'}. Two
-     * owners are hard duplicates only when their WHOLE identityKey matches, so two members of the
-     * same household (same lastName and postcode) with different telephones have different keys and
-     * are both allowed — the later one is flagged a soft match instead. Telephone and email are
-     * already stored normalized (E.164 / lower-cased); the lastName contributes only through its
-     * {@link Soundex} code so it tolerates spelling variation.
+     * Derived duplicate-detection key: the lower-case SHA-256 hex (64 chars) of the fixed
+     * {@link IdentityVersion#TAG "V2"} version tag, the normalized telephone, the email (or empty)
+     * and the Soundex of the lastName, joined by {@code '|'}. Mixing the version tag in means no
+     * identityKey produced under version 1 is ever produced again. Two owners are hard duplicates
+     * only when their WHOLE identityKey matches, so two members of the same household (same lastName
+     * and postcode) with different telephones have different keys and are both allowed — the later
+     * one is flagged a soft match instead. Telephone and email are already stored normalized
+     * (E.164 / lower-cased); the lastName contributes only through its {@link Soundex} code so it
+     * tolerates spelling variation.
      */
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
         String mail = this.email == null ? "" : this.email;
         String lastNameSoundex = Soundex.encode(getLastName());
-        return sha256hex(tel + "|" + mail + "|" + lastNameSoundex);
+        return sha256hex(IdentityVersion.TAG + "|" + tel + "|" + mail + "|" + lastNameSoundex);
     }
 
     /** Lower-case SHA-256 hex of the UTF-8 bytes of {@code value}. */
