@@ -6,6 +6,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.OwnerEmailDisposableException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerEmailInvalidException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerFieldsRequiredException;
 import org.springframework.samples.petclinic.rest.escalation.OwnerPostcodeInvalidException;
@@ -27,7 +28,7 @@ public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsRequiredException, OwnerTelephoneInvalidException, OwnerEmailInvalidException,
-            OwnerPostcodeInvalidException, OwnerRegistrationDateFutureException {
+            OwnerEmailDisposableException, OwnerPostcodeInvalidException, OwnerRegistrationDateFutureException {
         // A supplied registration date cannot be in the future — reject one later than today.
         LocalDate registrationDate = request.getRegistrationDate();
         LocalDate serverDate = LocalDate.now();
