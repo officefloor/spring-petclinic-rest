@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(64),
   namesake_count INT,
   household_size INT,
+  possible_duplicate BIT(1),
+  possible_duplicate_of INT,
   INDEX(last_name)
 ) engine=InnoDB;
 
