@@ -220,7 +220,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Reject the create when the owner's city is already at capacity, i.e. it already
         // contains 50 or more owners (compared case-insensitively).
-        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
+        int ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
+        if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
@@ -278,6 +279,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Flag a bulk sign-up when more than 80 owners have already been created today, i.e.
         // registered on this (adjusted) business day before this owner is created.
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
+        // Flag that the owner's city is approaching its capacity limit: it already held between
+        // 40 and 49 owners (inclusive) before this owner was created. The hard rejection at 50
+        // owners is handled above, so reaching this point means the count is below 50.
+        owner.setCapacityWarning(ownersInCity >= 40 && ownersInCity < 50);
         // Record the size of this owner's household after this create: the number of existing
         // owners sharing the same household (i.e. the same computed householdId) plus this owner.
         owner.setHouseholdSize(countHouseholdMembers(owner) + 1);
