@@ -334,8 +334,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param identityKey the derived identity key of the owner being created
      * @throws DuplicateIdentityException if another owner already has this identity key
      */
+    /**
+     * The existing owners considered by the create endpoint's duplicate and identity checks:
+     * every owner that is not soft-deleted. A soft-deleted owner retains its row but is ignored
+     * here, so a create that would otherwise be blocked by it is allowed.
+     *
+     * @return a stream of the owners not flagged deleted
+     */
+    private java.util.stream.Stream<Owner> activeOwners() {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted());
+    }
+
     private void rejectDuplicateIdentity(String identityKey) {
-        boolean inUse = this.clinicService.findAllOwners().stream()
+        boolean inUse = activeOwners()
             .anyMatch(existing -> identityKey.equals(
                 deriveIdentityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
         if (inUse) {
@@ -359,7 +371,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             return;
         }
-        boolean exists = this.clinicService.findAllOwners().stream()
+        boolean exists = activeOwners()
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (exists) {
             throw new DuplicateHouseholdException(
@@ -384,7 +396,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String normalizedLastName = normalizeName(lastName);
-        return this.clinicService.findAllOwners().stream()
+        return activeOwners()
             .filter(existing -> normalizedLastName.equals(normalizeName(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> !normalizedTelephone.equals(existing.getTelephone()))
@@ -772,8 +784,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
