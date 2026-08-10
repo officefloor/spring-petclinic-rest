@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 307860bb..e75b1968 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be a valid E.164 number")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidTelephoneException.java
+index 5a671869..6a1f1471 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidTelephoneException.java
+@@ -17,10 +17,10 @@
+ package org.springframework.samples.petclinic.rest.advice;
+ 
+ /**
+- * Thrown on create when the supplied telephone, after every non-digit character is stripped,
+- * is not exactly 10 digits. Carries the {@code telephone} field name so the
+- * {@link ExceptionControllerAdvice} can report it in the {@code errors} array of a 400 Bad
+- * Request response, mirroring {@link RequiredFieldsMissingException}.
++ * Thrown on create when the supplied telephone cannot form a valid E.164 number — that is, when
++ * after normalization it does not carry 8 to 15 digits after the {@code +}. Carries the
++ * {@code telephone} field name so the {@link ExceptionControllerAdvice} can report it in the
++ * {@code errors} array of a 400 Bad Request response, mirroring {@link RequiredFieldsMissingException}.
+  */
+ public class InvalidTelephoneException extends RuntimeException {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 717ec157..c29c5a31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -133,20 +133,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Normalizes a telephone on create by removing every non-digit character and requiring the
+-     * result to be exactly 10 digits. Returns the 10-digit value to be stored and returned.
++     * Normalizes a telephone on create into E.164 form. Spaces, dashes and brackets are stripped.
++     * A leading {@code +} and its country code are kept as given; otherwise the country code
++     * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
++     * The result must carry 8 to 15 digits after the {@code +}. Returns the E.164 string to be
++     * stored and returned.
+      *
+      * @param telephone the raw telephone as supplied by the caller
+-     * @return the normalized 10-digit telephone
+-     * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
++     * @return the normalized E.164 telephone (a {@code +} followed by 8 to 15 digits)
++     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
+      */
+     private static String normalizeTelephone(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
++        String e164;
++        if (cleaned.startsWith("+")) {
++            e164 = "+" + cleaned.substring(1);
++        } else {
++            String national = cleaned;
++            if (national.startsWith("0")) {
++                national = national.substring(1);
++            }
++            e164 = "+61" + national;
++        }
++        String digits = e164.substring(1);
++        if (!digits.matches("\\d{8,15}")) {
+             throw new InvalidTelephoneException(
+-                "Telephone must contain exactly 10 digits after removing non-digit characters");
++                "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
+         }
+-        return digits;
++        return e164;
+     }
+ 
+     /**
+@@ -169,11 +183,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rejects a create whose normalized telephone is already used by any existing owner, so that
+-     * telephones stay unique across owners. Telephones are normalized to their 10-digit form on
+-     * create, so a direct equality comparison against the stored values is sufficient.
++     * Rejects a create whose E.164 telephone is already used by any existing owner, so that
++     * telephones stay unique across owners. Telephones are stored in E.164 form on create, so a
++     * direct equality comparison of the E.164 values against the stored values is sufficient.
+      *
+-     * @param normalizedTelephone the normalized 10-digit telephone of the owner being created
++     * @param normalizedTelephone the E.164 telephone of the owner being created
+      * @throws DuplicateTelephoneException if another owner already uses this telephone
+      */
+     private void rejectDuplicateTelephone(String normalizedTelephone) {
