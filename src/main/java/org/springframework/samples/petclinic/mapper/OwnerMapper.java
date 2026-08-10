@@ -47,6 +47,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -123,6 +124,19 @@ public interface OwnerMapper {
      */
     default String timezone(Owner owner) {
         return REGION_TIMEZONE.get(locality(owner));
+    }
+
+    /**
+     * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the
+     * {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is
+     * 'METRO' when the {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD),
+     * otherwise 'REGIONAL'. One of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
+     * 'STANDARD_REGIONAL'.
+     */
+    default String ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
