@@ -299,6 +299,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Finds a soft-match "possible duplicate" for the owner being created: an existing owner that is
+     * not a hard identity duplicate but shares this owner's last name (compared case-insensitively) and
+     * postcode while carrying a different telephone. When the postcode is absent no owner can share it,
+     * so there is never a match. When several existing owners qualify the one with the lowest id is
+     * returned, so the result is deterministic.
+     *
+     * @param lastName the last name of the owner being created
+     * @param postcode the postcode of the owner being created, may be {@code null}
+     * @param normalizedTelephone the E.164 telephone of the owner being created
+     * @return the id of the matching existing owner, or {@code null} when there is no soft match
+     */
+    private Integer findPossibleDuplicateOf(String lastName, String postcode, String normalizedTelephone) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String normalizedLastName = normalizeName(lastName);
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedLastName.equals(normalizeName(existing.getLastName())))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> !normalizedTelephone.equals(existing.getTelephone()))
+            .map(Owner::getId)
+            .filter(java.util.Objects::nonNull)
+            .min(Integer::compareTo)
+            .orElse(null);
+    }
+
+    /**
      * Normalizes a value for household comparison by trimming, collapsing every run of whitespace to
      * a single space and lower-casing, so the comparison is case-insensitive with collapsed whitespace.
      *
@@ -625,8 +652,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ? householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())
             : null;
         rejectDuplicateIdentity(deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerHouseholdId));
+        Integer possibleDuplicateOf = findPossibleDuplicateOf(
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(), normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setCustomerCode(customerCode(
             ownerFieldsDto.getPostcode(), normalizedTelephone, ownerFieldsDto.getLastName()));
         owner.setHouseholdId(ownerHouseholdId);

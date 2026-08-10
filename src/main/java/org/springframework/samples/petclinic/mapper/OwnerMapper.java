@@ -195,6 +195,8 @@ public interface OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
+    @Mapping(target = "possibleDuplicate", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);

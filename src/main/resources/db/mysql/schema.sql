@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INT(11),
   postcode VARCHAR(4),
   birth_date DATE,
+  possible_duplicate BIT(1),
+  possible_duplicate_of INT(11),
   INDEX(last_name)
 ) engine=InnoDB;
 
