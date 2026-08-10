@@ -197,6 +197,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Flag a bulk sign-up when more than 80 owners have already been created today, i.e.
         // registered on this (adjusted) business day before this owner is created.
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
+        // Record the size of this owner's household after this create: the number of existing
+        // owners sharing the same household (matching last name and address) plus this owner.
+        // Drives the 'GOLD' membership tier (3 or more members).
+        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
         this.clinicService.saveOwner(owner);
         // Emit an audit line recording the new owner's id, customer code and registration date.
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
@@ -321,6 +325,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && existing.getFirstName().equalsIgnoreCase(firstName)
                 && existing.getLastName() != null
                 && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
+    }
+
+    /**
+     * Count the existing owners in the same household as the given last name and address
+     * (compared after household-key normalization). Used, together with the owner being
+     * created, to derive the household size that drives the 'GOLD' membership tier.
+     */
+    private int countHouseholdMembers(String lastName, String address) {
+        String normalizedLastName = normalizeHouseholdKey(lastName);
+        String normalizedAddress = normalizeHouseholdKey(address);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing ->
+                normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
+                    && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress))
             .count();
     }
 
