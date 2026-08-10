@@ -22,7 +22,22 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
+     * last two digits of the registrationDate year (e.g. {@code SMI-0007-M26}). Returns {@code null}
+     * when either source field is absent, so owners without a customer code or registration date
+     * (e.g. seed data) simply have no membership number.
+     */
+    default String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int yy = Math.floorMod(owner.getRegistrationDate().getYear(), 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
