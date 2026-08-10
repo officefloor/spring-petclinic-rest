@@ -9,23 +9,20 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneConfl
 /**
  * Runs after {@link ValidateOwnerFields} (whose normalized telephone this step reads via {@code @Val})
  * and before {@link BuildOwner}: rejects the request with 409 when any existing owner already uses the
- * same normalized telephone. Every stored owner's telephone is normalized the same way (non-digits
- * stripped) before comparison, so differently-formatted duplicates are still caught.
+ * same telephone. The request telephone is already in E.164 form (set by {@link ValidateOwnerFields});
+ * every stored owner's telephone is normalized to E.164 the same way before comparison, so
+ * differently-formatted duplicates are still caught.
  */
 public class CheckOwnerTelephoneUnique {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerTelephoneConflictException {
-        String telephone = normalize(request.getTelephone());
+        String telephone = E164Telephone.normalize(request.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
-            if (telephone.equals(normalize(existing.getTelephone()))) {
+            if (telephone.equals(E164Telephone.normalize(existing.getTelephone()))) {
                 throw new OwnerTelephoneConflictException(
                         "An owner with telephone " + telephone + " already exists");
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }

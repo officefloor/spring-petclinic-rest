@@ -12,16 +12,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}: rejects a request that is missing or blank in any of
  * firstName, lastName, address, city or telephone. Throwing lists every offending field, so the
- * client sees them all at once. It also normalizes the telephone by stripping every non-digit
- * character and requiring exactly 10 digits, rejecting with 400 otherwise; the normalized value is
+ * client sees them all at once. It also normalizes the telephone into E.164 form (keeping a leading
+ * '+' and country code when present, otherwise assuming '+61' and dropping a single leading '0'),
+ * rejecting with 400 when it cannot form a valid E.164 number; the normalized value is
  * written back onto the body. When an optional {@code email} is present it must be a syntactically
  * valid address (else 400); it is lower-cased and written back. On success it publishes the body for
  * {@link BuildOwner} to map.
  */
 public class ValidateOwnerFields {
-
-    /** Owner telephone must be exactly this many digits after non-digits are stripped. */
-    private static final int TELEPHONE_DIGITS = 10;
 
     /** Syntactic email check: a non-empty local part, an {@code @}, then a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$");
@@ -37,8 +35,8 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != TELEPHONE_DIGITS) {
+        String telephone = E164Telephone.normalize(request.getTelephone());
+        if (telephone == null) {
             throw new OwnerFieldsInvalidException(List.of("telephone"));
         }
         request.setTelephone(telephone);
