@@ -1,0 +1,24 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5865cf2a..db7a85ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -127,6 +127,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        // Reject the create when another owner already uses this email (compared case-insensitively
++        // by lower-cased email). The DTO email is already normalized to its lower-cased form here.
++        String normalizedEmail = ownerFieldsDto.getEmail();
++        if (normalizedEmail != null) {
++            boolean emailInUse = this.clinicService.findAllOwners().stream()
++                .map(Owner::getEmail)
++                .filter(existing -> existing != null)
++                .map(existing -> existing.toLowerCase(Locale.ROOT))
++                .anyMatch(normalizedEmail::equals);
++            if (emailInUse) {
++                return new ResponseEntity<>(HttpStatus.CONFLICT);
++            }
++        }
+         // Normalize the required address (trim/collapse whitespace, upper-case, expand
+         // abbreviations) and store the normalized form back on the DTO so it is what gets
+         // persisted and compared. Reject the create when the address is blank once normalized.
