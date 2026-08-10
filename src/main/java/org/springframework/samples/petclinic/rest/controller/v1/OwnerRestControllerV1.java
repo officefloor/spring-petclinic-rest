@@ -223,6 +223,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record the size of this owner's household after this create: the number of existing
         // owners sharing the same household (matching last name and address) plus this owner.
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
+        // Flag a possible (soft) duplicate: this owner is not a hard identity duplicate, but it
+        // shares an existing owner's last name (case-insensitively) and postcode while carrying a
+        // different telephone. When such a match exists, record it as 'possibleDuplicate' with
+        // 'possibleDuplicateOf' set to the matching owner's id; otherwise it is not a possible
+        // duplicate.
+        Owner softMatch = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(softMatch != null);
+        owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
         this.clinicService.saveOwner(owner);
         // Emit an audit line recording the new owner's id, customer code, registration date
         // and membership level.
@@ -415,6 +423,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
                     && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress))
             .count();
+    }
+
+    /**
+     * Find an existing owner that the given (not-yet-created) owner is a possible (soft) duplicate
+     * of: one sharing the same last name (compared case-insensitively) and the same postcode, but
+     * carrying a different normalized telephone. Owners without a postcode never match (the postcode
+     * must be shared). When several existing owners match, the one with the lowest id is returned so
+     * the result is deterministic. Returns {@code null} when there is no such match.
+     */
+    private Owner findPossibleDuplicate(Owner candidate) {
+        if (candidate.getPostcode() == null) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(candidate.getLastName())
+                && candidate.getPostcode().equals(existing.getPostcode())
+                && !candidate.getTelephone().equals(existing.getTelephone()))
+            .min(java.util.Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     /**
