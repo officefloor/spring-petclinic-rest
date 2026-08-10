@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.Soundex;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -403,19 +404,32 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's identity key, into which all duplicate detection is consolidated. The key
-     * is {@code <normalizedTelephone>|<email or empty>|<householdId>}: the owner's (already E.164
+     * is the full lower-case hex SHA-256 digest over
+     * {@code <normalizedTelephone>|<email or empty>|<soundex(lastName)>}: the owner's (already E.164
      * normalized) telephone, its (already lower-cased) email or the empty string when none is held,
-     * and its {@link #householdId(Owner) household id}. Two owners are duplicates only when their
-     * whole identity keys are equal; because the telephone is part of the key, household members with
-     * different telephones have different keys.
+     * and the {@link Soundex Soundex} code of its last name. Two owners are duplicates only when
+     * their whole identity keys are equal; because the telephone is part of the key, owners sharing a
+     * surname (same soundex) but holding different telephones have different keys.
      *
      * @param owner the owner to derive the identity key for
-     * @return the {@code telephone|email|householdId} identity key
+     * @return the 64-character lower-case hex identity key
      */
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        return telephone + '|' + email + '|' + householdId(owner);
+        String key = telephone + '|' + email + '|' + Soundex.encode(owner.getLastName());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**
