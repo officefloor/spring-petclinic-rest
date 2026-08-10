@@ -33,6 +33,9 @@ public interface OwnerMapper {
         expression = "java(Math.min(3, 1 "
             + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
             + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164"
+            + ".toDisplay(owner.getTelephone()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
             + ".key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")

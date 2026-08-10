@@ -51,4 +51,36 @@ public final class TelephoneE164 {
         }
         return "+" + digits;
     }
+
+    /**
+     * Formats a stored E.164 number for humans: the country code, a space, then the national digits
+     * grouped in threes. So {@code '+61412345678'} becomes {@code '+61 412 345 678'}. The country
+     * code is recognised from {@link #NATIONAL_LENGTHS}; a value that is not in E.164 form or whose
+     * country code is unknown is returned unchanged.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode) && digits.length() - countryCode.length() == entry.getValue()) {
+                return "+" + countryCode + " " + groupInThrees(digits.substring(countryCode.length()));
+            }
+        }
+        return e164;
+    }
+
+    /** Groups the given digits into space-separated blocks of three, counting from the left. */
+    private static String groupInThrees(String national) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return grouped.toString();
+    }
 }
