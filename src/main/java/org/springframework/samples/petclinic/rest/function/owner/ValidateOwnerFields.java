@@ -27,6 +27,10 @@ public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+        // Normalize the address first so the required-field check rejects an address that is
+        // blank only after normalization (e.g. all whitespace), and so the normalized value is
+        // what every later step persists, returns and compares against.
+        request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         require(missing, "firstName", request.getFirstName());
         require(missing, "lastName", request.getLastName());

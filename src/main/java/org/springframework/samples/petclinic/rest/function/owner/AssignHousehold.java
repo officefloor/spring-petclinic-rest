@@ -16,8 +16,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  *
  * <p>Runs after {@link BuildOwner} (which produces the new {@link Owner}) and only acts when the
  * request opted in with {@code sharesHousehold=true}. It finds every existing owner with the same
- * last name and address (compared case-insensitively with collapsed whitespace, exactly as
- * {@link CheckUniqueHousehold} decides a collision). When at least one such owner exists — the
+ * last name and address (last name case-insensitive with collapsed whitespace, address in its
+ * normalized form per {@link OwnerAddress}, exactly as {@link CheckUniqueHousehold} decides a
+ * collision). When at least one such owner exists — the
  * household this owner is joining — a stable identifier is chosen and stamped onto the new owner
  * and back-filled onto the existing members, so every owner in the household reports the same
  * {@code householdId}.
@@ -32,12 +33,12 @@ public class AssignHousehold {
         if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String lastName = normalizeName(owner.getLastName());
+        String address = OwnerAddress.normalizeForCompare(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (lastName.equals(normalizeName(existing.getLastName()))
+                    && address.equals(OwnerAddress.normalizeForCompare(existing.getAddress()))) {
                 household.add(existing);
             }
         }
@@ -87,7 +88,7 @@ public class AssignHousehold {
         }
     }
 
-    private static String normalize(String value) {
+    private static String normalizeName(String value) {
         if (value == null) {
             return "";
         }
