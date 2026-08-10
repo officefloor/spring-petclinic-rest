@@ -86,6 +86,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
         Map.of("61", 9, "1", 10);
 
+    /**
+     * Inclusive 4-digit postcode range {@code {low, high}} keyed by the region derived
+     * from the owner's city (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city whose
+     * region is not listed here (see {@link OwnerMapper#CITY_REGION}) accepts any 4-digit
+     * postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES =
+        Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099},
+            "QLD", new int[] {4000, 4099});
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -134,6 +144,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         // Validate & normalize the optional email; reject the create when it is present but invalid.
         if (!normalizeEmail(ownerFieldsDto)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        // Validate & normalize the optional postcode; reject the create when it is present but
+        // not valid for the owner's city (see normalizePostcode).
+        if (!normalizePostcode(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         // Normalize the required address (trim/collapse whitespace, upper-case, expand
@@ -231,6 +246,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         ownerFieldsDto.setEmail(normalized);
+        return true;
+    }
+
+    /**
+     * Validate the optional owner postcode in place.
+     *
+     * <p>An absent (or blank) postcode is allowed and is normalized to {@code null}.
+     * When present it must be exactly 4 digits, and — when the owner's city maps to a
+     * known region via {@link OwnerMapper#CITY_REGION} — it must fall within that
+     * region's inclusive postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     * A city with no known region accepts any 4-digit postcode. Returns {@code false}
+     * when a postcode is present but malformed or out of range, so the caller can
+     * reject with 400.
+     */
+    private boolean normalizePostcode(OwnerFieldsDto ownerFieldsDto) {
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            ownerFieldsDto.setPostcode(null);
+            return true;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            return false;
+        }
+        String region = OwnerMapper.CITY_REGION.get(ownerFieldsDto.getCity());
+        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -422,6 +468,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeEmail(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (!normalizePostcode(ownerFieldsDto)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -432,6 +481,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(normalizedTelephone);
         currentOwner.setEmail(ownerFieldsDto.getEmail());
+        currentOwner.setPostcode(ownerFieldsDto.getPostcode());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
