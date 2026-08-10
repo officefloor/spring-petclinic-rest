@@ -1,0 +1,48 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a73cd4e1..81480a00 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -97,9 +97,12 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Returns the owner's numeric membership level from 1 to 3, computed on creation: starting at 1,
+-     * adding 1 when an email is present and adding 1 when namesakeCount is 0, capped at 3 (level 4 is
+-     * reserved for tenure).
++     * Returns the owner's numeric membership level from 1 to 4. Starting at 1, it adds 1 when an
++     * email is present, 1 when namesakeCount is 0 and 1 when the owner belongs to a household of at
++     * least 3 members. Level 4 additionally requires tenure of more than 365 days since the
++     * registrationDate; without that tenure the level is capped at 3. Because a newly created owner
++     * has zero tenure it never exceeds level 3 (so a new owner with an email, a namesakeCount of 0
++     * and a 3-member household is level 3, not 4).
+      */
+     default @Nullable Integer membershipLevel(@Nullable Owner owner) {
+         if (owner == null) {
+@@ -114,7 +117,26 @@ public interface OwnerMapper {
+         if (noNamesakes) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        boolean largeHousehold = owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
++        if (largeHousehold) {
++            level++;
++        }
++        int cap = hasQualifyingTenure(owner) ? 4 : 3;
++        return Math.min(level, cap);
++    }
++
++    /**
++     * Whether the owner's tenure exceeds 365 days, i.e. more than a year has elapsed between its
++     * registrationDate and the current date. Returns {@code false} when the registrationDate is
++     * absent (or in the future), so a newly created owner has no qualifying tenure.
++     */
++    default boolean hasQualifyingTenure(@Nullable Owner owner) {
++        if (owner == null || owner.getRegistrationDate() == null) {
++            return false;
++        }
++        long tenureDays = java.time.temporal.ChronoUnit.DAYS.between(
++            owner.getRegistrationDate(), java.time.LocalDate.now());
++        return tenureDays > 365;
+     }
+ 
+     /**
