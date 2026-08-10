@@ -127,6 +127,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeEmail(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        // Reject the create when another owner already uses this email (compared case-insensitively
+        // by lower-cased email). The DTO email is already normalized to its lower-cased form here.
+        String normalizedEmail = ownerFieldsDto.getEmail();
+        if (normalizedEmail != null) {
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .map(Owner::getEmail)
+                .filter(existing -> existing != null)
+                .map(existing -> existing.toLowerCase(Locale.ROOT))
+                .anyMatch(normalizedEmail::equals);
+            if (emailInUse) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         // Normalize the required address (trim/collapse whitespace, upper-case, expand
         // abbreviations) and store the normalized form back on the DTO so it is what gets
         // persisted and compared. Reject the create when the address is blank once normalized.
