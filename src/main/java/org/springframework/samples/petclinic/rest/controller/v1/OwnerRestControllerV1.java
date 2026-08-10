@@ -99,6 +99,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Normalize the telephone by stripping every non-digit character, then require exactly 10 digits.
+        String telephone = ownerFieldsDto.getTelephone();
+        String normalizedTelephone = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (normalizedTelephone.length() != 10) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
