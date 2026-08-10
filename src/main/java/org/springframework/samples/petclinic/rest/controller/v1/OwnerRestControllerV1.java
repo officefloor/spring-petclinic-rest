@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -339,21 +340,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int DAILY_OWNER_LIMIT = 100;
 
     /**
-     * Rejects a create once {@link #DAILY_OWNER_LIMIT} or more owners have already been created today,
-     * counted by {@code registrationDate} equal to the current date. The count reflects the state
+     * Rejects a create once {@link #DAILY_OWNER_LIMIT} or more owners have already been created for
+     * the given business day, counted by {@code registrationDate} equal to the effective (weekend
+     * rolled forward) registration date of the owner being created. The count reflects the state
      * before the new owner is persisted, so it excludes the owner being created.
      *
-     * @throws DailyOwnerLimitExceededException if today already holds {@link #DAILY_OWNER_LIMIT} owners
+     * @param registrationDate the effective business-day registration date of the owner being created
+     * @throws DailyOwnerLimitExceededException if the day already holds {@link #DAILY_OWNER_LIMIT} owners
      */
-    private void rejectDailyOwnerLimit() {
-        LocalDate today = LocalDate.now();
+    private void rejectDailyOwnerLimit(LocalDate registrationDate) {
         long ownersToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         if (ownersToday >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException(
                 "The maximum number of owners for today has already been reached");
         }
+    }
+
+    /**
+     * Rolls a registration date forward to a business day: a Saturday or Sunday is advanced to the
+     * following Monday, any weekday is returned unchanged.
+     *
+     * @param date the effective registration date, supplied or defaulted to the server date
+     * @return the same date when it is a weekday, otherwise the next Monday
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
     }
 
     /**
@@ -422,7 +442,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
-        rejectDailyOwnerLimit();
+        LocalDate registrationDate = ownerFieldsDto.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = LocalDate.now();
+        }
+        registrationDate = toBusinessDay(registrationDate);
+        ownerFieldsDto.setRegistrationDate(registrationDate);
+        rejectDailyOwnerLimit(registrationDate);
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
@@ -431,9 +457,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (ownerFieldsDto.getRegistrationDate() == null) {
-            ownerFieldsDto.setRegistrationDate(LocalDate.now());
-        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));
