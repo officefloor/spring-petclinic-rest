@@ -30,7 +30,29 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's locality from its city using a fixed city-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), returning the
+     * canonical region string or {@code "UNKNOWN"} when the city is not in the table.
+     *
+     * @param owner the owner to derive the locality for
+     * @return the canonical region string, or {@code "UNKNOWN"}
+     */
+    default String locality(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return "UNKNOWN";
+        }
+        return switch (city) {
+            case "Sydney" -> "NSW";
+            case "Melbourne" -> "VIC";
+            case "Brisbane" -> "QLD";
+            default -> "UNKNOWN";
+        };
+    }
 
     /**
      * Derives an owner's membership tier: {@code SILVER} when the owner's namesake count is
