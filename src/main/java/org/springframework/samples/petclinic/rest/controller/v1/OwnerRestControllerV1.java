@@ -24,6 +24,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -57,6 +59,9 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Dedicated audit logger for owner lifecycle side-effects. */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
      * Pragmatic check for a syntactically valid email address: a non-empty local
@@ -190,6 +195,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (compared case-insensitively) at the moment before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
+        // Emit an audit line recording the new owner's id, customer code and registration date.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
