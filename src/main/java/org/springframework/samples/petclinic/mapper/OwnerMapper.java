@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -85,29 +86,51 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's numeric membership level. It starts at 1, gains 1 when an email address
-     * is present, gains 1 when the owner has no namesakes (namesakeCount is 0), and gains 1
-     * when the owner's tenure exceeds 365 days (more than 365 whole days between the
-     * registrationDate and today), capped at 4. Because a newly created owner has zero
-     * tenure, a new owner never exceeds level 3; level 4 requires tenure of more than 365
-     * days.
+     * The owner's membership points. Starts at 0; gains 2 when an email address is present,
+     * 1 when the owner has no namesakes (namesakeCount is 0), 2 for a household of 3 or more
+     * (householdSize is 3 or greater), and 3 when the owner's tenure exceeds 365 days (more
+     * than 365 whole days between the registrationDate and today). Because a newly created
+     * owner has zero tenure, the tenure points are only earned once more than a year has
+     * passed since registration.
      */
-    default Integer membershipLevel(Owner owner) {
-        int level = 1;
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
         }
         if (owner.getRegistrationDate() != null
             && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
                 java.time.LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, derived from {@link #membershipPoints(Owner)}:
+     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4
+     * for 6 or more points.
+     */
+    default Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
