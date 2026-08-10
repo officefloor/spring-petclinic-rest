@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}: rejects a request that is missing or blank in any of
  * firstName, lastName, address, city or telephone. Throwing lists every offending field, so the
- * client sees them all at once. It also normalizes the telephone into E.164 form (keeping a leading
+ * client sees them all at once. The address is normalized (trim/collapse whitespace, upper-case, and
+ * expand ST/RD/AVE) and written back, and is treated as absent when blank after normalization. It
+ * also normalizes the telephone into E.164 form (keeping a leading
  * '+' and country code when present, otherwise assuming '+61' and dropping a single leading '0'),
  * rejecting with 400 when it cannot form a valid E.164 number; the normalized value is
  * written back onto the body. When an optional {@code email} is present it must be a syntactically
@@ -29,12 +31,19 @@ public class ValidateOwnerFields {
         List<String> errors = new ArrayList<>();
         checkPresent("firstName", request.getFirstName(), errors);
         checkPresent("lastName", request.getLastName(), errors);
-        checkPresent("address", request.getAddress(), errors);
+        // Reject an address that is blank once normalized (trim/collapse/upper-case), so
+        // whitespace-only input fails the required-field check like any other missing field.
+        String address = AddressNormalizer.normalize(request.getAddress());
+        if (address.isEmpty()) {
+            errors.add("address");
+        }
         checkPresent("city", request.getCity(), errors);
         checkPresent("telephone", request.getTelephone(), errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
+        // Store and return the normalized address; later steps read it back via @Val.
+        request.setAddress(address);
         String telephone = E164Telephone.normalize(request.getTelephone());
         if (telephone == null) {
             throw new OwnerFieldsInvalidException(List.of("telephone"));

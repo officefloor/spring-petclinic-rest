@@ -21,10 +21,10 @@ public class CheckOwnerHouseholdUnique {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 throw new OwnerHouseholdConflictException("An owner with last name "
                         + request.getLastName() + " already lives at " + request.getAddress());
             }
