@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5275dfa5..c35f4312 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+@@ -143,6 +144,36 @@ public interface OwnerMapper {
+         return owner.getCustomerCode() + "-M" + yy;
+     }
+ 
++    /**
++     * Derives an owner's check digit: a single Luhn check digit ({@code 0}-{@code 9}) computed over
++     * the digits contained in the owner's customer code. Non-digit characters in the customer code
++     * are ignored.
++     *
++     * @param owner the owner to derive the check digit for
++     * @return the Luhn check digit, between {@code 0} and {@code 9}
++     */
++    default Integer checkDigit(Owner owner) {
++        String code = owner.getCustomerCode();
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Derives an owner's household identifier: a stable value shared by every owner with the same
+      * last name and address (compared case-insensitively with collapsed whitespace). Because it is
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c1c2d884..95381d78 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2120,6 +2120,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the
++                owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
