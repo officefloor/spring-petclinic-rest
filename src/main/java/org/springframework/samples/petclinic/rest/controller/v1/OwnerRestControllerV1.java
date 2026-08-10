@@ -196,6 +196,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Resolves and normalizes the owner's address on create, supporting both the structured form
+     * ({@code addressLine1} / {@code addressLine2}) and the flat {@code address} form kept for
+     * backward compatibility. Whichever address fields are supplied are normalized (see
+     * {@link #normalizeAddress(String)}). The structured form is preferred when present: when
+     * {@code addressLine1} is non-blank the composed {@code address} is the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended when
+     * {@code addressLine2} is present; otherwise the composed {@code address} is the normalized flat
+     * {@code address}. The normalized structured fields are written back so they are stored and
+     * returned, and the composed value is written to {@code address} so everything that reads the
+     * address (the household hash, postcode validation and locality) uses the structured fields when
+     * present, falling back to the flat address. When neither form supplies an address the composed
+     * {@code address} is blank, so the required-field check rejects it.
+     *
+     * @param ownerFieldsDto the owner payload whose address fields are normalized in place
+     */
+    private static void applyAddress(OwnerFieldsDto ownerFieldsDto) {
+        String line1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String line2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        String flat = normalizeAddress(ownerFieldsDto.getAddress());
+        String composed;
+        if (!line1.isEmpty()) {
+            composed = line2.isEmpty() ? line1 : line1 + " " + line2;
+        } else {
+            composed = flat;
+        }
+        ownerFieldsDto.setAddressLine1(line1.isEmpty() ? null : line1);
+        ownerFieldsDto.setAddressLine2(line2.isEmpty() ? null : line2);
+        ownerFieldsDto.setAddress(composed);
+    }
+
+    /**
      * Normalizes a telephone on create into E.164 form. Spaces, dashes and brackets are stripped.
      * A leading {@code +} and its country code are kept as given; otherwise the country code
      * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
@@ -672,7 +703,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddress(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         LocalDate registrationDate = ownerFieldsDto.getRegistrationDate();
         if (registrationDate == null) {
