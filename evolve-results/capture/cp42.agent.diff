@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6937f2dc..7c71e334 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -97,6 +98,24 @@ public interface OwnerMapper {
+         return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
+     }
+ 
++    /**
++     * Derives the owner's {@code timezone} as an IANA name from its locality/region using the fixed
++     * region-to-timezone table: {@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++     * and {@code QLD -> Australia/Brisbane}. Returns {@code null} when the region is not in the table.
++     */
++    default @Nullable String timezone(@Nullable Owner owner) {
++        String region = locality(owner);
++        if (region == null) {
++            return null;
++        }
++        return switch (region) {
++            case "NSW" -> "Australia/Sydney";
++            case "VIC" -> "Australia/Melbourne";
++            case "QLD" -> "Australia/Brisbane";
++            default -> null;
++        };
++    }
++
+     /**
+      * Returns the owner's membership points. Starting at 0, it adds 2 when an email is present, 1
+      * when namesakeCount is 0, 2 when the owner belongs to a household of at least 3 members, and 3
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 94314518..10939486 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2225,6 +2225,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                using the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane), or absent when
++                the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
