@@ -16,6 +16,10 @@ public class BuildOwner {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        // The effective registration date must fall on a business day: roll a weekend date
+        // (supplied or defaulted) forward to the next Monday, so every value derived from it
+        // (e.g. the membership number's year segment) uses the adjusted date.
+        owner.setRegistrationDate(BusinessDays.rollForward(owner.getRegistrationDate()));
         built.set(owner);
     }
 }
