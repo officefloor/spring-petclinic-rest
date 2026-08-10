@@ -23,8 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -78,16 +76,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear} from its business-day-adjusted registrationDate, formatted
-     * as {@code 'FY<YY>'} where YY is the last two digits of the calendar year in which the fiscal year
-     * ends (the fiscal year starts on 1 July). Returns {@code null} when the owner has no
-     * registrationDate.
+     * Derives the owner's {@code fiscalYear} from the {@code FY} segment of its memberId, formatted as
+     * {@code 'FY<YY>'} where YY are the two fiscal-year digits carried in the memberId (immediately
+     * after the region segment), i.e. the last two digits of the calendar year in which the fiscal
+     * year ends (the fiscal year starts on 1 July). Returns {@code null} when the owner has no
+     * memberId or the memberId carries no fiscal-year segment.
      */
     default @Nullable String fiscalYear(@Nullable Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        String region = memberIdRegion(owner);
+        if (region == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
+        String memberId = owner.getMemberId();
+        if (memberId.length() < region.length() + 2) {
+            return null;
+        }
+        return "FY" + memberId.substring(region.length(), region.length() + 2);
     }
 
     /**
@@ -136,21 +140,34 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality from its region-and-hash identity: the {@code REGION} prefix of
-     * the {@code customerCode} ({@code '<REGION>-<HASH8>'}), which is the region code derived from
-     * the postcode on create. Returns the canonical region string, or {@code 'UNKNOWN'} when the
-     * owner has no customerCode.
+     * Derives the owner's locality from its memberId: the leading {@code REGION} segment of the
+     * {@code memberId} ({@code '<REGION><FY><HASH8><CHK>'}), which is the region code derived from
+     * the postcode on create and is the run of non-digit characters before the fiscal-year digits.
+     * Returns the canonical region string, or {@code 'UNKNOWN'} when the owner has no memberId.
      */
     default @Nullable String locality(@Nullable Owner owner) {
         if (owner == null) {
             return null;
         }
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return "UNKNOWN";
+        String region = memberIdRegion(owner);
+        return region == null ? "UNKNOWN" : region;
+    }
+
+    /**
+     * The leading {@code REGION} segment of the owner's {@code memberId}, i.e. the run of non-digit
+     * characters before the 2-digit fiscal year. Returns {@code null} when the owner has no memberId
+     * or the memberId has no leading region segment.
+     */
+    private static @Nullable String memberIdRegion(@Nullable Owner owner) {
+        String memberId = owner == null ? null : owner.getMemberId();
+        if (memberId == null) {
+            return null;
         }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
+        int i = 0;
+        while (i < memberId.length() && !Character.isDigit(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? null : memberId.substring(0, i);
     }
 
     /**
@@ -250,47 +267,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the last two
-     * digits of the fiscal year (ending) derived from the business-day-adjusted registrationDate, e.g.
-     * {@code 'MEL-SMI-0007-M26'}.
-     */
-    default @Nullable String membershipNumber(@Nullable Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYearEnding(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Returns the Luhn check digit (0-9) computed over the digits contained in the owner's
-     * customerCode, or {@code null} when the owner or its customerCode is absent.
-     */
-    default @Nullable Integer checkDigit(@Nullable Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String s = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = s.length() - 1; i >= 0; i--) {
-            char c = s.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * Formats the owner's stored E.164 {@code telephone} for humans: the country code, a space, then
      * the national digits grouped in threes separated by spaces, e.g. {@code '+61 412 345 678'} for a
      * stored {@code '+61412345678'}. The country code is the single digit for the {@code +1} and
@@ -366,7 +342,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)

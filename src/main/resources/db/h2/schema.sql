@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
   telephone VARCHAR(20) NOT NULL,
   email VARCHAR(255),
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(30),
   household_id VARCHAR(50),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       telephone  TEXT,
                                       email      TEXT,
                                       registration_date DATE,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       household_id TEXT,
                                       namesake_count INT,
                                       bulk_signup_warning BOOLEAN,
