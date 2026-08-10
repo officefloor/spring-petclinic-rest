@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -237,6 +240,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Derives the stable household identifier for an owner from the normalized last name and address.
+     * The value is a deterministic function of those two fields (compared case-insensitively with
+     * collapsed whitespace, exactly as {@link #rejectDuplicateHousehold}), so every owner in the same
+     * household — including owners who knowingly join it via {@code sharesHousehold} — is assigned the
+     * same identifier without any existing record having to be updated. Formatted {@code 'HH-<HEX12>'}
+     * where {@code HEX12} is the upper-cased first twelve hex characters of the SHA-256 of the two
+     * normalized fields.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @return the stable household identifier
+     */
+    private static String householdId(String lastName, String address) {
+        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
      * Builds the customer code assigned to an owner on create, formatted {@code '<LAST3>-<NNNN>'}
      * where {@code LAST3} is the upper-cased first three letters of the owner's last name and
      * {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than the current
@@ -278,6 +308,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getLastName()));
+        owner.setHouseholdId(householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

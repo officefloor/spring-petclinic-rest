@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
   telephone VARCHAR(20) NOT NULL,
   email VARCHAR(255),
   registration_date DATE,
-  customer_code VARCHAR(20)
+  customer_code VARCHAR(20),
+  household_id VARCHAR(50)
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);
