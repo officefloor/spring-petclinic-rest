@@ -28,6 +28,7 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -125,6 +126,23 @@ public interface OwnerMapper {
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);
         }
+    }
+
+    /**
+     * Derives an owner's identity key, into which all duplicate detection is consolidated. The key
+     * is {@code <normalizedTelephone>|<email or empty>|<householdId>}: the owner's (already E.164
+     * normalized) telephone, its (already lower-cased) email or the empty string when none is held,
+     * and its {@link #householdId(Owner) household id}. Two owners are duplicates only when their
+     * whole identity keys are equal; because the telephone is part of the key, household members with
+     * different telephones have different keys.
+     *
+     * @param owner the owner to derive the identity key for
+     * @return the {@code telephone|email|householdId} identity key
+     */
+    default String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        return telephone + '|' + email + '|' + householdId(owner);
     }
 
     /**

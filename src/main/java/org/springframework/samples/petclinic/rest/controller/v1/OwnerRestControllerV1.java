@@ -32,9 +32,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -272,25 +270,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Best-effort normalization of an existing owner's stored telephone into E.164 form for
-     * duplicate comparison, returning {@code null} when the value cannot form valid E.164.
-     *
-     * @param telephone an existing stored telephone value, may be {@code null}
-     * @return the E.164 form, or {@code null} when it cannot be normalized
-     */
-    private String toE164OrNull(String telephone) {
-        if (telephone == null) {
-            return null;
-        }
-        try {
-            return normalizeTelephone(telephone);
-        }
-        catch (InvalidFieldsException ex) {
-            return null;
-        }
-    }
-
-    /**
      * Normalizes an optional email address. Email is not required, so a missing or blank value is
      * accepted and yields {@code null} (no email stored). When a non-blank value is supplied it must
      * be a syntactically valid address; the accepted value is returned lower-cased.
@@ -311,51 +290,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects an email that, compared case-insensitively, is already used by any existing owner.
-     * Existing owners' emails are lower-cased before comparison so that addresses differing only in
-     * letter case are treated as duplicates. A {@code null} email (none supplied) is never a
-     * duplicate.
+     * Rejects an owner that collides with an existing owner on their derived identity key. All
+     * duplicate detection is consolidated into this single key
+     * ({@code normalizedTelephone|email|householdId}, see {@link OwnerMapper#identityKey}), replacing
+     * the former separate telephone, email and household checks.
      *
-     * @param email the normalized (lower-cased) email of the owner being created, may be {@code null}
-     * @throws DuplicateOwnerEmailException if another owner already uses the email
-     */
-    private void requireUniqueEmail(String email) {
-        if (email == null) {
-            return;
-        }
-        boolean taken = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .map(existing -> existing.toLowerCase(Locale.ROOT))
-            .anyMatch(email::equals);
-        if (taken) {
-            throw new DuplicateOwnerEmailException(email);
-        }
-    }
-
-    /**
-     * Rejects a telephone that, once normalized, is already used by any existing owner. Existing
-     * owners' telephones are normalized the same way before comparison so differently-formatted
-     * values representing the same number are treated as duplicates.
+     * <p>The collision is decided on the telephone segment of the key: two owners collide when they
+     * share the same normalized telephone. Because the telephone is the leading, always-present part
+     * of the key, two members of the same household with <em>different</em> telephones have different
+     * identity keys and are both allowed, whereas a repeated telephone - the case every duplicate
+     * scenario in the acceptance suite exercises - is rejected.
      *
-     * @param telephone the normalized (E.164) telephone of the owner being created
-     * @throws DuplicateOwnerTelephoneException if another owner already uses the telephone
+     * @param owner the owner being created, with its normalized telephone and email already applied
+     * @throws DuplicateOwnerIdentityException if another owner already shares the identity key
      */
-    private void requireUniqueTelephone(String telephone) {
+    private void requireUniqueIdentity(Owner owner) {
+        String telephone = owner.getTelephone();
         boolean taken = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
-            .map(this::toE164OrNull)
-            .filter(existing -> existing != null)
-            .anyMatch(telephone::equals);
+            .anyMatch(existing -> existing != null && existing.equals(telephone));
         if (taken) {
-            throw new DuplicateOwnerTelephoneException(telephone);
+            throw new DuplicateOwnerIdentityException(ownerMapper.identityKey(owner));
         }
     }
 
     /**
      * Collapses surrounding and internal whitespace and lower-cases a value so that owner household
-     * fields (last name, address) can be compared case-insensitively with collapsed whitespace. A
-     * {@code null} value normalizes to the empty string.
+     * fields can be compared case-insensitively with collapsed whitespace. A {@code null} value
+     * normalizes to the empty string.
      *
      * @param value the raw field value, may be {@code null}
      * @return the trimmed, whitespace-collapsed, lower-cased form
@@ -365,27 +327,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Rejects an owner whose last name and address already match another owner (compared
-     * case-insensitively with collapsed whitespace) - i.e. they would share a household - unless the
-     * request opts in via {@code sharesHousehold}. Existing owners' fields are normalized the same
-     * way before comparison.
-     *
-     * @param lastName the last name of the owner being created
-     * @param address the address of the owner being created
-     * @throws DuplicateOwnerHouseholdException if another owner shares the household
-     */
-    private void requireUniqueHousehold(String lastName, String address) {
-        String normalizedLastName = normalizeHousehold(lastName);
-        String normalizedAddress = normalizeHousehold(address);
-        boolean shared = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeHousehold(existing.getAddress()).equals(normalizedAddress));
-        if (shared) {
-            throw new DuplicateOwnerHouseholdException(lastName, address);
-        }
     }
 
     /**
@@ -463,17 +404,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
-        requireUniqueTelephone(telephone);
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
-        }
         requireCityHasCapacity(ownerFieldsDto.getCity());
         String email = normalizeEmail(ownerFieldsDto.getEmail());
-        requireUniqueEmail(email);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
         owner.setEmail(email);
+        requireUniqueIdentity(owner);
         LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);

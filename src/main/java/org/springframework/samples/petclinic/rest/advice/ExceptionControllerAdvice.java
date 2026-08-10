@@ -53,6 +53,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+    private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the given identity already exists";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
@@ -214,6 +215,29 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getInvalidFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerIdentityException} raised when an owner is created whose derived
+     * identity key ({@code normalizedTelephone|email|householdId}) is already used by another owner.
+     * Returns a 409 Conflict whose body's {@code errors} array names the offending
+     * {@code identityKey} field.
+     *
+     * @param e The {@link DuplicateOwnerIdentityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerIdentityException(DuplicateOwnerIdentityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
+        detail.setProperty("errors", List.of("identityKey"));
+        logger.debug("Duplicate owner identity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getIdentityKey());
         return ResponseEntity.status(status).body(detail);
     }
 
