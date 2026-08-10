@@ -70,6 +70,8 @@ public interface OwnerMapper {
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.fromValue("
             + "org.springframework.samples.petclinic.util.AgeBand.of("
             + "owner.getBirthDate(), owner.getRegistrationDate())))")
+    @Mapping(target = "riskFlag",
+        expression = "java(org.springframework.samples.petclinic.util.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

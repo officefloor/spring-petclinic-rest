@@ -1,12 +1,12 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+import org.springframework.samples.petclinic.util.DisposableDomains;
 
 /**
  * Normalizes the optional owner email. Email may be absent: a null or blank value is left untouched
@@ -21,10 +21,6 @@ public class NormalizeOwnerEmail {
     private static final Pattern EMAIL =
             Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
-    /** Disposable email domains that are not accepted for owner registration. */
-    private static final Set<String> DISPOSABLE_DOMAINS =
-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
-
     public void service(@Val OwnerFieldsDto request) throws InvalidEmailException {
         String email = request.getEmail();
         if (email == null || email.isBlank()) {
@@ -35,7 +31,7 @@ public class NormalizeOwnerEmail {
             throw new InvalidEmailException(email);
         }
         String domain = normalized.substring(normalized.indexOf('@') + 1);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        if (DisposableDomains.isDisposable(domain)) {
             throw new InvalidEmailException(email);
         }
         request.setEmail(normalized);
