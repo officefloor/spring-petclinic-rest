@@ -318,6 +318,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /**
+     * Counts the existing owners that share the owner-to-be's first and last name, compared
+     * case-insensitively (surrounding whitespace trimmed). The count reflects the state before the
+     * new owner is persisted, so it excludes the owner being created.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of existing owners with the same first and last name
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        String normalizedFirstName = normalizeName(firstName);
+        String normalizedLastName = normalizeName(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing ->
+                normalizedFirstName.equals(normalizeName(existing.getFirstName()))
+                    && normalizedLastName.equals(normalizeName(existing.getLastName())))
+            .count();
+    }
+
+    /**
+     * Normalizes a name for case-insensitive comparison by trimming surrounding whitespace and
+     * lower-casing.
+     *
+     * @param value the raw name, may be {@code null}
+     * @return the normalized name ({@code ""} when {@code value} is {@code null})
+     */
+    private static String normalizeName(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
@@ -347,6 +377,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getLastName()));
         owner.setHouseholdId(householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()));
+        owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
