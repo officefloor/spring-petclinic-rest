@@ -1,0 +1,149 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
+new file mode 100644
+index 00000000..e946d7b7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
+@@ -0,0 +1,31 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown on create when another owner already has the same last name and address (compared
++ * case-insensitively with collapsed whitespace) and the request did not set {@code sharesHousehold}
++ * to {@code true}. Carries the offending field names so the {@link ExceptionControllerAdvice} can
++ * report them in the {@code errors} array of a 409 Conflict response, mirroring
++ * {@link DuplicateTelephoneException}.
++ */
++public class DuplicateHouseholdException extends RuntimeException {
++
++    public DuplicateHouseholdException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index fa87b2cc..b588cb42 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -240,4 +240,23 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateHouseholdException} raised on create when another owner already has the
++     * same last name and address (compared case-insensitively with collapsed whitespace) and the
++     * request did not opt in via {@code sharesHousehold}. Returns a 409 Conflict whose body carries an
++     * {@code errors} array naming the {@code lastName} and {@code address} fields.
++     *
++     * @param e The {@link DuplicateHouseholdException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateHouseholdException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        detail.setProperty("errors", List.of("lastName", "address"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1f71187f..5d2af612 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+@@ -199,6 +200,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Rejects a create that would place the owner in a household already occupied by another owner,
++     * i.e. one whose last name and address match the supplied values. The two fields are compared
++     * case-insensitively after whitespace is collapsed (leading/trailing whitespace trimmed and each
++     * run of internal whitespace reduced to a single space), so {@code '110 W.  Liberty St. '} and
++     * {@code '110 w. liberty st.'} are treated as the same address. The caller may bypass this check
++     * by setting {@code sharesHousehold} to {@code true}.
++     *
++     * @param lastName the last name of the owner being created
++     * @param address the address of the owner being created
++     * @throws DuplicateHouseholdException if another owner already shares this last name and address
++     */
++    private void rejectDuplicateHousehold(String lastName, String address) {
++        String normalizedLastName = normalizeForHousehold(lastName);
++        String normalizedAddress = normalizeForHousehold(address);
++        boolean inHousehold = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing ->
++                normalizedLastName.equals(normalizeForHousehold(existing.getLastName()))
++                    && normalizedAddress.equals(normalizeForHousehold(existing.getAddress())));
++        if (inHousehold) {
++            throw new DuplicateHouseholdException(
++                "An owner with the same last name and address already exists");
++        }
++    }
++
++    /**
++     * Normalizes a value for household comparison by trimming, collapsing every run of whitespace to
++     * a single space and lower-casing, so the comparison is case-insensitive with collapsed whitespace.
++     *
++     * @param value the raw value, may be {@code null}
++     * @return the normalized value ({@code ""} when {@code value} is {@code null})
++     */
++    private static String normalizeForHousehold(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++
+     /**
+      * Builds the customer code assigned to an owner on create, formatted {@code '<LAST3>-<NNNN>'}
+      * where {@code LAST3} is the upper-cased first three letters of the owner's last name and
+@@ -228,6 +265,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         validateRequiredFields(ownerFieldsDto);
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++            rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
++        }
+         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+         rejectDuplicateTelephone(normalizedTelephone);
+         ownerFieldsDto.setTelephone(normalizedTelephone);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ae399adc..6eb58034 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2051,6 +2051,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            When true on create, allows the owner to be created even if another owner
++            already has the same last name and address (i.e. they knowingly share a
++            household). When false or omitted, such a create is rejected with 409 Conflict.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
