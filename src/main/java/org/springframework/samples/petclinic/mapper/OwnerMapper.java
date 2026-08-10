@@ -20,6 +20,8 @@ import java.util.List;
 @Mapper(uses = PetMapper.class, imports = {MembershipLevel.class, FiscalYear.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink",
+            expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation",
