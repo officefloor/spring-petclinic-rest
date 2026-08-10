@@ -29,7 +29,23 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's membership tier: {@code SILVER} when the owner's namesake count is
+     * {@code 0} and an email is present (non-blank), otherwise {@code BRONZE}.
+     *
+     * @param owner the owner to derive the membership tier for
+     * @return {@code "SILVER"} or {@code "BRONZE"}
+     */
+    default String membershipTier(Owner owner) {
+        Integer namesakeCount = owner.getNamesakeCount();
+        String email = owner.getEmail();
+        boolean silver = namesakeCount != null && namesakeCount == 0
+            && email != null && !email.isBlank();
+        return silver ? "SILVER" : "BRONZE";
+    }
 
     /**
      * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
