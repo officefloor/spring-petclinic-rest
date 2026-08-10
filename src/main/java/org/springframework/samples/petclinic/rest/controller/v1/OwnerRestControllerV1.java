@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -304,6 +305,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The maximum number of owners a single city may contain. A create whose city already holds this
+     * many owners is rejected, so a city never grows beyond this capacity.
+     */
+    private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Rejects a create whose city already contains {@link #CITY_CAPACITY} or more owners, so no city
+     * ever exceeds its capacity. Cities are compared case-insensitively with surrounding whitespace
+     * trimmed, exactly as {@link #nextCustomerCode} counts a city's owners. The count reflects the
+     * state before the new owner is persisted, so it excludes the owner being created.
+     *
+     * @param city the city of the owner being created
+     * @throws CityAtCapacityException if the city already contains {@link #CITY_CAPACITY} owners
+     */
+    private void rejectCityAtCapacity(String city) {
+        String normalizedCity = normalizeName(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedCity.equals(normalizeName(existing.getCity())))
+            .count();
+        if (ownersInCity >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(
+                "The city already contains the maximum number of owners");
+        }
+    }
+
+    /**
      * Builds the customer code assigned to an owner on create, formatted
      * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first three letters
      * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
@@ -372,6 +399,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
