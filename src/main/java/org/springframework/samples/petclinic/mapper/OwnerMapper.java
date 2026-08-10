@@ -25,7 +25,24 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's duplicate-detection {@code identityKey}, formatted as
+     * {@code normalizedTelephone + '|' + email + '|' + householdId} with an empty email segment when
+     * the owner has no email. This is the same key the create endpoint uses to reject an owner whose
+     * whole key equals an existing owner's.
+     */
+    default @Nullable String identityKey(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code EMAIL} when an email is present,
