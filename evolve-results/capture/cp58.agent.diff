@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 77159ff2..392b0781 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -46,6 +46,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -148,6 +149,53 @@ public interface OwnerMapper {
+         return tier + "_" + area;
+     }
+ 
++    /**
++     * The second-level labels of the known disposable email providers (the label immediately
++     * before the top-level domain of each blocked disposable domain). Used to recognise
++     * disposable-adjacent domains - subdomains or other-TLD near-misses that share a label with
++     * one of these providers.
++     */
++    java.util.Set<String> DISPOSABLE_PROVIDER_LABELS =
++        java.util.Set.of("mailinator", "tempmail", "guerrillamail");
++
++    /**
++     * The owner's risk flag: true when the owner warrants a manual risk review because any one of
++     * these holds - it is a possible duplicate ({@link Owner#getPossibleDuplicate()} is true), its
++     * email domain is {@link #disposableAdjacent(String) disposable-adjacent}, or its city is over
++     * its soft capacity ({@link Owner#getCapacityWarning()} is true, i.e. the city already held 40
++     * or more owners when this owner was created); otherwise false.
++     */
++    default Boolean riskFlag(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || disposableAdjacent(owner.getEmail());
++    }
++
++    /**
++     * Whether the given email's domain is disposable-adjacent: not itself a blocked disposable
++     * domain (those are rejected on create and never stored), but a subdomain or other-TLD
++     * near-miss that carries one of the known {@link #DISPOSABLE_PROVIDER_LABELS disposable
++     * provider labels} as one of its dot-separated domain labels (e.g. 'mail.mailinator.com' or
++     * 'mailinator.net'). Returns false when the email is absent or its domain contains no such
++     * label.
++     */
++    default boolean disposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_PROVIDER_LABELS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     /**
+      * The owner's membership points. Starts at 0; gains 2 when an email address is present,
+      * 1 when the owner has no namesakes (namesakeCount is 0), 2 for a household of 3 or more
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fe284ce7..1e117d0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2312,6 +2312,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when the owner warrants a manual risk review because any
++                one of these holds - it is a possible duplicate (possibleDuplicate is
++                true), its email domain is disposable-adjacent (not itself a blocked
++                disposable domain, but a subdomain or other-TLD near-miss that shares a
++                label with a known disposable provider), or its city is over its soft
++                capacity (capacityWarning is true, i.e. the city already held 40 or more
++                owners); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: Whether this owner has been soft-deleted. A newly created
