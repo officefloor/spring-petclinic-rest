@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 4a6c2c8a..95b6c785 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -79,6 +79,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -201,6 +204,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4ef31127..8e7f8377 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -220,7 +220,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         // Reject the create when the owner's city is already at capacity, i.e. it already
+         // contains 50 or more owners (compared case-insensitively).
+-        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
++        int ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
++        if (ownersInCity >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
+@@ -278,6 +279,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Flag a bulk sign-up when more than 80 owners have already been created today, i.e.
+         // registered on this (adjusted) business day before this owner is created.
+         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
++        // Flag that the owner's city is approaching its capacity limit: it already held between
++        // 40 and 49 owners (inclusive) before this owner was created. The hard rejection at 50
++        // owners is handled above, so reaching this point means the count is below 50.
++        owner.setCapacityWarning(ownersInCity >= 40 && ownersInCity < 50);
+         // Record the size of this owner's household after this create: the number of existing
+         // owners sharing the same household (i.e. the same computed householdId) plus this owner.
+         owner.setHouseholdSize(countHouseholdMembers(owner) + 1);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ac21375e..3579b080 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7ccb968e..be1c3b3b 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,6 +51,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 85e0c262..e1270a91 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INT,
+   bulk_signup_warning BIT,
++  capacity_warning BIT,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   possible_duplicate BIT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index cbdbcb59..9fe5d981 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       namesake_count INT,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 940b674d..9b490197 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2227,6 +2227,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when, at the time this owner was created, the owner's
++                city already held between 40 and 49 owners (inclusive), approaching the
++                hard capacity limit of 50; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             membershipPoints:
+               title: Membership points
+               description: The owner's membership points, assigned on creation. Starts
