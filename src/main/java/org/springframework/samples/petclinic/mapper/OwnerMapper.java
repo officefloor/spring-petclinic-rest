@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -176,9 +177,10 @@ public interface OwnerMapper {
      * Derives an owner's membership points. Starts at {@code 0}, plus {@code 2} when an email is
      * present (non-blank), plus {@code 1} when the owner's namesake count is {@code 0}, plus
      * {@code 2} for a household of {@code 3} or more members, plus {@code 3} for a tenure of more
-     * than {@code 365} days - the number of days between the owner's registration date and the
-     * current server date. Because a newly created owner registers on the current date, its tenure
-     * is zero, so a new owner never earns the tenure points.
+     * than one elapsed fiscal year - the number of fiscal years between the owner's registration
+     * date and the current server date (the fiscal year starts on 1 July). Because a newly created
+     * owner registers on the current date, its tenure is zero, so a new owner never earns the tenure
+     * points.
      *
      * @param owner the owner to derive the membership points for
      * @return the membership points, {@code 0} or more
@@ -198,9 +200,9 @@ public interface OwnerMapper {
             points += 2;
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
-        long tenureDays = registrationDate == null ? 0
-            : java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
-        if (tenureDays > 365) {
+        long tenureFiscalYears = registrationDate == null ? 0
+            : fiscalYearValue(java.time.LocalDate.now()) - fiscalYearValue(registrationDate);
+        if (tenureFiscalYears > 1) {
             points += 3;
         }
         return points;
@@ -231,14 +233,42 @@ public interface OwnerMapper {
     /**
      * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
      * {@code <customerCode>} is the owner's region-and-hash customer code and {@code YY} is the last
-     * two digits (zero-padded) of the owner's registration date year (e.g. {@code NSW-1A2B3C4D-M26}).
+     * two digits (zero-padded) of the owner's {@link #fiscalYear(Owner) fiscal year} - so the year
+     * segment matches the returned {@code fiscalYear} (e.g. {@code NSW-1A2B3C4D-M27}).
      *
      * @param owner the owner to derive the membership number for
      * @return the formatted membership number
      */
     default String membershipNumber(Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String yy = String.format("%02d", fiscalYearValue(owner.getRegistrationDate()) % 100);
         return owner.getCustomerCode() + "-M" + yy;
+    }
+
+    /**
+     * Derives an owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
+     * digits (zero-padded) of the fiscal year that the owner's business-day-adjusted registration
+     * date falls in. The fiscal year starts on 1 July and is labelled by the calendar year in which
+     * it ends, so a registration date on or after 1 July belongs to the next year's fiscal year
+     * (e.g. {@code 2026-08-11 -> FY27}, {@code 2026-01-05 -> FY26}).
+     *
+     * @param owner the owner to derive the fiscal year for
+     * @return the formatted fiscal year
+     */
+    default String fiscalYear(Owner owner) {
+        return String.format("FY%02d", fiscalYearValue(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Computes the fiscal year a date falls in as a full four-digit year. The fiscal year starts on
+     * 1 July and is labelled by the calendar year in which it ends, so a date in July through
+     * December belongs to the following calendar year's fiscal year and a date in January through
+     * June belongs to its own calendar year's fiscal year.
+     *
+     * @param date the date to compute the fiscal year for
+     * @return the fiscal year as a four-digit calendar year
+     */
+    private int fiscalYearValue(java.time.LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
     }
 
     /**
