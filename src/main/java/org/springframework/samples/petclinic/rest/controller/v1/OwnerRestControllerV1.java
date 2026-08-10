@@ -116,6 +116,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int CITY_CAPACITY = 50;
 
     /**
+     * Number of owners a city must already contain for a newly created owner in it to be flagged with
+     * {@code capacityWarning=true}. Once a city holds at least this many owners (but fewer than the
+     * {@value #CITY_CAPACITY} hard limit), the next owner in that city signals it is approaching
+     * capacity; the create itself still succeeds.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Fixed list of public holidays. A registration date that, after the weekend adjustment, lands on
      * one of these dates is rolled forward to the next non-holiday business day.
      */
@@ -532,6 +540,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Determines whether creating an owner in the given city is approaching the per-city capacity
+     * limit: {@code true} when the city already contains between {@value #CITY_CAPACITY_WARNING_THRESHOLD}
+     * and {@value #CITY_CAPACITY} (exclusive) owners. Cities are compared case-insensitively with
+     * collapsed whitespace, matching {@link #requireCityHasCapacity(String)}. Evaluated before the new
+     * owner is persisted, so the count reflects the owners that existed at the time of creation; the
+     * hard rejection at {@value #CITY_CAPACITY} has already run, so the count seen here is below it.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} when the city already holds 40-49 owners, otherwise {@code false}
+     */
+    private boolean isApproachingCityCapacity(String city) {
+        String normalizedCity = normalizeHousehold(city);
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHousehold(existing.getCity()).equals(normalizedCity))
+            .count();
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
+    }
+
+    /**
      * Rejects creating an owner once the given business day has already reached the maximum
      * permitted number of owner registrations ({@value #DAILY_OWNER_LIMIT}). Existing owners are
      * counted by their {@code registrationDate} against the supplied (already business-day-adjusted)
@@ -637,6 +664,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
         owner.setBulkSignupWarning(isBulkSignup(registrationDate));
+        owner.setCapacityWarning(isApproachingCityCapacity(ownerFieldsDto.getCity()));
         Owner possibleDuplicate = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicate != null);
         owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
