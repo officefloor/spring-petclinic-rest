@@ -2,15 +2,16 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.Soundex;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Flags a soft (possible) duplicate. The new owner is not a household duplicate — an existing owner
- * sharing its {@code householdId} would already have been rejected with 409 by
- * {@link CheckOwnerIdentityUnique}, unless the request declared {@code sharesHousehold} — but it may
- * still be a <em>likely</em> duplicate of an existing owner: same {@code lastName} (compared
- * case-insensitively) and same {@code postcode}, yet a different {@code telephone}.
+ * Flags a soft (possible) duplicate. The new owner is not a hard duplicate — an existing owner with
+ * the same {@code identityKey} would already have been rejected with 409 by
+ * {@link CheckOwnerIdentityUnique} — but it may still be a <em>likely</em> duplicate of an existing
+ * owner: a matching {@link Soundex} of the {@code lastName} and the same {@code postcode}, yet a
+ * different {@code identityKey} (e.g. a different telephone).
  *
  * <p>A <em>declared</em> household member ({@code sharesHousehold = true}) is never a suspected
  * duplicate: it opted in explicitly, so it is left with {@code possibleDuplicate = false}. Otherwise,
@@ -19,7 +20,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * when several match, the earliest (lowest id) is used for a deterministic result. Otherwise
  * {@code possibleDuplicate = false} and {@code possibleDuplicateOf} is left {@code null}.
  *
- * <p>Runs after {@link CheckOwnerIdentityUnique} (household duplicates already rejected) and before
+ * <p>Runs after {@link CheckOwnerIdentityUnique} (hard duplicates already rejected) and before
  * {@link SaveOwner}, so the scan sees only the owners already persisted, not the new owner itself.
  */
 public class AssignPossibleDuplicate {
@@ -30,25 +31,25 @@ public class AssignPossibleDuplicate {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // a declared household member is not a suspected duplicate
         }
-        String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
         if (postcode == null) {
             return; // no postcode to match on -> never a possible duplicate
         }
+        String lastNameSoundex = Soundex.encode(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // a soft-deleted owner is not a possible duplicate
             }
-            if (!equalsIgnoreCase(lastName, existing.getLastName())) {
+            if (!lastNameSoundex.equals(Soundex.encode(existing.getLastName()))) {
                 continue;
             }
             if (!postcode.equals(existing.getPostcode())) {
                 continue;
             }
-            if (equals(telephone, existing.getTelephone())) {
-                continue; // same telephone is not a soft match (a hard match was already rejected)
+            if (identityKey.equals(existing.getIdentityKey())) {
+                continue; // same identity is not a soft match (a hard match was already rejected)
             }
             if (match == null || lowerId(existing.getId(), match.getId())) {
                 match = existing;
@@ -65,13 +66,5 @@ public class AssignPossibleDuplicate {
             return false;
         }
         return current == null || candidate < current;
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
-    }
-
-    private static boolean equals(String a, String b) {
-        return a == null ? b == null : a.equals(b);
     }
 }

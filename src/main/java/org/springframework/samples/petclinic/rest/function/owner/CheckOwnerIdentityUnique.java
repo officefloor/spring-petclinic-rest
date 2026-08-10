@@ -8,18 +8,18 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityConfli
 
 /**
  * Consolidated duplicate check for {@code POST /api/owners}. Rejects with 409
- * ({@link OwnerIdentityConflictException}) only when the new owner's whole {@code identityKey}
- * (normalized telephone {@code '|'} email {@code '|'} householdId, see {@link Owner#getIdentityKey()})
- * exactly matches an existing owner's. Two members of the same household (same deterministic
- * {@code householdId} computed by {@link AssignHousehold}) with different telephones therefore have
- * different keys and are both allowed — the later one is instead flagged a soft match by
- * {@link AssignPossibleDuplicate}.
+ * ({@link OwnerIdentityConflictException}) only when the new owner's whole {@code identityKey} — the
+ * SHA-256 over normalized telephone {@code '|'} email {@code '|'} soundex(lastName), see
+ * {@link Owner#getIdentityKey()} — exactly matches an existing owner's. Because the telephone is part
+ * of the key, two members of the same household (same lastName and postcode) with different
+ * telephones have different keys and are both allowed — the later one is instead flagged a soft match
+ * by {@link AssignPossibleDuplicate}. The email-domain blocklist is applied earlier during field
+ * validation, so a disposable-domain email is rejected before this check runs.
  *
  * <p>The {@code sharesHousehold} request flag bypasses this block: when set, the new owner is
  * created as a <em>declared</em> household member rather than rejected (and is not flagged a possible
- * duplicate — see {@link AssignPossibleDuplicate}). Runs after {@link AssignHousehold} (so the new
- * owner already carries its {@code householdId}) and before {@link SaveOwner} (so the new owner is
- * not yet in the repository scan).
+ * duplicate — see {@link AssignPossibleDuplicate}). Runs before {@link SaveOwner} (so the new owner
+ * is not yet in the repository scan).
  */
 public class CheckOwnerIdentityUnique {
 
