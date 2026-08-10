@@ -162,6 +162,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
+        // Reject the create when the daily sign-up limit has been reached, i.e. 100 or more
+        // owners have already been registered today (by registrationDate).
+        if (countOwnersRegisteredToday() >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -315,6 +320,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
                 && existing.getCity().equalsIgnoreCase(city))
+            .count();
+    }
+
+    /**
+     * Count the existing owners whose registration date is the server's current date.
+     * Used to enforce the per-day sign-up limit.
+     */
+    private int countOwnersRegisteredToday() {
+        LocalDate today = LocalDate.now();
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();
     }
 
