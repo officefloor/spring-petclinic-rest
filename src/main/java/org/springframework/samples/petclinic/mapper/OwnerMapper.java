@@ -45,6 +45,8 @@ public interface OwnerMapper {
             expression = "java(AgeBand.of(owner))")
     @Mapping(target = "ownerSegment",
             expression = "java(OwnerSegment.of(owner))")
+    @Mapping(target = "riskFlag",
+            expression = "java(RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
