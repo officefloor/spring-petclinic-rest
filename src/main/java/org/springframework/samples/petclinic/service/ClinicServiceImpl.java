@@ -250,16 +250,17 @@ public class ClinicServiceImpl implements ClinicService {
 
     /**
      * Count the members of the new owner's household after this create: the existing owners
-     * that share the given owner's last name and address (compared case-insensitively with
-     * collapsed whitespace, the same normalization used to derive the household identifier)
-     * plus the owner being created. Invoked before the new owner is persisted.
+     * that share the given owner's last name (compared case-insensitively with collapsed
+     * whitespace) and postcode - the same (last name, postcode) pair from which the household
+     * identifier is derived - plus the owner being created. Invoked before the new owner is
+     * persisted.
      */
     private int countHouseholdMembers(Owner owner) {
         String normalizedLastName = normalizeHouseholdField(owner.getLastName());
-        String normalizedAddress = normalizeHouseholdField(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         long existing = ownerRepository.findAll().stream()
             .filter(other -> normalizeHouseholdField(other.getLastName()).equals(normalizedLastName)
-                && normalizeHouseholdField(other.getAddress()).equals(normalizedAddress))
+                && postcode.equals(other.getPostcode() == null ? "" : other.getPostcode()))
             .count();
         return (int) existing + 1;
     }

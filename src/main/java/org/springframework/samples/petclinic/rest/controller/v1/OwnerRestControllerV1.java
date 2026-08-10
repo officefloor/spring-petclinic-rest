@@ -32,6 +32,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
@@ -362,6 +363,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects an owner that would join an existing owner's household without opting in. The household
+     * is keyed by the owner's computed {@link OwnerMapper#householdId(Owner) household id} - the first
+     * 12 hex characters of SHA-256 over the normalized last name and postcode - so two owners sharing
+     * a last name and postcode belong to the same household even with different addresses or
+     * telephones. Only owners with a postcode participate: an owner without a postcode has no
+     * well-defined household and is never blocked here. The check is bypassed by the caller when the
+     * request sets {@code sharesHousehold}, so a declared household member is created rather than
+     * rejected.
+     *
+     * @param owner the owner being created, with its normalized fields already applied
+     * @throws DuplicateOwnerHouseholdException if an existing owner already shares the household id
+     */
+    private void requireNoHouseholdDuplicate(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return;
+        }
+        String householdId = ownerMapper.householdId(owner);
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
+        if (taken) {
+            throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getPostcode());
+        }
+    }
+
+    /**
      * Collapses surrounding and internal whitespace and lower-cases a value so that owner household
      * fields can be compared case-insensitively with collapsed whitespace. A {@code null} value
      * normalizes to the empty string.
@@ -500,6 +526,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(email);
         requireUniqueIdentity(owner);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold) {
+            requireNoHouseholdDuplicate(owner);
+        }
         requireRegistrationDateNotInFuture(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
@@ -507,7 +537,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
         owner.setBulkSignupWarning(isBulkSignup(registrationDate));
-        Owner possibleDuplicate = findPossibleDuplicate(owner);
+        Owner possibleDuplicate = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicate != null);
         owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
         this.clinicService.saveOwner(owner);

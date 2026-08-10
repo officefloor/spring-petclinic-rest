@@ -157,21 +157,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's household identifier: a stable value shared by every owner with the same
-     * last name and address (compared case-insensitively with collapsed whitespace). Because it is
-     * derived deterministically from those fields, owners created via the {@code sharesHousehold}
-     * flag - which by definition have a matching last name and address - receive the same value.
+     * Derives an owner's household identifier: the first 12 hex characters of the SHA-256 digest
+     * over {@code <normalizedLastName>|<postcode>}, where the last name is normalized
+     * case-insensitively with collapsed whitespace and a missing postcode contributes the empty
+     * string. Because it is derived deterministically from the last name and postcode, every owner
+     * that shares those two fields receives the same value - including owners created via the
+     * {@code sharesHousehold} flag, which by definition have a matching last name and postcode.
      *
      * @param owner the owner to derive the household identifier for
-     * @return a {@code HH-} prefixed identifier, never blank
+     * @return the 12 upper-case hex character household identifier, never blank
      */
     default String householdId(Owner owner) {
-        String key = normalizeHouseholdField(owner.getLastName()) + ' '
-            + normalizeHouseholdField(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = normalizeHouseholdField(owner.getLastName()) + '|' + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("HH-");
+            StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
