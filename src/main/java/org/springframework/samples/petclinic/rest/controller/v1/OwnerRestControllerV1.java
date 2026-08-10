@@ -87,12 +87,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Monotonically increasing sequence stamped on every structured owner-created event. */
     private static final AtomicLong AUDIT_SEQ = new AtomicLong();
 
+    /** Schema version stamped on every structured owner-created event (version 2). */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
+
     /**
-     * Immutable structured audit event emitted once per owner create. The {@code memberId}
-     * field carries the owner's <em>current primary identifier</em> as returned by
-     * {@link #primaryIdentifier(Owner)} (the unified memberId).
+     * Immutable structured audit event emitted once per owner create. Carries the audit
+     * {@code schemaVersion} (2 under the version-2 identity) and the owner's <em>current
+     * primary identifier</em> in {@code memberId}, as returned by
+     * {@link #primaryIdentifier(Owner)} (the unified, version-2 memberId).
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+    private record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
             Integer membershipLevel, String event) {
     }
 
@@ -326,10 +330,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner));
-        // Emit the immutable structured OWNER_CREATED event carrying a monotonically increasing
-        // sequence and the owner's current primary identifier (the memberId).
-        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
-            primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
+        // Emit the immutable structured OWNER_CREATED event (audit schema version 2) carrying a
+        // monotonically increasing sequence, the schema version, and the owner's current primary
+        // identifier (the version-2 memberId).
+        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(),
+            AUDIT_SCHEMA_VERSION, owner.getId(), primaryIdentifier(owner),
+            ownerMapper.membershipLevel(owner), "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
         // Enqueue a welcome notification for the newly created owner, carrying its id and memberId.
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
@@ -614,21 +620,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Build the owner's unified memberId, formatted {@code '<REGION><FY><HASH8><CHK>'}.
      *
-     * <p>{@code REGION} is the region derived from the owner's postcode (see
-     * {@link #deriveRegion}). {@code FY} is the two-digit fiscal year (starting 1 July) of the
+     * <p>Under version 2, {@code REGION} is the region derived from the owner's postcode (see
+     * {@link #deriveRegion}) with the fixed {@link OwnerMapper#VERSION_TAG 'V2'} version tag
+     * mixed in as a prefix (e.g. {@code 'V2NSW'}), so no memberId produced under version 1 is
+     * produced again. {@code FY} is the two-digit fiscal year (starting 1 July) of the
      * business-day-adjusted registration date. {@code HASH8} is the first 8 upper-case hex
-     * characters of the SHA-256 of the normalized telephone concatenated with the last name.
-     * {@code CHK} is a single Luhn check digit computed over the digits of
-     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW271A2B3C4D5'}).
+     * characters of the SHA-256 of the 'V2' version tag, the normalized telephone and the last
+     * name. {@code CHK} is a single Luhn check digit computed over the digits of
+     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'V2NSW271A2B3C4D5'}).
+     *
+     * <p>The 'V2' tag lives only inside this identifier; the user-facing locality, timezone and
+     * owner segment continue to report the plain region (e.g. 'NSW').
      *
      * <p>When the computed memberId collides with an existing owner's memberId, it is
      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more
      * that makes it unique.
      */
     private String memberId(Owner owner) {
-        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String region = OwnerMapper.VERSION_TAG + deriveRegion(owner.getPostcode(), owner.getCity());
         String fy = String.format("%02d", fiscalYearTwoDigits(owner.getRegistrationDate()));
-        String hash8 = sha256HexUpper(owner.getTelephone() + owner.getLastName(), 8);
+        String hash8 = sha256HexUpper(
+            OwnerMapper.VERSION_TAG + "|" + owner.getTelephone() + owner.getLastName(), 8);
         String base = region + fy + hash8;
         String memberId = base + luhn(base);
         Set<String> existing = this.clinicService.findAllOwners().stream()

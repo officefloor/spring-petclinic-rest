@@ -5,6 +5,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -36,8 +37,8 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "householdId", expression = "java(householdId(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -48,6 +49,36 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner API contract version this representation conforms to. */
+    int API_VERSION = 2;
+
+    /**
+     * The fixed version tag mixed into every version-2 identifier (the region embedded in
+     * the memberId, the householdId and the identityKey) so that no value produced under
+     * version 1 is produced again. It deliberately never appears in the user-facing
+     * {@link #locality(Owner) locality}, {@link #timezone(Owner) timezone} or
+     * {@link #ownerSegment(Owner) ownerSegment}.
+     */
+    String VERSION_TAG = "V2";
+
+    /** The top-level owner API version, always {@link #API_VERSION 2} under version 2. */
+    default Integer apiVersion() {
+        return API_VERSION;
+    }
+
+    /**
+     * The owner's version-2 identity object, grouping the three identifiers — the memberId
+     * (assigned on creation), the {@link #identityKey(Owner) identityKey} and the
+     * {@link #householdId(Owner) householdId} — that were previously top-level fields.
+     */
+    default IdentityDto identity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(identityKey(owner));
+        identity.setHouseholdId(householdId(owner));
+        return identity;
+    }
 
     /**
      * The owner's canonical API path, formatted '/api/owners/&lt;id&gt;'. Returns
@@ -110,13 +141,24 @@ public interface OwnerMapper {
         if (id == null) {
             return "UNKNOWN";
         }
-        int regionEnd = regionLength(id);
-        return regionEnd == 0 ? "UNKNOWN" : id.substring(0, regionEnd);
+        String body = identifierBody(id);
+        int regionEnd = regionLength(body);
+        return regionEnd == 0 ? "UNKNOWN" : body.substring(0, regionEnd);
     }
 
     /**
-     * The length of the leading REGION segment of a memberId: the run of leading letters
-     * before the first digit (which begins the two-digit fiscal-year segment).
+     * The plain {@code <REGION><FY><HASH8><CHK>} body of a memberId with the leading
+     * version-2 {@link #VERSION_TAG 'V2'} tag removed, so the user-facing locality and
+     * fiscal year read the plain region and fiscal-year segments rather than the tag. A
+     * memberId that does not carry the tag (e.g. a legacy value) is returned unchanged.
+     */
+    private static String identifierBody(String memberId) {
+        return memberId.startsWith(VERSION_TAG) ? memberId.substring(VERSION_TAG.length()) : memberId;
+    }
+
+    /**
+     * The length of the leading REGION segment of a memberId body: the run of leading
+     * letters before the first digit (which begins the two-digit fiscal-year segment).
      */
     private static int regionLength(String memberId) {
         int i = 0;
@@ -281,11 +323,12 @@ public interface OwnerMapper {
         if (id == null) {
             return null;
         }
-        int regionEnd = regionLength(id);
-        if (regionEnd + 2 > id.length()) {
+        String body = identifierBody(id);
+        int regionEnd = regionLength(body);
+        if (regionEnd + 2 > body.length()) {
             return null;
         }
-        return "FY" + id.substring(regionEnd, regionEnd + 2);
+        return "FY" + body.substring(regionEnd, regionEnd + 2);
     }
 
     /**
@@ -339,12 +382,13 @@ public interface OwnerMapper {
      * normalized last name and the postcode. Every owner sharing the same last name
      * (trimmed, lower-cased, whitespace collapsed) and postcode therefore receives the
      * same identifier: the first twelve upper-case hex characters of the SHA-256 of
-     * '&lt;normalizedLastName&gt;|&lt;postcode&gt;'. A {@code null} postcode contributes
-     * the empty string.
+     * '&lt;V2&gt;|&lt;normalizedLastName&gt;|&lt;postcode&gt;', where &lt;V2&gt; is the fixed
+     * version-2 {@link #VERSION_TAG tag} mixed in so no value produced under version 1 is
+     * produced again. A {@code null} postcode contributes the empty string.
      */
     default String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalizeHouseholdKey(owner.getLastName()) + "|" + postcode;
+        String key = VERSION_TAG + "|" + normalizeHouseholdKey(owner.getLastName()) + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
@@ -362,16 +406,17 @@ public interface OwnerMapper {
     /**
      * The owner's derived identity key: the single value onto which all duplicate
      * detection is consolidated. It is the full lower-case hex SHA-256 digest of
-     * '&lt;normalizedTelephone&gt;|&lt;lowerEmail&gt;|&lt;soundex(lastName)&gt;'.
-     * The telephone and email are the owner's stored (already normalized) values;
-     * a {@code null} email contributes the empty string, and the last name is reduced
-     * to its Soundex code so surnames that sound alike share the same segment. Two
-     * owners are duplicates only when their whole identity keys are equal.
+     * '&lt;V2&gt;|&lt;normalizedTelephone&gt;|&lt;lowerEmail&gt;|&lt;soundex(lastName)&gt;',
+     * where &lt;V2&gt; is the fixed version-2 {@link #VERSION_TAG tag} mixed in so no value
+     * produced under version 1 is produced again. The telephone and email are the owner's
+     * stored (already normalized) values; a {@code null} email contributes the empty string,
+     * and the last name is reduced to its Soundex code so surnames that sound alike share the
+     * same segment. Two owners are duplicates only when their whole identity keys are equal.
      */
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String key = telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
+        String key = VERSION_TAG + "|" + telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
