@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -86,6 +88,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
+    /**
+     * Rejects an owner payload that is missing or blank in any required field, listing the name of
+     * each offending field so the caller receives a 400 with a populated {@code errors} array.
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missing = new ArrayList<>();
+        if (isBlank(ownerFieldsDto.getFirstName())) {
+            missing.add("firstName");
+        }
+        if (isBlank(ownerFieldsDto.getLastName())) {
+            missing.add("lastName");
+        }
+        if (isBlank(ownerFieldsDto.getAddress())) {
+            missing.add("address");
+        }
+        if (isBlank(ownerFieldsDto.getCity())) {
+            missing.add("city");
+        }
+        if (isBlank(ownerFieldsDto.getTelephone())) {
+            missing.add("telephone");
+        }
+        if (!missing.isEmpty()) {
+            throw new RequiredFieldsMissingException(missing);
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
@@ -99,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
