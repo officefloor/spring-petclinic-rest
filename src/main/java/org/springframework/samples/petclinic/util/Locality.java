@@ -21,6 +21,12 @@ public final class Locality {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     public static final String UNKNOWN = "UNKNOWN";
 
     private Locality() {
@@ -38,6 +44,11 @@ public final class Locality {
     public static String of(String city, String postcode) {
         String byPostcode = fromPostcode(postcode);
         return byPostcode != null ? byPostcode : of(city);
+    }
+
+    /** The IANA timezone name for {@code region}, or {@code null} when the region has none. */
+    public static String timezone(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /** Region whose inclusive range contains {@code postcode}, or {@code null} if none. */

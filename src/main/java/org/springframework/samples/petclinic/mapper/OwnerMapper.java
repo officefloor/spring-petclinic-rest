@@ -46,6 +46,9 @@ public interface OwnerMapper {
             + ".key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.util.Locality.timezone("
+            + "org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
