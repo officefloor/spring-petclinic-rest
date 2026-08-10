@@ -46,6 +46,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -146,6 +147,53 @@ public interface OwnerMapper {
         String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
         String area = REGION_TIMEZONE.containsKey(locality(owner)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
+    }
+
+    /**
+     * The second-level labels of the known disposable email providers (the label immediately
+     * before the top-level domain of each blocked disposable domain). Used to recognise
+     * disposable-adjacent domains - subdomains or other-TLD near-misses that share a label with
+     * one of these providers.
+     */
+    java.util.Set<String> DISPOSABLE_PROVIDER_LABELS =
+        java.util.Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * The owner's risk flag: true when the owner warrants a manual risk review because any one of
+     * these holds - it is a possible duplicate ({@link Owner#getPossibleDuplicate()} is true), its
+     * email domain is {@link #disposableAdjacent(String) disposable-adjacent}, or its city is over
+     * its soft capacity ({@link Owner#getCapacityWarning()} is true, i.e. the city already held 40
+     * or more owners when this owner was created); otherwise false.
+     */
+    default Boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || Boolean.TRUE.equals(owner.getCapacityWarning())
+            || disposableAdjacent(owner.getEmail());
+    }
+
+    /**
+     * Whether the given email's domain is disposable-adjacent: not itself a blocked disposable
+     * domain (those are rejected on create and never stored), but a subdomain or other-TLD
+     * near-miss that carries one of the known {@link #DISPOSABLE_PROVIDER_LABELS disposable
+     * provider labels} as one of its dot-separated domain labels (e.g. 'mail.mailinator.com' or
+     * 'mailinator.net'). Returns false when the email is absent or its domain contains no such
+     * label.
+     */
+    default boolean disposableAdjacent(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_PROVIDER_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
