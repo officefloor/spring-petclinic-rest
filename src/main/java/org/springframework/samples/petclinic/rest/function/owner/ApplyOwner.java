@@ -13,7 +13,12 @@ public class ApplyOwner {
             throws OwnerEmailInvalidException, OwnerEmailDisposableException, OwnerPostcodeInvalidException {
         // Postcode is optional; when present it must be 4 digits and valid for the city's region.
         OwnerPostcode.validate(request.getPostcode(), request.getCity());
-        owner.setAddress(request.getAddress());
+        // Prefer the structured address (addressLine1 [+ addressLine2]) when supplied, falling back
+        // to the flat 'address'; store the normalized lines and the composed address.
+        owner.setAddressLine1(OwnerAddress.normalize(request.getAddressLine1()));
+        owner.setAddressLine2(OwnerAddress.normalize(request.getAddressLine2()));
+        owner.setAddress(OwnerAddress.compose(request.getAddressLine1(), request.getAddressLine2(),
+                request.getAddress()));
         owner.setCity(request.getCity());
         owner.setFirstName(request.getFirstName());
         owner.setLastName(request.getLastName());

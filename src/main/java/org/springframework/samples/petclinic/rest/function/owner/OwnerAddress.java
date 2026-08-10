@@ -38,6 +38,22 @@ final class OwnerAddress {
     }
 
     /**
+     * Resolves the effective, normalized address from the two accepted forms. The structured form is
+     * preferred: when {@code addressLine1} is non-blank the result is its normalized value, with a
+     * single space and the normalized {@code addressLine2} appended when {@code addressLine2} is
+     * present. Otherwise it falls back to the normalized flat {@code address}. Returns {@code null}
+     * when no address is supplied in either form, so a required-field check can reject it.
+     */
+    static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (line1 != null) {
+            String line2 = normalize(addressLine2);
+            return line2 == null ? line1 : line1 + " " + line2;
+        }
+        return normalize(address);
+    }
+
+    /**
      * Normalized address for comparison, never {@code null}: a null or blank address collapses to
      * the empty string so two addressless owners compare equal.
      */
