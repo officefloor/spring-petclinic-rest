@@ -30,6 +30,7 @@ public interface OwnerMapper {
         java.util.Map.of("NSW", "Australia/Sydney", "VIC", "Australia/Melbourne",
             "QLD", "Australia/Brisbane");
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
@@ -47,6 +48,14 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's canonical API path, formatted '/api/owners/&lt;id&gt;'. Returns
+     * {@code null} when the owner has not yet been assigned an id.
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * The owner's salutation: the supplied title, a single space and the last name when a
