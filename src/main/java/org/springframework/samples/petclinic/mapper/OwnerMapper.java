@@ -29,7 +29,7 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -55,24 +55,24 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's membership tier: {@code GOLD} when the owner's household (owners sharing
-     * the same {@code householdId}) has 3 or more members after the owner was created; otherwise
-     * {@code SILVER} when the owner's namesake count is {@code 0} and an email is present
-     * (non-blank), otherwise {@code BRONZE}.
+     * Derives an owner's numeric membership level, fixed at creation. Starts at {@code 1}, plus
+     * {@code 1} when an email is present (non-blank), plus {@code 1} when the owner's namesake count
+     * is {@code 0}, capped at {@code 3} (level {@code 4} is reserved for tenure).
      *
-     * @param owner the owner to derive the membership tier for
-     * @return {@code "GOLD"}, {@code "SILVER"} or {@code "BRONZE"}
+     * @param owner the owner to derive the membership level for
+     * @return the membership level, between {@code 1} and {@code 3}
      */
-    default String membershipTier(Owner owner) {
-        Integer householdMemberCount = owner.getHouseholdMemberCount();
-        if (householdMemberCount != null && householdMemberCount >= 3) {
-            return "GOLD";
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        String email = owner.getEmail();
+        if (email != null && !email.isBlank()) {
+            level++;
         }
         Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean silver = namesakeCount != null && namesakeCount == 0
-            && email != null && !email.isBlank();
-        return silver ? "SILVER" : "BRONZE";
+        if (namesakeCount != null && namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
