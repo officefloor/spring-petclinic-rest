@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -331,6 +332,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The maximum number of owners that may be created on a single day. A create made once this many
+     * owners already carry today's {@code registrationDate} is rejected, so no more than this many
+     * owners are registered per day.
+     */
+    private static final int DAILY_OWNER_LIMIT = 100;
+
+    /**
+     * Rejects a create once {@link #DAILY_OWNER_LIMIT} or more owners have already been created today,
+     * counted by {@code registrationDate} equal to the current date. The count reflects the state
+     * before the new owner is persisted, so it excludes the owner being created.
+     *
+     * @throws DailyOwnerLimitExceededException if today already holds {@link #DAILY_OWNER_LIMIT} owners
+     */
+    private void rejectDailyOwnerLimit() {
+        LocalDate today = LocalDate.now();
+        long ownersToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (ownersToday >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitExceededException(
+                "The maximum number of owners for today has already been reached");
+        }
+    }
+
+    /**
      * Builds the customer code assigned to an owner on create, formatted
      * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first three letters
      * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
@@ -396,6 +422,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
+        rejectDailyOwnerLimit();
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
