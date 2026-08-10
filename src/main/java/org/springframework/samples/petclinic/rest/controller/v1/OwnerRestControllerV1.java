@@ -199,6 +199,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * Builds the customer code assigned to an owner on create, formatted {@code '<LAST3>-<NNNN>'}
+     * where {@code LAST3} is the upper-cased first three letters of the owner's last name and
+     * {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than the current
+     * number of owners, e.g. {@code 'SMI-0007'}.
+     *
+     * @param lastName the last name of the owner being created
+     * @return the formatted customer code
+     */
+    private String nextCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
@@ -222,6 +237,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
