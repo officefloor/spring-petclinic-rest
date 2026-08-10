@@ -190,4 +190,26 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link InvalidFieldsException} raised when a request carries one or more fields
+     * whose values are present but invalid. Returns a 400 Bad Request whose body's {@code errors}
+     * array lists the name of each offending field.
+     *
+     * @param e The {@link InvalidFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidFieldsException(InvalidFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getInvalidFields());
+        logger.debug("Invalid fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getInvalidFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
