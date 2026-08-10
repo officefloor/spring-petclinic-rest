@@ -1,0 +1,160 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 09a4507e..008469cd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,10 +44,15 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's membership tier: 'SILVER' when the owner has no namesakes
+-     * (namesakeCount is 0) and an email address is present, otherwise 'BRONZE'.
++     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
++     * same householdId) has 3 or more members after this owner was created; otherwise
++     * 'SILVER' when the owner has no namesakes (namesakeCount is 0) and an email address
++     * is present, otherwise 'BRONZE'.
+      */
+     default String membershipTier(Owner owner) {
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            return "GOLD";
++        }
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         return hasEmail && noNamesakes ? "SILVER" : "BRONZE";
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 998732e5..618c4ff6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -131,6 +134,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 23c1d141..f3cdc2ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -197,6 +197,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Flag a bulk sign-up when more than 80 owners have already been created today, i.e.
+         // registered on this (adjusted) business day before this owner is created.
+         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
++        // Record the size of this owner's household after this create: the number of existing
++        // owners sharing the same household (matching last name and address) plus this owner.
++        // Drives the 'GOLD' membership tier (3 or more members).
++        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
+         this.clinicService.saveOwner(owner);
+         // Emit an audit line recording the new owner's id, customer code and registration date.
+         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+@@ -324,6 +328,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Count the existing owners in the same household as the given last name and address
++     * (compared after household-key normalization). Used, together with the owner being
++     * created, to derive the household size that drives the 'GOLD' membership tier.
++     */
++    private int countHouseholdMembers(String lastName, String address) {
++        String normalizedLastName = normalizeHouseholdKey(lastName);
++        String normalizedAddress = normalizeHouseholdKey(address);
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing ->
++                normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
++                    && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress))
++            .count();
++    }
++
+     private String nextCustomerCode(String city, String lastName) {
+         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 48796cb4..398e5ddf 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 469c6dbb..7a3ebcc1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  household_size INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 657881e0..78316860 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INT,
+   bulk_signup_warning BIT,
++  household_size INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index edfde1f7..135db4c5 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INT,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      household_size INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8e61fc88..68f21185 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2136,9 +2136,10 @@ components:
+               readOnly: true
+             membershipTier:
+               title: Membership tier
+-              description: The owner's membership tier. 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address is present,
+-                otherwise 'BRONZE'.
++              description: The owner's membership tier. 'GOLD' when the owner's household
++                (owners sharing the same householdId) has 3 or more members after this
++                create. Otherwise 'SILVER' when the owner has no namesakes (namesakeCount
++                is 0) and an email address is present, otherwise 'BRONZE'.
+               type: string
+               example: 'SILVER'
+               readOnly: true
