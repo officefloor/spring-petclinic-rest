@@ -1,0 +1,216 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a32c007b..97bddadb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -49,6 +49,9 @@ public class Owner extends Person {
+     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+     private String telephone;
+ 
++    @Column(name = "email")
++    private String email;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -76,6 +79,14 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    public String getEmail() {
++        return this.email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0a4554ef..f0ef77a6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Locale;
++import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -53,6 +55,13 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /**
++     * Pragmatic check for a syntactically valid email address: a non-empty local
++     * part, a single '@', and a domain with at least one dot-separated label.
++     */
++    private static final Pattern EMAIL_PATTERN =
++        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -99,6 +108,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Validate & normalize the optional email; reject the create when it is present but invalid.
++        if (!normalizeEmail(ownerFieldsDto)) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         // Normalize the telephone by stripping every non-digit character, then require exactly 10 digits.
+         String telephone = ownerFieldsDto.getTelephone();
+         String normalizedTelephone = telephone == null ? "" : telephone.replaceAll("\\D", "");
+@@ -124,6 +137,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Validate and normalize the optional owner email in place.
++     *
++     * <p>An absent (or blank) email is allowed and is normalized to {@code null}.
++     * When present it must be a syntactically valid address; a valid address is
++     * stored back on the DTO lower-cased. Returns {@code false} when an email is
++     * present but syntactically invalid, so the caller can reject with 400.
++     */
++    private boolean normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
++        String email = ownerFieldsDto.getEmail();
++        if (email == null || email.isBlank()) {
++            ownerFieldsDto.setEmail(null);
++            return true;
++        }
++        String normalized = email.trim().toLowerCase(Locale.ROOT);
++        if (!EMAIL_PATTERN.matcher(normalized).matches()) {
++            return false;
++        }
++        ownerFieldsDto.setEmail(normalized);
++        return true;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+@@ -131,11 +166,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (currentOwner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        if (!normalizeEmail(ownerFieldsDto)) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setEmail(ownerFieldsDto.getEmail());
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index db1adf51..33bc0c80 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+-  telephone VARCHAR(20) NOT NULL
++  telephone VARCHAR(20) NOT NULL,
++  email VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index fa2c1c73..b9699a1b 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ac9440ef..005b04d1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE owners (
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+-  telephone  VARCHAR(20)
++  telephone  VARCHAR(20),
++  email      VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 316c2229..e2082e0b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
++  email VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 56af1a01..c1e01cc4 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       last_name  TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
+-                                      telephone  TEXT
++                                      telephone  TEXT,
++                                      email      TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0648ed3e..4e25e973 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2033,6 +2033,14 @@ components:
+           maxLength: 20
+           pattern: '.*\S.*'
+           example: '6085551023'
++        email:
++          title: Email address
++          description: The email address of the pet owner. When present it must be a
++            syntactically valid address; it is stored and returned lower-cased.
++          type: string
++          format: email
++          maxLength: 255
++          example: 'george.franklin@example.com'
+       required:
+         - firstName
+         - lastName
