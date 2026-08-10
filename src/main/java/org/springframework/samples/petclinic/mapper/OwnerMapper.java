@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
+import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -16,7 +17,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = MembershipLevel.class)
+@Mapper(uses = PetMapper.class, imports = {MembershipLevel.class, FiscalYear.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -28,7 +29,9 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay",
             expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "membershipNumber",
-            expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", FiscalYear.of(owner.getRegistrationDate()) % 100))")
+    @Mapping(target = "fiscalYear",
+            expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "checkDigit",
             expression = "java(CheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "membershipPoints",
