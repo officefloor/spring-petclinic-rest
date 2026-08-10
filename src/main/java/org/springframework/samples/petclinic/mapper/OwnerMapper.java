@@ -41,7 +41,65 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Known disposable email service names, matched as a whole dot-separated label anywhere in an
+     * owner's email domain to detect a domain that is <em>disposable-adjacent</em>. These are the base
+     * labels of the disposable domains rejected outright at creation ({@code mailinator.com},
+     * {@code tempmail.com}, {@code guerrillamail.com}); a domain that carries one of these labels but
+     * is not itself on the exact blocklist (a subdomain such as {@code mail.mailinator.com} or a
+     * different TLD such as {@code tempmail.net}) evaded the blocklist yet is still risky.
+     */
+    java.util.Set<String> DISPOSABLE_ADJACENT_LABELS = java.util.Set.of(
+        "mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Derives an owner's risk flag: {@code true} when any of the following hold, otherwise
+     * {@code false}. The owner is a possible duplicate ({@link Owner#getPossibleDuplicate()}), the
+     * owner's email domain is {@link #disposableAdjacentEmail(Owner) disposable-adjacent}, or the
+     * owner's city was over its soft capacity when created ({@link Owner#getCapacityWarning()}).
+     *
+     * @param owner the owner to derive the risk flag for
+     * @return {@code true} when the owner is a possible duplicate, has a disposable-adjacent email
+     *     domain, or was created over its city's soft capacity; otherwise {@code false}
+     */
+    default Boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || Boolean.TRUE.equals(owner.getCapacityWarning())
+            || disposableAdjacentEmail(owner);
+    }
+
+    /**
+     * Determines whether an owner's email domain is <em>disposable-adjacent</em>: any of the domain's
+     * dot-separated labels (compared case-insensitively) matches a known disposable email service name
+     * ({@link #DISPOSABLE_ADJACENT_LABELS}). This catches domains that evade the exact disposable
+     * blocklist enforced at creation, such as a subdomain ({@code mail.mailinator.com}) or a variant
+     * TLD ({@code tempmail.net}). An owner with no email, or a value without a domain part, is not
+     * disposable-adjacent.
+     *
+     * @param owner the owner whose email domain is examined
+     * @return {@code true} when the email domain carries a known disposable-service label, otherwise
+     *     {@code false}
+     */
+    default boolean disposableAdjacentEmail(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_ADJACENT_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * Derives a link to the owner's own resource, formatted {@code /api/owners/<id>} where
