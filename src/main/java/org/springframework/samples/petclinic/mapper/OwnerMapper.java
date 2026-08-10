@@ -38,8 +38,6 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
@@ -101,19 +99,30 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's region, read from the {@code <REGION>-<HASH8>} customer code assigned on
-     * creation: the segment before the first '-'. Returns 'UNKNOWN' when no customer code has
+     * The owner's region, read from the leading REGION segment of the
+     * {@code <REGION><FY><HASH8><CHK>} memberId assigned on creation: the run of leading
+     * letters before the first (fiscal-year) digit. Returns 'UNKNOWN' when no memberId has
      * been assigned (e.g. legacy owners predating the region-and-hash identity).
      */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
-            }
+        String id = owner.getMemberId();
+        if (id == null) {
+            return "UNKNOWN";
         }
-        return "UNKNOWN";
+        int regionEnd = regionLength(id);
+        return regionEnd == 0 ? "UNKNOWN" : id.substring(0, regionEnd);
+    }
+
+    /**
+     * The length of the leading REGION segment of a memberId: the run of leading letters
+     * before the first digit (which begins the two-digit fiscal-year segment).
+     */
+    private static int regionLength(String memberId) {
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i;
     }
 
     /**
@@ -203,35 +212,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * A single Luhn check digit (0-9) computed over the digits contained in the owner's
-     * customerCode. Returns {@code null} when the customerCode has not been assigned.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner.getCustomerCode() == null) {
-            return null;
-        }
-        String s = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = s.length() - 1; i >= 0; i--) {
-            char c = s.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * The fiscal year, starting on 1 July, that a date falls in, expressed as the last two
      * digits of the calendar year in which the fiscal year ends. Dates on or after 1 July
      * belong to the fiscal year ending the following calendar year (e.g. 2026-08-10 -&gt; 27);
@@ -242,33 +222,22 @@ public interface OwnerMapper {
         return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
-    private static int fiscalYearOf(java.time.LocalDate date) {
-        return fiscalEndYear(date) % 100;
-    }
-
     /**
-     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the two-digit fiscal year
-     * (starting 1 July) of the business-day-adjusted registrationDate (e.g. 'FY27'). Returns
-     * {@code null} when no registrationDate is available.
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the two-digit fiscal-year
+     * (FY) segment of the memberId — the two digits immediately following the leading REGION
+     * segment (e.g. memberId 'NSW271A2B3C4D5' -&gt; 'FY27'). Returns {@code null} when no
+     * memberId has been assigned.
      */
     default String fiscalYear(Owner owner) {
-        if (owner.getRegistrationDate() == null) {
+        String id = owner.getMemberId();
+        if (id == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()));
-    }
-
-    /**
-     * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY
-     * is the two-digit fiscal year (starting 1 July) of the registrationDate
-     * (e.g. 'NSW-1A2B3C4D-M27').
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+        int regionEnd = regionLength(id);
+        if (regionEnd + 2 > id.length()) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            fiscalYearOf(owner.getRegistrationDate()));
+        return "FY" + id.substring(regionEnd, regionEnd + 2);
     }
 
     /**

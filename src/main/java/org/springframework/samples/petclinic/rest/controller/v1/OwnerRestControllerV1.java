@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -83,12 +84,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final AtomicLong AUDIT_SEQ = new AtomicLong();
 
     /**
-     * Immutable structured audit event emitted once per owner create. The {@code customerCode}
-     * field carries the owner's <em>current primary identifier</em>: the customerCode today, and
-     * whatever replaces it later (e.g. a unified memberId) once {@link #primaryIdentifier(Owner)}
-     * is updated, without any other change to this event's shape.
+     * Immutable structured audit event emitted once per owner create. The {@code memberId}
+     * field carries the owner's <em>current primary identifier</em> as returned by
+     * {@link #primaryIdentifier(Owner)} (the unified memberId).
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
             Integer membershipLevel, String event) {
     }
 
@@ -269,10 +269,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = candidate;
         owner.setRegistrationDate(registrationDate);
-        // Assign the customer code as '<REGION>-<HASH8>': the region derived from the owner's
-        // postcode (falling back to the city, then 'UNKNOWN') and the first 8 upper-case hex
-        // characters of the SHA-256 of the normalized telephone concatenated with the last name.
-        owner.setCustomerCode(customerCode(owner));
+        // Assign the unified memberId as '<REGION><FY><HASH8><CHK>': the region derived from the
+        // owner's postcode (falling back to the city, then 'UNKNOWN'), the two-digit fiscal year of
+        // the registration date, the first 8 upper-case hex characters of the SHA-256 of the
+        // normalized telephone concatenated with the last name, and a single Luhn check digit over
+        // the digits of '<REGION><FY><HASH8>'.
+        owner.setMemberId(memberId(owner));
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) at the moment before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -307,13 +309,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
         }
         this.clinicService.saveOwner(owner);
-        // Emit an audit line recording the new owner's id, customer code, registration date,
-        // membership level and membership number.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        // Emit an audit line recording the new owner's id, memberId, registration date and
+        // membership level.
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         // Emit the immutable structured OWNER_CREATED event carrying a monotonically increasing
-        // sequence and the owner's current primary identifier (the customerCode today).
+        // sequence and the owner's current primary identifier (the memberId).
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
             primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
@@ -588,42 +590,81 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the owner's customer code, formatted {@code '<REGION>-<HASH8>'}.
+     * The owner's current primary identifier, as carried by structured audit events: the
+     * unified memberId.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getMemberId();
+    }
+
+    /**
+     * Build the owner's unified memberId, formatted {@code '<REGION><FY><HASH8><CHK>'}.
      *
      * <p>{@code REGION} is the region derived from the owner's postcode (see
-     * {@link #deriveRegion}). {@code HASH8} is the first 8 upper-case hex characters of the
-     * SHA-256 of the normalized telephone concatenated with the last name
-     * (e.g. {@code 'NSW-1A2B3C4D'}).
+     * {@link #deriveRegion}). {@code FY} is the two-digit fiscal year (starting 1 July) of the
+     * business-day-adjusted registration date. {@code HASH8} is the first 8 upper-case hex
+     * characters of the SHA-256 of the normalized telephone concatenated with the last name.
+     * {@code CHK} is a single Luhn check digit computed over the digits of
+     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW271A2B3C4D5'}).
      *
-     * <p>When the computed code collides with an existing owner's customer code, it is
+     * <p>When the computed memberId collides with an existing owner's memberId, it is
      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more
      * that makes it unique.
      */
-    /**
-     * The owner's current primary identifier, as carried by structured audit events. Today this
-     * is the customerCode; when the customerCode is later unified into a memberId, updating this
-     * one method makes every emitted event carry the memberId instead.
-     */
-    private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
-    }
-
-    private String customerCode(Owner owner) {
+    private String memberId(Owner owner) {
         String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String fy = String.format("%02d", fiscalYearTwoDigits(owner.getRegistrationDate()));
         String hash8 = sha256HexUpper(owner.getTelephone() + owner.getLastName(), 8);
-        String base = region + "-" + hash8;
+        String base = region + fy + hash8;
+        String memberId = base + luhn(base);
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(Collectors.toSet());
-        if (!existing.contains(base)) {
-            return base;
+        if (!existing.contains(memberId)) {
+            return memberId;
         }
         int n = 2;
-        while (existing.contains(base + "-" + n)) {
+        while (existing.contains(memberId + "-" + n)) {
             n++;
         }
-        return base + "-" + n;
+        return memberId + "-" + n;
+    }
+
+    /**
+     * The two-digit fiscal year (starting 1 July) of the given date: the last two digits of the
+     * calendar year in which the fiscal year ends. Dates on or after 1 July belong to the fiscal
+     * year ending the following calendar year (e.g. 2026-08-10 -&gt; 27); earlier dates belong to
+     * the fiscal year ending in the same calendar year (e.g. 2026-03-01 -&gt; 26).
+     */
+    private static int fiscalYearTwoDigits(LocalDate date) {
+        int endYear = date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+        return endYear % 100;
+    }
+
+    /**
+     * A single Luhn check digit (0-9) computed over the digit characters contained in
+     * {@code value}; non-digit characters are ignored.
+     */
+    private static int luhn(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -666,7 +707,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Count the existing owners located in the given city, compared case-insensitively.
-     * Used to derive the per-city 4-digit sequence in the customer code.
+     * Used to enforce the per-city capacity limit and capacity warning.
      */
     private int countOwnersInCity(String city) {
         return (int) this.clinicService.findAllOwners().stream()
