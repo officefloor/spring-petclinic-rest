@@ -29,6 +29,8 @@ public interface OwnerMapper {
             expression = "java(MembershipLevel.of(owner))")
     @Mapping(target = "locality",
             expression = "java(Locality.of(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+            expression = "java(ContactPreference.of(owner.getEmail()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
