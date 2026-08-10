@@ -50,7 +50,7 @@ public interface OwnerMapper {
     /**
      * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
      * {@code <customerCode>} is the owner's customer code and {@code YY} is the last two digits
-     * (zero-padded) of the owner's registration date year (e.g. {@code SMI-0007-M26}).
+     * (zero-padded) of the owner's registration date year (e.g. {@code LON-SMI-0007-M26}).
      *
      * @param owner the owner to derive the membership number for
      * @return the formatted membership number

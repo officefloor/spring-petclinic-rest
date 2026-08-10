@@ -260,15 +260,20 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build the owner's customer code in the form '<LAST3>-<NNNN>' where LAST3 is the
-     * upper-cased first three letters of the owner's last name and NNNN is a global
-     * 4-digit zero-padded sequence equal to one more than the current number of owners.
+     * Build the owner's customer code in the form '<CITY3>-<LAST3>-<NNNN>' where CITY3 is
+     * the upper-cased first three letters of the owner's city, LAST3 is the upper-cased
+     * first three letters of the owner's last name and NNNN is a per-city 4-digit
+     * zero-padded sequence equal to one more than the number of owners already in that city.
      */
     private String generateCustomerCode(Owner owner) {
+        String city = owner.getCity();
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String lastName = owner.getLastName();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = (int) ownerRepository.findAll().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     @Override
