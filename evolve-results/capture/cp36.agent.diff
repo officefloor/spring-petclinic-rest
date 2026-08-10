@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e004b426..e0ab5bbf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -153,18 +153,20 @@ public interface OwnerMapper {
+ 
+     /**
+      * A stable identifier for the owner's household, derived deterministically from the
+-     * normalized last name and address (trimmed, lower-cased, whitespace collapsed).
+-     * Every owner sharing a household therefore receives the same identifier: the first
+-     * eight upper-case hex characters of the SHA-256 of '&lt;lastName&gt;|&lt;address&gt;'.
++     * normalized last name and the postcode. Every owner sharing the same last name
++     * (trimmed, lower-cased, whitespace collapsed) and postcode therefore receives the
++     * same identifier: the first twelve upper-case hex characters of the SHA-256 of
++     * '&lt;normalizedLastName&gt;|&lt;postcode&gt;'. A {@code null} postcode contributes
++     * the empty string.
+      */
+     default String householdId(Owner owner) {
+-        String key = normalizeHouseholdKey(owner.getLastName()) + "|"
+-            + normalizeHouseholdKey(owner.getAddress());
++        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
++        String key = normalizeHouseholdKey(owner.getLastName()) + "|" + postcode;
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                 .digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder sb = new StringBuilder();
+-            for (int i = 0; i < 4; i++) {
++            for (int i = 0; i < 6; i++) {
+                 sb.append(String.format("%02X", digest[i]));
+             }
+             return sb.toString();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d177fb23..4a567b92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -187,6 +187,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (identityInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Household duplicate detection keyed on the deterministic householdId, derived from the
++        // normalized last name and postcode (see OwnerMapper#householdId). Owners sharing a last
++        // name and postcode share the same household. A second owner in an existing household is
++        // rejected as a household duplicate (409) unless the request declares 'sharesHousehold',
++        // in which case it is created as a declared household member — 'sharesHousehold' only
++        // bypasses this block; the household link itself now follows from the computed householdId.
++        String householdId = ownerMapper.householdId(candidate);
++        boolean householdExists = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        if (householdExists && !sharesHousehold) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
++        boolean declaredMember = householdExists && sharesHousehold;
+         // Determine the effective registration date — the value supplied on the request, or the
+         // server's current date when none was supplied — and roll it forward to the next business
+         // day: a Saturday or Sunday moves to the following Monday. Everything derived from the
+@@ -221,16 +235,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // registered on this (adjusted) business day before this owner is created.
+         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
+         // Record the size of this owner's household after this create: the number of existing
+-        // owners sharing the same household (matching last name and address) plus this owner.
+-        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
++        // owners sharing the same household (i.e. the same computed householdId) plus this owner.
++        owner.setHouseholdSize(countHouseholdMembers(owner) + 1);
+         // Flag a possible (soft) duplicate: this owner is not a hard identity duplicate, but it
+         // shares an existing owner's last name (case-insensitively) and postcode while carrying a
+         // different telephone. When such a match exists, record it as 'possibleDuplicate' with
+         // 'possibleDuplicateOf' set to the matching owner's id; otherwise it is not a possible
+-        // duplicate.
+-        Owner softMatch = findPossibleDuplicate(owner);
+-        owner.setPossibleDuplicate(softMatch != null);
+-        owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
++        // duplicate. A declared household member is an acknowledged member, not a suspected
++        // duplicate, so it is never flagged.
++        if (declaredMember) {
++            owner.setPossibleDuplicate(false);
++            owner.setPossibleDuplicateOf(null);
++        }
++        else {
++            Owner softMatch = findPossibleDuplicate(owner);
++            owner.setPossibleDuplicate(softMatch != null);
++            owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
++        }
+         this.clinicService.saveOwner(owner);
+         // Emit an audit line recording the new owner's id, customer code, registration date
+         // and membership level.
+@@ -334,18 +355,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return telephone + "|" + email;
+     }
+ 
+-    /**
+-     * Normalize an owner household field (last name or address) for duplicate detection:
+-     * trimmed, lower-cased and with all runs of whitespace collapsed to a single space.
+-     * A {@code null} value normalizes to the empty string.
+-     */
+-    private static String normalizeHouseholdKey(String value) {
+-        if (value == null) {
+-            return "";
+-        }
+-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+-    }
+-
+     /**
+      * Normalize a telephone number to E.164 form.
+      *
+@@ -411,17 +420,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Count the existing owners in the same household as the given last name and address
+-     * (compared after household-key normalization). Used, together with the owner being
+-     * created, to derive the household size recorded on the owner.
++     * Count the existing owners in the same household as the given owner, i.e. those sharing its
++     * computed householdId (derived from the normalized last name and postcode). Used, together
++     * with the owner being created, to derive the household size recorded on the owner.
+      */
+-    private int countHouseholdMembers(String lastName, String address) {
+-        String normalizedLastName = normalizeHouseholdKey(lastName);
+-        String normalizedAddress = normalizeHouseholdKey(address);
++    private int countHouseholdMembers(Owner owner) {
++        String householdId = ownerMapper.householdId(owner);
+         return (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing ->
+-                normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
+-                    && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress))
++            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
+             .count();
+     }
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 558253ee..5437df21 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2069,8 +2069,10 @@ components:
+         sharesHousehold:
+           title: Shares household
+           description: When true, allow creating this owner even though another owner
+-            already has the same last name and address (i.e. they share a household).
+-            Write-only; used only when creating an owner.
++            already shares its household (same last name and postcode). This only
++            bypasses the household-duplicate block; the owner is created as a declared
++            household member and is not flagged as a possible duplicate. Write-only;
++            used only when creating an owner.
+           type: boolean
+           writeOnly: true
+           example: true
+@@ -2138,11 +2140,12 @@ components:
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by all owners that belong to the
+-                same household (same last name and address). Owners created with
+-                'sharesHousehold' true share this identifier with the existing
+-                household members.
++                same household, derived deterministically as the first 12 hex
++                characters of the SHA-256 of the normalized last name and postcode
++                ('<normalizedLastName>|<postcode>'). Owners with the same last name and
++                postcode share this identifier automatically.
+               type: string
+-              example: 'A1B2C3D4'
++              example: 'A1B2C3D4E5F6'
+               readOnly: true
+             identityKey:
+               title: Identity key
