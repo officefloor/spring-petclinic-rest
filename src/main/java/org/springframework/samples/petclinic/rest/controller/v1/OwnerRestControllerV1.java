@@ -74,6 +74,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$");
 
     /**
+     * Disposable email domains that are rejected: an owner email whose domain is one of
+     * these is treated as invalid so the create/update is rejected with 400. Compared
+     * case-insensitively against the normalized (lower-cased) email domain.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Common street-type abbreviations expanded during address normalization,
      * keyed by their upper-cased form.
      */
@@ -280,6 +288,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalized = email.trim().toLowerCase(Locale.ROOT);
         if (!EMAIL_PATTERN.matcher(normalized).matches()) {
+            return false;
+        }
+        // Reject addresses whose domain is on the disposable-domain blocklist.
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
             return false;
         }
         ownerFieldsDto.setEmail(normalized);
