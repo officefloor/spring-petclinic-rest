@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 008469cd..963e5eed 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,7 +30,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -44,18 +44,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
+-     * same householdId) has 3 or more members after this owner was created; otherwise
+-     * 'SILVER' when the owner has no namesakes (namesakeCount is 0) and an email address
+-     * is present, otherwise 'BRONZE'.
++     * The owner's numeric membership level, assigned on creation. It starts at 1, gains
++     * 1 when an email address is present, and gains 1 when the owner has no namesakes
++     * (namesakeCount is 0), capped at 3. Level 4 is reserved for tenure.
+      */
+-    default String membershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return "GOLD";
+-        }
++    default Integer membershipLevel(Owner owner) {
++        int level = 1;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        if (hasEmail) {
++            level++;
++        }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        return hasEmail && noNamesakes ? "SILVER" : "BRONZE";
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f3cdc2ab..5865cf2a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -199,12 +199,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
+         // Record the size of this owner's household after this create: the number of existing
+         // owners sharing the same household (matching last name and address) plus this owner.
+-        // Drives the 'GOLD' membership tier (3 or more members).
+         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
+         this.clinicService.saveOwner(owner);
+-        // Emit an audit line recording the new owner's id, customer code and registration date.
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        // Emit an audit line recording the new owner's id, customer code, registration date
++        // and membership level.
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.membershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -331,7 +332,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Count the existing owners in the same household as the given last name and address
+      * (compared after household-key normalization). Used, together with the owner being
+-     * created, to derive the household size that drives the 'GOLD' membership tier.
++     * created, to derive the household size recorded on the owner.
+      */
+     private int countHouseholdMembers(String lastName, String address) {
+         String normalizedLastName = normalizeHouseholdKey(lastName);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 68f21185..59dac872 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,14 +2134,17 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier. 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members after this
+-                create. Otherwise 'SILVER' when the owner has no namesakes (namesakeCount
+-                is 0) and an email address is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's numeric membership level, assigned on creation.
++                It starts at 1, gains 1 when an email address is present, and gains 1
++                when the owner has no namesakes (namesakeCount is 0), capped at 3.
++                Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 4
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
