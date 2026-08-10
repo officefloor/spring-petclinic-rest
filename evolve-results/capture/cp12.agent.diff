@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..70603921
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,53 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Normalizes a street address into a single canonical form used both for storage and for every
++ * address comparison (household duplicate detection and the shared household id):
++ * <ul>
++ *   <li>leading and trailing whitespace is trimmed and internal whitespace runs are collapsed to a
++ *       single space;</li>
++ *   <li>the text is upper-cased;</li>
++ *   <li>common trailing-type abbreviations are expanded as whole words: {@code ST -> STREET},
++ *       {@code RD -> ROAD}, {@code AVE -> AVENUE}.</li>
++ * </ul>
++ * So {@code "  12  main  st "} becomes {@code "12 MAIN STREET"}. Returns {@code ""} for a
++ * {@code null} or whitespace-only input, so callers can treat a blank-after-normalization address
++ * as absent.
++ */
++final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    static String normalize(String raw) {
++        if (raw == null) {
++            return "";
++        }
++        String collapsed = raw.trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(expand(tokens[i]));
++        }
++        return sb.toString();
++    }
++
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
+index 88e4cd06..2dc02f5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
+@@ -27,13 +27,13 @@ public class AssignHouseholdId {
+             return;
+         }
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
++        String address = AddressNormalizer.normalize(owner.getAddress());
+         String householdId = deriveHouseholdId(lastName, address);
+         owner.setHouseholdId(householdId);
+         // Back-fill the shared id onto the existing household member(s) so both sides match.
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
+                     && !householdId.equals(existing.getHouseholdId())) {
+                 existing.setHouseholdId(householdId);
+                 ownerRepository.save(existing);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+index f514441b..efc85827 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+@@ -21,10 +21,10 @@ public class CheckOwnerHouseholdUnique {
+             return;
+         }
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 throw new OwnerHouseholdConflictException("An owner with last name "
+                         + request.getLastName() + " already lives at " + request.getAddress());
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index e6521aab..2655a8c0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
+ /**
+  * First step of {@code POST /api/owners}: rejects a request that is missing or blank in any of
+  * firstName, lastName, address, city or telephone. Throwing lists every offending field, so the
+- * client sees them all at once. It also normalizes the telephone into E.164 form (keeping a leading
++ * client sees them all at once. The address is normalized (trim/collapse whitespace, upper-case, and
++ * expand ST/RD/AVE) and written back, and is treated as absent when blank after normalization. It
++ * also normalizes the telephone into E.164 form (keeping a leading
+  * '+' and country code when present, otherwise assuming '+61' and dropping a single leading '0'),
+  * rejecting with 400 when it cannot form a valid E.164 number; the normalized value is
+  * written back onto the body. When an optional {@code email} is present it must be a syntactically
+@@ -29,12 +31,19 @@ public class ValidateOwnerFields {
+         List<String> errors = new ArrayList<>();
+         checkPresent("firstName", request.getFirstName(), errors);
+         checkPresent("lastName", request.getLastName(), errors);
+-        checkPresent("address", request.getAddress(), errors);
++        // Reject an address that is blank once normalized (trim/collapse/upper-case), so
++        // whitespace-only input fails the required-field check like any other missing field.
++        String address = AddressNormalizer.normalize(request.getAddress());
++        if (address.isEmpty()) {
++            errors.add("address");
++        }
+         checkPresent("city", request.getCity(), errors);
+         checkPresent("telephone", request.getTelephone(), errors);
+         if (!errors.isEmpty()) {
+             throw new OwnerFieldsInvalidException(errors);
+         }
++        // Store and return the normalized address; later steps read it back via @Val.
++        request.setAddress(address);
+         String telephone = E164Telephone.normalize(request.getTelephone());
+         if (telephone == null) {
+             throw new OwnerFieldsInvalidException(List.of("telephone"));
