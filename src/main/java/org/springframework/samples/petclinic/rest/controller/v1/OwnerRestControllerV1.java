@@ -708,8 +708,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                                      Integer membershipLevel) {
 
+        /**
+         * The schema version of the structured {@code OWNER_CREATED} audit event. Version {@code 2}
+         * accompanies the version-2 owner identity: the {@code memberId} carried here is the version-2
+         * member id, and the event is stamped with {@code schemaVersion} 2.
+         */
+        private static final int SCHEMA_VERSION = 2;
+
         String toJson() {
             return "{\"seq\":" + seq
+                + ",\"schemaVersion\":" + SCHEMA_VERSION
                 + ",\"ownerId\":" + ownerId
                 + ",\"memberId\":" + jsonString(memberId)
                 + ",\"membershipLevel\":" + membershipLevel

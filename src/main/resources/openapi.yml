@@ -2124,6 +2124,59 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 identity: the identifiers derived for the owner,
+        each rederived under version 2 with a fixed 'V2' version tag so that no
+        value produced under version 1 recurs.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>'
+            where REGION is the version-2 region code (the region derived from the
+            owner's postcode, falling back to the city, mixed with the fixed 'V2'
+            version tag), FY is the 2-digit fiscal year of the business-day-adjusted
+            registrationDate (see 'fiscalYear'), HASH8 is the first 8 upper-case
+            hex characters of the SHA-256 digest over the owner's normalized
+            telephone concatenated with its last name, and CHK is a single Luhn
+            check digit computed over the digits of '<REGION><FY><HASH8>'. Unifies
+            the former customerCode and membershipNumber into one identifier.
+          type: string
+          example: 'V2NSW271A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable identifier shared by owners in the same household, derived
+            from the owner's last name and postcode under version 2 (mixing in the
+            fixed 'V2' version tag). Owners with the same last name and postcode
+            (compared case-insensitively with collapsed whitespace) share the same
+            value, so members created via the 'sharesHousehold' flag receive the
+            same household ID.
+          type: string
+          example: 'A1B2C3D4E5F6'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived identity key: the full lower-case hex SHA-256
+            digest over the owner's normalized telephone, email and surname soundex,
+            rederived under version 2 (mixing in the fixed 'V2' version tag). All
+            duplicate detection is consolidated into this single key: creating an
+            owner is rejected with 409 Conflict only when its whole identity key
+            equals an existing owner's. Because the telephone is part of the key,
+            two members of the same household with different telephones have
+            different identity keys and are both allowed.
+          type: string
+          example: '3f2a9c1b4d6e0123456789abcdef0123456789abcdef0123456789abcdef0123'
+          readOnly: true
+      required:
+        - memberId
+        - householdId
+        - identityKey
     Owner:
       title: Owner
       description: A pet owner.
@@ -2178,21 +2231,18 @@ components:
               type: string
               example: '+61 412 345 678'
               readOnly: true
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>'
-                where REGION is the region code derived from the owner's postcode
-                (falling back to the city), FY is the 2-digit fiscal year of the
-                business-day-adjusted registrationDate (see 'fiscalYear'), HASH8 is
-                the first 8 upper-case hex characters of the SHA-256 digest over the
-                owner's normalized telephone concatenated with its last name, and CHK
-                is a single Luhn check digit computed over the digits of
-                '<REGION><FY><HASH8>'. Unifies the former customerCode and
-                membershipNumber into one identifier.
-              type: string
-              example: 'NSW271A2B3C4D5'
+                The version of the owner identity contract. Fixed at 2 for the
+                version-2 identity, whose identifiers are grouped under the nested
+                'identity' object and rederived with a fixed 'V2' version tag.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             fiscalYear:
               title: Fiscal year
               description: >-
@@ -2204,30 +2254,6 @@ components:
                 fiscal year (e.g. 2026-08-11 -> 'FY27', 2026-01-05 -> 'FY26').
               type: string
               example: 'FY27'
-              readOnly: true
-            householdId:
-              title: Household ID
-              description: >-
-                A stable identifier shared by owners in the same household, derived
-                from the owner's last name and address. Owners with the same last
-                name and address (compared case-insensitively with collapsed
-                whitespace) share the same value, so members created via the
-                'sharesHousehold' flag receive the same household ID.
-              type: string
-              example: 'HH-3F2A9C1B4D6E'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived identity key, formatted
-                '<normalizedTelephone>|<email or empty>|<householdId>'. All
-                duplicate detection is consolidated into this single key: creating
-                an owner is rejected with 409 Conflict only when its whole identity
-                key equals an existing owner's. Because the telephone is part of the
-                key, two members of the same household with different telephones have
-                different identity keys and are both allowed.
-              type: string
-              example: '+61412345678||HH-3F2A9C1B4D6E'
               readOnly: true
             namesakeCount:
               title: Namesake count

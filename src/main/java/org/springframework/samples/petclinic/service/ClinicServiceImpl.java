@@ -304,9 +304,27 @@ public class ClinicServiceImpl implements ClinicService {
      * derived entirely from the region, the fiscal year and the telephone/last-name hash.
      */
     private String generateMemberId(Owner owner) {
-        String core = regionFor(owner) + fiscalYear2(owner) + hash8(owner);
+        String core = versionedRegion(owner) + fiscalYear2(owner) + hash8(owner);
         String base = core + luhnCheckDigit(core);
         return deduplicateMemberId(base);
+    }
+
+    /**
+     * The fixed version tag mixed into the region code used inside the version-2 member id, so the
+     * member id (and every other version-2 identifier) differs from the value the same owner would
+     * have produced under version 1 and no version-1 value recurs. The tag is confined to the
+     * identifier: the plain {@link #regionFor(Owner) region} still feeds the user-facing locality,
+     * timezone and owner segment.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * Derive the version-2 region code used inside the member id: the plain
+     * {@link #regionFor(Owner) region} prefixed with the fixed {@link #IDENTITY_VERSION_TAG}
+     * (for example {@code NSW -> V2NSW}).
+     */
+    private String versionedRegion(Owner owner) {
+        return IDENTITY_VERSION_TAG + regionFor(owner);
     }
 
     /**

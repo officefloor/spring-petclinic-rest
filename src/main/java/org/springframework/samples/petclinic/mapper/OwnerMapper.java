@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.util.Soundex;
 
@@ -30,8 +31,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "householdId", expression = "java(householdId(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -43,6 +44,44 @@ public interface OwnerMapper {
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The fixed version tag mixed into every version-2 owner identifier (the memberId, householdId and
+     * identityKey). Because it participates in each identifier's derivation, every value produced under
+     * version 2 differs from the value the same owner would have produced under version 1, and no
+     * version-1 value recurs. The tag is deliberately confined to the identifiers: it never appears in
+     * the user-facing {@code locality} or {@code timezone}, nor in the region the owner segment derives
+     * from, all of which continue to use the plain region code.
+     */
+    String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The owner identity contract version carried by the top-level {@code apiVersion} field: {@code 2},
+     * signalling the version-2 identity in which the identifiers are grouped under {@code identity} and
+     * rederived with the {@link #IDENTITY_VERSION_TAG}.
+     *
+     * @return the fixed API version, {@code 2}
+     */
+    default Integer apiVersion() {
+        return 2;
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers - the {@code memberId} (assigned at creation and stored
+     * on the owner), the {@link #householdId(Owner) householdId} and the {@link #identityKey(Owner)
+     * identityKey} - under the nested {@code identity} object of the owner response. Each identifier is
+     * rederived with the fixed {@link #IDENTITY_VERSION_TAG}.
+     *
+     * @param owner the owner to build the identity object for
+     * @return the populated identity object
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(householdId(owner));
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
 
     /**
      * Known disposable email service names, matched as a whole dot-separated label anywhere in an
@@ -206,25 +245,71 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality from the unified member id: the leading {@code <REGION>} segment
-     * of the owner's {@code memberId}, i.e. the run of letters before the 2-digit fiscal year that
-     * follows it. Because the member id's region is itself derived from the postcode (falling back
-     * to the city), the locality moves with the identity rather than being computed independently.
-     * The result is {@code "UNKNOWN"} when no member id is present.
-     *
-     * @param owner the owner to derive the locality for
-     * @return the region segment of the member id, or {@code "UNKNOWN"}
+     * Fixed region-to-inclusive-4-digit-postcode-range table: {@code NSW 2000-2099}, {@code VIC
+     * 3000-3099}, {@code QLD 4000-4099}. Mirrors the canonical ranges used to derive an owner's region
+     * from its postcode.
      */
-    default String locality(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId == null || memberId.isEmpty()) {
+    java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /**
+     * Derives an owner's plain region code, preferring the postcode over the city. The postcode is
+     * looked up against the canonical region ranges first ({@code NSW 2000-2099}, {@code VIC
+     * 3000-3099}, {@code QLD 4000-4099}); only when the postcode is absent or in no known range does
+     * the derivation fall back to the fixed city-to-region table ({@code Sydney->NSW},
+     * {@code Melbourne->VIC}, {@code Brisbane->QLD}). The result is {@code "UNKNOWN"} when neither the
+     * postcode nor the city resolves to a region. This is the plain region used for the user-facing
+     * {@code locality}, {@code timezone} and the owner segment - it never carries the
+     * {@link #IDENTITY_VERSION_TAG}, which is confined to the identifiers.
+     *
+     * @param owner the owner to derive the region for
+     * @return the region code {@code NSW}, {@code VIC}, {@code QLD} or {@code UNKNOWN}
+     */
+    default String region(Owner owner) {
+        String fromPostcode = regionFromPostcode(owner.getPostcode());
+        if (fromPostcode != null) {
+            return fromPostcode;
+        }
+        return regionFromCity(owner.getCity());
+    }
+
+    private String regionFromPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private String regionFromCity(String city) {
+        if (city == null) {
             return "UNKNOWN";
         }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? "UNKNOWN" : memberId.substring(0, i);
+        return switch (city) {
+            case "Sydney" -> "NSW";
+            case "Melbourne" -> "VIC";
+            case "Brisbane" -> "QLD";
+            default -> "UNKNOWN";
+        };
+    }
+
+    /**
+     * Derives an owner's locality: the plain {@link #region(Owner) region code} derived from the
+     * owner's postcode (falling back to the city). The locality is <em>not</em> an identifier, so it
+     * remains the plain region (for example {@code "NSW"}) and never carries the version-2
+     * {@link #IDENTITY_VERSION_TAG}. The result is {@code "UNKNOWN"} when no region resolves.
+     *
+     * @param owner the owner to derive the locality for
+     * @return the plain region code, or {@code "UNKNOWN"}
+     */
+    default String locality(Owner owner) {
+        return region(owner);
     }
 
     /**
@@ -414,11 +499,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's household identifier: the first 12 hex characters of the SHA-256 digest
-     * over {@code <normalizedLastName>|<postcode>}, where the last name is normalized
-     * case-insensitively with collapsed whitespace and a missing postcode contributes the empty
-     * string. Because it is derived deterministically from the last name and postcode, every owner
-     * that shares those two fields receives the same value - including owners created via the
+     * Derives an owner's version-2 household identifier: the first 12 hex characters of the SHA-256
+     * digest over {@code V2|<normalizedLastName>|<postcode>}, where the leading {@code V2} is the
+     * fixed {@link #IDENTITY_VERSION_TAG}, the last name is normalized case-insensitively with
+     * collapsed whitespace and a missing postcode contributes the empty string. Mixing in the version
+     * tag rederives the identifier under version 2 so it never reproduces a version-1 value. Because
+     * it is otherwise derived deterministically from the last name and postcode, every owner that
+     * shares those two fields receives the same value - including owners created via the
      * {@code sharesHousehold} flag, which by definition have a matching last name and postcode.
      *
      * @param owner the owner to derive the household identifier for
@@ -426,7 +513,8 @@ public interface OwnerMapper {
      */
     default String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalizeHouseholdField(owner.getLastName()) + '|' + postcode;
+        String key = IDENTITY_VERSION_TAG + '|' + normalizeHouseholdField(owner.getLastName())
+            + '|' + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
@@ -442,13 +530,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's identity key, into which all duplicate detection is consolidated. The key
-     * is the full lower-case hex SHA-256 digest over
-     * {@code <normalizedTelephone>|<email or empty>|<soundex(lastName)>}: the owner's (already E.164
-     * normalized) telephone, its (already lower-cased) email or the empty string when none is held,
-     * and the {@link Soundex Soundex} code of its last name. Two owners are duplicates only when
-     * their whole identity keys are equal; because the telephone is part of the key, owners sharing a
-     * surname (same soundex) but holding different telephones have different keys.
+     * Derives an owner's version-2 identity key, into which all duplicate detection is consolidated.
+     * The key is the full lower-case hex SHA-256 digest over
+     * {@code V2|<normalizedTelephone>|<email or empty>|<soundex(lastName)>}: the leading {@code V2}
+     * fixed {@link #IDENTITY_VERSION_TAG}, the owner's (already E.164 normalized) telephone, its
+     * (already lower-cased) email or the empty string when none is held, and the {@link Soundex
+     * Soundex} code of its last name. Mixing in the version tag rederives the key under version 2 so
+     * it never reproduces a version-1 value. Two owners are duplicates only when their whole identity
+     * keys are equal; because the telephone is part of the key, owners sharing a surname (same
+     * soundex) but holding different telephones have different keys.
      *
      * @param owner the owner to derive the identity key for
      * @return the 64-character lower-case hex identity key
@@ -456,7 +546,8 @@ public interface OwnerMapper {
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String key = telephone + '|' + email + '|' + Soundex.encode(owner.getLastName());
+        String key = IDENTITY_VERSION_TAG + '|' + telephone + '|' + email
+            + '|' + Soundex.encode(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
