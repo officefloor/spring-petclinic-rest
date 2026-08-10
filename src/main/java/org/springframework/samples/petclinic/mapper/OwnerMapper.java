@@ -38,7 +38,7 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the registrationDate year (e.g. {@code SMI-0007-M26}). Returns {@code null}
+     * last two digits of the registrationDate year (e.g. {@code LON-SMI-0007-M26}). Returns {@code null}
      * when either source field is absent, so owners without a customer code or registration date
      * (e.g. seed data) simply have no membership number.
      */
