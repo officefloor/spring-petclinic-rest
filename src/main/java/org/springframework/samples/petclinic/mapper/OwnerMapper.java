@@ -27,7 +27,27 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code ageBand} from its birthDate relative to the registrationDate:
+     * {@code MINOR} when under 18, {@code ADULT} when 18 to 64, and {@code SENIOR} when 65 or older.
+     * Returns {@code null} when the owner has no birthDate or no registrationDate.
+     */
+    default OwnerDto.@Nullable AgeBandEnum ageBand(@Nullable Owner owner) {
+        if (owner == null || owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int age = java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Derives the owner's duplicate-detection {@code identityKey}, formatted as
