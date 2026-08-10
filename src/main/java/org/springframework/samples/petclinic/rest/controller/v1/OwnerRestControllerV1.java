@@ -77,6 +77,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger for owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger for owner welcome notifications. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Serializes {@link OwnerCreatedEvent} instances to their JSON audit representation. */
     private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
 
@@ -319,6 +322,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
             primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+        // Enqueue a welcome notification for the newly created owner, carrying its id and memberId.
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         // Remember this create against its idempotency key so a later repeat returns the same
         // owner instead of creating a duplicate.
         if (idempotencyKey != null) {
