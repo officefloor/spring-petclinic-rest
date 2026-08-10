@@ -189,6 +189,16 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current <em>primary identifier</em> — the single value that identifies the owner in
+     * audit events. Today this is the {@link #getCustomerCode() customerCode}; a later checkpoint
+     * unifies the customerCode into a {@code memberId}, and repointing this one accessor moves every
+     * emitted event onto the new identifier without touching the event or audit code.
+     */
+    public String getPrimaryIdentifier() {
+        return getCustomerCode();
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
