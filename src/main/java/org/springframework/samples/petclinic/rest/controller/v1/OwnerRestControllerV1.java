@@ -105,6 +105,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        // Reject the create if any existing owner already uses this normalized telephone.
+        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (telephoneInUse) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
