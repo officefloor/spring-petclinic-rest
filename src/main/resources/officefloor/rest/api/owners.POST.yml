@@ -1,6 +1,15 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: when the request repeats an already-seen 'Idempotency-Key', respond with the
+# originally created owner (200) and short-circuit. Otherwise take the 'create' flow to build a new
+# owner. First step so a repeat never runs validation/duplicate checks.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
+  govern: [ transaction ]
+  outputs:
+    create: validate
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   govern: [ transaction ]
@@ -64,6 +73,13 @@ assignBulkSignupWarning:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Record the request's 'Idempotency-Key' (if any) against the new owner's id, so a later repeat of
+# the key returns this owner rather than creating a duplicate. After save, so the id exists.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
   govern: [ transaction ]
   next: audit
 
