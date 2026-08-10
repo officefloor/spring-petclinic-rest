@@ -164,14 +164,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizePostcode(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        // Normalize the required address (trim/collapse whitespace, upper-case, expand
-        // abbreviations) and store the normalized form back on the DTO so it is what gets
-        // persisted and compared. Reject the create when the address is blank once normalized.
-        String canonicalAddress = normalizeAddress(ownerFieldsDto.getAddress());
-        if (canonicalAddress.isBlank()) {
+        // Normalize the supplied address — the structured 'addressLine1'/'addressLine2' when
+        // present, otherwise the flat 'address' — storing the normalized form (and the composed
+        // 'address') back on the DTO so it is what gets persisted and compared. Reject the create
+        // when no address is supplied in either form (see normalizeAddresses).
+        if (!normalizeAddresses(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        ownerFieldsDto.setAddress(canonicalAddress);
         // Reject the create when the owner's city is already at capacity, i.e. it already
         // contains 50 or more owners (compared case-insensitively).
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
@@ -329,6 +328,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return false;
             }
         }
+        return true;
+    }
+
+    /**
+     * Validate and normalize the owner's address fields in place, preferring the structured
+     * form over the flat 'address' for backward compatibility.
+     *
+     * <p>When a non-blank {@code addressLine1} is supplied it is the structured form: both
+     * {@code addressLine1} and (when present) {@code addressLine2} are normalized and stored
+     * back, and {@code address} is set to the composed value — the normalized addressLine1,
+     * with a single space and the normalized addressLine2 appended when addressLine2 is present.
+     * Otherwise the flat {@code address} is normalized in place and the structured lines are
+     * cleared. Returns {@code false} when no address is supplied in either form (both the
+     * structured addressLine1 and the flat address are blank once normalized), so the caller
+     * can reject with 400.
+     */
+    private boolean normalizeAddresses(OwnerFieldsDto ownerFieldsDto) {
+        String rawLine1 = ownerFieldsDto.getAddressLine1();
+        if (rawLine1 != null && !rawLine1.isBlank()) {
+            String line1 = normalizeAddress(rawLine1);
+            if (line1.isBlank()) {
+                return false;
+            }
+            ownerFieldsDto.setAddressLine1(line1);
+            String rawLine2 = ownerFieldsDto.getAddressLine2();
+            String composed = line1;
+            if (rawLine2 != null && !rawLine2.isBlank()) {
+                String line2 = normalizeAddress(rawLine2);
+                ownerFieldsDto.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            }
+            else {
+                ownerFieldsDto.setAddressLine2(null);
+            }
+            ownerFieldsDto.setAddress(composed);
+            return true;
+        }
+        // No structured address: fall back to the flat 'address' input.
+        String canonicalAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        if (canonicalAddress.isBlank()) {
+            return false;
+        }
+        ownerFieldsDto.setAddress(canonicalAddress);
+        ownerFieldsDto.setAddressLine1(null);
+        ownerFieldsDto.setAddressLine2(null);
         return true;
     }
 
@@ -580,11 +624,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizePostcode(ownerFieldsDto)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (!normalizeAddresses(ownerFieldsDto)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
