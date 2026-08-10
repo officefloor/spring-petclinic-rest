@@ -71,8 +71,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -184,22 +184,22 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current <em>primary identifier</em> — the single value that identifies the owner in
-     * audit events. Today this is the {@link #getCustomerCode() customerCode}; a later checkpoint
-     * unifies the customerCode into a {@code memberId}, and repointing this one accessor moves every
-     * emitted event onto the new identifier without touching the event or audit code.
+     * The owner's <em>primary identifier</em> — the single value that identifies the owner in audit
+     * events. This is the {@link #getMemberId() memberId}, the unified identity formatted
+     * {@code <REGION><FY><HASH8><CHK>}; routing every emitted event through this one accessor keeps
+     * the event and audit code independent of how the identifier is composed.
      */
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {

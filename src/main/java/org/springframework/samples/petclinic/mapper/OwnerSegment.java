@@ -34,7 +34,7 @@ final class OwnerSegment {
     /** The {@code <TIER>_<AREA>} segment for the given owner. */
     static OwnerSegmentEnum of(Owner owner) {
         String tier = MembershipLevel.of(owner) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(Locality.of(owner.getCustomerCode())) ? "METRO" : "REGIONAL";
+        String area = METRO_REGIONS.contains(Locality.of(owner.getMemberId())) ? "METRO" : "REGIONAL";
         return OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 }

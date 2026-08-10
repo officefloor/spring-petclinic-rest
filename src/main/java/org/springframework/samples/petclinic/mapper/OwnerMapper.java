@@ -4,7 +4,6 @@ import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
-import org.springframework.samples.petclinic.model.FiscalYear;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -17,7 +16,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {MembershipLevel.class, FiscalYear.class})
+@Mapper(uses = PetMapper.class, imports = {MembershipLevel.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -30,20 +29,16 @@ public interface OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
             expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
-    @Mapping(target = "membershipNumber",
-            expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", FiscalYear.of(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "fiscalYear",
-            expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
-    @Mapping(target = "checkDigit",
-            expression = "java(CheckDigit.of(owner.getCustomerCode()))")
+            expression = "java(MemberId.fiscalYear(owner.getMemberId()))")
     @Mapping(target = "membershipPoints",
             expression = "java(MembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(MembershipLevel.of(owner))")
     @Mapping(target = "locality",
-            expression = "java(Locality.of(owner.getCustomerCode()))")
+            expression = "java(Locality.of(owner.getMemberId()))")
     @Mapping(target = "timezone",
-            expression = "java(Timezone.of(Locality.of(owner.getCustomerCode())))")
+            expression = "java(Timezone.of(Locality.of(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
             expression = "java(ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand",
