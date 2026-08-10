@@ -25,7 +25,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -471,11 +473,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@link #deriveRegion}). {@code HASH8} is the first 8 upper-case hex characters of the
      * SHA-256 of the normalized telephone concatenated with the last name
      * (e.g. {@code 'NSW-1A2B3C4D'}).
+     *
+     * <p>When the computed code collides with an existing owner's customer code, it is
+     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more
+     * that makes it unique.
      */
     private String customerCode(Owner owner) {
         String region = deriveRegion(owner.getPostcode(), owner.getCity());
         String hash8 = sha256HexUpper(owner.getTelephone() + owner.getLastName(), 8);
-        return region + "-" + hash8;
+        String base = region + "-" + hash8;
+        Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
