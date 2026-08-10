@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the repository and the not-yet-persisted new owner is added in as one.
  *
  * <p>An owner not joining a household has no {@code householdId}; its household is just itself, so
- * the count is 1. The stored count later drives the {@code GOLD} membership tier (3 or more members).
+ * the count is 1.
  */
 public class AssignHouseholdMemberCount {
 
