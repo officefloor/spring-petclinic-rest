@@ -192,6 +192,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner candidate = ownerMapper.toOwner(ownerFieldsDto);
         String contactIdentity = identityContact(candidate);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> contactIdentity.equals(identityContact(existing)));
         if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -204,6 +205,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // bypasses this block; the household link itself now follows from the computed householdId.
         String householdId = ownerMapper.householdId(candidate);
         boolean householdExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (householdExists && !sharesHousehold) {
@@ -502,6 +504,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> existing.getLastName() != null
                 && existing.getLastName().equalsIgnoreCase(candidate.getLastName())
                 && candidate.getPostcode().equals(existing.getPostcode())
@@ -652,7 +655,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft-delete: flag the owner deleted and retain the record so it can still be
+        // read back (with 'deleted' true) and is ignored by later duplicate/identity checks.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 

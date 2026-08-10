@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   possible_duplicate BIT,
   possible_duplicate_of INTEGER,
   postcode   VARCHAR(10),
+  deleted    BIT NOT NULL DEFAULT 0,
   INDEX(last_name)
 ) engine=InnoDB;
 
