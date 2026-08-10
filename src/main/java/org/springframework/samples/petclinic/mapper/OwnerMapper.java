@@ -49,65 +49,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality, preferring the postcode over the city. The postcode is looked up
-     * against the canonical region ranges first ({@code NSW 2000-2099}, {@code VIC 3000-3099},
-     * {@code QLD 4000-4099}); only when the postcode is absent or falls in no known range does the
-     * derivation fall back to the fixed city-to-region table ({@code Sydney->NSW},
-     * {@code Melbourne->VIC}, {@code Brisbane->QLD}). This returns the same region for known cities
-     * but disambiguates cities that share a name. The result is {@code "UNKNOWN"} when neither the
-     * postcode nor the city resolves to a region.
+     * Derives an owner's locality from the region-and-hash customer code: the {@code <REGION>}
+     * segment (everything before the first {@code '-'}) of the owner's {@code customerCode}. Because
+     * the customer code's region is itself derived from the postcode (falling back to the city), the
+     * locality now moves with the identity rather than being computed independently. The result is
+     * {@code "UNKNOWN"} when no customer code is present.
      *
      * @param owner the owner to derive the locality for
-     * @return the canonical region string, or {@code "UNKNOWN"}
+     * @return the region segment of the customer code, or {@code "UNKNOWN"}
      */
     default String locality(Owner owner) {
-        String region = regionFromPostcode(owner.getPostcode());
-        if (region != null) {
-            return region;
-        }
-        return regionFromCity(owner.getCity());
-    }
-
-    /**
-     * Looks up the canonical region for a postcode by its range ({@code NSW 2000-2099},
-     * {@code VIC 3000-3099}, {@code QLD 4000-4099}).
-     *
-     * @param postcode the owner's postcode, may be {@code null}
-     * @return the region, or {@code null} when the postcode is absent, non-numeric or in no range
-     */
-    private String regionFromPostcode(String postcode) {
-        if (postcode == null || !postcode.matches("[0-9]{4}")) {
-            return null;
-        }
-        int value = Integer.parseInt(postcode);
-        if (value >= 2000 && value <= 2099) {
-            return "NSW";
-        }
-        if (value >= 3000 && value <= 3099) {
-            return "VIC";
-        }
-        if (value >= 4000 && value <= 4099) {
-            return "QLD";
-        }
-        return null;
-    }
-
-    /**
-     * Looks up the canonical region for a city using the fixed city-to-region table.
-     *
-     * @param city the owner's city, may be {@code null}
-     * @return the region, or {@code "UNKNOWN"} when the city is absent or not in the table
-     */
-    private String regionFromCity(String city) {
-        if (city == null) {
+        String code = owner.getCustomerCode();
+        if (code == null || code.isEmpty()) {
             return "UNKNOWN";
         }
-        return switch (city) {
-            case "Sydney" -> "NSW";
-            case "Melbourne" -> "VIC";
-            case "Brisbane" -> "QLD";
-            default -> "UNKNOWN";
-        };
+        int dash = code.indexOf('-');
+        return dash < 0 ? code : code.substring(0, dash);
     }
 
     /**
@@ -133,8 +90,8 @@ public interface OwnerMapper {
 
     /**
      * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
-     * {@code <customerCode>} is the owner's customer code and {@code YY} is the last two digits
-     * (zero-padded) of the owner's registration date year (e.g. {@code LON-SMI-0007-M26}).
+     * {@code <customerCode>} is the owner's region-and-hash customer code and {@code YY} is the last
+     * two digits (zero-padded) of the owner's registration date year (e.g. {@code NSW-1A2B3C4D-M26}).
      *
      * @param owner the owner to derive the membership number for
      * @return the formatted membership number

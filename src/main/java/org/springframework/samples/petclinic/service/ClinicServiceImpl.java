@@ -25,6 +25,9 @@ import org.springframework.samples.petclinic.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -291,20 +294,89 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build the owner's customer code in the form '<CITY3>-<LAST3>-<NNNN>' where CITY3 is
-     * the upper-cased first three letters of the owner's city, LAST3 is the upper-cased
-     * first three letters of the owner's last name and NNNN is a per-city 4-digit
-     * zero-padded sequence equal to one more than the number of owners already in that city.
+     * Build the owner's customer code in the form '<REGION>-<HASH8>' where REGION is the region
+     * code derived from the owner's postcode (falling back to the city) and HASH8 is the first
+     * 8 upper-case hex characters of the SHA-256 digest over the owner's normalized telephone
+     * concatenated with the owner's last name. There is no sequence number: the identity is
+     * derived entirely from the region and the telephone/last-name hash.
      */
     private String generateCustomerCode(Owner owner) {
-        String city = owner.getCity();
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String lastName = owner.getLastName();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = (int) ownerRepository.findAll().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        return regionFor(owner) + "-" + hash8(owner);
+    }
+
+    /**
+     * Derive the owner's region, preferring the postcode over the city. The postcode is looked up
+     * against the canonical region ranges first ({@code NSW 2000-2099}, {@code VIC 3000-3099},
+     * {@code QLD 4000-4099}); only when the postcode is absent or falls in no known range does the
+     * derivation fall back to the fixed city-to-region table ({@code Sydney->NSW},
+     * {@code Melbourne->VIC}, {@code Brisbane->QLD}). The result is {@code "UNKNOWN"} when neither
+     * the postcode nor the city resolves to a region.
+     */
+    private String regionFor(Owner owner) {
+        String region = regionFromPostcode(owner.getPostcode());
+        if (region != null) {
+            return region;
+        }
+        return regionFromCity(owner.getCity());
+    }
+
+    /**
+     * Look up the canonical region for a postcode by its range ({@code NSW 2000-2099},
+     * {@code VIC 3000-3099}, {@code QLD 4000-4099}), returning {@code null} when the postcode is
+     * absent, non-numeric or in no known range.
+     */
+    private String regionFromPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value >= 2000 && value <= 2099) {
+            return "NSW";
+        }
+        if (value >= 3000 && value <= 3099) {
+            return "VIC";
+        }
+        if (value >= 4000 && value <= 4099) {
+            return "QLD";
+        }
+        return null;
+    }
+
+    /**
+     * Look up the canonical region for a city using the fixed city-to-region table, returning
+     * {@code "UNKNOWN"} when the city is absent or not in the table.
+     */
+    private String regionFromCity(String city) {
+        if (city == null) {
+            return "UNKNOWN";
+        }
+        return switch (city) {
+            case "Sydney" -> "NSW";
+            case "Melbourne" -> "VIC";
+            case "Brisbane" -> "QLD";
+            default -> "UNKNOWN";
+        };
+    }
+
+    /**
+     * Compute the first 8 upper-case hex characters of the SHA-256 digest over the owner's
+     * normalized telephone concatenated with the owner's last name.
+     */
+    private String hash8(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((telephone + lastName).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     @Override
