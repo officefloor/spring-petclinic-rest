@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Map;
+
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
@@ -8,9 +10,18 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * assumed and a single leading {@code '0'} is dropped from the national digits. The result must carry
  * 8 to 15 digits after the {@code '+'}. So {@code '0412 345 678'} becomes {@code '+61412345678'}.
  *
+ * <p>The national-number length is additionally checked against the country code: {@code '+61'}
+ * requires 9 national digits and {@code '+1'} requires 10. A number whose national length is wrong
+ * for its country is rejected, even when the overall digit count is within 8 to 15.
+ *
  * <p>Not an OfficeFloor function class — a plain helper shared by the telephone steps.
  */
 public final class TelephoneE164 {
+
+    /** Country code (digits after '+') to its required national-number digit count. */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of(
+            "61", 9,
+            "1", 10);
 
     private TelephoneE164() {
     }
@@ -27,6 +38,16 @@ public final class TelephoneE164 {
         }
         if (!digits.matches("\\d{8,15}")) {
             throw new InvalidTelephoneException(telephone);
+        }
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalLength = digits.length() - countryCode.length();
+                if (nationalLength != entry.getValue()) {
+                    throw new InvalidTelephoneException(telephone);
+                }
+                break;
+            }
         }
         return "+" + digits;
     }
