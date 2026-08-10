@@ -39,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -105,6 +106,35 @@ public interface OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * A single Luhn check digit (0-9) computed over the digits contained in the owner's
+     * customerCode. Returns {@code null} when the customerCode has not been assigned.
+     */
+    default Integer checkDigit(Owner owner) {
+        if (owner.getCustomerCode() == null) {
+            return null;
+        }
+        String s = owner.getCustomerCode();
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
