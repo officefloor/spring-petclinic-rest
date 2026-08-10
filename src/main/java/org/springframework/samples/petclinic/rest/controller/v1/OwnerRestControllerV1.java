@@ -481,6 +481,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The number of owners a city must already contain before a create in that city is flagged with a
+     * capacity warning. Once a city holds at least this many owners (but still fewer than
+     * {@link #CITY_CAPACITY}), the created owner's {@code capacityWarning} is set to {@code true} to
+     * signal the city is approaching its capacity limit.
+     */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Determines whether a create should be flagged with a capacity warning, i.e. whether the owner's
+     * city already contains between {@link #CAPACITY_WARNING_THRESHOLD} and {@code CITY_CAPACITY - 1}
+     * owners (inclusive), indicating the city is approaching its capacity limit. Cities are compared
+     * case-insensitively with surrounding whitespace trimmed. The count reflects the state before the
+     * new owner is persisted, so it excludes the owner being created.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} when the city already holds {@value #CAPACITY_WARNING_THRESHOLD}-49 owners
+     */
+    private boolean capacityWarning(String city) {
+        String normalizedCity = normalizeName(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedCity.equals(normalizeName(existing.getCity())))
+            .count();
+        return ownersInCity >= CAPACITY_WARNING_THRESHOLD && ownersInCity < CITY_CAPACITY;
+    }
+
+    /**
      * The maximum number of owners that may be created on a single day. A create made once this many
      * owners already carry today's {@code registrationDate} is rejected, so no more than this many
      * owners are registered per day.
@@ -853,6 +879,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(householdSize(ownerHouseholdId));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning(registrationDate));
+        owner.setCapacityWarning(capacityWarning(ownerFieldsDto.getCity()));
         owner.setMembershipLevel(cappedMembershipLevel(owner, ownerHouseholdId));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_id TEXT,
                                       namesake_count INT,
                                       bulk_signup_warning BOOLEAN,
+                                      capacity_warning BOOLEAN,
                                       household_size INT,
                                       postcode TEXT,
                                       birth_date DATE,
