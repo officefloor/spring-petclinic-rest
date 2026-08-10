@@ -40,7 +40,7 @@ public interface OwnerMapper {
 
     /**
      * Formats an owner's membership number as {@code '<customerCode>-M<YY>'}, where YY is the
-     * last two digits of the registrationDate year, e.g. {@code 'SMI-0007-M26'}.
+     * last two digits of the registrationDate year, e.g. {@code 'MEL-SMI-0007-M26'}.
      */
     default @Nullable String membershipNumber(@Nullable Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {

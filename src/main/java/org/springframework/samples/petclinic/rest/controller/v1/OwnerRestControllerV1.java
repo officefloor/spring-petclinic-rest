@@ -304,18 +304,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code assigned to an owner on create, formatted {@code '<LAST3>-<NNNN>'}
-     * where {@code LAST3} is the upper-cased first three letters of the owner's last name and
-     * {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than the current
-     * number of owners, e.g. {@code 'SMI-0007'}.
+     * Builds the customer code assigned to an owner on create, formatted
+     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first three letters
+     * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
+     * name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
+     * current number of owners already in that city, e.g. {@code 'MEL-SMI-0007'}.
      *
+     * @param city the city of the owner being created
      * @param lastName the last name of the owner being created
      * @return the formatted customer code
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String normalizedCity = normalizeName(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedCity.equals(normalizeName(existing.getCity())))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
@@ -375,7 +381,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));
         owner.setHouseholdId(householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
         this.clinicService.saveOwner(owner);
