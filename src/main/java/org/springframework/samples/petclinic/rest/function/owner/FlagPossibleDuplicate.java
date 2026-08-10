@@ -34,6 +34,9 @@ public class FlagPossibleDuplicate {
         Integer matchId = null;
         if (postcode != null && !postcode.isBlank()) {
             for (Owner existing : ownerRepository.findAll()) {
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue;
+                }
                 if (equalsIgnoreCase(lastName, existing.getLastName())
                         && postcode.equals(existing.getPostcode())
                         && !equalsNullSafe(telephone, existing.getTelephone())

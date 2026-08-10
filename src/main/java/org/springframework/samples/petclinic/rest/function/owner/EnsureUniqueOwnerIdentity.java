@@ -33,6 +33,11 @@ public class EnsureUniqueOwnerIdentity {
         String contactKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), null);
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
+            // A soft-deleted owner is no longer a live identity: skip it, so a duplicate that would
+            // otherwise block is allowed when its only match has been deleted.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             // Household duplicate: same deterministic householdId (same lastName + postcode).
             String existingHousehold =
                     OwnerIdentity.householdId(existing.getLastName(), existing.getPostcode());
