@@ -11,14 +11,13 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * is E.164 and the email lower-cased) and before {@link BuildOwner}. Rejects the request with
  * {@link DuplicateIdentityException} (handled as 409) when it collides with an existing owner.
  *
- * <p>The household is keyed on (lastName, postcode): the new owner's deterministic
- * {@link OwnerIdentity#householdId householdId} is computed from those fields, and an existing owner
- * with the same household id is a <em>household duplicate</em>. A second owner in an existing household
- * is therefore rejected — <em>unless</em> the request opts in with {@code sharesHousehold: true}, which
- * bypasses this whole duplicate block so the owner is created as a declared household member.
- *
- * <p>Independently of the household, an existing owner with the same normalized telephone and email is a
- * <em>contact duplicate</em> and is also rejected (unless the request opted in above).
+ * <p>Duplicate detection is expressed through the single {@code identityKey} = normalized telephone,
+ * email and {@link OwnerIdentity#householdId householdId} (derived from lastName + postcode). The
+ * request collides only when its <em>whole</em> identityKey equals an existing owner's: same telephone,
+ * same email <em>and</em> same household. A differing component — a distinct telephone, email, or
+ * household — is a separate identity that is allowed, so several owners can share a household as long as
+ * their contact details differ (each is then a household member whose membership level is capped by
+ * {@link CapMembershipLevel}). {@code sharesHousehold: true} still bypasses the check entirely.
  */
 public class EnsureUniqueOwnerIdentity {
 
@@ -30,7 +29,6 @@ public class EnsureUniqueOwnerIdentity {
             return;
         }
         String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
-        String contactKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), null);
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             // A soft-deleted owner is no longer a live identity: skip it, so a duplicate that would
@@ -38,16 +36,12 @@ public class EnsureUniqueOwnerIdentity {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            // Household duplicate: same deterministic householdId (same lastName + postcode).
+            // Duplicate only when the whole identityKey matches: same telephone, email AND household.
             String existingHousehold =
                     OwnerIdentity.householdId(existing.getLastName(), existing.getPostcode());
-            if (householdId.equals(existingHousehold)) {
-                throw new DuplicateIdentityException(identityKey);
-            }
-            // Contact duplicate: same normalized telephone and email, regardless of household.
-            String existingContact = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
-                    OwnerIdentity.normalizeEmail(existing.getEmail()), null);
-            if (contactKey.equals(existingContact)) {
+            String existingKey = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
+                    OwnerIdentity.normalizeEmail(existing.getEmail()), existingHousehold);
+            if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }

@@ -43,7 +43,8 @@ public interface OwnerMapper {
             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
             + "owner.getRegistrationDate(), java.time.LocalDate.now()))")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.level("
+        expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() "
+            + ": org.springframework.samples.petclinic.util.MembershipLevel.level("
             + "org.springframework.samples.petclinic.util.MembershipLevel.points("
             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
             + "owner.getRegistrationDate(), java.time.LocalDate.now())))")
