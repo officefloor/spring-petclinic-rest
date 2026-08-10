@@ -2,57 +2,30 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.List;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns a shared {@code householdId} when a create request opts in with
- * {@code sharesHousehold: true} and an existing owner already shares the household — the same
- * lastName (compared case-insensitively with collapsed whitespace) and the same address, compared
- * in normalized form (see {@link OwnerAddress#normalize(String)}). Duplicate detection is handled
- * separately by {@link CheckOwnerIdentityUnique}: household members with different telephones have
- * different identityKeys and are all allowed.
+ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
+ * the normalized lastName, a {@code '|'} separator and the postcode. The household is therefore
+ * keyed on {@code (lastName, postcode)} alone — owners with the same lastName (compared
+ * case-insensitively with collapsed whitespace) and the same postcode receive the same id
+ * automatically, regardless of creation order and without inspecting or updating any other owner.
  *
- * <p>The identifier is a <em>stable</em> value derived deterministically from the normalized
- * lastName and address, so every owner in the same household receives the same id regardless of
- * creation order. Both the joining owner and every existing household member are updated to carry
- * it, so the household is linked from either side.
+ * <p>The {@code sharesHousehold} request flag no longer creates the link — the id is always computed
+ * here — it only bypasses the household duplicate block in {@link CheckOwnerIdentityUnique}.
+ * Everything that keys off the household ({@link CheckOwnerIdentityUnique} duplicate detection and
+ * the {@link AssignHouseholdSize} household size) reads this computed id.
  *
- * <p>Runs after {@link BuildOwner} (the entity exists) and before {@link SaveOwner}, under the
- * request transaction so the updates to existing owners commit together with the new owner. When
- * the request does not opt in, or no existing household member is found, no id is assigned.
+ * <p>Runs after {@link BuildOwner} (the entity exists) and before those steps.
  */
 public class AssignHousehold {
 
-    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
+    public void service(@Val Owner owner) {
         String lastName = normalize(owner.getLastName());
-        String address = OwnerAddress.forComparison(owner.getAddress());
-        List<Owner> household = new ArrayList<>();
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(OwnerAddress.forComparison(existing.getAddress()))) {
-                household.add(existing);
-            }
-        }
-        if (household.isEmpty()) {
-            return;
-        }
-        String householdId = deriveHouseholdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner existing : household) {
-            if (!householdId.equals(existing.getHouseholdId())) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
-            }
-        }
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        owner.setHouseholdId(deriveHouseholdId(lastName, postcode));
     }
 
     /** Lower-cased, trimmed, with internal whitespace runs collapsed to a single space. */
@@ -63,17 +36,17 @@ public class AssignHousehold {
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
-    /** {@code HH-} followed by the first 12 upper-case hex characters of SHA-256(lastName|address),
-     *  computed over the already-normalized values so it is identical for every household member. */
-    private static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
+    /** The first 12 hex characters of SHA-256(normalizedLastName {@code '|'} postcode), so it is
+     *  identical for every owner sharing that lastName and postcode. */
+    private static String deriveHouseholdId(String normalizedLastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + "|" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
+                    .digest((normalizedLastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                sb.append(String.format("%02x", digest[i]));
             }
-            return "HH-" + sb;
+            return sb.toString();
         }
         catch (Exception ex) {
             throw new IllegalStateException("SHA-256 unavailable", ex);

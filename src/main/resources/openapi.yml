@@ -2071,12 +2071,12 @@ components:
         sharesHousehold:
           title: Shares household
           description: >-
-            Write-only request flag. When true and an existing owner has the same lastName
-            and address (case-insensitive, with collapsed whitespace), the new owner joins
-            that household and all members receive the same stable householdId. Duplicate
-            detection no longer depends on this flag: it is driven solely by the derived
-            identityKey, so two members of the same household with different telephones are
-            always allowed and only an exact full identityKey match is rejected with 409.
+            Write-only request flag. The householdId is always computed deterministically from
+            (lastName, postcode), so this flag no longer creates the household link. It only
+            bypasses the household duplicate block: because owners sharing a lastName and postcode
+            are the same household, a second such owner is rejected with 409 unless this flag is
+            true, in which case it is created as a declared household member and is not flagged as a
+            possible duplicate.
           type: boolean
           writeOnly: true
           example: true
@@ -2151,23 +2151,21 @@ components:
             householdId:
               title: Household ID
               description: >-
-                A stable shared identifier for owners that live in the same household
-                (same lastName and address, case-insensitive with collapsed whitespace).
-                Assigned when an owner is created with 'sharesHousehold' set to true and
-                an existing same-household owner is found; the joining owner and the
-                existing owner(s) all receive this same value. Null when the owner does
-                not belong to a shared household.
+                A stable shared identifier for owners that live in the same household, keyed on
+                (lastName, postcode). Computed deterministically as the first 12 hex characters of
+                SHA-256 over the normalized lastName, a '|' separator and the postcode, so every
+                owner with the same lastName (case-insensitive, with collapsed whitespace) and
+                postcode receives the same value automatically, regardless of creation order.
               type: string
-              example: 'HH-3F2A1C9D8B7E'
+              example: '3f2a1c9d8b7e'
               readOnly: true
             identityKey:
               title: Identity key
               description: >-
-                The owner's derived duplicate-detection key, consolidating the telephone,
-                email and household checks into a single value: the normalized telephone,
-                the email (or empty) and the householdId (or empty), joined by '|'. A create
-                request is rejected with 409 only when the new owner's whole identityKey
-                equals an existing owner's.
+                The owner's derived key: the normalized telephone, the email (or empty) and the
+                householdId, joined by '|'. Duplicate detection is now keyed on the household: a
+                create request is rejected with 409 when an existing owner shares the new owner's
+                householdId (same lastName and postcode), unless it declares 'sharesHousehold'.
               type: string
               example: '+61412345678|george.franklin@example.com|HH-3F2A1C9D8B7E'
               readOnly: true
@@ -2216,10 +2214,11 @@ components:
             possibleDuplicate:
               title: Possible duplicate
               description: >-
-                True when, at the moment this owner was created, it was not a hard duplicate
-                (its identityKey was unique) but it shared an existing owner's lastName
-                (case-insensitive) and postcode while carrying a different telephone;
-                otherwise false. Assigned at registration and never updated.
+                True when, at the moment this owner was created, it shared an existing owner's
+                lastName (case-insensitive) and postcode while carrying a different telephone and
+                was NOT a declared household member; otherwise false. A declared household member
+                (created with 'sharesHousehold' true) is never flagged. Assigned at registration
+                and never updated.
               type: boolean
               example: false
               readOnly: true
