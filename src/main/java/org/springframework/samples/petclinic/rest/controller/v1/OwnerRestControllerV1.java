@@ -344,7 +344,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects a create whose city already contains {@link #CITY_CAPACITY} or more owners, so no city
      * ever exceeds its capacity. Cities are compared case-insensitively with surrounding whitespace
-     * trimmed, exactly as {@link #nextCustomerCode} counts a city's owners. The count reflects the
+     * trimmed. The count reflects the
      * state before the new owner is persisted, so it excludes the owner being created.
      *
      * @param city the city of the owner being created
@@ -430,24 +430,68 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code assigned to an owner on create, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first three letters
-     * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last
-     * name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
-     * current number of owners already in that city, e.g. {@code 'MEL-SMI-0007'}.
+     * Builds the customer code assigned to an owner on create, formatted {@code '<REGION>-<HASH8>'}
+     * where {@code REGION} is the region code derived from the owner's postcode (the region whose
+     * inclusive range contains the postcode, or {@code 'UNKNOWN'} when the postcode is absent or in
+     * no known range) and {@code HASH8} is the first eight upper-cased hex characters of the SHA-256
+     * of {@code normalizedTelephone + lastName}, e.g. {@code 'NSW-1A2B3C4D'}. There is no sequence
+     * component: the identity is a pure region-and-hash value.
      *
-     * @param city the city of the owner being created
+     * @param postcode the postcode of the owner being created, may be {@code null}
+     * @param normalizedTelephone the E.164 telephone of the owner being created
      * @param lastName the last name of the owner being created
      * @return the formatted customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        String normalizedCity = normalizeName(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizedCity.equals(normalizeName(existing.getCity())))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String customerCode(String postcode, String normalizedTelephone, String lastName) {
+        return regionFromPostcode(postcode) + "-" + sha256HexPrefix(normalizedTelephone + lastName, 8);
+    }
+
+    /**
+     * Returns the region code whose inclusive postcode range contains the given 4-digit postcode
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or {@code 'UNKNOWN'} when the postcode is
+     * {@code null}, non-numeric, or in no known range.
+     *
+     * @param postcode the postcode, may be {@code null}
+     * @return the region code, or {@code 'UNKNOWN'}
+     */
+    private static String regionFromPostcode(String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return "UNKNOWN";
+        }
+        int code;
+        try {
+            code = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException e) {
+            return "UNKNOWN";
+        }
+        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (code >= range[0] && code <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    /**
+     * Computes the SHA-256 of {@code value} and returns its first {@code length} hex characters,
+     * upper-cased.
+     *
+     * @param value the string to hash
+     * @param length the number of leading hex characters to return
+     * @return the upper-cased hex prefix of the digest
+     */
+    private static String sha256HexPrefix(String value, int length) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, length).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
@@ -579,7 +623,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateIdentity(deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerHouseholdId));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));
+        owner.setCustomerCode(customerCode(
+            ownerFieldsDto.getPostcode(), normalizedTelephone, ownerFieldsDto.getLastName()));
         owner.setHouseholdId(ownerHouseholdId);
         owner.setHouseholdSize(householdSize(ownerHouseholdId));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));

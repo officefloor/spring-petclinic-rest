@@ -58,57 +58,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Canonical region -> city table, used to derive an owner's locality.
-     */
-    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Canonical region -> inclusive 4-digit postcode range {low, high}, used to derive an
-     * owner's locality from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
-     */
-    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
-        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
-
-    /**
-     * Derives the owner's locality, preferring the postcode: the region whose range contains the
-     * postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) wins. When the postcode is absent or in
-     * no known range, falls back to the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD). Returns the canonical region string, or {@code 'UNKNOWN'} when neither resolves.
+     * Derives the owner's locality from its region-and-hash identity: the {@code REGION} prefix of
+     * the {@code customerCode} ({@code '<REGION>-<HASH8>'}), which is the region code derived from
+     * the postcode on create. Returns the canonical region string, or {@code 'UNKNOWN'} when the
+     * owner has no customerCode.
      */
     default @Nullable String locality(@Nullable Owner owner) {
         if (owner == null) {
             return null;
         }
-        String fromPostcode = regionFromPostcode(owner.getPostcode());
-        if (fromPostcode != null) {
-            return fromPostcode;
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null) {
+            return "UNKNOWN";
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * Returns the canonical region whose inclusive postcode range contains the given 4-digit
-     * postcode, or {@code null} when the postcode is absent, non-numeric, or in no known range.
-     */
-    private @Nullable String regionFromPostcode(@Nullable String postcode) {
-        if (postcode == null) {
-            return null;
-        }
-        int code;
-        try {
-            code = Integer.parseInt(postcode.trim());
-        }
-        catch (NumberFormatException e) {
-            return null;
-        }
-        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
-            int[] range = entry.getValue();
-            if (code >= range[0] && code <= range[1]) {
-                return entry.getKey();
-            }
-        }
-        return null;
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
     }
 
     /**
