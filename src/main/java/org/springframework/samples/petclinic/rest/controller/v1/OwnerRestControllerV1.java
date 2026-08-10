@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -70,6 +71,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    /**
+     * Common street-type abbreviations expanded during address normalization. Keys and values are
+     * upper-cased so the mapping is applied after the address has been upper-cased.
+     */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -111,6 +121,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+    }
+
+    /**
+     * Normalizes an owner's address: trims and collapses runs of whitespace to single spaces,
+     * upper-cases the value, and expands common street-type abbreviations word-by-word
+     * ({@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}). A {@code null} or blank value
+     * normalizes to the empty string. The normalized value is what the application stores, returns
+     * and compares for household detection.
+     *
+     * @param address the raw address value from the request, may be {@code null}
+     * @return the normalized address, or the empty string when none was supplied
+     */
+    private String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder normalized = new StringBuilder();
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                normalized.append(' ');
+            }
+            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return normalized.toString();
     }
 
     /**
@@ -269,6 +308,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(telephone);
