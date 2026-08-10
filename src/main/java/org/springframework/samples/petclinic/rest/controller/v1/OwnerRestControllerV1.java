@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -40,6 +41,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -248,6 +250,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (inUse) {
             throw new DuplicateTelephoneException(
                 "Telephone is already used by another owner");
+        }
+    }
+
+    /**
+     * Rejects a create whose email is already used by any existing owner, so that emails stay unique
+     * across owners. Emails are compared case-insensitively: the supplied value is already lower-cased
+     * by {@link #normalizeEmail}, and each stored value is lower-cased before comparison, so
+     * {@code 'Jane@Example.com'} and {@code 'jane@example.com'} are treated as the same email. A create
+     * with no email ({@code null}) is never rejected on this basis.
+     *
+     * @param normalizedEmail the lower-cased email of the owner being created, may be {@code null}
+     * @throws DuplicateEmailException if another owner already uses this email
+     */
+    private void rejectDuplicateEmail(String normalizedEmail) {
+        if (normalizedEmail == null) {
+            return;
+        }
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(Objects::nonNull)
+            .anyMatch(existing -> normalizedEmail.equals(existing.toLowerCase(Locale.ROOT)));
+        if (inUse) {
+            throw new DuplicateEmailException(
+                "Email is already used by another owner");
         }
     }
 
@@ -505,7 +531,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
+        rejectDuplicateEmail(normalizedEmail);
+        ownerFieldsDto.setEmail(normalizedEmail);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));

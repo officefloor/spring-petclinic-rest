@@ -260,6 +260,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateEmailException} raised on create when the supplied email, after
+     * lower-casing, is already used by another owner. Returns a 409 Conflict whose body carries an
+     * {@code errors} array naming the {@code email} field.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link CityAtCapacityException} raised on create when the owner's city already contains
      * 50 or more owners (compared case-insensitively with surrounding whitespace trimmed). Returns a
      * 409 Conflict whose body carries an {@code errors} array naming the {@code city} field.
