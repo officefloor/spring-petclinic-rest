@@ -11,13 +11,14 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * is E.164 and the email lower-cased) and before {@link BuildOwner}. Rejects the request with
  * {@link DuplicateIdentityException} (handled as 409) when it collides with an existing owner.
  *
- * <p>Duplicate detection is expressed through the single {@code identityKey} = normalized telephone,
- * email and {@link OwnerIdentity#householdId householdId} (derived from lastName + postcode). The
+ * <p>Duplicate detection is expressed through the single {@code identityKey} = SHA-256 hex over
+ * normalized telephone, lower-cased email and {@link OwnerIdentity#soundex soundex(lastName)}. The
  * request collides only when its <em>whole</em> identityKey equals an existing owner's: same telephone,
- * same email <em>and</em> same household. A differing component — a distinct telephone, email, or
- * household — is a separate identity that is allowed, so several owners can share a household as long as
- * their contact details differ (each is then a household member whose membership level is capped by
- * {@link CapMembershipLevel}). {@code sharesHousehold: true} still bypasses the check entirely.
+ * same email <em>and</em> a last name with the same soundex. A differing component — a distinct
+ * telephone, email, or a last name with a different soundex — is a separate identity that is allowed.
+ * In particular two owners with the same last name and postcode but different telephones are no longer
+ * a hard duplicate here: they get distinct keys and are created (then recorded as a soft match by
+ * {@link FlagPossibleDuplicate}). {@code sharesHousehold: true} still bypasses the check entirely.
  */
 public class EnsureUniqueOwnerIdentity {
 
@@ -28,19 +29,17 @@ public class EnsureUniqueOwnerIdentity {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
-        String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
+        String identityKey =
+                OwnerIdentity.key(request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             // A soft-deleted owner is no longer a live identity: skip it, so a duplicate that would
             // otherwise block is allowed when its only match has been deleted.
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            // Duplicate only when the whole identityKey matches: same telephone, email AND household.
-            String existingHousehold =
-                    OwnerIdentity.householdId(existing.getLastName(), existing.getPostcode());
+            // Duplicate only when the whole identityKey matches: same telephone, email AND soundex(lastName).
             String existingKey = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
-                    OwnerIdentity.normalizeEmail(existing.getEmail()), existingHousehold);
+                    existing.getEmail(), existing.getLastName());
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
             }

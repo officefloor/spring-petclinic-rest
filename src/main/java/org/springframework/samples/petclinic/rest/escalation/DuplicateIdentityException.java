@@ -1,9 +1,10 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request's derived {@code identityKey} (normalized telephone, email and
- * household id) exactly matches an existing owner's — i.e. it is a full-key duplicate. Handled by
- * {@link DuplicateIdentityExceptionHandler}, which responds 409 (Conflict).
+ * Thrown when a create-owner request's derived {@code identityKey} (SHA-256 hex over normalized
+ * telephone, lower-cased email and soundex of the last name) exactly matches an existing owner's —
+ * i.e. it is a full-key duplicate. Handled by {@link DuplicateIdentityExceptionHandler}, which responds
+ * 409 (Conflict).
  */
 public class DuplicateIdentityException extends Exception {
 

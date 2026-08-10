@@ -53,7 +53,7 @@ public interface OwnerMapper {
             + ".toDisplay(owner.getTelephone()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
-            + ".key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")
+            + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
     @Mapping(target = "timezone",

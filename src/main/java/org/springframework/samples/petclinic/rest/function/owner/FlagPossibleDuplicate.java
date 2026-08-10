@@ -8,10 +8,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Runs after the owner is built but before it is saved. By this point the request has already passed
  * {@link EnsureUniqueOwnerIdentity}, so it is <em>not</em> a hard duplicate. This step records a
- * <em>soft</em> match: when the new owner shares an existing owner's {@code lastName} (case-insensitive)
- * and {@code postcode} but has a different (normalized) telephone, it is still created, with the
- * owner's {@code possibleDuplicate} flag set to true and {@code possibleDuplicateOf} set to the matching
- * owner's id. Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is null. Both
+ * <em>soft</em> match: when the new owner's {@code identityKey} differs from an existing owner's but
+ * their {@link OwnerIdentity#soundex soundex(lastName)} and {@code postcode} match, it is still created,
+ * with the owner's {@code possibleDuplicate} flag set to true and {@code possibleDuplicateOf} set to the
+ * matching owner's id. Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is null. Both
  * values are mutated in place via {@code @Val} for the save/respond steps to persist and return.
  *
  * <p>A declared household member (the request opted in with {@code sharesHousehold: true}) is
@@ -28,18 +28,20 @@ public class FlagPossibleDuplicate {
             owner.setPossibleDuplicateOf(null);
             return;
         }
-        String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
+        String identityKey = OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+        String soundex = OwnerIdentity.soundex(owner.getLastName());
         Integer matchId = null;
         if (postcode != null && !postcode.isBlank()) {
             for (Owner existing : ownerRepository.findAll()) {
                 if (Boolean.TRUE.equals(existing.getDeleted())) {
                     continue;
                 }
-                if (equalsIgnoreCase(lastName, existing.getLastName())
+                String existingKey = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
+                        existing.getEmail(), existing.getLastName());
+                if (!identityKey.equals(existingKey)
+                        && soundex.equals(OwnerIdentity.soundex(existing.getLastName()))
                         && postcode.equals(existing.getPostcode())
-                        && !equalsNullSafe(telephone, existing.getTelephone())
                         && existing.getId() != null
                         && (matchId == null || existing.getId() < matchId)) {
                     matchId = existing.getId();
@@ -48,13 +50,5 @@ public class FlagPossibleDuplicate {
         }
         owner.setPossibleDuplicate(matchId != null);
         owner.setPossibleDuplicateOf(matchId);
-    }
-
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a == null ? b == null : a.equalsIgnoreCase(b);
-    }
-
-    private static boolean equalsNullSafe(String a, String b) {
-        return a == null ? b == null : a.equals(b);
     }
 }
