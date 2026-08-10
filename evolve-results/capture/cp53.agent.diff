@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d7a62e9d..4ef31127 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,11 +27,15 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
++
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+@@ -72,6 +76,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit logger for owner lifecycle side-effects. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Serializes {@link OwnerCreatedEvent} instances to their JSON audit representation. */
++    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
++
++    /** Monotonically increasing sequence stamped on every structured owner-created event. */
++    private static final AtomicLong AUDIT_SEQ = new AtomicLong();
++
++    /**
++     * Immutable structured audit event emitted once per owner create. The {@code customerCode}
++     * field carries the owner's <em>current primary identifier</em>: the customerCode today, and
++     * whatever replaces it later (e.g. a unified memberId) once {@link #primaryIdentifier(Owner)}
++     * is updated, without any other change to this event's shape.
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++            Integer membershipLevel, String event) {
++    }
++
+     /**
+      * Pragmatic check for a syntactically valid email address: a non-empty local
+      * part, a single '@', and a domain with at least one dot-separated label.
+@@ -287,6 +307,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        // Emit the immutable structured OWNER_CREATED event carrying a monotonically increasing
++        // sequence and the owner's current primary identifier (the customerCode today).
++        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
++            primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
++        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+         // Remember this create against its idempotency key so a later repeat returns the same
+         // owner instead of creating a duplicate.
+         if (idempotencyKey != null) {
+@@ -569,6 +594,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more
+      * that makes it unique.
+      */
++    /**
++     * The owner's current primary identifier, as carried by structured audit events. Today this
++     * is the customerCode; when the customerCode is later unified into a memberId, updating this
++     * one method makes every emitted event carry the memberId instead.
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
+     private String customerCode(Owner owner) {
+         String region = deriveRegion(owner.getPostcode(), owner.getCity());
+         String hash8 = sha256HexUpper(owner.getTelephone() + owner.getLastName(), 8);
