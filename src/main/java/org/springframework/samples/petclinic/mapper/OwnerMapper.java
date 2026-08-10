@@ -24,7 +24,23 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The fixed city-to-region table: any city not listed derives locality {@code UNKNOWN}.
+     */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derives the owner's locality: the canonical region for the owner's city from the fixed
+     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or {@code UNKNOWN}
+     * when the city is not in the table.
+     */
+    default String locality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
 
     /**
      * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
