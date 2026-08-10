@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -140,6 +141,43 @@ public interface OwnerMapper {
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
             owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Known E.164 country calling codes used to split the stored telephone into its
+     * country code and national number for display. Longer codes are matched first so a
+     * '+61' number is not mistaken for a '+6...' one.
+     */
+    java.util.List<String> COUNTRY_CODES = java.util.List.of("61", "1");
+
+    /**
+     * The stored E.164 telephone formatted for humans: the country code, a space, and the
+     * national digits grouped in threes (e.g. '+61412345678' becomes '+61 412 345 678').
+     * Returns the stored value unchanged when it is {@code null} or not in the expected
+     * '+'-prefixed all-digits E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) {
+            return telephone;
+        }
+        String countryCode = COUNTRY_CODES.stream()
+            .filter(digits::startsWith)
+            .findFirst()
+            .orElse(digits.substring(0, 1));
+        String national = digits.substring(countryCode.length());
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i++) {
+            if (i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(national.charAt(i));
+        }
+        return sb.toString();
     }
 
     /**
