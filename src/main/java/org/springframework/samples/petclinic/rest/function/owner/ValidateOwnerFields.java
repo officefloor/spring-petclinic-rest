@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * {@link BuildOwner} runs. Each offending field name is collected and reported together as a
  * 400 whose {@code errors} array lists them (see {@link MissingOwnerFieldsException}).
  *
- * <p>Also normalizes the telephone: every non-digit character is stripped, and the result must
- * be exactly 10 digits or the request is rejected with a 400 (see
- * {@link InvalidTelephoneException}). The normalized 10-digit value is stored back on the
+ * <p>Also normalizes the telephone to E.164 form (see {@link OwnerTelephone}): a request whose
+ * telephone cannot form a valid E.164 number is rejected with a 400 (see
+ * {@link InvalidTelephoneException}). The normalized E.164 value is stored back on the
  * request so it is persisted and returned as {@code telephone}.
  *
  * <p>Binds the request body for the pipeline and republishes it as a variable so that
@@ -36,11 +36,7 @@ public class ValidateOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String digits = request.getTelephone().replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException(request.getTelephone());
-        }
-        request.setTelephone(digits);
+        request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         OwnerEmail.normalize(request);
         validated.set(request);
     }
