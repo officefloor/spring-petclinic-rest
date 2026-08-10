@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,6 +54,13 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Pragmatic check for a syntactically valid email address: a non-empty local
+     * part, a single '@', and a domain with at least one dot-separated label.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$");
 
     private final ClinicService clinicService;
 
@@ -99,6 +108,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Validate & normalize the optional email; reject the create when it is present but invalid.
+        if (!normalizeEmail(ownerFieldsDto)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         // Normalize the telephone by stripping every non-digit character, then require exactly 10 digits.
         String telephone = ownerFieldsDto.getTelephone();
         String normalizedTelephone = telephone == null ? "" : telephone.replaceAll("\\D", "");
@@ -124,6 +137,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
+    /**
+     * Validate and normalize the optional owner email in place.
+     *
+     * <p>An absent (or blank) email is allowed and is normalized to {@code null}.
+     * When present it must be a syntactically valid address; a valid address is
+     * stored back on the DTO lower-cased. Returns {@code false} when an email is
+     * present but syntactically invalid, so the caller can reject with 400.
+     */
+    private boolean normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
+        String email = ownerFieldsDto.getEmail();
+        if (email == null || email.isBlank()) {
+            ownerFieldsDto.setEmail(null);
+            return true;
+        }
+        String normalized = email.trim().toLowerCase(Locale.ROOT);
+        if (!EMAIL_PATTERN.matcher(normalized).matches()) {
+            return false;
+        }
+        ownerFieldsDto.setEmail(normalized);
+        return true;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
@@ -131,11 +166,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        if (!normalizeEmail(ownerFieldsDto)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
