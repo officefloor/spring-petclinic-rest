@@ -142,19 +142,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number by removing every non-digit character and requires the
-     * result to be exactly 10 digits.
+     * Normalizes a telephone number into E.164 form. Spaces, dashes and brackets are stripped. A
+     * leading '+' and its country code are kept as given; otherwise country code '+61' is assumed
+     * and a single leading '0' is dropped from the national digits. The result must be a '+'
+     * followed by 8 to 15 digits.
      *
      * @param telephone the raw telephone value from the request
-     * @return the 10-digit, digits-only telephone
-     * @throws InvalidFieldsException if the stripped value is not exactly 10 digits
+     * @return the E.164 telephone (e.g. {@code +61412345678})
+     * @throws InvalidFieldsException if the value cannot form a valid E.164 number
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        if (telephone == null) {
             throw new InvalidFieldsException(List.of("telephone"));
         }
-        return digits;
+        String trimmed = telephone.trim();
+        boolean international = trimmed.startsWith("+");
+        String cleaned = trimmed.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (international) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("[0-9]{8,15}")) {
+            throw new InvalidFieldsException(List.of("telephone"));
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Best-effort normalization of an existing owner's stored telephone into E.164 form for
+     * duplicate comparison, returning {@code null} when the value cannot form valid E.164.
+     *
+     * @param telephone an existing stored telephone value, may be {@code null}
+     * @return the E.164 form, or {@code null} when it cannot be normalized
+     */
+    private String toE164OrNull(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        try {
+            return normalizeTelephone(telephone);
+        }
+        catch (InvalidFieldsException ex) {
+            return null;
+        }
     }
 
     /**
@@ -182,14 +215,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owners' telephones are normalized the same way before comparison so differently-formatted
      * values representing the same number are treated as duplicates.
      *
-     * @param telephone the normalized (digits-only) telephone of the owner being created
+     * @param telephone the normalized (E.164) telephone of the owner being created
      * @throws DuplicateOwnerTelephoneException if another owner already uses the telephone
      */
     private void requireUniqueTelephone(String telephone) {
         boolean taken = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
+            .map(this::toE164OrNull)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
             .anyMatch(telephone::equals);
         if (taken) {
             throw new DuplicateOwnerTelephoneException(telephone);
@@ -228,7 +261,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
