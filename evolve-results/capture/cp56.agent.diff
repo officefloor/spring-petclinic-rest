@@ -1,0 +1,459 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5b1d1f52..1b13a208 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,16 +28,9 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "checkDigit",
+-        expression = "java(org.springframework.samples.petclinic.util.CustomerCode"
+-            + ".checkDigit(owner.getCustomerCode()))")
+     @Mapping(target = "fiscalYear",
+         expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label("
+             + "owner.getRegistrationDate()))")
+-    @Mapping(target = "membershipNumber",
+-        expression = "java(owner.getCustomerCode() + \"-M\" "
+-            + "+ String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.of("
+-            + "owner.getRegistrationDate()) % 100))")
+     @Mapping(target = "membershipPoints",
+         expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points("
+             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+@@ -55,10 +48,11 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
+             + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
++        expression = "java(org.springframework.samples.petclinic.util.Locality.of("
++            + "owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "timezone",
+         expression = "java(org.springframework.samples.petclinic.util.Locality.timezone("
+-            + "org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())))")
++            + "org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "ownerSegment",
+         expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of("
+             + "owner.getMembershipLevel() != null ? owner.getMembershipLevel() "
+@@ -66,7 +60,7 @@ public interface OwnerMapper {
+             + "org.springframework.samples.petclinic.util.MembershipLevel.points("
+             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+             + "owner.getRegistrationDate(), java.time.LocalDate.now())), "
+-            + "org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())))")
++            + "org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() "
+             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6397c15c..98616351 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -69,8 +69,8 @@ public class Owner extends Person {
+     @Column(name = "birth_date")
+     private LocalDate birthDate;
+ 
+-    @Column(name = "customer_code")
+-    private String customerCode;
++    @Column(name = "member_id")
++    private String memberId;
+ 
+     @Column(name = "household_id")
+     private String householdId;
+@@ -182,12 +182,12 @@ public class Owner extends Person {
+         this.birthDate = birthDate;
+     }
+ 
+-    public String getCustomerCode() {
+-        return this.customerCode;
++    public String getMemberId() {
++        return this.memberId;
+     }
+ 
+-    public void setCustomerCode(String customerCode) {
+-        this.customerCode = customerCode;
++    public void setMemberId(String memberId) {
++        this.memberId = memberId;
+     }
+ 
+     public String getHouseholdId() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+deleted file mode 100644
+index a2dfc0b1..00000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ /dev/null
+@@ -1,41 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import java.util.Objects;
+-import java.util.Set;
+-import java.util.stream.Collectors;
+-
+-import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.util.CustomerCode;
+-import org.springframework.samples.petclinic.util.Locality;
+-
+-/**
+- * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where REGION is the
+- * region derived from the owner's postcode (falling back to the city table, see {@link Locality}) and
+- * HASH8 is the first eight upper-case hex characters of SHA-256 over the {@code normalizedTelephone +
+- * lastName} (e.g. 'NSW-1A2B3C4D'). There are no per-city sequence numbers: the identity is a pure
+- * function of the owner's region and the telephone/last-name hash. Runs after the owner is built (so the
+- * telephone is already normalized to E.164) and before it is saved, mutating the code in place via
+- * {@code @Val} for the save/respond steps to persist and return.
+- *
+- * <p>When the computed code collides with an existing owner's {@code customerCode}, {@code '-<n>'} is
+- * appended with the smallest {@code n} of 2 or more that makes it unique, and the de-duplicated code is
+- * assigned (e.g. a second 'NSW-1A2B3C4D' becomes 'NSW-1A2B3C4D-2', a third 'NSW-1A2B3C4D-3').
+- */
+-public class AssignCustomerCode {
+-
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+-        String base = CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
+-        Set<String> existing = ownerRepository.findAll().stream()
+-                .map(Owner::getCustomerCode)
+-                .filter(Objects::nonNull)
+-                .collect(Collectors.toSet());
+-        String code = base;
+-        for (int n = 2; existing.contains(code); n++) {
+-            code = base + "-" + n;
+-        }
+-        owner.setCustomerCode(code);
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+new file mode 100644
+index 00000000..ae236ba6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Objects;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.Locality;
++import org.springframework.samples.petclinic.util.MemberId;
++
++/**
++ * Assigns the owner's {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'} where REGION is
++ * the region derived from the owner's postcode (falling back to the city table, see {@link Locality}),
++ * FY is the two-digit fiscal year of the registration date, HASH8 is the first eight upper-case hex
++ * characters of SHA-256 over the {@code normalizedTelephone + lastName} and CHK is a single Luhn check
++ * digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'NSW271A2B3C4D5'). Runs after the owner is
++ * built (so the telephone is already normalized to E.164 and the registration date populated) and before
++ * it is saved, mutating the id in place via {@code @Val} for the save/respond steps to persist and return.
++ *
++ * <p>When the computed id collides with an existing owner's {@code memberId}, {@code '-<n>'} is appended
++ * with the smallest {@code n} of 2 or more that makes it unique, and the de-duplicated id is assigned
++ * (e.g. a second 'NSW271A2B3C4D5' becomes 'NSW271A2B3C4D5-2', a third 'NSW271A2B3C4D5-3').
++ */
++public class AssignMemberId {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String region = Locality.of(owner.getCity(), owner.getPostcode());
++        String base = MemberId.of(region, owner.getRegistrationDate(), owner.getTelephone(),
++                owner.getLastName());
++        Set<String> existing = ownerRepository.findAll().stream()
++                .map(Owner::getMemberId)
++                .filter(Objects::nonNull)
++                .collect(Collectors.toSet());
++        String memberId = base;
++        for (int n = 2; existing.contains(memberId); n++) {
++            memberId = base + "-" + n;
++        }
++        owner.setMemberId(memberId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 42fef97e..7596eaf7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -8,18 +8,16 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ 
+ /**
+  * Emits an audit line on successful create via the dedicated {@code AUDIT} logger, carrying the
+- * newly-assigned owner id, the {@code customerCode}, the {@code registrationDate} and the derived
+- * {@code membershipLevel} and {@code membershipNumber}. Runs after {@code SaveOwner} so the owner id
+- * is populated.
++ * newly-assigned owner id, the {@code memberId}, the {@code registrationDate} and the derived
++ * {@code membershipLevel}. Runs after {@code SaveOwner} so the owner id is populated.
+  *
+  * <p>Alongside the human-readable line it emits an immutable structured {@link OwnerCreatedEvent} as
+  * JSON on the same logger, carrying a {@code seq} that increases monotonically across creates and the
+- * owner's current primary identifier (the {@code customerCode} today; whatever replaces it later).
++ * owner's primary identifier (the {@code memberId}).
+  */
+ public class AuditOwnerCreated {
+ 
+@@ -29,24 +27,14 @@ public class AuditOwnerCreated {
+     private static final AtomicLong SEQ = new AtomicLong();
+ 
+     public void service(@Val Owner owner) {
+-        String membershipNumber = owner.getCustomerCode() + "-M"
+-            + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
+         int membershipLevel = MembershipLevel.level(MembershipLevel.points(owner.getEmail(),
+             owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate(),
+             LocalDate.now()));
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={} "
+-                + "membershipLevel={} membershipNumber={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            membershipLevel, membershipNumber);
++        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
+ 
+         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
+-            primaryIdentifier(owner), membershipLevel);
++            owner.getMemberId(), membershipLevel);
+         AUDIT.info(event.toJson());
+     }
+-
+-    /** The owner's current primary identifier. Today this is the {@code customerCode}; when the
+-     *  customerCode is unified into the memberId, return the memberId here instead. */
+-    private static String primaryIdentifier(Owner owner) {
+-        return owner.getCustomerCode();
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+index fdcb4d2f..96939aa8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -4,22 +4,20 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  * Immutable structured audit event emitted on a successful owner create. Serialized to JSON and
+  * published on the {@code AUDIT} logger alongside the human-readable audit line.
+  *
+- * <p>{@code identifier} carries the owner's <em>current primary identifier</em>. Today that is the
+- * {@code customerCode}; when the customerCode is unified into the memberId the caller passes the
+- * memberId here instead, without any change to this event's shape. The JSON field is named
+- * {@code customerCode} to match the published contract.
++ * <p>{@code identifier} carries the owner's <em>primary identifier</em>, the unified {@code memberId}.
++ * The JSON field is named {@code memberId} to match the published contract.
+  */
+ public record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, int membershipLevel) {
+ 
+     private static final String EVENT = "OWNER_CREATED";
+ 
+     /** Renders the event as the canonical JSON object
+-     *  {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. */
++     *  {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. */
+     public String toJson() {
+         return "{"
+             + "\"seq\":" + seq
+             + ",\"ownerId\":" + ownerId
+-            + ",\"customerCode\":" + quote(identifier)
++            + ",\"memberId\":" + quote(identifier)
+             + ",\"membershipLevel\":" + membershipLevel
+             + ",\"event\":\"" + EVENT + "\""
+             + "}";
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+index 964cc8a8..129568cb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+@@ -7,8 +7,8 @@ import java.time.LocalDate;
+  * calendar year in which it ends, so a date from July onwards belongs to the fiscal year of the
+  * following calendar year (e.g. 2026-08-10 is fiscal year 2027) while a date in January to June
+  * belongs to the fiscal year of its own calendar year. Used for the owner's derived {@code
+- * fiscalYear} label, the membership number's year segment and the elapsed-fiscal-year tenure, all
+- * read from the business-day-adjusted registration date.
++ * fiscalYear} label, the memberId's FY segment and the elapsed-fiscal-year tenure, all read from
++ * the business-day-adjusted registration date.
+  */
+ public final class FiscalYear {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/util/MemberId.java
+similarity index 52%
+rename from src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+rename to src/main/java/org/springframework/samples/petclinic/util/MemberId.java
+index eb7ebcf0..510ec641 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MemberId.java
+@@ -3,24 +3,33 @@ package org.springframework.samples.petclinic.util;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.time.LocalDate;
+ 
+ /**
+- * Builds and derives values from an owner's {@code customerCode}. The code is
+- * {@code '<REGION>-<HASH8>'} where REGION is the region derived from the owner's postcode/city
+- * (see {@link Locality}) and HASH8 is the first eight upper-case hex characters of SHA-256 over
+- * the {@code normalizedTelephone + lastName}. The {@code checkDigit} is a single Luhn check digit
+- * computed over the decimal digits contained in the code (non-digit characters such as the '-'
+- * separator or the hex letters are ignored), doubling every second digit from the right. This is
+- * the standard Luhn algorithm restated over the code's digits.
++ * Builds and derives values from an owner's {@code memberId}, the single unified member identifier.
++ * The id is {@code '<REGION><FY><HASH8><CHK>'} where:
++ * <ul>
++ * <li>REGION is the region derived from the owner's postcode/city (see {@link Locality}),</li>
++ * <li>FY is the two-digit fiscal year of the registration date (see {@link FiscalYear}),</li>
++ * <li>HASH8 is the first eight upper-case hex characters of SHA-256 over the
++ * {@code normalizedTelephone + lastName} (the same hash used by the region-and-hash identity), and</li>
++ * <li>CHK is a single Luhn check digit computed over the decimal digits of
++ * {@code <REGION><FY><HASH8>} (non-digit characters such as the region and hex letters are ignored),
++ * doubling every second digit from the right.</li>
++ * </ul>
++ * For example 'NSW271A2B3C4D5'.
+  */
+-public final class CustomerCode {
++public final class MemberId {
+ 
+-    private CustomerCode() {
++    private MemberId() {
+     }
+ 
+-    /** Assemble the {@code '<REGION>-<HASH8>'} code for the given region, telephone and last name. */
+-    public static String of(String region, String telephone, String lastName) {
+-        return region + "-" + hash8(telephone, lastName);
++    /** Assemble the {@code '<REGION><FY><HASH8><CHK>'} member id for the given region, registration
++     *  date, telephone and last name. */
++    public static String of(String region, LocalDate registrationDate, String telephone, String lastName) {
++        String fy = String.format("%02d", FiscalYear.of(registrationDate) % 100);
++        String base = region + fy + hash8(telephone, lastName);
++        return base + checkDigit(base);
+     }
+ 
+     /** First eight UPPER-case hex characters of SHA-256 over {@code (telephone + lastName)}. */
+@@ -41,13 +50,7 @@ public final class CustomerCode {
+         }
+     }
+ 
+-    /** The REGION portion of a {@code '<REGION>-<HASH8>'} code. */
+-    public static String region(String code) {
+-        int dash = code.indexOf('-');
+-        return dash < 0 ? code : code.substring(0, dash);
+-    }
+-
+-    /** The Luhn check digit (0-9) over the decimal digits contained in {@code code}. */
++    /** The single Luhn check digit (0-9) over the decimal digits contained in {@code code}. */
+     public static int checkDigit(String code) {
+         int sum = 0;
+         boolean doubleDigit = true;
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 6e4bb238..e344934b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(20),
++  member_id VARCHAR(40),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 9dbbdaaf..123ad42d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,7 @@ CREATE TABLE owners (
+   postcode   VARCHAR(4),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(20),
++  member_id VARCHAR(40),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1f0a11b5..8fa57e25 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(20),
++  member_id VARCHAR(40),
+   household_id VARCHAR(64),
+   namesake_count INT,
+   household_size INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8da6bcfc..aa65a21c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       postcode   TEXT,
+                                       registration_date DATE,
+                                       birth_date DATE,
+-                                      customer_code TEXT,
++                                      member_id TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 76338701..bcf533a2 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -64,10 +64,10 @@ build:
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHousehold
+   govern: [ transaction ]
+-  next: assignCustomerCode
++  next: assignMemberId
+ 
+-assignCustomerCode:
+-  class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
++assignMemberId:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMemberId
+   govern: [ transaction ]
+   next: countNamesakes
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 30e0ed57..8c581f3f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2152,23 +2152,15 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
+-            customerCode:
+-              title: Customer code
+-              description: Assigned customer code formatted '<LAST3>-<NNNN>', where LAST3 is
+-                the upper-cased first three letters of lastName and NNNN is a global 4-digit
+-                zero-padded sequence equal to one more than the current number of owners.
++            memberId:
++              title: Member ID
++              description: The unified member identifier formatted '<REGION><FY><HASH8><CHK>', where
++                REGION is the owner's locality/region, FY is the two-digit fiscal year of the
++                registrationDate, HASH8 is the first eight upper-case hex characters of SHA-256 over
++                the normalized telephone and lastName, and CHK is a single Luhn check digit computed
++                over the decimal digits of '<REGION><FY><HASH8>'.
+               type: string
+-              example: 'SMI-0007'
+-              readOnly: true
+-            checkDigit:
+-              title: Check digit
+-              description: A single Luhn check digit (0-9) computed over the decimal digits of the
+-                customerCode (non-digit separators are ignored).
+-              type: integer
+-              format: int32
+-              minimum: 0
+-              maximum: 9
+-              example: 3
++              example: 'NSW271A2B3C4D5'
+               readOnly: true
+             fiscalYear:
+               title: Fiscal year
+@@ -2179,13 +2171,6 @@ components:
+               type: string
+               example: 'FY27'
+               readOnly: true
+-            membershipNumber:
+-              title: Membership number
+-              description: Membership number formatted '<customerCode>-M<YY>', where YY is the
+-                last two digits of the fiscal year of the registrationDate.
+-              type: string
+-              example: 'SMI-0007-M27'
+-              readOnly: true
+             householdId:
+               title: Household ID
+               description: Stable identifier shared by every owner in the same household. Derived
