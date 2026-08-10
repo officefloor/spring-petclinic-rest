@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
@@ -26,7 +23,7 @@ public class AssignOwnerHousehold {
         }
         String lastName = canonical(owner.getLastName());
         String address = AddressNormalizer.normalize(owner.getAddress());
-        String householdId = householdId(lastName, address);
+        String householdId = OwnerIdentity.householdId(owner.getLastName(), owner.getAddress());
         owner.setHouseholdId(householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(canonical(existing.getLastName()))
@@ -35,23 +32,6 @@ public class AssignOwnerHousehold {
                 existing.setHouseholdId(householdId);
                 ownerRepository.save(existing);
             }
-        }
-    }
-
-    /** Stable, shared household id: the first 16 upper-hex chars of SHA-256 over the canonical
-     *  last name and address, so all members of a household derive the same value. */
-    private static String householdId(String lastName, String address) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "\n" + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02X", hash[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
         }
     }
 
