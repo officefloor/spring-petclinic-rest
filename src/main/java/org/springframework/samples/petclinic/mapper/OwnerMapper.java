@@ -33,7 +33,58 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Known disposable email domains whose registrable base name (the label immediately before the
+     * public suffix) marks an owner's email domain as <em>disposable-adjacent</em>. These are the same
+     * domains the create endpoint refuses outright; a domain that is not an exact match but shares one
+     * of these base names — a subdomain of a disposable domain, or the same base under a different TLD —
+     * is disposable-adjacent.
+     */
+    java.util.Set<String> DISPOSABLE_DOMAIN_BASES = java.util.Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Derives the owner's {@code riskFlag}: {@code true} when any of these hold — the owner is a possible
+     * duplicate ({@code possibleDuplicate} is true), the owner's email domain is disposable-adjacent (see
+     * {@link #isDisposableAdjacent(String)}), or the owner's city is over its soft capacity
+     * ({@code capacityWarning} is true, i.e. the city already held 40 or more owners at creation). Otherwise
+     * {@code false}. Returns {@code null} when the owner is absent.
+     */
+    default @Nullable Boolean riskFlag(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        boolean disposableAdjacent = isDisposableAdjacent(owner.getEmail());
+        return possibleDuplicate || overSoftCapacity || disposableAdjacent;
+    }
+
+    /**
+     * Whether an email's domain is disposable-adjacent: its registrable base name (the label immediately
+     * before the final TLD, compared case-insensitively) matches the base name of a known disposable
+     * domain. This flags a subdomain of a disposable domain (e.g. {@code sub.mailinator.com}) and the same
+     * base under a different TLD (e.g. {@code mailinator.net}), as well as an exact disposable domain.
+     * Returns {@code false} when the email is absent or carries no dotted domain.
+     */
+    default boolean isDisposableAdjacent(@Nullable String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase(java.util.Locale.ROOT);
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return false;
+        }
+        String base = labels[labels.length - 2];
+        return DISPOSABLE_DOMAIN_BASES.contains(base);
+    }
 
     /**
      * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
