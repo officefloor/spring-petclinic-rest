@@ -47,6 +47,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RestRejectionException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -207,30 +208,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Validate & normalize the optional email; reject the create when it is present but invalid.
         if (!normalizeEmail(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied email address is invalid");
         }
         // Validate & normalize the optional postcode; reject the create when it is present but
         // not valid for the owner's city (see normalizePostcode).
         if (!normalizePostcode(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied postcode is invalid for the owner's city");
         }
         // Normalize the supplied address — the structured 'addressLine1'/'addressLine2' when
         // present, otherwise the flat 'address' — storing the normalized form (and the composed
         // 'address') back on the DTO so it is what gets persisted and compared. Reject the create
         // when no address is supplied in either form (see normalizeAddresses).
         if (!normalizeAddresses(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "An address is required (supply either 'addressLine1' or 'address')");
         }
         // Reject the create when the owner's city is already at capacity, i.e. it already
         // contains 50 or more owners (compared case-insensitively).
         int ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
         if (ownersInCity >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RestRejectionException(HttpStatus.CONFLICT,
+                "The owner's city has reached its capacity limit");
         }
         // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied telephone number is invalid");
         }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         // Consolidated duplicate detection. All duplicate checks are now expressed through the
@@ -247,7 +253,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(ownerMapper.identityKey(existing)));
         if (identityInUse) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RestRejectionException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         // Determine the effective registration date — the value supplied on the request, or the
         // server's current date when none was supplied — and roll it forward to the next business
@@ -261,13 +268,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Reject a supplied registration date that lies in the future (later than the
         // server's current date): an owner cannot be registered ahead of time.
         else if (registrationDate.isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The registration date cannot be in the future");
         }
         registrationDate = toBusinessDay(registrationDate);
         // Reject the create when the daily sign-up limit has been reached, i.e. 100 or more
         // owners have already been registered on this (adjusted) business day.
         if (countOwnersRegisteredOn(registrationDate) >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RestRejectionException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner sign-up limit has been reached");
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = candidate;
@@ -759,17 +768,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         if (!normalizeEmail(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied email address is invalid");
         }
         if (!normalizePostcode(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied postcode is invalid for the owner's city");
         }
         if (!normalizeAddresses(ownerFieldsDto)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "An address is required (supply either 'addressLine1' or 'address')");
         }
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The supplied telephone number is invalid");
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
