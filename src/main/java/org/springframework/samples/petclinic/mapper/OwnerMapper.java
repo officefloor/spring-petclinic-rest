@@ -153,18 +153,20 @@ public interface OwnerMapper {
 
     /**
      * A stable identifier for the owner's household, derived deterministically from the
-     * normalized last name and address (trimmed, lower-cased, whitespace collapsed).
-     * Every owner sharing a household therefore receives the same identifier: the first
-     * eight upper-case hex characters of the SHA-256 of '&lt;lastName&gt;|&lt;address&gt;'.
+     * normalized last name and the postcode. Every owner sharing the same last name
+     * (trimmed, lower-cased, whitespace collapsed) and postcode therefore receives the
+     * same identifier: the first twelve upper-case hex characters of the SHA-256 of
+     * '&lt;normalizedLastName&gt;|&lt;postcode&gt;'. A {@code null} postcode contributes
+     * the empty string.
      */
     default String householdId(Owner owner) {
-        String key = normalizeHouseholdKey(owner.getLastName()) + "|"
-            + normalizeHouseholdKey(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = normalizeHouseholdKey(owner.getLastName()) + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();

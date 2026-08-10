@@ -187,6 +187,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Household duplicate detection keyed on the deterministic householdId, derived from the
+        // normalized last name and postcode (see OwnerMapper#householdId). Owners sharing a last
+        // name and postcode share the same household. A second owner in an existing household is
+        // rejected as a household duplicate (409) unless the request declares 'sharesHousehold',
+        // in which case it is created as a declared household member — 'sharesHousehold' only
+        // bypasses this block; the household link itself now follows from the computed householdId.
+        String householdId = ownerMapper.householdId(candidate);
+        boolean householdExists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (householdExists && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        boolean declaredMember = householdExists && sharesHousehold;
         // Determine the effective registration date — the value supplied on the request, or the
         // server's current date when none was supplied — and roll it forward to the next business
         // day: a Saturday or Sunday moves to the following Monday. Everything derived from the
@@ -221,16 +235,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // registered on this (adjusted) business day before this owner is created.
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
         // Record the size of this owner's household after this create: the number of existing
-        // owners sharing the same household (matching last name and address) plus this owner.
-        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
+        // owners sharing the same household (i.e. the same computed householdId) plus this owner.
+        owner.setHouseholdSize(countHouseholdMembers(owner) + 1);
         // Flag a possible (soft) duplicate: this owner is not a hard identity duplicate, but it
         // shares an existing owner's last name (case-insensitively) and postcode while carrying a
         // different telephone. When such a match exists, record it as 'possibleDuplicate' with
         // 'possibleDuplicateOf' set to the matching owner's id; otherwise it is not a possible
-        // duplicate.
-        Owner softMatch = findPossibleDuplicate(owner);
-        owner.setPossibleDuplicate(softMatch != null);
-        owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
+        // duplicate. A declared household member is an acknowledged member, not a suspected
+        // duplicate, so it is never flagged.
+        if (declaredMember) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
+        else {
+            Owner softMatch = findPossibleDuplicate(owner);
+            owner.setPossibleDuplicate(softMatch != null);
+            owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
+        }
         this.clinicService.saveOwner(owner);
         // Emit an audit line recording the new owner's id, customer code, registration date
         // and membership level.
@@ -335,18 +356,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalize an owner household field (last name or address) for duplicate detection:
-     * trimmed, lower-cased and with all runs of whitespace collapsed to a single space.
-     * A {@code null} value normalizes to the empty string.
-     */
-    private static String normalizeHouseholdKey(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
      * Normalize a telephone number to E.164 form.
      *
      * <p>Spaces, dashes and brackets are stripped. When the number carries an
@@ -411,17 +420,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Count the existing owners in the same household as the given last name and address
-     * (compared after household-key normalization). Used, together with the owner being
-     * created, to derive the household size recorded on the owner.
+     * Count the existing owners in the same household as the given owner, i.e. those sharing its
+     * computed householdId (derived from the normalized last name and postcode). Used, together
+     * with the owner being created, to derive the household size recorded on the owner.
      */
-    private int countHouseholdMembers(String lastName, String address) {
-        String normalizedLastName = normalizeHouseholdKey(lastName);
-        String normalizedAddress = normalizeHouseholdKey(address);
+    private int countHouseholdMembers(Owner owner) {
+        String householdId = ownerMapper.householdId(owner);
         return (int) this.clinicService.findAllOwners().stream()
-            .filter(existing ->
-                normalizeHouseholdKey(existing.getLastName()).equals(normalizedLastName)
-                    && normalizeHouseholdKey(existing.getAddress()).equals(normalizedAddress))
+            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
             .count();
     }
 
