@@ -302,7 +302,28 @@ public class ClinicServiceImpl implements ClinicService {
      * derived entirely from the region and the telephone/last-name hash.
      */
     private String generateCustomerCode(Owner owner) {
-        return regionFor(owner) + "-" + hash8(owner);
+        String base = regionFor(owner) + "-" + hash8(owner);
+        return deduplicateCustomerCode(base);
+    }
+
+    /**
+     * Ensure the computed customer code is unique across existing owners. When the base code
+     * collides with an existing owner's {@code customerCode}, append {@code '-<n>'} with the
+     * smallest {@code n} of 2 or more that makes it unique, and return that de-duplicated code.
+     */
+    private String deduplicateCustomerCode(String base) {
+        Set<String> existing = ownerRepository.findAll().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
