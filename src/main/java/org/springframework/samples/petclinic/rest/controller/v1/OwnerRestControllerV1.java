@@ -673,9 +673,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (StringUtils.hasText(idempotencyKey)) {
             idempotentCreates.put(idempotencyKey, owner.getId());
         }
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         AUDIT.info("{}", new OwnerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(),
             primaryIdentifier(owner), ownerMapper.membershipLevel(owner)).toJson());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -685,27 +685,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The owner's current primary identifier as carried by the structured {@code OWNER_CREATED}
-     * audit event. Today this is the {@code customerCode}; when the customer code is later unified
-     * into a member id, this is the single place that changes so the event automatically switches to
-     * carrying the {@code memberId} instead.
+     * The owner's primary identifier as carried by the structured {@code OWNER_CREATED} audit event:
+     * the unified {@code memberId}, into which the former {@code customerCode} has been folded.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Immutable structured record of a successful owner creation, serialized as a single JSON object
-     * to the {@code AUDIT} logger alongside the human-readable audit line. The {@code customerCode}
-     * field carries the owner's current primary identifier (see {@link #primaryIdentifier(Owner)}).
+     * to the {@code AUDIT} logger alongside the human-readable audit line. The {@code memberId}
+     * field carries the owner's primary identifier (see {@link #primaryIdentifier(Owner)}).
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                                      Integer membershipLevel) {
 
         String toJson() {
             return "{\"seq\":" + seq
                 + ",\"ownerId\":" + ownerId
-                + ",\"customerCode\":" + jsonString(customerCode)
+                + ",\"memberId\":" + jsonString(memberId)
                 + ",\"membershipLevel\":" + membershipLevel
                 + ",\"event\":\"OWNER_CREATED\"}";
         }

@@ -32,9 +32,7 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -150,22 +148,25 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's locality from the region-and-hash customer code: the {@code <REGION>}
-     * segment (everything before the first {@code '-'}) of the owner's {@code customerCode}. Because
-     * the customer code's region is itself derived from the postcode (falling back to the city), the
-     * locality now moves with the identity rather than being computed independently. The result is
-     * {@code "UNKNOWN"} when no customer code is present.
+     * Derives an owner's locality from the unified member id: the leading {@code <REGION>} segment
+     * of the owner's {@code memberId}, i.e. the run of letters before the 2-digit fiscal year that
+     * follows it. Because the member id's region is itself derived from the postcode (falling back
+     * to the city), the locality moves with the identity rather than being computed independently.
+     * The result is {@code "UNKNOWN"} when no member id is present.
      *
      * @param owner the owner to derive the locality for
-     * @return the region segment of the customer code, or {@code "UNKNOWN"}
+     * @return the region segment of the member id, or {@code "UNKNOWN"}
      */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null || code.isEmpty()) {
+        String memberId = owner.getMemberId();
+        if (memberId == null || memberId.isEmpty()) {
             return "UNKNOWN";
         }
-        int dash = code.indexOf('-');
-        return dash < 0 ? code : code.substring(0, dash);
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? "UNKNOWN" : memberId.substring(0, i);
     }
 
     /**
@@ -328,20 +329,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
-     * {@code <customerCode>} is the owner's region-and-hash customer code and {@code YY} is the last
-     * two digits (zero-padded) of the owner's {@link #fiscalYear(Owner) fiscal year} - so the year
-     * segment matches the returned {@code fiscalYear} (e.g. {@code NSW-1A2B3C4D-M27}).
-     *
-     * @param owner the owner to derive the membership number for
-     * @return the formatted membership number
-     */
-    default String membershipNumber(Owner owner) {
-        String yy = String.format("%02d", fiscalYearValue(owner.getRegistrationDate()) % 100);
-        return owner.getCustomerCode() + "-M" + yy;
-    }
-
-    /**
      * Derives an owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two
      * digits (zero-padded) of the fiscal year that the owner's business-day-adjusted registration
      * date falls in. The fiscal year starts on 1 July and is labelled by the calendar year in which
@@ -366,36 +353,6 @@ public interface OwnerMapper {
      */
     private int fiscalYearValue(java.time.LocalDate date) {
         return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
-     * Derives an owner's check digit: a single Luhn check digit ({@code 0}-{@code 9}) computed over
-     * the digits contained in the owner's customer code. Non-digit characters in the customer code
-     * are ignored.
-     *
-     * @param owner the owner to derive the check digit for
-     * @return the Luhn check digit, between {@code 0} and {@code 9}
-     */
-    default Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**

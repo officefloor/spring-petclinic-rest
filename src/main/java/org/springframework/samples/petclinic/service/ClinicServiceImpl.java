@@ -235,8 +235,8 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
-            owner.setCustomerCode(generateCustomerCode(owner));
+        if (owner.isNew() && owner.getMemberId() == null) {
+            owner.setMemberId(generateMemberId(owner));
         }
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
@@ -295,25 +295,28 @@ public class ClinicServiceImpl implements ClinicService {
     }
 
     /**
-     * Build the owner's customer code in the form '<REGION>-<HASH8>' where REGION is the region
-     * code derived from the owner's postcode (falling back to the city) and HASH8 is the first
-     * 8 upper-case hex characters of the SHA-256 digest over the owner's normalized telephone
-     * concatenated with the owner's last name. There is no sequence number: the identity is
-     * derived entirely from the region and the telephone/last-name hash.
+     * Build the owner's member id in the form '<REGION><FY><HASH8><CHK>' where REGION is the region
+     * code derived from the owner's postcode (falling back to the city), FY is the 2-digit fiscal
+     * year of the owner's business-day-adjusted registration date, HASH8 is the first 8 upper-case
+     * hex characters of the SHA-256 digest over the owner's normalized telephone concatenated with
+     * the owner's last name (the same HASH8 used by the region-and-hash identity), and CHK is a
+     * single Luhn check digit computed over the digits of '<REGION><FY><HASH8>'. The identity is
+     * derived entirely from the region, the fiscal year and the telephone/last-name hash.
      */
-    private String generateCustomerCode(Owner owner) {
-        String base = regionFor(owner) + "-" + hash8(owner);
-        return deduplicateCustomerCode(base);
+    private String generateMemberId(Owner owner) {
+        String core = regionFor(owner) + fiscalYear2(owner) + hash8(owner);
+        String base = core + luhnCheckDigit(core);
+        return deduplicateMemberId(base);
     }
 
     /**
-     * Ensure the computed customer code is unique across existing owners. When the base code
-     * collides with an existing owner's {@code customerCode}, append {@code '-<n>'} with the
-     * smallest {@code n} of 2 or more that makes it unique, and return that de-duplicated code.
+     * Ensure the computed member id is unique across existing owners. When the base id collides
+     * with an existing owner's {@code memberId}, append {@code '-<n>'} with the smallest {@code n}
+     * of 2 or more that makes it unique, and return that de-duplicated id.
      */
-    private String deduplicateCustomerCode(String base) {
+    private String deduplicateMemberId(String base) {
         Set<String> existing = ownerRepository.findAll().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(code -> code != null)
             .collect(java.util.stream.Collectors.toSet());
         if (!existing.contains(base)) {
@@ -324,6 +327,44 @@ public class ClinicServiceImpl implements ClinicService {
             n++;
         }
         return base + "-" + n;
+    }
+
+    /**
+     * Compute the 2-digit (zero-padded) fiscal year of the owner's registration date. The fiscal
+     * year starts on 1 July and is labelled by the calendar year in which it ends, so a date on or
+     * after 1 July belongs to the next calendar year's fiscal year. Falls back to the current server
+     * date when the owner has no registration date yet.
+     */
+    private String fiscalYear2(Owner owner) {
+        java.time.LocalDate date = owner.getRegistrationDate() == null
+            ? java.time.LocalDate.now() : owner.getRegistrationDate();
+        int fiscalYear = date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+        return String.format("%02d", fiscalYear % 100);
+    }
+
+    /**
+     * Compute a single Luhn check digit (0-9) over the digit characters contained in {@code value};
+     * non-digit characters are ignored.
+     */
+    private int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
