@@ -23,6 +23,7 @@ import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -145,11 +146,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return digits;
     }
 
+    /**
+     * Rejects a telephone that, once normalized, is already used by any existing owner. Existing
+     * owners' telephones are normalized the same way before comparison so differently-formatted
+     * values representing the same number are treated as duplicates.
+     *
+     * @param telephone the normalized (digits-only) telephone of the owner being created
+     * @throws DuplicateOwnerTelephoneException if another owner already uses the telephone
+     */
+    private void requireUniqueTelephone(String telephone) {
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(telephone::equals);
+        if (taken) {
+            throw new DuplicateOwnerTelephoneException(telephone);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        requireUniqueTelephone(telephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
