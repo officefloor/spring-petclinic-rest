@@ -232,8 +232,23 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
+        if (owner.isNew() && owner.getCustomerCode() == null) {
+            owner.setCustomerCode(generateCustomerCode(owner));
+        }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Build the owner's customer code in the form '<LAST3>-<NNNN>' where LAST3 is the
+     * upper-cased first three letters of the owner's last name and NNNN is a global
+     * 4-digit zero-padded sequence equal to one more than the current number of owners.
+     */
+    private String generateCustomerCode(Owner owner) {
+        String lastName = owner.getLastName();
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+        int sequence = ownerRepository.findAll().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
     }
 
     @Override
