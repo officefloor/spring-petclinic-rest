@@ -27,6 +27,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.util.Localities.localityFor(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+            expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
