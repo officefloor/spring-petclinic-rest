@@ -53,17 +53,19 @@ public final class OwnerIdentity {
     }
 
     /**
-     * Stable, shared household id: the first 16 upper-hex chars of SHA-256 over the canonical last
-     * name and normalized address, so all members of a household derive the same value.
+     * Stable, shared household id: the first 12 upper-hex chars of SHA-256 over the canonical last
+     * name and the postcode ({@code normalizedLastName + '|' + postcode}), so every owner with the
+     * same last name and postcode derives the same value automatically — the household is keyed on
+     * (lastName, postcode) alone. A null postcode contributes an empty component.
      */
-    public static String householdId(String lastName, String address) {
-        String canonicalLastName = canonicalName(lastName);
-        String normalizedAddress = AddressNormalizer.normalize(address);
+    public static String householdId(String lastName, String postcode) {
+        String normalizedLastName = canonicalName(lastName);
+        String pc = postcode == null ? "" : postcode;
         try {
             byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest((canonicalLastName + "\n" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+                    .digest((normalizedLastName + "|" + pc).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", hash[i]));
             }
             return sb.toString();

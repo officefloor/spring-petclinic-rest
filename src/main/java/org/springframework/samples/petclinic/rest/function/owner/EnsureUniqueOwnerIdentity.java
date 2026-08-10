@@ -8,29 +8,41 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
 
 /**
  * Runs after {@link NormalizeOwnerTelephone} and {@link NormalizeOwnerEmail} (so the request telephone
- * is E.164 and the email lower-cased) and before {@link BuildOwner}. Consolidates all duplicate
- * detection into a single derived {@code identityKey} = {@code normalizedTelephone + '|' + (email or
- * empty) + '|' + (householdId or empty)}, and rejects the request with {@link DuplicateIdentityException}
- * (handled as 409) only when the new owner's WHOLE identity key equals an existing owner's.
+ * is E.164 and the email lower-cased) and before {@link BuildOwner}. Rejects the request with
+ * {@link DuplicateIdentityException} (handled as 409) when it collides with an existing owner.
  *
- * <p>Because the telephone is part of the key, two members of the same household (same householdId)
- * with different telephones have different keys and are both allowed; only an exact full-key match is
- * a duplicate. The new owner's household component is the id it will be assigned by
- * {@link AssignOwnerHousehold}: the deterministic household id when the request opts in with
- * {@code sharesHousehold: true}, otherwise empty.
+ * <p>The household is keyed on (lastName, postcode): the new owner's deterministic
+ * {@link OwnerIdentity#householdId householdId} is computed from those fields, and an existing owner
+ * with the same household id is a <em>household duplicate</em>. A second owner in an existing household
+ * is therefore rejected — <em>unless</em> the request opts in with {@code sharesHousehold: true}, which
+ * bypasses this whole duplicate block so the owner is created as a declared household member.
+ *
+ * <p>Independently of the household, an existing owner with the same normalized telephone and email is a
+ * <em>contact duplicate</em> and is also rejected (unless the request opted in above).
  */
 public class EnsureUniqueOwnerIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String householdId = Boolean.TRUE.equals(request.getSharesHousehold())
-                ? OwnerIdentity.householdId(request.getLastName(), request.getAddress())
-                : null;
+        // A declared household member opts in with sharesHousehold=true and bypasses the whole
+        // duplicate block, so it is created even though it shares an existing owner's household.
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return;
+        }
+        String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
+        String contactKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), null);
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
-            String existingKey = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
-                    OwnerIdentity.normalizeEmail(existing.getEmail()), existing.getHouseholdId());
-            if (identityKey.equals(existingKey)) {
+            // Household duplicate: same deterministic householdId (same lastName + postcode).
+            String existingHousehold =
+                    OwnerIdentity.householdId(existing.getLastName(), existing.getPostcode());
+            if (householdId.equals(existingHousehold)) {
+                throw new DuplicateIdentityException(identityKey);
+            }
+            // Contact duplicate: same normalized telephone and email, regardless of household.
+            String existingContact = OwnerIdentity.key(OwnerIdentity.toE164(existing.getTelephone()),
+                    OwnerIdentity.normalizeEmail(existing.getEmail()), null);
+            if (contactKey.equals(existingContact)) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }
