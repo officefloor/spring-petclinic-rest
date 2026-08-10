@@ -69,6 +69,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -150,6 +153,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     protected Set<Pet> getPetsInternal() {
