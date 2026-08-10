@@ -190,12 +190,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Normalizes a telephone on create into E.164 form. Spaces, dashes and brackets are stripped.
      * A leading {@code +} and its country code are kept as given; otherwise the country code
      * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
-     * The result must carry 8 to 15 digits after the {@code +}. Returns the E.164 string to be
-     * stored and returned.
+     * The result must carry 8 to 15 digits after the {@code +}. In addition, when the country code
+     * is recognized the national number must have the exact length that code requires ({@code +61}
+     * expects 9 national digits, {@code +1} expects 10). Returns the E.164 string to be stored and
+     * returned.
      *
      * @param telephone the raw telephone as supplied by the caller
      * @return the normalized E.164 telephone (a {@code +} followed by 8 to 15 digits)
-     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number, or its
+     *     national-number length is wrong for its country code
      */
     private static String normalizeTelephone(String telephone) {
         String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
@@ -214,7 +217,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(
                 "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
         }
+        if (digits.startsWith("61")) {
+            requireNationalLength(digits.substring(2), 9, "+61");
+        } else if (digits.startsWith("1")) {
+            requireNationalLength(digits.substring(1), 10, "+1");
+        }
         return e164;
+    }
+
+    /**
+     * Enforces that the national portion of an E.164 number has the exact number of digits its
+     * country code requires.
+     *
+     * @param national the national-number digits (the part after the country code)
+     * @param expected the exact national-number length the country code requires
+     * @param countryCode the country code, for the error message
+     * @throws InvalidTelephoneException if {@code national} does not have exactly {@code expected} digits
+     */
+    private static void requireNationalLength(String national, int expected, String countryCode) {
+        if (national.length() != expected) {
+            throw new InvalidTelephoneException(
+                "Telephone with country code '" + countryCode + "' must have " + expected
+                    + " national digits");
+        }
     }
 
     /**
