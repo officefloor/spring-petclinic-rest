@@ -27,6 +27,7 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
@@ -79,6 +80,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "ST", "STREET",
         "RD", "ROAD",
         "AVE", "AVENUE");
+
+    /**
+     * Maximum number of owners permitted in a single city. Once a city already contains this many
+     * owners, creating another owner in that city is rejected as a conflict.
+     */
+    private static final int CITY_CAPACITY = 50;
 
     private final ClinicService clinicService;
 
@@ -305,6 +312,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * Rejects an owner whose city already contains the maximum permitted number of owners
+     * ({@value #CITY_CAPACITY}). Cities are compared case-insensitively with collapsed whitespace,
+     * the same normalization used for the other owner household fields.
+     *
+     * @param city the city of the owner being created
+     * @throws CityAtCapacityException if the city already contains {@value #CITY_CAPACITY} or more owners
+     */
+    private void requireCityHasCapacity(String city) {
+        String normalizedCity = normalizeHousehold(city);
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeHousehold(existing.getCity()).equals(normalizedCity))
+            .count();
+        if (count >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(city);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -315,6 +340,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
+        requireCityHasCapacity(ownerFieldsDto.getCity());
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);

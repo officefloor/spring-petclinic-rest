@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
+    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its owner capacity";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -257,6 +258,28 @@ public class ExceptionControllerAdvice {
             request.getRequestURI(),
             e.getLastName(),
             e.getAddress());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityAtCapacityException} raised when an owner is created in a city that
+     * already contains the maximum permitted number of owners. Returns a 409 Conflict whose
+     * body's {@code errors} array names the offending {@code city} field.
+     *
+     * @param e The {@link CityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
+        detail.setProperty("errors", List.of("city"));
+        logger.debug("City at capacity at {} {}: city={}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
         return ResponseEntity.status(status).body(detail);
     }
 
