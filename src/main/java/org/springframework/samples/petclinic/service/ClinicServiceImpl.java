@@ -235,8 +235,28 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getCustomerCode() == null) {
             owner.setCustomerCode(generateCustomerCode(owner));
         }
+        if (owner.isNew() && owner.getNamesakeCount() == null) {
+            owner.setNamesakeCount(countNamesakes(owner));
+        }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Count the existing owners that share the given owner's first name and last name,
+     * compared case-insensitively. Invoked before the new owner is persisted, so the
+     * result is the number of namesakes that existed at the time of creation.
+     */
+    private int countNamesakes(Owner owner) {
+        String firstName = owner.getFirstName();
+        String lastName = owner.getLastName();
+        if (firstName == null || lastName == null) {
+            return 0;
+        }
+        return (int) ownerRepository.findAll().stream()
+            .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
     }
 
     /**
