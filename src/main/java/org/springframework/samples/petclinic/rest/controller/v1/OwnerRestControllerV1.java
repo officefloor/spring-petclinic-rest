@@ -492,6 +492,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * De-duplicates a freshly computed customer code against the customer codes already held by
+     * existing owners. When the code is unused it is returned unchanged; otherwise {@code '-<n>'} is
+     * appended with the smallest {@code n} of 2 or more that yields a code no existing owner carries.
+     *
+     * @param customerCode the computed customer code for the owner being created
+     * @return the same code when unique, otherwise the code with a {@code '-<n>'} suffix that makes
+     *     it unique
+     */
+    private String deduplicateCustomerCode(String customerCode) {
+        Set<String> existing = new java.util.HashSet<>();
+        for (Owner owner : this.clinicService.findAllOwners()) {
+            if (owner.getCustomerCode() != null) {
+                existing.add(owner.getCustomerCode());
+            }
+        }
+        if (!existing.contains(customerCode)) {
+            return customerCode;
+        }
+        int n = 2;
+        while (existing.contains(customerCode + "-" + n)) {
+            n++;
+        }
+        return customerCode + "-" + n;
+    }
+
+    /**
      * Returns the region code whose inclusive postcode range contains the given 4-digit postcode
      * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or {@code 'UNKNOWN'} when the postcode is
      * {@code null}, non-numeric, or in no known range.
@@ -674,8 +700,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
-        owner.setCustomerCode(customerCode(
-            ownerFieldsDto.getPostcode(), normalizedTelephone, ownerFieldsDto.getLastName()));
+        owner.setCustomerCode(deduplicateCustomerCode(customerCode(
+            ownerFieldsDto.getPostcode(), normalizedTelephone, ownerFieldsDto.getLastName())));
         owner.setHouseholdId(ownerHouseholdId);
         owner.setHouseholdSize(householdSize(ownerHouseholdId));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
