@@ -30,6 +30,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -141,6 +142,36 @@ public interface OwnerMapper {
     default String membershipNumber(Owner owner) {
         String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
         return owner.getCustomerCode() + "-M" + yy;
+    }
+
+    /**
+     * Derives an owner's check digit: a single Luhn check digit ({@code 0}-{@code 9}) computed over
+     * the digits contained in the owner's customer code. Non-digit characters in the customer code
+     * are ignored.
+     *
+     * @param owner the owner to derive the check digit for
+     * @return the Luhn check digit, between {@code 0} and {@code 9}
+     */
+    default Integer checkDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
