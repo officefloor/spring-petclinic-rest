@@ -33,6 +33,8 @@ public interface OwnerMapper {
             expression = "java(Locality.of(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
             expression = "java(ContactPreference.of(owner.getEmail()))")
+    @Mapping(target = "ageBand",
+            expression = "java(AgeBand.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
