@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 63a6886e..d9480751 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -92,6 +92,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED}
++     * audit event. Shared across every create handled by this singleton controller and incremented
++     * once per successful owner creation, so the events form a strictly ordered, gap-free stream.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
++        new java.util.concurrent.atomic.AtomicLong();
++
+     /**
+      * Common street-type abbreviations expanded during address normalization. Keys and values are
+      * upper-cased so the mapping is applied after the address has been upper-cased.
+@@ -640,12 +648,66 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        AUDIT.info("{}", new OwnerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(),
++            primaryIdentifier(owner), ownerMapper.membershipLevel(owner)).toJson());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * The owner's current primary identifier as carried by the structured {@code OWNER_CREATED}
++     * audit event. Today this is the {@code customerCode}; when the customer code is later unified
++     * into a member id, this is the single place that changes so the event automatically switches to
++     * carrying the {@code memberId} instead.
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Immutable structured record of a successful owner creation, serialized as a single JSON object
++     * to the {@code AUDIT} logger alongside the human-readable audit line. The {@code customerCode}
++     * field carries the owner's current primary identifier (see {@link #primaryIdentifier(Owner)}).
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++                                     Integer membershipLevel) {
++
++        String toJson() {
++            return "{\"seq\":" + seq
++                + ",\"ownerId\":" + ownerId
++                + ",\"customerCode\":" + jsonString(customerCode)
++                + ",\"membershipLevel\":" + membershipLevel
++                + ",\"event\":\"OWNER_CREATED\"}";
++        }
++
++        private static String jsonString(String value) {
++            if (value == null) {
++                return "null";
++            }
++            StringBuilder sb = new StringBuilder(value.length() + 2).append('"');
++            for (int i = 0; i < value.length(); i++) {
++                char c = value.charAt(i);
++                switch (c) {
++                    case '"' -> sb.append("\\\"");
++                    case '\\' -> sb.append("\\\\");
++                    case '\n' -> sb.append("\\n");
++                    case '\r' -> sb.append("\\r");
++                    case '\t' -> sb.append("\\t");
++                    default -> {
++                        if (c < 0x20) {
++                            sb.append(String.format("\\u%04x", (int) c));
++                        } else {
++                            sb.append(c);
++                        }
++                    }
++                }
++            }
++            return sb.append('"').toString();
++        }
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
