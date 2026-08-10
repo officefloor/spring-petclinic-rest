@@ -2,10 +2,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
@@ -17,6 +20,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>The identity is derived deterministically from the owner's own fields — no sequence numbers —
  * so it does not depend on other owners or on creation order. The telephone has already been
  * normalized to E.164 form by {@link ValidateOwnerFields} before this step runs.
+ *
+ * <p>Should the deterministic code collide with an existing owner's {@code customerCode}, it is
+ * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
+ * unique (e.g. {@code NSW-1A2B3C4D}, then {@code NSW-1A2B3C4D-2}, {@code NSW-1A2B3C4D-3}, …).
  */
 public class AssignCustomerCode {
 
@@ -26,10 +33,23 @@ public class AssignCustomerCode {
 
     private static final String UNKNOWN = "UNKNOWN";
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = regionOf(owner.getPostcode());
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+
+        Set<String> taken = new HashSet<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.getCustomerCode() != null) {
+                taken.add(existing.getCustomerCode());
+            }
+        }
+
+        String code = base;
+        for (int n = 2; taken.contains(code); n++) {
+            code = base + "-" + n;
+        }
+        owner.setCustomerCode(code);
     }
 
     /** The region whose inclusive range contains {@code postcode}, or {@code UNKNOWN} when the
