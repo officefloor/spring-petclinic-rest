@@ -28,7 +28,21 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's membership number, formatted {@code <customerCode>-M<YY>} where
+     * {@code <customerCode>} is the owner's customer code and {@code YY} is the last two digits
+     * (zero-padded) of the owner's registration date year (e.g. {@code SMI-0007-M26}).
+     *
+     * @param owner the owner to derive the membership number for
+     * @return the formatted membership number
+     */
+    default String membershipNumber(Owner owner) {
+        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        return owner.getCustomerCode() + "-M" + yy;
+    }
 
     /**
      * Derives an owner's household identifier: a stable value shared by every owner with the same
