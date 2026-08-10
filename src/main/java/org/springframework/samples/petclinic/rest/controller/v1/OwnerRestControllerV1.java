@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -118,6 +119,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return value == null || value.isBlank();
     }
 
+    /**
+     * Normalizes a telephone on create by removing every non-digit character and requiring the
+     * result to be exactly 10 digits. Returns the 10-digit value to be stored and returned.
+     *
+     * @param telephone the raw telephone as supplied by the caller
+     * @return the normalized 10-digit telephone
+     * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
+     */
+    private static String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidTelephoneException(
+                "Telephone must contain exactly 10 digits after removing non-digit characters");
+        }
+        return digits;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
@@ -132,6 +150,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
+        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
