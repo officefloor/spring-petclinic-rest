@@ -77,6 +77,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     /**
+     * Disposable email domains that are not accepted for an owner's email. An email whose domain
+     * (the part after the {@code @}, compared case-insensitively) is on this blocklist is rejected.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
+    /**
      * Dedicated audit logger. Successful owner creation emits a single line here carrying the new
      * owner's id, customer code and registration date so the side-effect can be observed
      * independently of the HTTP response.
@@ -334,7 +343,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidFieldsException(List.of("email"));
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidFieldsException(List.of("email"));
+        }
+        return normalized;
     }
 
     /**
