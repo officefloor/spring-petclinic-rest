@@ -25,7 +25,20 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY
+     * is the last two digits of the registrationDate year (e.g. 'SMI-0007-M26').
+     */
+    default String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+            owner.getRegistrationDate().getYear() % 100);
+    }
 
     /**
      * The upper-cased first letters of firstName and lastName, dot-separated with a
