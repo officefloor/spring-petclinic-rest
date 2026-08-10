@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2309ccb2..2374cddc 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "checkDigit",
+             expression = "java(CheckDigit.of(owner.getCustomerCode()))")
++    @Mapping(target = "membershipPoints",
++            expression = "java(MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(MembershipLevel.of(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index e69d2793..f3fcaca0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -4,36 +4,63 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ 
+ /**
+- * Derives an owner's numeric membership level.
++ * Derives an owner's membership points and the numeric membership level bucketed from them.
+  *
+- * <p>Starts at {@code 1}; adds {@code 1} when an email address is present; adds {@code 1} when the
+- * owner has no namesakes ({@code namesakeCount} is {@code 0}); these pre-tenure factors are capped
+- * at {@code 3}. Level {@code 4} requires tenure of more than {@code 365} days — the number of days
+- * between the owner's {@code registrationDate} and today — so a brand-new owner (zero tenure) never
+- * exceeds level {@code 3}.
++ * <p>Points start at {@code 0} and accumulate: {@code +2} when an email address is present;
++ * {@code +1} when the owner has no namesakes ({@code namesakeCount} is {@code 0}); {@code +2} for a
++ * household of {@code 3} or more members; {@code +3} for tenure of more than {@code 365} days — the
++ * number of days between the owner's {@code registrationDate} and today.
++ *
++ * <p>Points map to a level of {@code 1} ({@code 0}-{@code 1} points), {@code 2} ({@code 2}-{@code 3}),
++ * {@code 3} ({@code 4}-{@code 5}) or {@code 4} ({@code 6} or more).
+  */
+ public final class MembershipLevel {
+ 
+-    /** Tenure, in days, that must be exceeded to reach level {@code 4}. */
+-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
++    /** Tenure, in days, that must be exceeded to earn the tenure points. */
++    private static final long TENURE_DAYS_FOR_BONUS = 365;
++
++    /** Household size, in members, that must be reached to earn the household points. */
++    private static final int HOUSEHOLD_SIZE_FOR_BONUS = 3;
+ 
+     private MembershipLevel() {
+     }
+ 
+-    /** Compute the membership level (1..4) for the given owner. */
+-    public static int of(Owner owner) {
+-        int level = 1;
++    /** Compute the membership points for the given owner. */
++    public static int points(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdMemberCount() != null
++                && owner.getHouseholdMemberCount() >= HOUSEHOLD_SIZE_FOR_BONUS) {
++            points += 2;
++        }
++        if (tenureDays(owner) > TENURE_DAYS_FOR_BONUS) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** Bucket a points total into a membership level (1..4). */
++    public static int levelForPoints(int points) {
++        if (points >= 6) {
++            return 4;
+         }
+-        level = Math.min(level, 3);
+-        if (tenureDays(owner) > TENURE_DAYS_FOR_LEVEL_4) {
+-            level++;
++        if (points >= 4) {
++            return 3;
+         }
+-        return level;
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
++    }
++
++    /** Compute the membership level (1..4) for the given owner. */
++    public static int of(Owner owner) {
++        return levelForPoints(points(owner));
+     }
+ 
+     /** Days between the owner's {@code registrationDate} and today; {@code 0} when unknown. */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c5b3e1d8..99404502 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2189,18 +2189,29 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points. Starts at 0; adds 2 when an email address
++                is present; adds 1 when the owner has no namesakes (namesakeCount is 0);
++                adds 2 for a household of 3 or more members; adds 3 for tenure of more
++                than 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 8
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned once at creation. Starts
+-                at 1; adds 1 when an email address is present; adds 1 when the owner has
+-                no namesakes (namesakeCount is 0); capped at 3. Level 4 is reserved for
+-                tenure. Derived from the owner's own namesakeCount and email.
++                The owner's numeric membership level, bucketed from membershipPoints:
++                level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
