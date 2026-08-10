@@ -95,6 +95,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Monotonically increasing sequence number stamped on each {@link OwnerCreatedEvent}, shared
+     * across every create in this process so consumers can totally order the emitted events.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong AUDIT_SEQ =
+        new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * Immutable structured audit event emitted through {@link #AUDIT} on a successful owner create.
+     * <p>The identifier it carries is the owner's <em>current</em> primary identifier — the
+     * {@code customerCode} today, and whatever unifies it later (e.g. the memberId) — so a downstream
+     * consumer always reads the live primary key from the one {@code customerCode} field without
+     * needing to know which era produced the event. See {@link #primaryIdentifier(Owner)}.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel) {
+
+        String toJson() {
+            return "{\"seq\":" + seq
+                + ",\"ownerId\":" + ownerId
+                + ",\"customerCode\":" + jsonString(identifier)
+                + ",\"membershipLevel\":" + membershipLevel
+                + ",\"event\":\"OWNER_CREATED\"}";
+        }
+
+        private static String jsonString(String s) {
+            if (s == null) {
+                return "null";
+            }
+            StringBuilder sb = new StringBuilder(s.length() + 2).append('"');
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                switch (c) {
+                    case '"' -> sb.append("\\\"");
+                    case '\\' -> sb.append("\\\\");
+                    case '\n' -> sb.append("\\n");
+                    case '\r' -> sb.append("\\r");
+                    case '\t' -> sb.append("\\t");
+                    default -> sb.append(c);
+                }
+            }
+            return sb.append('"').toString();
+        }
+    }
+
+    /**
      * Remembers the owner created for each {@code Idempotency-Key} seen on a create, so a repeated
      * create carrying a key already in this map returns the originally created owner (200) instead of
      * creating a duplicate. Keys are supplied by the caller and are process-wide.
@@ -527,6 +571,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The owner's current primary identifier, as carried by the structured {@link OwnerCreatedEvent}.
+     * Today this is the {@code customerCode}; when the customerCode is later unified into the memberId
+     * this returns the memberId instead, so the emitted event automatically carries whichever
+     * identifier is primary at the time of the create.
+     *
+     * @param owner the owner just created
+     * @return the owner's primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
+    /**
      * De-duplicates a freshly computed customer code against the customer codes already held by
      * existing owners. When the code is unused it is returned unchanged; otherwise {@code '-<n>'} is
      * appended with the smallest {@code n} of 2 or more that yields a code no existing owner carries.
@@ -804,6 +861,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        AUDIT.info(new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
+            primaryIdentifier(owner), ownerMapper.membershipLevel(owner)).toJson());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
