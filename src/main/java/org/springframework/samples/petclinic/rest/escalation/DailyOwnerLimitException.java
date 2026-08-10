@@ -2,7 +2,7 @@ package org.springframework.samples.petclinic.rest.escalation;
 
 /**
  * Thrown by {@code CheckDailyOwnerLimit} when {@value #DAILY_LIMIT} or more owners have already
- * been created today (compared by {@code registrationDate} against the server's current date).
+ * been created for the request's business day (compared by {@code registrationDate}).
  * Handled by {@link DailyOwnerLimitExceptionHandler}, which responds 429 (Too Many Requests).
  */
 public class DailyOwnerLimitException extends Exception {

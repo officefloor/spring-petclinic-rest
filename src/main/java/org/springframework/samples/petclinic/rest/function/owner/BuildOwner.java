@@ -13,16 +13,17 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * {@link ValidateOwnerFields}, which republishes it as a variable (so this step does not
  * bind {@code @RequestBody} a second time).
  *
- * <p>When the request supplies no registration date, it defaults to the server's current
- * date so every created owner has a {@code registrationDate}.
+ * <p>The owner's {@code registrationDate} is the effective, business-day-adjusted date resolved by
+ * {@link ResolveRegistrationDate} (supplied in the request or defaulted to the server date, then
+ * rolled off any weekend). This step stores that adjusted date so every created owner has a
+ * {@code registrationDate} on a business day.
  */
 public class BuildOwner {
 
-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+    public void service(@Val OwnerFieldsDto request, @Val LocalDate registrationDate,
+            OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         built.set(owner);
     }
 }
