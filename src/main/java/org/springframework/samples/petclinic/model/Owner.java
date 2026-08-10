@@ -82,6 +82,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -204,6 +207,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public Boolean getPossibleDuplicate() {

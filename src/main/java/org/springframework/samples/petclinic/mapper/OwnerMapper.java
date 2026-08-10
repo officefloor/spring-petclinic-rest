@@ -159,19 +159,33 @@ public interface OwnerMapper {
      * The owner's numeric membership level, derived from {@link #membershipPoints(Owner)}:
      * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4
      * for 6 or more points.
+     *
+     * <p>The derived level is then capped by the owner's {@code membershipLevelCap} when one is
+     * present: a new owner's level cannot exceed one above the current maximum membership level
+     * among their existing household members, so the cap (recorded on the owner at creation as
+     * that maximum plus one) is applied here. A {@code null} cap means the owner had no existing
+     * household member, so no cap applies.
      */
     default Integer membershipLevel(Owner owner) {
         int points = membershipPoints(owner);
+        int level;
         if (points <= 1) {
-            return 1;
+            level = 1;
         }
-        if (points <= 3) {
-            return 2;
+        else if (points <= 3) {
+            level = 2;
         }
-        if (points <= 5) {
-            return 3;
+        else if (points <= 5) {
+            level = 3;
         }
-        return 4;
+        else {
+            level = 4;
+        }
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
     }
 
     /**

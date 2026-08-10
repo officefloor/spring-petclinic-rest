@@ -223,18 +223,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        // Household duplicate detection keyed on the deterministic householdId, derived from the
-        // normalized last name and postcode (see OwnerMapper#householdId). Owners sharing a last
-        // name and postcode share the same household. A second owner in an existing household is
-        // rejected as a household duplicate (409) unless the request declares 'sharesHousehold',
-        // in which case it is created as a declared household member — 'sharesHousehold' only
-        // bypasses this block; the household link itself now follows from the computed householdId.
+        // Household membership keyed on the deterministic householdId, derived from the normalized
+        // last name and postcode (see OwnerMapper#householdId). Owners sharing a last name and
+        // postcode share the same household. A new owner joining an existing household is allowed
+        // whenever it carries a distinct contact identity (its telephone/email do not collide with
+        // an existing member) — hard identity duplicates were already rejected above. A collision on
+        // the whole household identity (same household and same contact) is only permitted when the
+        // request declares 'sharesHousehold', in which case it is created as a declared member.
         String householdId = ownerMapper.householdId(candidate);
-        boolean householdExists = this.clinicService.findAllOwners().stream()
+        List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
+            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
+            .toList();
+        boolean householdExists = !householdMembers.isEmpty();
+        boolean contactCollides = householdMembers.stream()
+            .anyMatch(existing -> contactIdentity.equals(identityContact(existing)));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (householdExists && !sharesHousehold) {
+        if (householdExists && contactCollides && !sharesHousehold) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean declaredMember = householdExists && sharesHousehold;
@@ -274,6 +279,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record the size of this owner's household after this create: the number of existing
         // owners sharing the same household (i.e. the same computed householdId) plus this owner.
         owner.setHouseholdSize(countHouseholdMembers(owner) + 1);
+        // Cap this owner's membership level at one above the current maximum membership level among
+        // their existing household members. When the owner has no existing household member no cap
+        // applies (a null cap; see OwnerMapper#membershipLevel).
+        owner.setMembershipLevelCap(membershipLevelCap(owner));
         // Flag a possible (soft) duplicate: this owner is not a hard identity duplicate, but it
         // shares an existing owner's last name (case-insensitively) and postcode while carrying a
         // different telephone. When such a match exists, record it as 'possibleDuplicate' with
@@ -534,6 +543,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
             .count();
+    }
+
+    /**
+     * Compute the membership-level cap for the owner being created: one above the current maximum
+     * effective membership level among its existing (non-deleted) household members, i.e. those
+     * sharing its computed householdId. Each member's effective level is read through
+     * {@link OwnerMapper#membershipLevel(Owner)}, so it already reflects any cap applied to that
+     * member. Returns {@code null} when the owner has no existing household member, in which case
+     * no cap applies.
+     */
+    private Integer membershipLevelCap(Owner owner) {
+        String householdId = ownerMapper.householdId(owner);
+        java.util.OptionalInt maxLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> existing != owner)
+            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
+            .mapToInt(existing -> ownerMapper.membershipLevel(existing))
+            .max();
+        return maxLevel.isPresent() ? maxLevel.getAsInt() + 1 : null;
     }
 
     /**
