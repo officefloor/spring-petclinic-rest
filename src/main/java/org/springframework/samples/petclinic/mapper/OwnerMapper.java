@@ -21,13 +21,27 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    /** Fixed city-to-region table used to derive an owner's locality. */
+    java.util.Map<String, String> CITY_REGION =
+        java.util.Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The canonical region derived from the owner's city using the fixed
+     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or
+     * 'UNKNOWN' when the city is not in the table.
+     */
+    default String locality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
 
     /**
      * The owner's membership tier: 'SILVER' when the owner has no namesakes
