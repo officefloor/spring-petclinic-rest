@@ -21,18 +21,9 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
-    /** Fixed city-to-region table used to derive an owner's locality. */
+    /** Fixed city-to-region table used to derive an owner's region. */
     java.util.Map<String, String> CITY_REGION =
         java.util.Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Inclusive 4-digit postcode range {@code {low, high}} keyed by region
-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), used to derive an owner's
-     * locality from the postcode in preference to the city.
-     */
-    java.util.Map<String, int[]> REGION_POSTCODE_RANGES =
-        java.util.Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099},
-            "QLD", new int[] {4000, 4099});
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
@@ -56,38 +47,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * The canonical region derived for the owner, preferring the postcode. The
-     * postcode is matched against each region's inclusive range (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099) first; only when the postcode is absent or in
-     * no known range does this fall back to the fixed city-to-region table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD). Returns 'UNKNOWN' when neither
-     * the postcode nor the city resolves to a region.
+     * The owner's region, read from the {@code <REGION>-<HASH8>} customer code assigned on
+     * creation: the segment before the first '-'. Returns 'UNKNOWN' when no customer code has
+     * been assigned (e.g. legacy owners predating the region-and-hash identity).
      */
     default String locality(Owner owner) {
-        String byPostcode = regionForPostcode(owner.getPostcode());
-        if (byPostcode != null) {
-            return byPostcode;
-        }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * The region whose inclusive postcode range contains {@code postcode}, or
-     * {@code null} when the postcode is absent, not a 4-digit number, or in no
-     * known range.
-     */
-    private static String regionForPostcode(String postcode) {
-        if (postcode == null || !postcode.matches("\\d{4}")) {
-            return null;
-        }
-        int value = Integer.parseInt(postcode);
-        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
-            int[] range = entry.getValue();
-            if (value >= range[0] && value <= range[1]) {
-                return entry.getKey();
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
             }
         }
-        return null;
+        return "UNKNOWN";
     }
 
     /**
@@ -139,7 +111,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY
-     * is the last two digits of the registrationDate year (e.g. 'SYD-SMI-0007-M26').
+     * is the last two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26').
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {

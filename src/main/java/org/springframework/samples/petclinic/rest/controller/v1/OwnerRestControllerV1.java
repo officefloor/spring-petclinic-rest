@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -202,10 +205,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = candidate;
         owner.setRegistrationDate(registrationDate);
-        // Assign the customer code as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
-        // letters of the city, the upper-cased first three letters of the last name, and a
-        // per-city 4-digit sequence one greater than the number of owners already in that city.
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        // Assign the customer code as '<REGION>-<HASH8>': the region derived from the owner's
+        // postcode (falling back to the city, then 'UNKNOWN') and the first 8 upper-case hex
+        // characters of the SHA-256 of the normalized telephone concatenated with the last name.
+        owner.setCustomerCode(customerCode(owner));
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) at the moment before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -381,15 +384,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the next customer code, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}.
-     *
-     * <p>{@code CITY3} is the upper-cased first three letters of {@code city} and
-     * {@code LAST3} the upper-cased first three letters of {@code lastName} (fewer if
-     * the value is shorter). {@code NNNN} is a per-city 4-digit zero-padded sequence
-     * equal to one more than the number of owners already in that city
-     * (e.g. {@code 'SYD-SMI-0007'}).
-     */
-    /**
      * Count the existing owners whose first and last name match the given names,
      * compared case-insensitively. Used to record an owner's namesake count at the
      * moment before it is created.
@@ -418,11 +412,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = countOwnersInCity(city) + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    /**
+     * Build the owner's customer code, formatted {@code '<REGION>-<HASH8>'}.
+     *
+     * <p>{@code REGION} is the region derived from the owner's postcode (see
+     * {@link #deriveRegion}). {@code HASH8} is the first 8 upper-case hex characters of the
+     * SHA-256 of the normalized telephone concatenated with the last name
+     * (e.g. {@code 'NSW-1A2B3C4D'}).
+     */
+    private String customerCode(Owner owner) {
+        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String hash8 = sha256HexUpper(owner.getTelephone() + owner.getLastName(), 8);
+        return region + "-" + hash8;
+    }
+
+    /**
+     * Derive the owner's region, preferring the postcode. The postcode is matched against
+     * each region's inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only when
+     * it is absent or in no known range does this fall back to the fixed city-to-region table
+     * (see {@link OwnerMapper#CITY_REGION}), and finally {@code 'UNKNOWN'}.
+     */
+    private static String deriveRegion(String postcode, String city) {
+        if (postcode != null && postcode.matches("\\d{4}")) {
+            int value = Integer.parseInt(postcode);
+            for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+                int[] range = entry.getValue();
+                if (value >= range[0] && value <= range[1]) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return OwnerMapper.CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * The first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
+     * bytes of {@code value}.
+     */
+    private static String sha256HexUpper(String value, int length) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, length);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**
