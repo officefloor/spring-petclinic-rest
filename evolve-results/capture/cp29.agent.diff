@@ -1,0 +1,192 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 618c4ff6..5ca60860 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
+@@ -102,6 +105,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7bbae73a..b201abb0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -86,6 +86,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
+         Map.of("61", 9, "1", 10);
+ 
++    /**
++     * Inclusive 4-digit postcode range {@code {low, high}} keyed by the region derived
++     * from the owner's city (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city whose
++     * region is not listed here (see {@link OwnerMapper#CITY_REGION}) accepts any 4-digit
++     * postcode.
++     */
++    private static final Map<String, int[]> REGION_POSTCODE_RANGES =
++        Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099},
++            "QLD", new int[] {4000, 4099});
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -136,6 +146,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        // Validate & normalize the optional postcode; reject the create when it is present but
++        // not valid for the owner's city (see normalizePostcode).
++        if (!normalizePostcode(ownerFieldsDto)) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         // Normalize the required address (trim/collapse whitespace, upper-case, expand
+         // abbreviations) and store the normalized form back on the DTO so it is what gets
+         // persisted and compared. Reject the create when the address is blank once normalized.
+@@ -234,6 +249,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return true;
+     }
+ 
++    /**
++     * Validate the optional owner postcode in place.
++     *
++     * <p>An absent (or blank) postcode is allowed and is normalized to {@code null}.
++     * When present it must be exactly 4 digits, and — when the owner's city maps to a
++     * known region via {@link OwnerMapper#CITY_REGION} — it must fall within that
++     * region's inclusive postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
++     * A city with no known region accepts any 4-digit postcode. Returns {@code false}
++     * when a postcode is present but malformed or out of range, so the caller can
++     * reject with 400.
++     */
++    private boolean normalizePostcode(OwnerFieldsDto ownerFieldsDto) {
++        String postcode = ownerFieldsDto.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            ownerFieldsDto.setPostcode(null);
++            return true;
++        }
++        if (!postcode.matches("\\d{4}")) {
++            return false;
++        }
++        String region = OwnerMapper.CITY_REGION.get(ownerFieldsDto.getCity());
++        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
++        if (range != null) {
++            int value = Integer.parseInt(postcode);
++            if (value < range[0] || value > range[1]) {
++                return false;
++            }
++        }
++        return true;
++    }
++
+     /**
+      * Normalize an owner address: trim, collapse each run of whitespace to a single
+      * space, upper-case, and expand common street-type abbreviations
+@@ -422,6 +468,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        if (!normalizePostcode(ownerFieldsDto)) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
+         if (normalizedTelephone == null) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+@@ -432,6 +481,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+         currentOwner.setTelephone(normalizedTelephone);
+         currentOwner.setEmail(ownerFieldsDto.getEmail());
++        currentOwner.setPostcode(ownerFieldsDto.getPostcode());
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 398e5ddf..a5ac5d45 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  postcode   VARCHAR(10)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7a3ebcc1..c7805578 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  postcode   VARCHAR(10)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 78316860..f054af72 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   bulk_signup_warning BIT,
+   household_size INTEGER,
++  postcode   VARCHAR(10),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 135db4c5..489a4ac3 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       namesake_count INT,
+                                       bulk_signup_warning BOOLEAN,
+-                                      household_size INTEGER
++                                      household_size INTEGER,
++                                      postcode   VARCHAR(10)
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fcc5c4ea..1fab1b8b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2033,6 +2033,15 @@ components:
+           maxLength: 20
+           pattern: '.*\S.*'
+           example: '6085551023'
++        postcode:
++          title: Postcode
++          description: The owner's postcode (4 digits). Optional. When present it must
++            be valid for the owner's city per the fixed region ranges (NSW 2000-2099,
++            VIC 3000-3099, QLD 4000-4099); a city with no known region accepts any
++            4-digit postcode. Stored and returned when supplied.
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+         email:
+           title: Email address
+           description: The email address of the pet owner. When present it must be a
