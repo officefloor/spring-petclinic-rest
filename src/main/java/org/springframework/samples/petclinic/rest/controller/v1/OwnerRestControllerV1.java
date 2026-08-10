@@ -212,6 +212,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Applies address normalization to whichever address form the request supplied, preferring the
+     * structured fields. When a non-blank {@code addressLine1} is present the structured form wins:
+     * {@code addressLine1} (and {@code addressLine2} when present) are normalized in place, and the
+     * flat {@code address} is set to the composed value - the normalized {@code addressLine1} with,
+     * when an {@code addressLine2} was supplied, a single space and the normalized {@code addressLine2}
+     * appended - so everything downstream that reads {@code address} sees the structured value. When
+     * no {@code addressLine1} is supplied the flat {@code address} is normalized as before, keeping
+     * earlier minimal owners backward-compatible.
+     *
+     * @param ownerFieldsDto the owner payload whose address fields are normalized in place
+     */
+    private void applyAddressFields(OwnerFieldsDto ownerFieldsDto) {
+        if (StringUtils.hasText(ownerFieldsDto.getAddressLine1())) {
+            String line1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+            ownerFieldsDto.setAddressLine1(line1);
+            if (StringUtils.hasText(ownerFieldsDto.getAddressLine2())) {
+                String line2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+                ownerFieldsDto.setAddressLine2(line2);
+                ownerFieldsDto.setAddress(line1 + " " + line2);
+            } else {
+                ownerFieldsDto.setAddressLine2(null);
+                ownerFieldsDto.setAddress(line1);
+            }
+        } else {
+            ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        }
+    }
+
+    /**
      * Rejects an owner payload that is missing or blank in any required field. The response body's
      * {@code errors} array lists the name of each offending field.
      *
@@ -529,7 +558,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddressFields(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
