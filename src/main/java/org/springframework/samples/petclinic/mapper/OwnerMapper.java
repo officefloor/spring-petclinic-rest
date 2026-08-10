@@ -20,6 +20,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
+    @Mapping(target = "initials", expression = "java(initials(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -30,6 +31,26 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Formats an owner's initials as the upper-cased first letters of firstName and
+     * lastName, dot-separated with a trailing dot, e.g. {@code 'J.S.'}.
+     */
+    default @Nullable String initials(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        String firstName = owner.getFirstName();
+        if (firstName != null && !firstName.isEmpty()) {
+            sb.append(Character.toUpperCase(firstName.charAt(0))).append('.');
+        }
+        String lastName = owner.getLastName();
+        if (lastName != null && !lastName.isEmpty()) {
+            sb.append(Character.toUpperCase(lastName.charAt(0))).append('.');
+        }
+        return sb.toString();
     }
 
     Owner toOwner(OwnerDto ownerDto);
