@@ -1,5 +1,8 @@
 package org.springframework.samples.petclinic.util;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
@@ -28,6 +31,36 @@ public final class OwnerIdentities {
         return normalizeTelephone(owner.getTelephone()) + "|"
                 + normalizeEmail(owner.getEmail()) + "|"
                 + normalizeHouseholdId(owner.getHouseholdId());
+    }
+
+    /**
+     * Builds the owner's {@code customerCode}: {@code '<REGION>-<HASH8>'}. REGION is the canonical
+     * region derived from the owner's postcode (falling back to city — see {@link Localities}); HASH8
+     * is the first 8 upper-case hex characters of SHA-256 over
+     * {@code normalizedTelephone + lastName}. The telephone is normalized to E.164 the same way as in
+     * {@link #identityKey(Owner)}, so owners differing only in telephone formatting share a code.
+     */
+    public static String customerCode(Owner owner) {
+        String region = Localities.localityFor(owner.getCity(), owner.getPostcode());
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String hash8 = shaHex(normalizeTelephone(owner.getTelephone()) + lastName, 8);
+        return region + "-" + hash8;
+    }
+
+    /** First {@code length} upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String shaHex(String value, int length) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, length).toUpperCase(Locale.ROOT);
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
+        }
     }
 
     private static String normalizeTelephone(String telephone) {
