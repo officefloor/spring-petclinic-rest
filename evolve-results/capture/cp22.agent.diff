@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 218bbb6e..15a0bd66 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Transient
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EvaluateBulkSignupWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EvaluateBulkSignupWarning.java
+new file mode 100644
+index 00000000..cd2fecaf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EvaluateBulkSignupWarning.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Sets the owner's transient {@code bulkSignupWarning} flag for the response. The flag is true when
++ * more than 80 owners (including this one, when it has already been saved) share the same business-day
++ * {@code registrationDate}, mirroring the accumulation used by {@link EnsureBelowDailyLimit}; otherwise
++ * false. Mutated in place via {@code @Val} for the responding step to map onto the DTO.
++ */
++public class EvaluateBulkSignupWarning {
++
++    /** Owners created for a single business day beyond this count trigger the warning. */
++    private static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        int count = 0;
++        if (registrationDate != null) {
++            for (Owner existing : ownerRepository.findAll()) {
++                if (registrationDate.equals(existing.getRegistrationDate())) {
++                    count++;
++                }
++            }
++        }
++        owner.setBulkSignupWarning(count > BULK_SIGNUP_THRESHOLD);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 7ccbf0c4..064df45f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -61,6 +61,11 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: evaluateBulkSignupWarning
++
++evaluateBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.EvaluateBulkSignupWarning
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 97ea1697..d40fa301 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -4,6 +4,11 @@ composition:
+ load:
+   class: org.springframework.samples.petclinic.rest.function.owner.LoadOwner
+   govern: [ readonly-transaction ]
++  next: evaluateBulkSignupWarning
++
++evaluateBulkSignupWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.EvaluateBulkSignupWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 97eb9343..9224da66 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,6 +2134,13 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: True when more than 80 owners have already been created for the same
++                business day as this owner's registrationDate, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
