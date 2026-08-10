@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -79,6 +80,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Disposable email domains that are refused on create. An email whose domain (the part after the
+     * {@code @}, compared case-insensitively) is in this set is rejected with a 400, since such
+     * addresses are throwaway and unsuitable for contacting an owner.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Dedicated audit logger. On a successful create an audit line carrying the owner id, the
@@ -258,7 +267,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException("Email must be a syntactically valid address");
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String lowerCased = trimmed.toLowerCase(Locale.ROOT);
+        String domain = lowerCased.substring(lowerCased.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException("Email domain is not allowed");
+        }
+        return lowerCased;
     }
 
     /**
