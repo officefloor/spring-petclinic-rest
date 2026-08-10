@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d3cb394b..24086288 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -150,6 +150,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /**
++     * Request header carrying the client-supplied idempotency key. When a create request repeats with
++     * a key that has already produced an owner, the original owner is returned with {@code 200 OK}
++     * instead of creating a duplicate.
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Maps a previously seen {@code Idempotency-Key} to the id of the owner it created, so a repeated
++     * create with the same key resolves to the originally created owner rather than creating a
++     * duplicate. Kept in memory for the lifetime of this singleton controller and safe for concurrent
++     * access across requests.
++     */
++    private final Map<String, Integer> idempotentCreates = new java.util.concurrent.ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -158,14 +173,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    private final jakarta.servlet.http.HttpServletRequest request;
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+-                                 VisitMapper visitMapper) {
++                                 VisitMapper visitMapper,
++                                 jakarta.servlet.http.HttpServletRequest request) {
+         this.clinicService = clinicService;
+         this.ownerMapper = ownerMapper;
+         this.petMapper = petMapper;
+         this.visitMapper = visitMapper;
++        this.request = request;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+@@ -592,6 +611,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = request.getHeader(IDEMPOTENCY_KEY_HEADER);
++        if (StringUtils.hasText(idempotencyKey)) {
++            Integer existingId = idempotentCreates.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
++                }
++            }
++        }
+         applyAddressFields(ownerFieldsDto);
+         validateRequiredFields(ownerFieldsDto);
+         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+@@ -619,6 +648,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPossibleDuplicate(possibleDuplicate != null);
+         owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
+         this.clinicService.saveOwner(owner);
++        if (StringUtils.hasText(idempotencyKey)) {
++            idempotentCreates.put(idempotencyKey, owner.getId());
++        }
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
