@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
@@ -229,12 +230,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * Collapses surrounding and internal whitespace and lower-cases a value so that owner household
+     * fields (last name, address) can be compared case-insensitively with collapsed whitespace. A
+     * {@code null} value normalizes to the empty string.
+     *
+     * @param value the raw field value, may be {@code null}
+     * @return the trimmed, whitespace-collapsed, lower-cased form
+     */
+    private String normalizeHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Rejects an owner whose last name and address already match another owner (compared
+     * case-insensitively with collapsed whitespace) - i.e. they would share a household - unless the
+     * request opts in via {@code sharesHousehold}. Existing owners' fields are normalized the same
+     * way before comparison.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @throws DuplicateOwnerHouseholdException if another owner shares the household
+     */
+    private void requireUniqueHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeHousehold(lastName);
+        String normalizedAddress = normalizeHousehold(address);
+        boolean shared = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeHousehold(existing.getAddress()).equals(normalizedAddress));
+        if (shared) {
+            throw new DuplicateOwnerHouseholdException(lastName, address);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(telephone);
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);

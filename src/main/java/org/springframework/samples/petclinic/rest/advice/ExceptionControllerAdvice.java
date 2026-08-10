@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+    private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -232,6 +233,30 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getTelephone());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateOwnerHouseholdException} raised when an owner is created whose last
+     * name and address already match another owner (a shared household) without the request opting
+     * in via the {@code sharesHousehold} flag. Returns a 409 Conflict whose body's {@code errors}
+     * array names the offending {@code lastName} and {@code address} fields.
+     *
+     * @param e The {@link DuplicateOwnerHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerHouseholdException(DuplicateOwnerHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        detail.setProperty("errors", List.of("lastName", "address"));
+        logger.debug("Duplicate owner household at {} {}: lastName={} address={}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
         return ResponseEntity.status(status).body(detail);
     }
 
