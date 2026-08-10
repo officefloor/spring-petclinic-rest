@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java
+new file mode 100644
+index 00000000..6a779be3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.section.clazz.Flow;
++import net.officefloor.server.http.HttpHeader;
++import net.officefloor.server.http.ServerHttpConnection;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * First step of {@code POST /api/owners}. Honours an optional {@code Idempotency-Key} header: when
++ * the request repeats a key already recorded by {@link RecordIdempotency}, the originally created
++ * owner is returned with 200 and the create pipeline is short-circuited, so no duplicate is created
++ * (and the usual identity-conflict 409 is never reached). Otherwise — no key, or a key not seen
++ * before — the {@code create} flow is taken to run the normal validate/build/save pipeline.
++ */
++public class CheckIdempotency {
++
++    /** Header naming the idempotency key; absent means a normal (non-idempotent) create. */
++    static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    @FunctionalInterface
++    public interface CreateFlow {
++        void create();
++    }
++
++    public void service(ServerHttpConnection connection, IdempotencyStore idempotencyStore,
++            OwnerRepository ownerRepository, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response,
++            @Flow("create") CreateFlow createFlow) {
++        String key = idempotencyKey(connection);
++        if (key != null) {
++            Integer existingId = idempotencyStore.get(key);
++            if (existingId != null) {
++                Owner existing = ownerRepository.findById(existingId);
++                if (existing != null) {
++                    response.send(ownerMapper.toOwnerDto(existing)); // 200, no duplicate created
++                    return; // short-circuit: do not take the create flow
++                }
++            }
++        }
++        createFlow.create();
++    }
++
++    /** The trimmed {@code Idempotency-Key} header value, or {@code null} when absent or blank. */
++    static String idempotencyKey(ServerHttpConnection connection) {
++        HttpHeader header = connection.getRequest().getHeaders().getHeader(IDEMPOTENCY_KEY_HEADER);
++        if (header == null) {
++            return null;
++        }
++        String value = header.getValue();
++        if (value == null || value.isBlank()) {
++            return null;
++        }
++        return value.trim();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java
+new file mode 100644
+index 00000000..d9394f86
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Process-wide record of the owner created for each {@code Idempotency-Key} seen on
++ * {@code POST /api/owners}. A repeated create carrying an already-seen key is answered with the
++ * originally created owner (see {@link CheckIdempotency}) instead of creating a duplicate; a fresh
++ * key is recorded once the create succeeds (see {@link RecordIdempotency}).
++ *
++ * <p>Deliberately held in memory rather than the database: the mapping is a request-dedup concern,
++ * not persisted owner state, and must survive independently of any single request's transaction.
++ */
++@Component
++public class IdempotencyStore {
++
++    private final Map<String, Integer> ownerIdByKey = new ConcurrentHashMap<>();
++
++    /** Owner id previously created for {@code key}, or {@code null} if the key is new. */
++    public Integer get(String key) {
++        return ownerIdByKey.get(key);
++    }
++
++    /** Record that {@code key} created the owner with {@code ownerId} (first writer wins). */
++    public void record(String key, int ownerId) {
++        ownerIdByKey.putIfAbsent(key, ownerId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java
+new file mode 100644
+index 00000000..899a8602
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import net.officefloor.server.http.ServerHttpConnection;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Records the {@code Idempotency-Key} (when the request carried one) against the just-created
++ * owner's id, so a later repeat of the same key returns this owner instead of creating a duplicate
++ * (see {@link CheckIdempotency}).
++ *
++ * <p>Runs after {@link SaveOwner}, so the owner already has its generated id, and only on the create
++ * path — a repeat is short-circuited before it reaches here.
++ */
++public class RecordIdempotency {
++
++    public void service(ServerHttpConnection connection, @Val Owner owner,
++            IdempotencyStore idempotencyStore) {
++        String key = CheckIdempotency.idempotencyKey(connection);
++        if (key != null) {
++            idempotencyStore.record(key, owner.getId());
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e3ff7400..c2f053ce 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,15 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++# Idempotent create: when the request repeats an already-seen 'Idempotency-Key', respond with the
++# originally created owner (200) and short-circuit. Otherwise take the 'create' flow to build a new
++# owner. First step so a repeat never runs validation/duplicate checks.
++checkIdempotency:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
++  govern: [ transaction ]
++  outputs:
++    create: validate
++
+ validate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
+   govern: [ transaction ]
+@@ -65,6 +74,13 @@ assignBulkSignupWarning:
+ save:
+   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+   govern: [ transaction ]
++  next: recordIdempotency
++
++# Record the request's 'Idempotency-Key' (if any) against the new owner's id, so a later repeat of
++# the key returns this owner rather than creating a duplicate. After save, so the id exists.
++recordIdempotency:
++  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
++  govern: [ transaction ]
+   next: audit
+ 
+ audit:
