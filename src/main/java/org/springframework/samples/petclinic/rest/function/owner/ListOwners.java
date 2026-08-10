@@ -23,6 +23,7 @@ public class ListOwners {
             response.send(ResponseEntity.notFound().build());
             return;
         }
+        HouseholdMembers.stampAll(owners, ownerRepository);
         response.send(ResponseEntity.ok(ownerMapper.toOwnerDtoCollection(owners)));
     }
 }

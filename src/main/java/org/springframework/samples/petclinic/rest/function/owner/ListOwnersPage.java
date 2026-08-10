@@ -23,6 +23,7 @@ public class ListOwnersPage {
         Page<Owner> owners = lastName != null
                 ? ownerRepository.findByLastName(lastName, pageable)
                 : ownerRepository.findAll(pageable);
+        HouseholdMembers.stampAll(owners.getContent(), ownerRepository);
         response.send(ownerMapper.toOwnerPageDto(owners));
     }
 }
