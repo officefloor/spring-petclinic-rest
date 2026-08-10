@@ -1,0 +1,41 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 57b405eb..8139b7b4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -134,12 +134,16 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives an owner's numeric membership level, fixed at creation. Starts at {@code 1}, plus
+-     * {@code 1} when an email is present (non-blank), plus {@code 1} when the owner's namesake count
+-     * is {@code 0}, capped at {@code 3} (level {@code 4} is reserved for tenure).
++     * Derives an owner's numeric membership level. Starts at {@code 1}, plus {@code 1} when an email
++     * is present (non-blank), plus {@code 1} when the owner's namesake count is {@code 0}; these
++     * pre-tenure factors are capped at {@code 3}. Level {@code 4} additionally requires a tenure of
++     * more than {@code 365} days - the number of days between the owner's registration date and the
++     * current server date. Because a newly created owner registers on the current date, its tenure is
++     * zero, so a new owner never exceeds level {@code 3} even with an email and a namesake count of
++     * {@code 0}.
+      *
+      * @param owner the owner to derive the membership level for
+-     * @return the membership level, between {@code 1} and {@code 3}
++     * @return the membership level, between {@code 1} and {@code 4}
+      */
+     default Integer membershipLevel(Owner owner) {
+         int level = 1;
+@@ -151,7 +155,14 @@ public interface OwnerMapper {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        long tenureDays = registrationDate == null ? 0
++            : java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
++        if (level == 3 && tenureDays > 365) {
++            level = 4;
++        }
++        return level;
+     }
+ 
+     /**
