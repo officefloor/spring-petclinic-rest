@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ce346ba5..a3380a28 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,6 +20,7 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -63,6 +64,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$");
+ 
++    /**
++     * Common street-type abbreviations expanded during address normalization,
++     * keyed by their upper-cased form.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -113,6 +121,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!normalizeEmail(ownerFieldsDto)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        // Normalize the required address (trim/collapse whitespace, upper-case, expand
++        // abbreviations) and store the normalized form back on the DTO so it is what gets
++        // persisted and compared. Reject the create when the address is blank once normalized.
++        String canonicalAddress = normalizeAddress(ownerFieldsDto.getAddress());
++        if (canonicalAddress.isBlank()) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
++        ownerFieldsDto.setAddress(canonicalAddress);
+         // Normalize the telephone to E.164; reject the create when it cannot form a valid number.
+         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
+         if (normalizedTelephone == null) {
+@@ -180,6 +196,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return true;
+     }
+ 
++    /**
++     * Normalize an owner address: trim, collapse each run of whitespace to a single
++     * space, upper-case, and expand common street-type abbreviations
++     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++     * A {@code null} value normalizes to the empty string.
++     */
++    private static String normalizeAddress(String value) {
++        if (value == null) {
++            return "";
++        }
++        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Normalize an owner household field (last name or address) for duplicate detection:
+      * trimmed, lower-cased and with all runs of whitespace collapsed to a single space.
