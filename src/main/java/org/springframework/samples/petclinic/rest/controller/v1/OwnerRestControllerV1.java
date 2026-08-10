@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -239,7 +240,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!digits.matches("[0-9]{8,15}")) {
             throw new InvalidFieldsException(List.of("telephone"));
         }
+        requireValidNationalLength(digits);
         return "+" + digits;
+    }
+
+    /**
+     * Country codes with a fixed national-number length, checked longest-prefix first so that
+     * '+61' is matched before the '+1' prefix it starts with. Australia ('61') requires 9 national
+     * digits; the North American Numbering Plan ('1') requires 10.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of("61", 9, "1", 10);
+
+    /**
+     * Validates that the national number (the E.164 digits after the country code) has the length
+     * required for its country. Country codes without a known fixed length are left to the general
+     * E.164 length check.
+     *
+     * @param digits the E.164 digits (country code plus national number, without the leading '+')
+     * @throws InvalidFieldsException if the national number is the wrong length for its country
+     */
+    private void requireValidNationalLength(String digits) {
+        NATIONAL_NUMBER_LENGTHS.entrySet().stream()
+            .filter(entry -> digits.startsWith(entry.getKey()))
+            .max(Comparator.comparingInt(entry -> entry.getKey().length()))
+            .ifPresent(entry -> {
+                int nationalLength = digits.length() - entry.getKey().length();
+                if (nationalLength != entry.getValue()) {
+                    throw new InvalidFieldsException(List.of("telephone"));
+                }
+            });
     }
 
     /**
