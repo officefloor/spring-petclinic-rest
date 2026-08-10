@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
+
 import net.officefloor.plugin.variable.Out;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -10,10 +12,17 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Builds the {@link Owner} entity from the request body previously bound and validated by
  * {@link ValidateOwnerFields}, which republishes it as a variable (so this step does not
  * bind {@code @RequestBody} a second time).
+ *
+ * <p>When the request supplies no registration date, it defaults to the server's current
+ * date so every created owner has a {@code registrationDate}.
  */
 public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        built.set(owner);
     }
 }
