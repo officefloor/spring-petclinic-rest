@@ -30,9 +30,9 @@ public interface OwnerMapper {
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(3, 1 "
-            + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
-            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+        expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.of("
+            + "owner.getEmail(), owner.getNamesakeCount(), owner.getRegistrationDate(), "
+            + "java.time.LocalDate.now()))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164"
             + ".toDisplay(owner.getTelephone()))")
