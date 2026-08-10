@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 264d1d7b..4aac9ffb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,8 +23,8 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-            expression = "java(org.springframework.samples.petclinic.util.MembershipTiers.tierFor(owner))")
++    @Mapping(target = "membershipLevel",
++            expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.util.Localities.localityFor(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 23e8acde..f2303aac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -73,7 +73,7 @@ public class Owner extends Person {
+     /**
+      * The number of owners in this owner's household (owners sharing the same
+      * {@code householdId}), including this owner. Derived and stamped at response time from the
+-     * current owners; not persisted. Drives the {@code GOLD} membership tier (3 or more members).
++     * current owners; not persisted.
+      */
+     @Transient
+     private Integer householdMemberCount;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembers.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembers.java
+index 99281310..727252b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembers.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembers.java
+@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ /**
+  * Counts how many owners belong to a household — owners that share a non-blank {@code householdId} —
+  * and stamps that count onto {@link Owner#setHouseholdMemberCount(Integer)} just before an owner is
+- * mapped to its DTO. The mapped {@code membershipTier} reports {@code GOLD} once the household has
+- * three or more members (see {@code MembershipTiers}).
++ * mapped to its DTO.
+  *
+  * <p>An owner with no {@code householdId} is a household of one. Counting reflects the owners
+  * currently stored, so the freshly created owner (already saved by the time it is responded) is
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index dd5a1132..f87d4ee4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -21,8 +21,9 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         HouseholdMembers.stamp(owner, ownerRepository);
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java
+new file mode 100644
+index 00000000..4355313a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's numeric {@code membershipLevel} from the owner's state as fixed at creation.
++ *
++ * <p>The level starts at 1 and is incremented by the owner's standing:
++ *
++ * <ul>
++ *   <li>+1 when the owner has a non-blank email;</li>
++ *   <li>+1 when the owner has no namesakes ({@code namesakeCount == 0}).</li>
++ * </ul>
++ *
++ * <p>The result is capped at 3. Level 4 is reserved for tenure and is not assigned here.
++ */
++public final class MembershipLevels {
++
++    private MembershipLevels() {
++    }
++
++    public static int levelFor(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipTiers.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipTiers.java
+deleted file mode 100644
+index a70a0907..00000000
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipTiers.java
++++ /dev/null
+@@ -1,30 +0,0 @@
+-package org.springframework.samples.petclinic.util;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-
+-/**
+- * Derives an owner's {@code membershipTier} from the owner's current state.
+- *
+- * <ul>
+- *   <li>{@code GOLD} — the owner's household (owners sharing the same {@code householdId}) has 3 or
+- *       more members, as stamped onto {@link Owner#getHouseholdMemberCount()} at response time.</li>
+- *   <li>{@code SILVER} — not GOLD, the owner has no namesakes ({@code namesakeCount == 0}) and a
+- *       non-blank email.</li>
+- *   <li>{@code BRONZE} — otherwise.</li>
+- * </ul>
+- */
+-public final class MembershipTiers {
+-
+-    private MembershipTiers() {
+-    }
+-
+-    public static String tierFor(Owner owner) {
+-        Integer members = owner.getHouseholdMemberCount();
+-        if (members != null && members >= 3) {
+-            return "GOLD";
+-        }
+-        boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
+-                && owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return silver ? "SILVER" : "BRONZE";
+-    }
+-}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0385c22f..0ca07aec 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2135,14 +2135,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household (owners
+-                sharing the same householdId) has 3 or more members; otherwise 'SILVER'
+-                when namesakeCount is 0 and an email is present, else 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned at creation: starts at 1,
++                +1 when an email is present, +1 when namesakeCount is 0, capped at 3.
++                (Level 4 is reserved for tenure.)
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 4
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
