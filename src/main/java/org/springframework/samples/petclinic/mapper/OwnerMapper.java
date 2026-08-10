@@ -9,8 +9,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -23,7 +27,49 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "householdId", expression = "java(householdId(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's household identifier: a stable value shared by every owner with the same
+     * last name and address (compared case-insensitively with collapsed whitespace). Because it is
+     * derived deterministically from those fields, owners created via the {@code sharesHousehold}
+     * flag - which by definition have a matching last name and address - receive the same value.
+     *
+     * @param owner the owner to derive the household identifier for
+     * @return a {@code HH-} prefixed identifier, never blank
+     */
+    default String householdId(Owner owner) {
+        String key = normalizeHouseholdField(owner.getLastName()) + ' '
+            + normalizeHouseholdField(owner.getAddress());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("HH-");
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
+    /**
+     * Collapses surrounding and internal whitespace and lower-cases a value so household fields can
+     * be compared case-insensitively with collapsed whitespace. A {@code null} value normalizes to
+     * the empty string. Mirrors the normalization used when enforcing the household rule on create.
+     *
+     * <p>Declared {@code private} so MapStruct does not treat it as an implicit String-to-String
+     * conversion and apply it to unrelated String properties (last name, address, ...).
+     */
+    private String normalizeHouseholdField(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
