@@ -17,10 +17,10 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown on create when the supplied telephone, after every non-digit character is stripped,
- * is not exactly 10 digits. Carries the {@code telephone} field name so the
- * {@link ExceptionControllerAdvice} can report it in the {@code errors} array of a 400 Bad
- * Request response, mirroring {@link RequiredFieldsMissingException}.
+ * Thrown on create when the supplied telephone cannot form a valid E.164 number — that is, when
+ * after normalization it does not carry 8 to 15 digits after the {@code +}. Carries the
+ * {@code telephone} field name so the {@link ExceptionControllerAdvice} can report it in the
+ * {@code errors} array of a 400 Bad Request response, mirroring {@link RequiredFieldsMissingException}.
  */
 public class InvalidTelephoneException extends RuntimeException {
 

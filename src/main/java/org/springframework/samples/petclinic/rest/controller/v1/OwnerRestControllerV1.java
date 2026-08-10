@@ -133,20 +133,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone on create by removing every non-digit character and requiring the
-     * result to be exactly 10 digits. Returns the 10-digit value to be stored and returned.
+     * Normalizes a telephone on create into E.164 form. Spaces, dashes and brackets are stripped.
+     * A leading {@code +} and its country code are kept as given; otherwise the country code
+     * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
+     * The result must carry 8 to 15 digits after the {@code +}. Returns the E.164 string to be
+     * stored and returned.
      *
      * @param telephone the raw telephone as supplied by the caller
-     * @return the normalized 10-digit telephone
-     * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
+     * @return the normalized E.164 telephone (a {@code +} followed by 8 to 15 digits)
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     private static String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException(
-                "Telephone must contain exactly 10 digits after removing non-digit characters");
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = "+" + cleaned.substring(1);
+        } else {
+            String national = cleaned;
+            if (national.startsWith("0")) {
+                national = national.substring(1);
+            }
+            e164 = "+61" + national;
         }
-        return digits;
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d{8,15}")) {
+            throw new InvalidTelephoneException(
+                "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
+        }
+        return e164;
     }
 
     /**
@@ -169,11 +183,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create whose normalized telephone is already used by any existing owner, so that
-     * telephones stay unique across owners. Telephones are normalized to their 10-digit form on
-     * create, so a direct equality comparison against the stored values is sufficient.
+     * Rejects a create whose E.164 telephone is already used by any existing owner, so that
+     * telephones stay unique across owners. Telephones are stored in E.164 form on create, so a
+     * direct equality comparison of the E.164 values against the stored values is sufficient.
      *
-     * @param normalizedTelephone the normalized 10-digit telephone of the owner being created
+     * @param normalizedTelephone the E.164 telephone of the owner being created
      * @throws DuplicateTelephoneException if another owner already uses this telephone
      */
     private void rejectDuplicateTelephone(String normalizedTelephone) {
