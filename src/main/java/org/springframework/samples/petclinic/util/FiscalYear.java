@@ -7,8 +7,8 @@ import java.time.LocalDate;
  * calendar year in which it ends, so a date from July onwards belongs to the fiscal year of the
  * following calendar year (e.g. 2026-08-10 is fiscal year 2027) while a date in January to June
  * belongs to the fiscal year of its own calendar year. Used for the owner's derived {@code
- * fiscalYear} label, the membership number's year segment and the elapsed-fiscal-year tenure, all
- * read from the business-day-adjusted registration date.
+ * fiscalYear} label, the memberId's FY segment and the elapsed-fiscal-year tenure, all read from
+ * the business-day-adjusted registration date.
  */
 public final class FiscalYear {
 

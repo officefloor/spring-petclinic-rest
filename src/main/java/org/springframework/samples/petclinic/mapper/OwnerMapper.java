@@ -28,16 +28,9 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.util.CustomerCode"
-            + ".checkDigit(owner.getCustomerCode()))")
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label("
             + "owner.getRegistrationDate()))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.of("
-            + "owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points("
             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
@@ -55,10 +48,11 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
             + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.util.Locality.of("
+            + "owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.util.Locality.timezone("
-            + "org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())))")
+            + "org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "ownerSegment",
         expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of("
             + "owner.getMembershipLevel() != null ? owner.getMembershipLevel() "
@@ -66,7 +60,7 @@ public interface OwnerMapper {
             + "org.springframework.samples.petclinic.util.MembershipLevel.points("
             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
             + "owner.getRegistrationDate(), java.time.LocalDate.now())), "
-            + "org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode())))")
+            + "org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "

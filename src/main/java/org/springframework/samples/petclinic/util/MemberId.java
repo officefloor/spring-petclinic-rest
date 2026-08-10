@@ -3,24 +3,33 @@ package org.springframework.samples.petclinic.util;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 
 /**
- * Builds and derives values from an owner's {@code customerCode}. The code is
- * {@code '<REGION>-<HASH8>'} where REGION is the region derived from the owner's postcode/city
- * (see {@link Locality}) and HASH8 is the first eight upper-case hex characters of SHA-256 over
- * the {@code normalizedTelephone + lastName}. The {@code checkDigit} is a single Luhn check digit
- * computed over the decimal digits contained in the code (non-digit characters such as the '-'
- * separator or the hex letters are ignored), doubling every second digit from the right. This is
- * the standard Luhn algorithm restated over the code's digits.
+ * Builds and derives values from an owner's {@code memberId}, the single unified member identifier.
+ * The id is {@code '<REGION><FY><HASH8><CHK>'} where:
+ * <ul>
+ * <li>REGION is the region derived from the owner's postcode/city (see {@link Locality}),</li>
+ * <li>FY is the two-digit fiscal year of the registration date (see {@link FiscalYear}),</li>
+ * <li>HASH8 is the first eight upper-case hex characters of SHA-256 over the
+ * {@code normalizedTelephone + lastName} (the same hash used by the region-and-hash identity), and</li>
+ * <li>CHK is a single Luhn check digit computed over the decimal digits of
+ * {@code <REGION><FY><HASH8>} (non-digit characters such as the region and hex letters are ignored),
+ * doubling every second digit from the right.</li>
+ * </ul>
+ * For example 'NSW271A2B3C4D5'.
  */
-public final class CustomerCode {
+public final class MemberId {
 
-    private CustomerCode() {
+    private MemberId() {
     }
 
-    /** Assemble the {@code '<REGION>-<HASH8>'} code for the given region, telephone and last name. */
-    public static String of(String region, String telephone, String lastName) {
-        return region + "-" + hash8(telephone, lastName);
+    /** Assemble the {@code '<REGION><FY><HASH8><CHK>'} member id for the given region, registration
+     *  date, telephone and last name. */
+    public static String of(String region, LocalDate registrationDate, String telephone, String lastName) {
+        String fy = String.format("%02d", FiscalYear.of(registrationDate) % 100);
+        String base = region + fy + hash8(telephone, lastName);
+        return base + checkDigit(base);
     }
 
     /** First eight UPPER-case hex characters of SHA-256 over {@code (telephone + lastName)}. */
@@ -41,13 +50,7 @@ public final class CustomerCode {
         }
     }
 
-    /** The REGION portion of a {@code '<REGION>-<HASH8>'} code. */
-    public static String region(String code) {
-        int dash = code.indexOf('-');
-        return dash < 0 ? code : code.substring(0, dash);
-    }
-
-    /** The Luhn check digit (0-9) over the decimal digits contained in {@code code}. */
+    /** The single Luhn check digit (0-9) over the decimal digits contained in {@code code}. */
     public static int checkDigit(String code) {
         int sum = 0;
         boolean doubleDigit = true;
