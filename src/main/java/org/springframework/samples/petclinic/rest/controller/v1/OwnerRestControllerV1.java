@@ -137,6 +137,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalizes an address on create: leading/trailing whitespace is trimmed, every run of internal
+     * whitespace is collapsed to a single space, the value is upper-cased and common abbreviations are
+     * expanded token-by-token ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). The
+     * normalized value is what gets stored, returned and used for every address comparison; a value
+     * that is blank (or {@code null}) normalizes to the empty string so the required-field check
+     * rejects it.
+     *
+     * @param address the raw address as supplied by the caller, may be {@code null}
+     * @return the normalized address ({@code ""} when blank or {@code null})
+     */
+    private static String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            switch (token) {
+                case "ST" -> token = "STREET";
+                case "RD" -> token = "ROAD";
+                case "AVE" -> token = "AVENUE";
+                default -> { }
+            }
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(token);
+        }
+        return sb.toString();
+    }
+
+    /**
      * Normalizes a telephone on create into E.164 form. Spaces, dashes and brackets are stripped.
      * A leading {@code +} and its country code are kept as given; otherwise the country code
      * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
@@ -294,6 +331,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
