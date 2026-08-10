@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -134,35 +135,59 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives an owner's numeric membership level. Starts at {@code 1}, plus {@code 1} when an email
-     * is present (non-blank), plus {@code 1} when the owner's namesake count is {@code 0}; these
-     * pre-tenure factors are capped at {@code 3}. Level {@code 4} additionally requires a tenure of
-     * more than {@code 365} days - the number of days between the owner's registration date and the
-     * current server date. Because a newly created owner registers on the current date, its tenure is
-     * zero, so a new owner never exceeds level {@code 3} even with an email and a namesake count of
-     * {@code 0}.
+     * Derives an owner's membership points. Starts at {@code 0}, plus {@code 2} when an email is
+     * present (non-blank), plus {@code 1} when the owner's namesake count is {@code 0}, plus
+     * {@code 2} for a household of {@code 3} or more members, plus {@code 3} for a tenure of more
+     * than {@code 365} days - the number of days between the owner's registration date and the
+     * current server date. Because a newly created owner registers on the current date, its tenure
+     * is zero, so a new owner never earns the tenure points.
+     *
+     * @param owner the owner to derive the membership points for
+     * @return the membership points, {@code 0} or more
+     */
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
+        String email = owner.getEmail();
+        if (email != null && !email.isBlank()) {
+            points += 2;
+        }
+        Integer namesakeCount = owner.getNamesakeCount();
+        if (namesakeCount != null && namesakeCount == 0) {
+            points += 1;
+        }
+        Integer householdMemberCount = owner.getHouseholdMemberCount();
+        if (householdMemberCount != null && householdMemberCount >= 3) {
+            points += 2;
+        }
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        long tenureDays = registrationDate == null ? 0
+            : java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
+        if (tenureDays > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Derives an owner's numeric membership level from its {@link #membershipPoints(Owner) membership
+     * points}: level {@code 1} for {@code 0}-{@code 1} points, {@code 2} for {@code 2}-{@code 3},
+     * {@code 3} for {@code 4}-{@code 5}, and {@code 4} for {@code 6} or more.
      *
      * @param owner the owner to derive the membership level for
      * @return the membership level, between {@code 1} and {@code 4}
      */
     default Integer membershipLevel(Owner owner) {
-        int level = 1;
-        String email = owner.getEmail();
-        if (email != null && !email.isBlank()) {
-            level++;
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
         }
-        Integer namesakeCount = owner.getNamesakeCount();
-        if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        java.time.LocalDate registrationDate = owner.getRegistrationDate();
-        long tenureDays = registrationDate == null ? 0
-            : java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
-        if (level == 3 && tenureDays > 365) {
-            level = 4;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
