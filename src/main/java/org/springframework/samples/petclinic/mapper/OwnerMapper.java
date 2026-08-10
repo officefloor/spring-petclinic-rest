@@ -29,6 +29,8 @@ public interface OwnerMapper {
             expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "checkDigit",
             expression = "java(CheckDigit.of(owner.getCustomerCode()))")
+    @Mapping(target = "membershipPoints",
+            expression = "java(MembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(MembershipLevel.of(owner))")
     @Mapping(target = "locality",
