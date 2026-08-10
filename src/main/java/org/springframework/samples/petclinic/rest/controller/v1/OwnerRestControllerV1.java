@@ -199,12 +199,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(countOwnersRegisteredOn(registrationDate) > 80);
         // Record the size of this owner's household after this create: the number of existing
         // owners sharing the same household (matching last name and address) plus this owner.
-        // Drives the 'GOLD' membership tier (3 or more members).
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
         this.clinicService.saveOwner(owner);
-        // Emit an audit line recording the new owner's id, customer code and registration date.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        // Emit an audit line recording the new owner's id, customer code, registration date
+        // and membership level.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -331,7 +332,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Count the existing owners in the same household as the given last name and address
      * (compared after household-key normalization). Used, together with the owner being
-     * created, to derive the household size that drives the 'GOLD' membership tier.
+     * created, to derive the household size recorded on the owner.
      */
     private int countHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeHouseholdKey(lastName);
