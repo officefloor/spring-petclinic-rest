@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -56,6 +59,14 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic email check: a non-empty local part, a single {@code @}, and a domain that
+     * contains at least one dot, with no whitespace anywhere. Deliberately lenient — it accepts
+     * ordinary addresses while rejecting clearly malformed ones such as {@code not-an-email}.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final ClinicService clinicService;
 
@@ -138,6 +149,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalizes an optional email. An absent or blank email is left unset (returns {@code null});
+     * a present value must be a syntactically valid address and is stored and returned lower-cased.
+     *
+     * @param email the raw email as supplied by the caller, may be {@code null}
+     * @return the lower-cased email, or {@code null} when none was supplied
+     * @throws InvalidEmailException if a value is present but is not a syntactically valid address
+     */
+    private static String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidEmailException("Email must be a syntactically valid address");
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    /**
      * Rejects a create whose normalized telephone is already used by any existing owner, so that
      * telephones stay unique across owners. Telephones are normalized to their 10-digit form on
      * create, so a direct equality comparison against the stored values is sufficient.
@@ -171,6 +201,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
+        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -192,6 +223,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }

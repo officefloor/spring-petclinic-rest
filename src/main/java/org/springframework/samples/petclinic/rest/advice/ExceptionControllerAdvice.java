@@ -205,6 +205,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidEmailException} raised on create when the supplied email is present but
+     * is not a syntactically valid address. Returns a 400 Bad Request whose body carries an
+     * {@code errors} array naming the {@code email} field.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} raised on create when the supplied telephone,
      * after normalization, is already used by another owner. Returns a 409 Conflict whose body
      * carries an {@code errors} array naming the {@code telephone} field.
