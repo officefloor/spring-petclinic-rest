@@ -19,6 +19,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(displayName(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -245,6 +246,21 @@ public interface OwnerMapper {
             sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
         }
         return sb.toString();
+    }
+
+    /**
+     * Composes the owner's salutation as {@code 'title lastName'} when a title is present,
+     * or just the {@code lastName} when no title is given.
+     */
+    default @Nullable String salutation(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        if (title == null || title.isEmpty()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /**
