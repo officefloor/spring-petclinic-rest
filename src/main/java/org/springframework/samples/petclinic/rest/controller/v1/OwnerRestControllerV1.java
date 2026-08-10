@@ -103,6 +103,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int DAILY_OWNER_LIMIT = 100;
 
+    /**
+     * Number of owner registrations on a single business day above which a newly created owner is
+     * flagged with {@code bulkSignupWarning=true}. Once more than this many owners already share the
+     * registration date, the surge is signalled in the response; the create itself still succeeds.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -366,6 +373,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Determines whether creating an owner on the given business day constitutes a bulk-signup
+     * surge: {@code true} when more than {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners have already
+     * been registered on that date. Evaluated before the new owner is persisted, so the count
+     * reflects the owners that existed at the time of creation.
+     *
+     * @param registrationDate the business-day-adjusted registration date of the owner being created
+     * @return {@code true} if more than {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners already share
+     *     that registration date, otherwise {@code false}
+     */
+    private boolean isBulkSignup(LocalDate registrationDate) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
      * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced to the
      * following Monday, while a weekday is returned unchanged.
      *
@@ -401,6 +425,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         owner.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
+        owner.setBulkSignupWarning(isBulkSignup(registrationDate));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
