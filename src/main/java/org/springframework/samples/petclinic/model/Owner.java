@@ -96,6 +96,9 @@ public class Owner extends Person {
     @Transient
     private Boolean bulkSignupWarning;
 
+    @Transient
+    private Boolean capacityWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -249,6 +252,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     protected Set<Pet> getPetsInternal() {
