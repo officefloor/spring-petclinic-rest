@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -95,6 +96,24 @@ public interface OwnerMapper {
         }
         int dash = customerCode.indexOf('-');
         return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
+    }
+
+    /**
+     * Derives the owner's {@code timezone} as an IANA name from its locality/region using the fixed
+     * region-to-timezone table: {@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
+     * and {@code QLD -> Australia/Brisbane}. Returns {@code null} when the region is not in the table.
+     */
+    default @Nullable String timezone(@Nullable Owner owner) {
+        String region = locality(owner);
+        if (region == null) {
+            return null;
+        }
+        return switch (region) {
+            case "NSW" -> "Australia/Sydney";
+            case "VIC" -> "Australia/Melbourne";
+            case "QLD" -> "Australia/Brisbane";
+            default -> null;
+        };
     }
 
     /**
