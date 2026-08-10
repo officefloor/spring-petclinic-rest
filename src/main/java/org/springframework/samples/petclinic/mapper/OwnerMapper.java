@@ -31,6 +31,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.util.OwnerIdentities.identityKey(owner))")
+    @Mapping(target = "checkDigit",
+            expression = "java(org.springframework.samples.petclinic.util.CheckDigits.checkDigitFor(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
