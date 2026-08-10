@@ -1,0 +1,49 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9ee2a452..12f2972e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,24 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The fixed city-to-region table: any city not listed derives locality {@code UNKNOWN}.
++     */
++    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
++        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    /**
++     * Derives the owner's locality: the canonical region for the owner's city from the fixed
++     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or {@code UNKNOWN}
++     * when the city is not in the table.
++     */
++    default String locality(Owner owner) {
++        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
++    }
++
+     /**
+      * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
+      * ({@code namesakeCount} is 0) and an email address is present; otherwise {@code BRONZE}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 495ad9a5..99059511 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,6 +2123,15 @@ components:
+               type: string
+               example: 'SILVER'
+               readOnly: true
++            locality:
++              title: Locality
++              description: >-
++                The canonical region derived from the city using the fixed table
++                (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the
++                city is not in the table.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
