@@ -93,6 +93,9 @@ public class Owner extends Person {
     @Column(name = "deleted")
     private boolean deleted;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -238,6 +241,14 @@ public class Owner extends Person {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     protected Set<Pet> getPetsInternal() {

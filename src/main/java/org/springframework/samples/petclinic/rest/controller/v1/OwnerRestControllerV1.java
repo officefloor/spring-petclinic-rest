@@ -41,7 +41,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -364,29 +363,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create when an existing owner already belongs to the same household (i.e. carries the
-     * same computed {@code householdId}, derived from last name and postcode), unless the request
-     * knowingly opts in via {@code sharesHousehold}. Setting {@code sharesHousehold} bypasses this
-     * block so the owner is created as a declared member of the existing household; without it, a
-     * second owner in the same household is a conflict.
-     *
-     * @param householdId the computed household identifier of the owner being created
-     * @param sharesHousehold whether the request opted in to sharing an existing household
-     * @throws DuplicateHouseholdException if the household already exists and the request did not opt in
-     */
-    private void rejectDuplicateHousehold(String householdId, boolean sharesHousehold) {
-        if (sharesHousehold) {
-            return;
-        }
-        boolean exists = activeOwners()
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (exists) {
-            throw new DuplicateHouseholdException(
-                "An owner with the same last name and postcode already exists");
-        }
-    }
-
-    /**
      * Finds a soft-match "possible duplicate" for the owner being created: an existing owner that is
      * not a hard identity duplicate but shares this owner's last name (compared case-insensitively) and
      * postcode while carrying a different telephone. When the postcode is absent no owner can share it,
@@ -659,6 +635,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Computes the household-capped membership level for the owner being created. The level starts as
+     * the owner's own derived level (from its membership points). When at least one existing (active)
+     * household member shares the owner's {@code householdId}, the level is capped so it may not exceed
+     * one above the current maximum membership level among those existing members; with no existing
+     * household member no cap applies and the derived level is returned unchanged. Returns {@code null}
+     * when no level can be derived for the owner.
+     *
+     * @param owner the owner being created, with its level-affecting fields already populated
+     * @param householdId the stable household identifier of the owner being created
+     * @return the capped membership level, or {@code null} when none can be derived
+     */
+    private Integer cappedMembershipLevel(Owner owner, String householdId) {
+        Integer level = ownerMapper.membershipLevel(owner);
+        if (level == null || householdId == null) {
+            return level;
+        }
+        java.util.OptionalInt maxExisting = activeOwners()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .map(ownerMapper::membershipLevel)
+            .filter(java.util.Objects::nonNull)
+            .mapToInt(Integer::intValue)
+            .max();
+        if (maxExisting.isPresent()) {
+            level = Math.min(level, maxExisting.getAsInt() + 1);
+        }
+        return level;
+    }
+
+    /**
      * Normalizes a name for case-insensitive comparison by trimming surrounding whitespace and
      * lower-casing.
      *
@@ -774,7 +779,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         String ownerHouseholdId = householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
         rejectDuplicateIdentity(deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerHouseholdId));
-        rejectDuplicateHousehold(ownerHouseholdId, sharesHousehold);
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(
             ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(), normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
@@ -787,6 +791,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(householdSize(ownerHouseholdId));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning(registrationDate));
+        owner.setMembershipLevel(cappedMembershipLevel(owner, ownerHouseholdId));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             idempotencyKeys.put(idempotencyKey, owner.getId());

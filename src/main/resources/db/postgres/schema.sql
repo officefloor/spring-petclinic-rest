@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       birth_date DATE,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INT,
-                                      deleted BOOLEAN DEFAULT FALSE
+                                      deleted BOOLEAN DEFAULT FALSE,
+                                      membership_level INT
 );
 CREATE INDEX ON owners (last_name);
 

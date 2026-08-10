@@ -184,10 +184,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's numeric membership level from 1 to 4, derived from membershipPoints:
-     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more points.
+     * Returns the owner's numeric membership level. When a membership level has been persisted on the
+     * owner (the household-capped value assigned on create) that stored value is returned; otherwise the
+     * level is derived from membershipPoints via {@link #derivedMembershipLevel(Owner)}.
      */
     default @Nullable Integer membershipLevel(@Nullable Owner owner) {
+        if (owner != null && owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return derivedMembershipLevel(owner);
+    }
+
+    /**
+     * Derives the owner's numeric membership level from 1 to 4 from membershipPoints, ignoring any
+     * stored value: level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more points.
+     */
+    default @Nullable Integer derivedMembershipLevel(@Nullable Owner owner) {
         Integer points = membershipPoints(owner);
         if (points == null) {
             return null;
@@ -344,6 +356,7 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
