@@ -42,6 +42,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -173,6 +174,29 @@ public interface OwnerMapper {
      */
     java.util.Map<String, String> REGION_TIMEZONES = java.util.Map.of(
         "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * The regions considered {@code METRO} for the purposes of {@link #ownerSegment(Owner)}: the
+     * known regions {@code NSW}, {@code VIC} and {@code QLD}. Any other locality is {@code REGIONAL}.
+     */
+    java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derives an owner's segment, formatted {@code <TIER>_<AREA>}. {@code TIER} is {@code PREMIUM}
+     * when the owner's {@link #membershipLevel(Owner) membership level} is {@code 3} or more,
+     * otherwise {@code STANDARD}. {@code AREA} is {@code METRO} when the owner's
+     * {@link #locality(Owner) locality} is a known region ({@code NSW}, {@code VIC} or {@code QLD}),
+     * otherwise {@code REGIONAL}. The result is one of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
+     * {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
+     *
+     * @param owner the owner to derive the segment for
+     * @return the {@code <TIER>_<AREA>} owner segment
+     */
+    default String ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
 
     /**
      * Derives an owner's IANA timezone name from its {@link #locality(Owner) locality/region} using
