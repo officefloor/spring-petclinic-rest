@@ -1,40 +1,66 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Map;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is
- * the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
- * last name and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of
- * owners already in that city (e.g. {@code SYD-SMI-0007}).
+ * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
+ * region code derived from the owner's postcode (its inclusive range: {@code NSW 2000-2099},
+ * {@code VIC 3000-3099}, {@code QLD 4000-4099}, else {@code UNKNOWN}) and HASH8 is the first 8
+ * upper-case hex characters of {@code SHA-256} over the owner's normalized telephone concatenated
+ * with its last name (e.g. {@code NSW-1A2B3C4D}).
  *
- * <p>Runs before {@link SaveOwner}, so the count reflects the owners already persisted in the same
- * city and the new owner receives the next number in that city's sequence.
+ * <p>The identity is derived deterministically from the owner's own fields — no sequence numbers —
+ * so it does not depend on other owners or on creation order. The telephone has already been
+ * normalized to E.164 form by {@link ValidateOwnerFields} before this step runs.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city3 = prefix(owner.getCity());
-        String last3 = prefix(owner.getLastName());
-        int sequence = countInCity(owner.getCity(), ownerRepository) + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    /** Region -&gt; inclusive 4-digit postcode range {@code {low, high}}. */
+    private static final Map<String, int[]> REGION_RANGE = Map.of(
+            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    private static final String UNKNOWN = "UNKNOWN";
+
+    public void service(@Val Owner owner) {
+        String region = regionOf(owner.getPostcode());
+        String hash8 = hash8(owner.getTelephone() + owner.getLastName());
+        owner.setCustomerCode(region + "-" + hash8);
     }
 
-    /** Upper-cased first three letters of {@code value}. */
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
-    }
-
-    /** Number of existing owners in {@code city}, compared case-insensitively. */
-    private static int countInCity(String city, OwnerRepository ownerRepository) {
-        int count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (city == null ? existing.getCity() == null : city.equalsIgnoreCase(existing.getCity())) {
-                count++;
+    /** The region whose inclusive range contains {@code postcode}, or {@code UNKNOWN} when the
+     *  postcode is absent, not four digits, or in no known range. */
+    private static String regionOf(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return UNKNOWN;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
             }
         }
-        return count;
+        return UNKNOWN;
+    }
+
+    /** The first 8 upper-case hex characters (4 bytes) of {@code SHA-256(value)}. */
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (Exception ex) {
+            throw new IllegalStateException("SHA-256 unavailable", ex);
+        }
     }
 }
