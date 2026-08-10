@@ -377,6 +377,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Finds an existing owner that the owner being created softly matches: one that is not a hard
+     * duplicate (that case is already rejected by {@link #requireUniqueIdentity(Owner)}) but shares
+     * the new owner's last name (compared case-insensitively) and postcode while holding a different
+     * telephone. Only owners with a postcode participate: when the new owner has no postcode there is
+     * nothing to soft-match on. When several existing owners match, the one with the lowest id is
+     * returned so the result is deterministic.
+     *
+     * @param owner the owner being created, with its normalized telephone already applied
+     * @return the lowest-id matching existing owner, or {@code null} when there is no soft match
+     */
+    private Owner findPossibleDuplicate(Owner owner) {
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        if (lastName == null || postcode == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> existing.getTelephone() == null
+                || !existing.getTelephone().equals(telephone))
+            .min(Comparator.comparingInt(Owner::getId))
+            .orElse(null);
+    }
+
+    /**
      * Rejects an owner whose city already contains the maximum permitted number of owners
      * ({@value #CITY_CAPACITY}). Cities are compared case-insensitively with collapsed whitespace,
      * the same normalization used for the other owner household fields.
@@ -480,6 +507,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         requireDailyLimitNotReached(registrationDate);
         owner.setBulkSignupWarning(isBulkSignup(registrationDate));
+        Owner possibleDuplicate = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(possibleDuplicate != null);
+        owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
