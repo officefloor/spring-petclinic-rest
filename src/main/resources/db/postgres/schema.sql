@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       address    TEXT,
                                       city       TEXT,
                                       telephone  TEXT,
-                                      registration_date DATE
+                                      registration_date DATE,
+                                      customer_code TEXT
 );
 CREATE INDEX ON owners (last_name);
 
