@@ -21,9 +21,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Derivation of an owner's duplicate-detection {@code identityKey}. The key is the lower-case hex
- * SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with an empty
- * segment substituted for an absent telephone or email. Because a Soundex code (not the raw surname)
+ * Derivation of an owner's duplicate-detection {@code identityKey}. The version-2 key is the
+ * lower-case hex SHA-256 of
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName) + '|' + "V2"}, with an
+ * empty segment substituted for an absent telephone or email. Because a Soundex code (not the raw surname)
  * and the telephone both feed the key, two owners collide only when their telephone, email and the
  * phonetic code of their surname all match; owners that differ in any one of those segments — for
  * example two members of the same household with different telephones — produce different keys.
@@ -49,9 +50,17 @@ public final class IdentityKeys {
     public static String identityKey(String normalizedTelephone, String lowerEmail, String lastName) {
         String raw = (normalizedTelephone == null ? "" : normalizedTelephone)
             + "|" + (lowerEmail == null ? "" : lowerEmail)
-            + "|" + soundex(lastName);
+            + "|" + soundex(lastName)
+            + "|" + VERSION_TAG;
         return sha256Hex(raw);
     }
+
+    /**
+     * The fixed version-2 tag mixed into every derived identifier so that no value produced under
+     * version 1 is ever reproduced. It appears only inside the identifiers, never in the user-facing
+     * {@code locality}, {@code timezone} or owner-segment region.
+     */
+    public static final String VERSION_TAG = "V2";
 
     /**
      * The American Soundex phonetic code of {@code name}: its first letter followed by three digits

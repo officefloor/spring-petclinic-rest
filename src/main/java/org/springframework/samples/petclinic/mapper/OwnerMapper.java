@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -28,7 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
@@ -127,22 +129,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear} from the {@code FY} segment of its memberId, formatted as
-     * {@code 'FY<YY>'} where YY are the two fiscal-year digits carried in the memberId (immediately
-     * after the region segment), i.e. the last two digits of the calendar year in which the fiscal
-     * year ends (the fiscal year starts on 1 July). Returns {@code null} when the owner has no
-     * memberId or the memberId carries no fiscal-year segment.
+     * Derives the owner's {@code fiscalYear} from its business-day-adjusted registrationDate, formatted
+     * as {@code 'FY<YY>'} where YY are the last two digits of the calendar year in which the fiscal
+     * year ends (the fiscal year starts on 1 July), the same two digits carried in the memberId. This
+     * is derived from the registrationDate rather than parsed out of the memberId, whose version-2
+     * region segment carries the {@code 'V2'} tag. Returns {@code null} when the owner has no
+     * registrationDate.
      */
     default @Nullable String fiscalYear(@Nullable Owner owner) {
-        String region = memberIdRegion(owner);
-        if (region == null) {
+        if (owner == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        String memberId = owner.getMemberId();
-        if (memberId.length() < region.length() + 2) {
-            return null;
-        }
-        return "FY" + memberId.substring(region.length(), region.length() + 2);
+        return "FY" + String.format("%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
     }
 
     /**
@@ -179,6 +177,30 @@ public interface OwnerMapper {
     }
 
     /**
+     * The version of the owner identity contract carried by every owner response: always {@code 2}
+     * for this version of the API.
+     */
+    default Integer apiVersion() {
+        return 2;
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers — its stored {@code memberId} and {@code householdId}
+     * and its derived {@code identityKey} — under the nested {@code identity} object. Each identifier
+     * mixes in the fixed {@code 'V2'} version tag. Returns {@code null} when the owner is absent.
+     */
+    default @Nullable OwnerIdentityDto identity(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
+
+    /**
      * Derives the owner's preferred contact channel: {@code EMAIL} when an email is present,
      * otherwise {@code PHONE}.
      */
@@ -191,34 +213,49 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality from its memberId: the leading {@code REGION} segment of the
-     * {@code memberId} ({@code '<REGION><FY><HASH8><CHK>'}), which is the region code derived from
-     * the postcode on create and is the run of non-digit characters before the fiscal-year digits.
-     * Returns the canonical region string, or {@code 'UNKNOWN'} when the owner has no memberId.
+     * Derives the owner's <em>plain</em> region {@code locality} from its postcode using the fixed
+     * region-to-postcode-range table (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or
+     * {@code 'UNKNOWN'} when the postcode is absent, non-numeric or in no known range. This is the
+     * user-facing region and therefore never carries the {@code 'V2'} version tag that the memberId's
+     * region segment does; it is derived directly from the postcode rather than parsed out of the
+     * version-2 memberId. Returns {@code null} when the owner is absent.
      */
     default @Nullable String locality(@Nullable Owner owner) {
         if (owner == null) {
             return null;
         }
-        String region = memberIdRegion(owner);
-        return region == null ? "UNKNOWN" : region;
+        return regionFromPostcode(owner.getPostcode());
     }
 
     /**
-     * The leading {@code REGION} segment of the owner's {@code memberId}, i.e. the run of non-digit
-     * characters before the 2-digit fiscal year. Returns {@code null} when the owner has no memberId
-     * or the memberId has no leading region segment.
+     * The fixed region-to-postcode-range table: each region admits an inclusive 4-digit range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
      */
-    private static @Nullable String memberIdRegion(@Nullable Owner owner) {
-        String memberId = owner == null ? null : owner.getMemberId();
-        if (memberId == null) {
-            return null;
+    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /**
+     * The canonical (plain, un-tagged) region whose inclusive postcode range contains the given
+     * 4-digit postcode, or {@code 'UNKNOWN'} when the postcode is {@code null}, non-numeric, or in no
+     * known range.
+     */
+    private static String regionFromPostcode(@Nullable String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return "UNKNOWN";
         }
-        int i = 0;
-        while (i < memberId.length() && !Character.isDigit(memberId.charAt(i))) {
-            i++;
+        int code;
+        try {
+            code = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException e) {
+            return "UNKNOWN";
         }
-        return i == 0 ? null : memberId.substring(0, i);
+        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (code >= range[0] && code <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return "UNKNOWN";
     }
 
     /**
