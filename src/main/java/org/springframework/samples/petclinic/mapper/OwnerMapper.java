@@ -48,6 +48,8 @@ public interface OwnerMapper {
             expression = "java(ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBand.of(owner))")
+    @Mapping(target = "ownerSegment",
+            expression = "java(OwnerSegment.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
