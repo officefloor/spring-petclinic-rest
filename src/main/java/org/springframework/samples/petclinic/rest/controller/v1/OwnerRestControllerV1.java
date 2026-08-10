@@ -431,6 +431,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Rejects a supplied registration date that is later than the current server date. A {@code null}
+     * date is permitted (it is subsequently defaulted to the server date); only an explicitly supplied
+     * date in the future is invalid.
+     *
+     * @param registrationDate the registration date supplied on the request, may be {@code null}
+     * @throws InvalidFieldsException if the supplied date is later than today's server date
+     */
+    private void requireRegistrationDateNotInFuture(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new InvalidFieldsException(List.of("registrationDate"));
+        }
+    }
+
+    /**
      * Rolls a registration date forward onto a business day: a Saturday or Sunday is advanced to the
      * following Monday, while a weekday is returned unchanged.
      *
@@ -459,6 +473,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(telephone);
         owner.setEmail(email);
         requireUniqueIdentity(owner);
+        requireRegistrationDateNotInFuture(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
