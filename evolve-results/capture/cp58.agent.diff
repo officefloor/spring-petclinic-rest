@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/DisposableAdjacent.java b/src/main/java/org/springframework/samples/petclinic/mapper/DisposableAdjacent.java
+new file mode 100644
+index 00000000..555ed11b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/DisposableAdjacent.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Decides whether an email address is <em>disposable-adjacent</em>: its domain belongs to the same
++ * family as a known disposable email provider without being one of the hard-blocked disposable
++ * domains (those are rejected outright at create time, so a stored email never carries one).
++ *
++ * <p>A domain is disposable-adjacent when its second-level label (the label immediately before the
++ * final TLD) matches a known disposable provider's label. That catches a different TLD
++ * ({@code mailinator.net}, {@code guerrillamail.biz}) and a subdomain ({@code smtp.mailinator.com}),
++ * while an unrelated domain that merely starts the same ({@code mailinatorish.com},
++ * {@code tempmailer.com}) is not matched — the label must be exact.
++ *
++ * <p>Kept as a standalone helper (referenced from {@link OwnerMapper}'s {@code riskFlag} expression
++ * via {@link RiskFlag}) rather than a mapper {@code default} method to avoid MapStruct picking it up
++ * as an automatic conversion.
++ */
++final class DisposableAdjacent {
++
++    /** Second-level labels of the known disposable providers. */
++    private static final Set<String> DISPOSABLE_LABELS = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private DisposableAdjacent() {
++    }
++
++    /** True when {@code email} is present and its domain is disposable-adjacent. */
++    static boolean matches(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return false; // no TLD -> no second-level label to compare
++        }
++        String secondLevel = labels[labels.length - 2];
++        return DISPOSABLE_LABELS.contains(secondLevel);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a8065332..f74ceedd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -45,6 +45,8 @@ public interface OwnerMapper {
+             expression = "java(AgeBand.of(owner))")
+     @Mapping(target = "ownerSegment",
+             expression = "java(OwnerSegment.of(owner))")
++    @Mapping(target = "riskFlag",
++            expression = "java(RiskFlag.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+new file mode 100644
+index 00000000..5ca17881
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code riskFlag}: whether the owner warrants a manual risk review.
++ *
++ * <p>The flag is {@code true} when any of these hold, else {@code false}:
++ * <ul>
++ *   <li>the owner is a possible (soft) duplicate — {@link Owner#getPossibleDuplicate()} is true;</li>
++ *   <li>its stored email domain is {@link DisposableAdjacent disposable-adjacent};</li>
++ *   <li>its city is over its soft capacity — {@link Owner#getCapacityWarning()} is true (the
++ *       warning band begins at the soft cap and, since the hard cap of 50 rejects a create, a
++ *       stored owner over the soft cap always carries the warning).</li>
++ * </ul>
++ *
++ * <p>Kept as a standalone helper (referenced from {@link OwnerMapper}'s {@code riskFlag} expression)
++ * rather than a mapper {@code default} method to avoid MapStruct picking it up as an automatic
++ * conversion.
++ */
++final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    /** True when the owner is a possible duplicate, disposable-adjacent, or over soft capacity. */
++    static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || DisposableAdjacent.matches(owner.getEmail())
++                || Boolean.TRUE.equals(owner.getCapacityWarning());
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b7f04a53..7186aba0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2358,6 +2358,18 @@ components:
+                 - STANDARD_REGIONAL
+               example: 'STANDARD_METRO'
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review because any of the
++                following hold: it is a possible (soft) duplicate (possibleDuplicate true);
++                its stored email domain is disposable-adjacent (shares a known disposable
++                provider's second-level label — e.g. a different TLD or a subdomain — without
++                being one of the hard-blocked disposable domains); or its city is over its
++                soft capacity (capacityWarning true). Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
