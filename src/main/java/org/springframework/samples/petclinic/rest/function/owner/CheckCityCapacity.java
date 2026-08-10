@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
  * owners. City is compared case-insensitively, matching {@link AssignCustomerCode}. A city at
  * capacity is reported as a 409 (see {@link CityAtCapacityException}).
  *
- * <p>Runs after {@link CheckUniqueHousehold} (which republishes the validated request as a variable)
+ * <p>Runs after {@link ValidateOwnerFields} (which republishes the validated request as a variable)
  * and before {@link BuildOwner}, so a rejected request is never persisted.
  */
 public class CheckCityCapacity {

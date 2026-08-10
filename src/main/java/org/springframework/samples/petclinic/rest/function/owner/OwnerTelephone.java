@@ -19,7 +19,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * So {@code "+61 123"} is rejected, while {@code "+61 412 345 678"} and {@code "+1 608 555 1023"}
  * are accepted. Numbers whose country code is not recognized keep only the 8-to-15-digit rule.
  */
-final class OwnerTelephone {
+public final class OwnerTelephone {
 
     /**
      * Recognized country codes mapped to the exact national-number length they require. Ordered
@@ -35,7 +35,7 @@ final class OwnerTelephone {
     private OwnerTelephone() {
     }
 
-    static String toE164(String input) throws InvalidTelephoneException {
+    public static String toE164(String input) throws InvalidTelephoneException {
         if (input == null) {
             throw new InvalidTelephoneException(null);
         }
