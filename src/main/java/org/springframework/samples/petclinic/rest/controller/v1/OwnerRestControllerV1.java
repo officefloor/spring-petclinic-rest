@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -136,6 +137,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return digits;
     }
 
+    /**
+     * Rejects a create whose normalized telephone is already used by any existing owner, so that
+     * telephones stay unique across owners. Telephones are normalized to their 10-digit form on
+     * create, so a direct equality comparison against the stored values is sufficient.
+     *
+     * @param normalizedTelephone the normalized 10-digit telephone of the owner being created
+     * @throws DuplicateTelephoneException if another owner already uses this telephone
+     */
+    private void rejectDuplicateTelephone(String normalizedTelephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizedTelephone.equals(existing.getTelephone()));
+        if (inUse) {
+            throw new DuplicateTelephoneException(
+                "Telephone is already used by another owner");
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> getOwner(Integer ownerId) {
@@ -150,7 +168,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
-        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateTelephone(normalizedTelephone);
+        ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
