@@ -314,20 +314,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives the single duplicate-detection key that consolidates the former separate telephone,
-     * email and household checks. The key is {@code normalizedTelephone + '|' + email + '|' +
-     * householdId}, where the email segment is the empty string when the owner has no email. Because
-     * the telephone is part of the key, two owners that differ in any one segment (for example two
-     * members of the same household with different telephones) produce different keys.
+     * email and household checks. The key is the lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with an empty segment
+     * for an absent telephone or email. Because the telephone is part of the key, two owners that
+     * differ in any one segment (for example two members of the same household with different
+     * telephones) produce different keys and are therefore not hard duplicates.
      *
      * @param normalizedTelephone the E.164 telephone of the owner
      * @param email the lower-cased email of the owner, may be {@code null}
-     * @param householdId the stable household identifier of the owner, may be {@code null}
+     * @param lastName the last name of the owner, reduced to its Soundex code, may be {@code null}
      * @return the derived identity key
      */
-    private static String deriveIdentityKey(String normalizedTelephone, String email, String householdId) {
-        return (normalizedTelephone == null ? "" : normalizedTelephone)
-            + "|" + (email == null ? "" : email)
-            + "|" + (householdId == null ? "" : householdId);
+    private static String deriveIdentityKey(String normalizedTelephone, String email, String lastName) {
+        return org.springframework.samples.petclinic.util.IdentityKeys.identityKey(
+            normalizedTelephone, email, lastName);
     }
 
     /**
@@ -355,7 +355,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(String identityKey) {
         boolean inUse = activeOwners()
             .anyMatch(existing -> identityKey.equals(
-                deriveIdentityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
+                deriveIdentityKey(existing.getTelephone(), existing.getEmail(), existing.getLastName())));
         if (inUse) {
             throw new DuplicateIdentityException(
                 "An owner with the same identity key already exists");
@@ -364,25 +364,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds a soft-match "possible duplicate" for the owner being created: an existing owner that is
-     * not a hard identity duplicate but shares this owner's last name (compared case-insensitively) and
-     * postcode while carrying a different telephone. When the postcode is absent no owner can share it,
-     * so there is never a match. When several existing owners qualify the one with the lowest id is
-     * returned, so the result is deterministic.
+     * not a hard identity duplicate (its {@code identityKey} differs) but shares the phonetic code of
+     * this owner's last name (its Soundex) and its postcode. Because the telephone is part of the
+     * identity key, two owners with the same surname and postcode but different telephones are no
+     * longer hard duplicates — they surface here as a soft match instead. When the postcode is absent
+     * no owner can share it, so there is never a match. When several existing owners qualify the one
+     * with the lowest id is returned, so the result is deterministic.
      *
      * @param lastName the last name of the owner being created
      * @param postcode the postcode of the owner being created, may be {@code null}
-     * @param normalizedTelephone the E.164 telephone of the owner being created
+     * @param identityKey the derived identity key of the owner being created
      * @return the id of the matching existing owner, or {@code null} when there is no soft match
      */
-    private Integer findPossibleDuplicateOf(String lastName, String postcode, String normalizedTelephone) {
+    private Integer findPossibleDuplicateOf(String lastName, String postcode, String identityKey) {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String normalizedLastName = normalizeName(lastName);
+        String soundex = org.springframework.samples.petclinic.util.IdentityKeys.soundex(lastName);
         return activeOwners()
-            .filter(existing -> normalizedLastName.equals(normalizeName(existing.getLastName())))
+            .filter(existing -> soundex.equals(
+                org.springframework.samples.petclinic.util.IdentityKeys.soundex(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
-            .filter(existing -> !normalizedTelephone.equals(existing.getTelephone()))
+            .filter(existing -> !identityKey.equals(
+                deriveIdentityKey(existing.getTelephone(), existing.getEmail(), existing.getLastName())))
             .map(Owner::getId)
             .filter(java.util.Objects::nonNull)
             .min(Integer::compareTo)
@@ -778,9 +782,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setEmail(normalizedEmail);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         String ownerHouseholdId = householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
-        rejectDuplicateIdentity(deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerHouseholdId));
+        String identityKey = deriveIdentityKey(normalizedTelephone, normalizedEmail, ownerFieldsDto.getLastName());
+        rejectDuplicateIdentity(identityKey);
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(
-            ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(), normalizedTelephone);
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(), identityKey);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);

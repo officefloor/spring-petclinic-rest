@@ -90,19 +90,17 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's duplicate-detection {@code identityKey}, formatted as
-     * {@code normalizedTelephone + '|' + email + '|' + householdId} with an empty email segment when
-     * the owner has no email. This is the same key the create endpoint uses to reject an owner whose
-     * whole key equals an existing owner's.
+     * Derives the owner's duplicate-detection {@code identityKey}: the lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with an empty segment
+     * for an absent telephone or email. This is the same key the create endpoint uses to reject an
+     * owner whose whole key equals an existing owner's.
      */
     default @Nullable String identityKey(@Nullable Owner owner) {
         if (owner == null) {
             return null;
         }
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        return org.springframework.samples.petclinic.util.IdentityKeys.identityKey(
+            owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
