@@ -7,11 +7,13 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityConflictException;
 
 /**
- * Household duplicate check for {@code POST /api/owners}. The household is keyed on
- * {@code (lastName, postcode)} via the deterministic {@code householdId} computed by
- * {@link AssignHousehold}, so any existing owner sharing the new owner's {@code householdId} is a
- * member of the same household. A second such owner is rejected with 409
- * ({@link OwnerIdentityConflictException}).
+ * Consolidated duplicate check for {@code POST /api/owners}. Rejects with 409
+ * ({@link OwnerIdentityConflictException}) only when the new owner's whole {@code identityKey}
+ * (normalized telephone {@code '|'} email {@code '|'} householdId, see {@link Owner#getIdentityKey()})
+ * exactly matches an existing owner's. Two members of the same household (same deterministic
+ * {@code householdId} computed by {@link AssignHousehold}) with different telephones therefore have
+ * different keys and are both allowed — the later one is instead flagged a soft match by
+ * {@link AssignPossibleDuplicate}.
  *
  * <p>The {@code sharesHousehold} request flag bypasses this block: when set, the new owner is
  * created as a <em>declared</em> household member rather than rejected (and is not flagged a possible
@@ -26,13 +28,13 @@ public class CheckOwnerIdentityUnique {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member: bypass the duplicate block
         }
-        String householdId = owner.getHouseholdId();
+        String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // a soft-deleted owner never blocks a create
             }
-            if (householdId.equals(existing.getHouseholdId())) {
-                throw new OwnerIdentityConflictException(householdId);
+            if (identityKey.equals(existing.getIdentityKey())) {
+                throw new OwnerIdentityConflictException(identityKey);
             }
         }
     }

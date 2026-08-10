@@ -58,9 +58,18 @@ public final class MembershipLevel {
         return 1;
     }
 
-    /** Compute the membership level (1..4) for the given owner. */
+    /** Compute the membership level (1..4) for the given owner, capped by the owner's
+     *  {@code membershipLevelCap} when one is set. The cap is one above the maximum membership level
+     *  among the owner's existing household members at creation (see
+     *  {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap});
+     *  when {@code null} the derived level applies unchanged. */
     public static int of(Owner owner) {
-        return levelForPoints(points(owner));
+        int level = levelForPoints(points(owner));
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
     }
 
     /** Elapsed fiscal years (1 July boundaries) between the owner's {@code registrationDate} and
