@@ -367,6 +367,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The number of owners that may already exist for a business day before a create is flagged with
+     * a bulk-signup warning. Once more than this many owners already carry the effective registration
+     * date, the created owner's {@code bulkSignupWarning} is set to {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Determines whether a create should be flagged with a bulk-signup warning, i.e. whether more than
+     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created for the given business day,
+     * counted by {@code registrationDate} equal to the effective (weekend rolled forward) registration
+     * date of the owner being created. The count reflects the state before the new owner is persisted,
+     * so it excludes the owner being created.
+     *
+     * @param registrationDate the effective business-day registration date of the owner being created
+     * @return {@code true} when more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry the date
+     */
+    private boolean bulkSignupWarning(LocalDate registrationDate) {
+        long ownersToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return ownersToday > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
      * Rolls a registration date forward to a business day: a Saturday or Sunday is advanced to the
      * following Monday, any weekday is returned unchanged.
      *
@@ -470,6 +494,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));
         owner.setHouseholdId(householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
+        owner.setBulkSignupWarning(bulkSignupWarning(registrationDate));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
