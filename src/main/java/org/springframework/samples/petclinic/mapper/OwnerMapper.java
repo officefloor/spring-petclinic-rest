@@ -33,7 +33,19 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code selfLink}, the canonical relative URL of the owner formatted as
+     * {@code '/api/owners/' + id}. Returns {@code null} when the owner or its id is absent.
+     */
+    default @Nullable String selfLink(@Nullable Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * The fiscal year in which a date falls, labelled by the calendar year in which the fiscal year
