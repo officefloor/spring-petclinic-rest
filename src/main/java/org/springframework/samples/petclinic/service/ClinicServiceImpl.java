@@ -238,8 +238,39 @@ public class ClinicServiceImpl implements ClinicService {
         if (owner.isNew() && owner.getNamesakeCount() == null) {
             owner.setNamesakeCount(countNamesakes(owner));
         }
+        if (owner.isNew() && owner.getHouseholdMemberCount() == null) {
+            owner.setHouseholdMemberCount(countHouseholdMembers(owner));
+        }
         ownerRepository.save(owner);
 
+    }
+
+    /**
+     * Count the members of the new owner's household after this create: the existing owners
+     * that share the given owner's last name and address (compared case-insensitively with
+     * collapsed whitespace, the same normalization used to derive the household identifier)
+     * plus the owner being created. Invoked before the new owner is persisted.
+     */
+    private int countHouseholdMembers(Owner owner) {
+        String normalizedLastName = normalizeHouseholdField(owner.getLastName());
+        String normalizedAddress = normalizeHouseholdField(owner.getAddress());
+        long existing = ownerRepository.findAll().stream()
+            .filter(other -> normalizeHouseholdField(other.getLastName()).equals(normalizedLastName)
+                && normalizeHouseholdField(other.getAddress()).equals(normalizedAddress))
+            .count();
+        return (int) existing + 1;
+    }
+
+    /**
+     * Collapses surrounding and internal whitespace and lower-cases a value so household fields
+     * can be compared case-insensitively with collapsed whitespace. A {@code null} value
+     * normalizes to the empty string.
+     */
+    private String normalizeHouseholdField(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
