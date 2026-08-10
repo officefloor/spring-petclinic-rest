@@ -19,6 +19,22 @@ public final class AddressNormalizer {
     private AddressNormalizer() {
     }
 
+    /**
+     * The effective, normalized street address for a request. The structured form is preferred: when
+     * {@code addressLine1} is non-blank the result is its normalized value, with a single space and the
+     * normalized {@code addressLine2} appended when {@code addressLine2} is present. Otherwise it falls
+     * back to the normalized flat {@code address}. Every component is {@link #normalize normalized}, so
+     * the result is stored, returned and compared in one canonical form.
+     */
+    public static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (line1.isEmpty()) {
+            return normalize(address);
+        }
+        String line2 = normalize(addressLine2);
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
+    }
+
     /** Trimmed, whitespace-collapsed, upper-cased, with common abbreviations expanded. */
     public static String normalize(String address) {
         if (address == null) {
