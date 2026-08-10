@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -162,18 +163,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
+        // Determine the effective registration date — the value supplied on the request, or the
+        // server's current date when none was supplied — and roll it forward to the next business
+        // day: a Saturday or Sunday moves to the following Monday. Everything derived from the
+        // registration date (membership-number year segment, per-day create-limit) uses this
+        // adjusted date.
+        LocalDate registrationDate = ownerFieldsDto.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = LocalDate.now();
+        }
+        registrationDate = toBusinessDay(registrationDate);
         // Reject the create when the daily sign-up limit has been reached, i.e. 100 or more
-        // owners have already been registered today (by registrationDate).
-        if (countOwnersRegisteredToday() >= 100) {
+        // owners have already been registered on this (adjusted) business day.
+        if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Default the registration date to the server's current date when none was supplied.
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         // Assign the customer code as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
         // letters of the city, the upper-cased first three letters of the last name, and a
         // per-city 4-digit sequence one greater than the number of owners already in that city.
@@ -324,14 +332,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Count the existing owners whose registration date is the server's current date.
+     * Count the existing owners whose registration date is the given (adjusted business) date.
      * Used to enforce the per-day sign-up limit.
      */
-    private int countOwnersRegisteredToday() {
-        LocalDate today = LocalDate.now();
+    private int countOwnersRegisteredOn(LocalDate date) {
         return (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
+    }
+
+    /**
+     * Roll a registration date forward onto a business day: a Saturday or Sunday is moved to
+     * the following Monday; a weekday is returned unchanged.
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY
+            || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            date = date.plusDays(1);
+        }
+        return date;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
