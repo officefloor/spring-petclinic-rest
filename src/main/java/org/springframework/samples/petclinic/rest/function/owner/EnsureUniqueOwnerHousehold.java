@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Runs before {@link BuildOwner}. Rejects the request when any existing owner already has the same
- * last name and the same address, compared case-insensitively with collapsed whitespace, by throwing
- * {@link DuplicateHouseholdException} (handled as 409). The check is skipped when the request opts in
- * with {@code sharesHousehold: true}, which permits several owners to share a household.
+ * last name (compared case-insensitively with collapsed whitespace) and the same
+ * {@link AddressNormalizer normalized} address, by throwing {@link DuplicateHouseholdException}
+ * (handled as 409). The check is skipped when the request opts in with {@code sharesHousehold: true},
+ * which permits several owners to share a household.
  */
 public class EnsureUniqueOwnerHousehold {
 
@@ -22,10 +23,10 @@ public class EnsureUniqueOwnerHousehold {
             return;
         }
         String lastName = canonical(request.getLastName());
-        String address = canonical(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(canonical(existing.getLastName()))
-                    && address.equals(canonical(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
