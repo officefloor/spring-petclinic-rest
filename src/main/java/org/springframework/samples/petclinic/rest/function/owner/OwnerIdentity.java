@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+import org.springframework.samples.petclinic.util.Locality;
 
 /**
  * Derives an owner's {@code identityKey} — the single value all duplicate detection is expressed
@@ -25,7 +26,9 @@ public final class OwnerIdentity {
 
     /**
      * Assembles the identity key: the lower-case SHA-256 hex over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. {@code telephone} is
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, the fixed
+     * version-2 tag re-salting the key so every value differs from its version-1 form while duplicate
+     * detection is unaffected (the tag is constant across owners). {@code telephone} is
      * expected in E.164 form; {@code email} is normalized here (trimmed, lower-cased) and a null/blank
      * value contributes an empty component; the last name contributes its {@link #soundex soundex}
      * code.
@@ -35,7 +38,7 @@ public final class OwnerIdentity {
         String mail = normalizeEmail(email);
         mail = mail == null ? "" : mail;
         String sdx = soundex(lastName);
-        return sha256hex(tel + "|" + mail + "|" + sdx);
+        return sha256hex(Locality.IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + sdx);
     }
 
     /**
@@ -129,17 +132,20 @@ public final class OwnerIdentity {
     }
 
     /**
-     * Stable, shared household id: the first 12 upper-hex chars of SHA-256 over the canonical last
-     * name and the postcode ({@code normalizedLastName + '|' + postcode}), so every owner with the
-     * same last name and postcode derives the same value automatically — the household is keyed on
-     * (lastName, postcode) alone. A null postcode contributes an empty component.
+     * Stable, shared household id: the first 12 upper-hex chars of SHA-256 over the fixed version-2 tag,
+     * the canonical last name and the postcode ({@code 'V2' + '|' + normalizedLastName + '|' + postcode}),
+     * so every owner with the same last name and postcode derives the same value automatically — the
+     * household is keyed on (lastName, postcode) alone. The 'V2' tag is constant across owners, so it only
+     * re-salts the value (no version-1 value is reproduced) without changing household grouping. A null
+     * postcode contributes an empty component.
      */
     public static String householdId(String lastName, String postcode) {
         String normalizedLastName = canonicalName(lastName);
         String pc = postcode == null ? "" : postcode;
         try {
             byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + "|" + pc).getBytes(StandardCharsets.UTF_8));
+                    .digest((Locality.IDENTITY_VERSION_TAG + "|" + normalizedLastName + "|" + pc)
+                            .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", hash[i]));

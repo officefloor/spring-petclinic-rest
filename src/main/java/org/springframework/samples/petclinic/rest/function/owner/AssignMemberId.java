@@ -12,10 +12,11 @@ import org.springframework.samples.petclinic.util.MemberId;
 
 /**
  * Assigns the owner's {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'} where REGION is
- * the region derived from the owner's postcode (falling back to the city table, see {@link Locality}),
+ * the version-2 identity region derived from the owner's postcode (falling back to the city table, see
+ * {@link Locality#identityRegion}) — the plain region with the fixed 'V2' tag mixed in (e.g. 'V2NSW') —
  * FY is the two-digit fiscal year of the registration date, HASH8 is the first eight upper-case hex
  * characters of SHA-256 over the {@code normalizedTelephone + lastName} and CHK is a single Luhn check
- * digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'NSW271A2B3C4D5'). Runs after the owner is
+ * digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'V2NSW271A2B3C4D5'). Runs after the owner is
  * built (so the telephone is already normalized to E.164 and the registration date populated) and before
  * it is saved, mutating the id in place via {@code @Val} for the save/respond steps to persist and return.
  *
@@ -26,7 +27,7 @@ import org.springframework.samples.petclinic.util.MemberId;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        String region = Locality.identityRegion(owner.getCity(), owner.getPostcode());
         String base = MemberId.of(region, owner.getRegistrationDate(), owner.getTelephone(),
                 owner.getLastName());
         Set<String> existing = ownerRepository.findAll().stream()

@@ -44,9 +44,13 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164"
             + ".toDisplay(owner.getTelephone()))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
-            + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity",
+        expression = "java(new org.springframework.samples.petclinic.rest.dto.IdentityDto()"
+            + ".memberId(owner.getMemberId())"
+            + ".householdId(owner.getHouseholdId())"
+            + ".identityKey(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
+            + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName())))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.Locality.of("
             + "owner.getCity(), owner.getPostcode()))")

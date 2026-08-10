@@ -8,7 +8,9 @@ import org.slf4j.LoggerFactory;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.Locality;
 import org.springframework.samples.petclinic.util.MembershipLevel;
+import org.springframework.samples.petclinic.util.OwnerSegment;
 
 /**
  * Emits an audit line on successful create via the dedicated {@code AUDIT} logger, carrying the
@@ -16,8 +18,9 @@ import org.springframework.samples.petclinic.util.MembershipLevel;
  * {@code membershipLevel}. Runs after {@code SaveOwner} so the owner id is populated.
  *
  * <p>Alongside the human-readable line it emits an immutable structured {@link OwnerCreatedEvent} as
- * JSON on the same logger, carrying a {@code seq} that increases monotonically across creates and the
- * owner's primary identifier (the {@code memberId}).
+ * JSON on the same logger, at audit schema version 2: it carries a {@code schemaVersion} of 2, a
+ * {@code seq} that increases monotonically across creates, the owner's primary identifier (the
+ * {@code memberId}) and an {@code ownerSegment} recomputed from the version-2 identity.
  */
 public class AuditOwnerCreated {
 
@@ -33,8 +36,12 @@ public class AuditOwnerCreated {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
 
+        // Recompute the owner segment from the version-2 identity: the segment's region is the plain
+        // region underlying the version-2 identity region (the 'V2' tag never reaches the segment).
+        String ownerSegment = OwnerSegment.of(membershipLevel,
+            Locality.of(owner.getCity(), owner.getPostcode()));
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-            owner.getMemberId(), membershipLevel);
+            owner.getMemberId(), membershipLevel, ownerSegment);
         AUDIT.info(event.toJson());
     }
 }

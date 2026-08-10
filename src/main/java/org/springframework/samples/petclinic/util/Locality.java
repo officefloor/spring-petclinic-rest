@@ -29,6 +29,14 @@ public final class Locality {
 
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * The fixed version-2 tag mixed into the identifiers. It is embedded only inside the derived
+     * identifiers (memberId, householdId, identityKey via {@link #identityRegion}); it never appears
+     * in the user-facing 'locality' (which stays the plain region such as 'NSW'), the timezone, or the
+     * owner segment's derived region.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private Locality() {
     }
 
@@ -44,6 +52,17 @@ public final class Locality {
     public static String of(String city, String postcode) {
         String byPostcode = fromPostcode(postcode);
         return byPostcode != null ? byPostcode : of(city);
+    }
+
+    /**
+     * The version-2 region code embedded <em>inside</em> the identifiers: the plain region (see
+     * {@link #of(String, String)}) with the fixed {@link #IDENTITY_VERSION_TAG 'V2'} tag mixed in as a
+     * prefix (e.g. 'NSW' becomes 'V2NSW'). Because every version-1 region is a plain letter code, no
+     * version-2 identifier can reproduce a value produced under version 1. The user-facing 'locality'
+     * keeps using {@link #of(String, String)} and stays the plain region.
+     */
+    public static String identityRegion(String city, String postcode) {
+        return IDENTITY_VERSION_TAG + of(city, postcode);
     }
 
     /** The IANA timezone name for {@code region}, or {@code null} when the region has none. */
