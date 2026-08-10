@@ -34,7 +34,27 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code PREMIUM} when membershipLevel is 3 or more, otherwise {@code STANDARD}. AREA is
+     * {@code METRO} when the locality is a known region ({@code NSW}, {@code VIC} or {@code QLD}),
+     * otherwise {@code REGIONAL}. Returns {@code null} when the owner is absent.
+     */
+    default OwnerDto.@Nullable OwnerSegmentEnum ownerSegment(@Nullable Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer level = membershipLevel(owner);
+        boolean premium = level != null && level >= 3;
+        String region = locality(owner);
+        boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
+        String tier = premium ? "PREMIUM" : "STANDARD";
+        String area = metro ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+    }
 
     /**
      * Derives the owner's {@code selfLink}, the canonical relative URL of the owner formatted as
