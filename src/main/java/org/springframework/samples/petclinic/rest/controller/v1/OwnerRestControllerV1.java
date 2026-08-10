@@ -110,6 +110,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * Fixed city-to-region table used to validate an owner's postcode. Mirrors the mapping used to
+     * derive an owner's locality ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD});
+     * a city that is not listed has no known region and accepts any 4-digit postcode.
+     */
+    private static final Map<String, String> CITY_REGIONS = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /**
+     * Region to inclusive 4-digit postcode range {@code {low, high}}: NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099. A supplied postcode outside its city's region range is rejected.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -208,6 +227,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new RequiredFieldsMissingException(missingFields);
+        }
+    }
+
+    /**
+     * Validates an owner's optional postcode. Postcode is optional: a {@code null} value is accepted
+     * and leaves the owner without a postcode. When present it must be exactly 4 digits, and it must
+     * fall within the inclusive range of the owner's city region per {@link #REGION_POSTCODE_RANGES}
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). A city with no known
+     * region accepts any 4-digit postcode.
+     *
+     * @param postcode the raw postcode value from the request, may be {@code null}
+     * @param city the owner's city, used to look up the region whose range constrains the postcode
+     * @throws InvalidFieldsException if a supplied postcode is malformed or out of range for the city
+     */
+    private void validatePostcode(String postcode, String city) {
+        if (postcode == null) {
+            return;
+        }
+        if (!postcode.matches("[0-9]{4}")) {
+            throw new InvalidFieldsException(List.of("postcode"));
+        }
+        String region = CITY_REGIONS.get(city);
+        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                throw new InvalidFieldsException(List.of("postcode"));
+            }
         }
     }
 
@@ -403,6 +450,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         validateRequiredFields(ownerFieldsDto);
+        validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireCityHasCapacity(ownerFieldsDto.getCity());
         String email = normalizeEmail(ownerFieldsDto.getEmail());
