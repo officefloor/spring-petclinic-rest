@@ -28,6 +28,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldsException;
@@ -86,6 +87,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owners, creating another owner in that city is rejected as a conflict.
      */
     private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Maximum number of owners permitted to be registered on a single day. Once this many owners
+     * already share the current registration date, creating another owner today is rejected.
+     */
+    private static final int DAILY_OWNER_LIMIT = 100;
 
     private final ClinicService clinicService;
 
@@ -330,6 +337,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * Rejects creating an owner once the current day has already reached the maximum permitted
+     * number of owner registrations ({@value #DAILY_OWNER_LIMIT}). Existing owners are counted by
+     * their {@code registrationDate} against today's date.
+     *
+     * @throws DailyOwnerLimitException if {@value #DAILY_OWNER_LIMIT} or more owners are already
+     *     registered today
+     */
+    private void requireDailyLimitNotReached() {
+        LocalDate today = LocalDate.now();
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (count >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitException(today);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -341,6 +366,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         requireCityHasCapacity(ownerFieldsDto.getCity());
+        requireDailyLimitNotReached();
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);

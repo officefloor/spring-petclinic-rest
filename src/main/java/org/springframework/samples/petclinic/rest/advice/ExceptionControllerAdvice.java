@@ -56,6 +56,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its owner capacity";
+    private static final String ERROR_DAILY_OWNER_LIMIT = "The daily owner registration limit has been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -280,6 +281,27 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getCity());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyOwnerLimitException} raised when an owner is created on a day that has
+     * already reached the maximum permitted number of owner registrations. Returns a 429 Too Many
+     * Requests, since the request exceeds the allowed rate of owner creations for the current day.
+     *
+     * @param e The {@link DailyOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitException(DailyOwnerLimitException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_OWNER_LIMIT);
+        logger.debug("Daily owner limit reached at {} {}: date={}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
         return ResponseEntity.status(status).body(detail);
     }
 
