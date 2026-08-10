@@ -22,6 +22,7 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
@@ -41,6 +42,18 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives a link to the owner's own resource, formatted {@code /api/owners/<id>} where
+     * {@code <id>} is the owner's id. Returns {@code null} when the owner has no id yet, so the
+     * field is omitted from the response.
+     *
+     * @param owner the owner to derive the self link for
+     * @return the {@code /api/owners/<id>} self link, or {@code null} when the owner has no id
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives an owner's salutation from its optional title and last name: {@code "<title> <lastName>"}
