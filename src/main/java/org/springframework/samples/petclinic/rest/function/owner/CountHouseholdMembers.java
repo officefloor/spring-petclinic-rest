@@ -9,8 +9,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the owner is saved. Sets the owner's {@code householdSize} to the number of members its household has
  * after this create: the existing owners already sharing the same {@code householdId} plus this new one
  * (not yet persisted). Owners with no household ({@code householdId == null}) are a household of one. The
- * value is mutated in place via {@code @Val} so the save/respond steps persist and return it, and the
- * mapper derives a GOLD membership tier from it (3 or more members).
+ * value is mutated in place via {@code @Val} so the save/respond steps persist and return it.
  */
 public class CountHouseholdMembers {
 

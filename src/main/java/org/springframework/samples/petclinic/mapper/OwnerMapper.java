@@ -26,10 +26,10 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipTier",
-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
-            + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "membershipLevel",
+        expression = "java(Math.min(3, 1 "
+            + "+ (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) "
+            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
