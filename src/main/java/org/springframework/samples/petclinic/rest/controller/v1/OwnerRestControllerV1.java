@@ -164,9 +164,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        // Assign the customer code as '<LAST3>-<NNNN>': the upper-cased first three letters
-        // of the last name, and a global 4-digit sequence one greater than the current owner count.
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        // Assign the customer code as '<CITY3>-<LAST3>-<NNNN>': the upper-cased first three
+        // letters of the city, the upper-cased first three letters of the last name, and a
+        // per-city 4-digit sequence one greater than the number of owners already in that city.
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         // Record how many existing owners already share this owner's first and last name
         // (compared case-insensitively) at the moment before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -272,12 +273,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the next customer code, formatted {@code '<LAST3>-<NNNN>'}.
+     * Build the next customer code, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}.
      *
-     * <p>{@code LAST3} is the upper-cased first three letters of {@code lastName}
-     * (fewer if the name is shorter), and {@code NNNN} is a global 4-digit
-     * zero-padded sequence equal to one more than the current number of owners
-     * (e.g. {@code 'SMI-0007'}).
+     * <p>{@code CITY3} is the upper-cased first three letters of {@code city} and
+     * {@code LAST3} the upper-cased first three letters of {@code lastName} (fewer if
+     * the value is shorter). {@code NNNN} is a per-city 4-digit zero-padded sequence
+     * equal to one more than the number of owners already in that city
+     * (e.g. {@code 'SYD-SMI-0007'}).
      */
     /**
      * Count the existing owners whose first and last name match the given names,
@@ -293,10 +295,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = countOwnersInCity(city) + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Count the existing owners located in the given city, compared case-insensitively.
+     * Used to derive the per-city 4-digit sequence in the customer code.
+     */
+    private int countOwnersInCity(String city) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null
+                && existing.getCity().equalsIgnoreCase(city))
+            .count();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
