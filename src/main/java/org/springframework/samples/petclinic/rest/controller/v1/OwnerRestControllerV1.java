@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -607,6 +608,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = ownerFieldsDto.getRegistrationDate();
         if (registrationDate == null) {
             registrationDate = LocalDate.now();
+        } else if (registrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(
+                "registrationDate must not be later than the server date");
         }
         registrationDate = toBusinessDay(registrationDate);
         ownerFieldsDto.setRegistrationDate(registrationDate);
