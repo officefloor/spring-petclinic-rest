@@ -32,6 +32,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
@@ -45,6 +46,19 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's salutation: the supplied title, a single space and the last name when a
+     * title was supplied (e.g. 'DR Who'), or just the last name when no title (null or blank)
+     * was given.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
+    }
 
     /**
      * The owner's age band, derived from the supplied birthDate as at the
