@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -71,6 +72,46 @@ public interface OwnerMapper {
     default String contactPreference(Owner owner) {
         String email = owner.getEmail();
         return (email != null && !email.isBlank()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Known telephone country codes, matched longest-prefix first so {@code "61"} is preferred over
+     * the {@code "1"} it starts with. Mirrors the country codes the create endpoint recognizes when
+     * normalizing telephones into E.164 form.
+     */
+    java.util.List<String> TELEPHONE_COUNTRY_CODES = java.util.List.of("61", "1");
+
+    /**
+     * Formats an owner's stored E.164 telephone for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code +61412345678} becomes {@code +61 412 345 678}).
+     * The country code is taken as the longest recognized prefix (see
+     * {@link #TELEPHONE_COUNTRY_CODES}), falling back to the leading digit; the raw
+     * {@link Owner#getTelephone() telephone} stays in E.164 form. A {@code null} or non-E.164 value
+     * is returned unchanged.
+     *
+     * @param owner the owner to format the telephone display for
+     * @return the human-formatted telephone, or the raw value when it is not a {@code +}-prefixed
+     *     digit string
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        if (!digits.matches("[0-9]+")) {
+            return telephone;
+        }
+        String countryCode = TELEPHONE_COUNTRY_CODES.stream()
+            .filter(digits::startsWith)
+            .max(java.util.Comparator.comparingInt(String::length))
+            .orElseGet(() -> digits.substring(0, 1));
+        String national = digits.substring(countryCode.length());
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
     }
 
     /**
