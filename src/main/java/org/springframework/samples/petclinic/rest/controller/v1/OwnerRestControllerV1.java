@@ -453,13 +453,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is keyed by the owner's computed {@link OwnerMapper#householdId(Owner) household id} - the first
      * 12 hex characters of SHA-256 over the normalized last name and postcode - so two owners sharing
      * a last name and postcode belong to the same household even with different addresses or
-     * telephones. Only owners with a postcode participate: an owner without a postcode has no
-     * well-defined household and is never blocked here. The check is bypassed by the caller when the
-     * request sets {@code sharesHousehold}, so a declared household member is created rather than
-     * rejected.
+     * telephones. A collision is only raised against an existing household member that also shares the
+     * new owner's email (compared case-insensitively, a missing email matching another missing email):
+     * a member who supplies a distinct email is a distinguishable person and is admitted without an
+     * opt-in. Only owners with a postcode participate: an owner without a postcode has no well-defined
+     * household and is never blocked here. The check is bypassed by the caller when the request sets
+     * {@code sharesHousehold}, so a declared household member is created rather than rejected.
      *
      * @param owner the owner being created, with its normalized fields already applied
-     * @throws DuplicateOwnerHouseholdException if an existing owner already shares the household id
+     * @throws DuplicateOwnerHouseholdException if an existing owner shares the household id and email
      */
     private void requireNoHouseholdDuplicate(Owner owner) {
         if (owner.getPostcode() == null) {
@@ -468,10 +470,57 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = ownerMapper.householdId(owner);
         boolean taken = this.clinicService.findAllOwners().stream()
             .filter(OwnerRestControllerV1::isNotDeleted)
-            .anyMatch(existing -> householdId.equals(ownerMapper.householdId(existing)));
+            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
+            .anyMatch(existing -> sameEmail(owner, existing));
         if (taken) {
             throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getPostcode());
         }
+    }
+
+    /**
+     * Tests whether two owners carry the same email for household-duplicate detection. Emails are
+     * already normalized (trimmed, lower-cased) when an owner is created; a {@code null} or blank
+     * email is treated as the empty string, so two owners that both omit an email compare equal.
+     *
+     * @param owner the owner being created
+     * @param existing an existing owner sharing the household id
+     * @return {@code true} when both owners carry the same email
+     */
+    private static boolean sameEmail(Owner owner, Owner existing) {
+        return normalizeEmailKey(owner.getEmail()).equals(normalizeEmailKey(existing.getEmail()));
+    }
+
+    private static String normalizeEmailKey(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Computes the membership level ceiling for the owner being created: one above the current
+     * maximum membership level among the existing members of the owner's household (those sharing its
+     * computed {@link OwnerMapper#householdId(Owner) household id}, ignoring soft-deleted owners). Each
+     * existing member's level is evaluated for the household size that now includes the joining owner,
+     * so the ceiling reflects the household's up-to-date standing. Returns {@code null} when the
+     * household has no existing member, in which case no cap applies. Invoked before the new owner is
+     * persisted, so it never counts the owner itself.
+     *
+     * @param owner the owner being created, with its normalized fields already applied
+     * @return the capped maximum membership level, or {@code null} when no existing household member
+     */
+    private Integer householdMembershipLevelCap(Owner owner) {
+        String householdId = ownerMapper.householdId(owner);
+        List<Owner> members = this.clinicService.findAllOwners().stream()
+            .filter(OwnerRestControllerV1::isNotDeleted)
+            .filter(existing -> householdId.equals(ownerMapper.householdId(existing)))
+            .toList();
+        if (members.isEmpty()) {
+            return null;
+        }
+        int householdSize = members.size() + 1;
+        int maxLevel = members.stream()
+            .mapToInt(existing -> ownerMapper.householdMemberLevel(existing, householdSize))
+            .max()
+            .getAsInt();
+        return maxLevel + 1;
     }
 
     /**
@@ -647,6 +696,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner possibleDuplicate = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicate != null);
         owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
+        owner.setMembershipLevelCap(householdMembershipLevelCap(owner));
         this.clinicService.saveOwner(owner);
         if (StringUtils.hasText(idempotencyKey)) {
             idempotentCreates.put(idempotencyKey, owner.getId());

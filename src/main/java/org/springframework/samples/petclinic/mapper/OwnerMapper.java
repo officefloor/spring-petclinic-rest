@@ -199,6 +199,20 @@ public interface OwnerMapper {
      * @return the membership points, {@code 0} or more
      */
     default Integer membershipPoints(Owner owner) {
+        return membershipPoints(owner, owner.getHouseholdMemberCount());
+    }
+
+    /**
+     * Derives an owner's membership points as {@link #membershipPoints(Owner)}, but scoring the
+     * household bonus against the supplied household member count rather than the owner's stored one.
+     * Used to evaluate an existing household member's current standing against the household size that
+     * includes a newly joining owner.
+     *
+     * @param owner the owner to derive the membership points for
+     * @param householdMemberCount the household member count to score the household bonus against
+     * @return the membership points, {@code 0} or more
+     */
+    private int membershipPoints(Owner owner, Integer householdMemberCount) {
         int points = 0;
         String email = owner.getEmail();
         if (email != null && !email.isBlank()) {
@@ -208,7 +222,6 @@ public interface OwnerMapper {
         if (namesakeCount != null && namesakeCount == 0) {
             points += 1;
         }
-        Integer householdMemberCount = owner.getHouseholdMemberCount();
         if (householdMemberCount != null && householdMemberCount >= 3) {
             points += 2;
         }
@@ -224,13 +237,59 @@ public interface OwnerMapper {
     /**
      * Derives an owner's numeric membership level from its {@link #membershipPoints(Owner) membership
      * points}: level {@code 1} for {@code 0}-{@code 1} points, {@code 2} for {@code 2}-{@code 3},
-     * {@code 3} for {@code 4}-{@code 5}, and {@code 4} for {@code 6} or more.
+     * {@code 3} for {@code 4}-{@code 5}, and {@code 4} for {@code 6} or more. The points-derived
+     * level is then capped by the owner's {@link Owner#getMembershipLevelCap() membership level cap}
+     * when one was recorded at creation - a new owner's level can never exceed one above the highest
+     * level among the household members that already existed. When no cap was recorded (the owner had
+     * no existing household member) the points-derived level is returned unchanged.
      *
      * @param owner the owner to derive the membership level for
      * @return the membership level, between {@code 1} and {@code 4}
      */
     default Integer membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
+        return cappedLevel(owner, levelForPoints(membershipPoints(owner)));
+    }
+
+    /**
+     * Derives an existing household member's current membership level as it would stand in a household
+     * of the supplied size, so a newly joining owner's level ceiling can be measured against the
+     * up-to-date standing of the members it joins. The member's own {@link Owner#getMembershipLevelCap()
+     * cap} still applies.
+     *
+     * @param owner the existing household member to evaluate
+     * @param householdMemberCount the household member count that includes the joining owner
+     * @return the member's capped membership level for that household size, between {@code 1} and {@code 4}
+     */
+    default Integer householdMemberLevel(Owner owner, int householdMemberCount) {
+        return cappedLevel(owner, levelForPoints(membershipPoints(owner, householdMemberCount)));
+    }
+
+    /**
+     * Applies an owner's {@link Owner#getMembershipLevelCap() membership level cap} to a points-derived
+     * level: the level is returned unchanged when no cap was recorded, otherwise it is clamped to the
+     * cap.
+     *
+     * @param owner the owner whose cap is applied
+     * @param level the uncapped points-derived level
+     * @return the capped level
+     */
+    private Integer cappedLevel(Owner owner, int level) {
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
+    }
+
+    /**
+     * Maps membership points to a numeric level: level {@code 1} for {@code 0}-{@code 1} points,
+     * {@code 2} for {@code 2}-{@code 3}, {@code 3} for {@code 4}-{@code 5}, and {@code 4} for
+     * {@code 6} or more.
+     *
+     * @param points the membership points
+     * @return the points-based membership level, between {@code 1} and {@code 4}
+     */
+    private Integer levelForPoints(int points) {
         if (points <= 1) {
             return 1;
         }

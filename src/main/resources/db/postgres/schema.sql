@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       customer_code TEXT,
                                       namesake_count INT,
                                       household_member_count INT,
+                                      membership_level_cap INT,
                                       bulk_signup_warning BOOLEAN,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INT,
