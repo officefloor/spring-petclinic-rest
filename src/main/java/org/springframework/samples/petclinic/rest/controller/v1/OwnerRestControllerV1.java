@@ -167,6 +167,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Assign the customer code as '<LAST3>-<NNNN>': the upper-cased first three letters
         // of the last name, and a global 4-digit sequence one greater than the current owner count.
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        // Record how many existing owners already share this owner's first and last name
+        // (compared case-insensitively) at the moment before this owner is created.
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -276,6 +279,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * zero-padded sequence equal to one more than the current number of owners
      * (e.g. {@code 'SMI-0007'}).
      */
+    /**
+     * Count the existing owners whose first and last name match the given names,
+     * compared case-insensitively. Used to record an owner's namesake count at the
+     * moment before it is created.
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getFirstName() != null
+                && existing.getFirstName().equalsIgnoreCase(firstName)
+                && existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
+    }
+
     private String nextCustomerCode(String lastName) {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
