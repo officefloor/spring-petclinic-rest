@@ -1,0 +1,189 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 890ac28d..86dbf922 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -108,6 +111,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+new file mode 100644
+index 00000000..2b21e935
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+@@ -0,0 +1,65 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Runs after {@link BuildOwner}. When the request opts in with {@code sharesHousehold: true}, assigns
++ * the new owner a {@code householdId} shared by every owner with the same last name and address
++ * (compared case-insensitively with collapsed whitespace) and back-fills that same id onto the
++ * existing household members, so both sides carry it. The id is derived deterministically from the
++ * canonical last name and address, so it is stable across requests. Owners that do not opt in keep a
++ * null householdId.
++ */
++public class AssignOwnerHousehold {
++
++    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
++        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
++            return;
++        }
++        String lastName = canonical(owner.getLastName());
++        String address = canonical(owner.getAddress());
++        String householdId = householdId(lastName, address);
++        owner.setHouseholdId(householdId);
++        for (Owner existing : ownerRepository.findAll()) {
++            if (lastName.equals(canonical(existing.getLastName()))
++                    && address.equals(canonical(existing.getAddress()))
++                    && !householdId.equals(existing.getHouseholdId())) {
++                existing.setHouseholdId(householdId);
++                ownerRepository.save(existing);
++            }
++        }
++    }
++
++    /** Stable, shared household id: the first 16 upper-hex chars of SHA-256 over the canonical
++     *  last name and address, so all members of a household derive the same value. */
++    private static String householdId(String lastName, String address) {
++        try {
++            byte[] hash = MessageDigest.getInstance("SHA-256")
++                    .digest((lastName + "\n" + address).getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(16);
++            for (int i = 0; i < 8; i++) {
++                sb.append(String.format("%02X", hash[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
++    }
++
++    /** Lower-cased, trimmed, with any run of whitespace collapsed to a single space. */
++    private static String canonical(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c19..a3ba7e5a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db4..82939cbc 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871..82270213 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(64),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b79658..91eec0f1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 98b4ba31..eec66a99 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -26,6 +26,11 @@ ensureUniqueHousehold:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: assignHousehold
++
++assignHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHousehold
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a9faa507..eb728196 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2095,6 +2095,14 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: Stable identifier shared by every owner in the same household (same last
++                name and address, compared case-insensitively with collapsed whitespace). Assigned
++                only when the create request opts in with sharesHousehold=true; otherwise null.
++              type: string
++              example: 'A1B2C3D4E5F6A7B8'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
