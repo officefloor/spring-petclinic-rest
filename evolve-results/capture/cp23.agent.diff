@@ -1,0 +1,181 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d31efff3..dfdb33fd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -55,13 +55,19 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives an owner's membership tier: {@code SILVER} when the owner's namesake count is
+-     * {@code 0} and an email is present (non-blank), otherwise {@code BRONZE}.
++     * Derives an owner's membership tier: {@code GOLD} when the owner's household (owners sharing
++     * the same {@code householdId}) has 3 or more members after the owner was created; otherwise
++     * {@code SILVER} when the owner's namesake count is {@code 0} and an email is present
++     * (non-blank), otherwise {@code BRONZE}.
+      *
+      * @param owner the owner to derive the membership tier for
+-     * @return {@code "SILVER"} or {@code "BRONZE"}
++     * @return {@code "GOLD"}, {@code "SILVER"} or {@code "BRONZE"}
+      */
+     default String membershipTier(Owner owner) {
++        Integer householdMemberCount = owner.getHouseholdMemberCount();
++        if (householdMemberCount != null && householdMemberCount >= 3) {
++            return "GOLD";
++        }
+         Integer namesakeCount = owner.getNamesakeCount();
+         String email = owner.getEmail();
+         boolean silver = namesakeCount != null && namesakeCount == 0
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 24386b45..a729c5fc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -60,6 +60,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_member_count")
++    private Integer householdMemberCount;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -122,6 +125,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdMemberCount() {
++        return this.householdMemberCount;
++    }
++
++    public void setHouseholdMemberCount(Integer householdMemberCount) {
++        this.householdMemberCount = householdMemberCount;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 0e41e86e..1c0242a4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -238,10 +238,41 @@ public class ClinicServiceImpl implements ClinicService {
+         if (owner.isNew() && owner.getNamesakeCount() == null) {
+             owner.setNamesakeCount(countNamesakes(owner));
+         }
++        if (owner.isNew() && owner.getHouseholdMemberCount() == null) {
++            owner.setHouseholdMemberCount(countHouseholdMembers(owner));
++        }
+         ownerRepository.save(owner);
+ 
+     }
+ 
++    /**
++     * Count the members of the new owner's household after this create: the existing owners
++     * that share the given owner's last name and address (compared case-insensitively with
++     * collapsed whitespace, the same normalization used to derive the household identifier)
++     * plus the owner being created. Invoked before the new owner is persisted.
++     */
++    private int countHouseholdMembers(Owner owner) {
++        String normalizedLastName = normalizeHouseholdField(owner.getLastName());
++        String normalizedAddress = normalizeHouseholdField(owner.getAddress());
++        long existing = ownerRepository.findAll().stream()
++            .filter(other -> normalizeHouseholdField(other.getLastName()).equals(normalizedLastName)
++                && normalizeHouseholdField(other.getAddress()).equals(normalizedAddress))
++            .count();
++        return (int) existing + 1;
++    }
++
++    /**
++     * Collapses surrounding and internal whitespace and lower-cases a value so household fields
++     * can be compared case-insensitively with collapsed whitespace. A {@code null} value
++     * normalizes to the empty string.
++     */
++    private String normalizeHouseholdField(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
++    }
++
+     /**
+      * Count the existing owners that share the given owner's first name and last name,
+      * compared case-insensitively. Invoked before the new owner is persisted, so the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 48796cb4..a2169e9f 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_member_count INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 9eac6b8c..fba63ecf 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 469c6dbb..efb38c7d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_member_count INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 08d4f1a0..5d97f435 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
++  household_member_count INTEGER,
+   bulk_signup_warning BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index edfde1f7..4afbd7c7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INT,
++                                      household_member_count INT,
+                                       bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
