@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Counts how many owners belong to a household — owners that share a non-blank {@code householdId} —
  * and stamps that count onto {@link Owner#setHouseholdMemberCount(Integer)} just before an owner is
- * mapped to its DTO. The mapped {@code membershipTier} reports {@code GOLD} once the household has
- * three or more members (see {@code MembershipTiers}).
+ * mapped to its DTO.
  *
  * <p>An owner with no {@code householdId} is a household of one. Counting reflects the owners
  * currently stored, so the freshly created owner (already saved by the time it is responded) is

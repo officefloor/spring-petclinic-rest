@@ -21,8 +21,9 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         HouseholdMembers.stamp(owner, ownerRepository);
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

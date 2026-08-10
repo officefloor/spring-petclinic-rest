@@ -23,8 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipTier",
-            expression = "java(org.springframework.samples.petclinic.util.MembershipTiers.tierFor(owner))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.util.Localities.localityFor(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);

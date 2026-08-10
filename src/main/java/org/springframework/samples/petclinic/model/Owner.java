@@ -73,7 +73,7 @@ public class Owner extends Person {
     /**
      * The number of owners in this owner's household (owners sharing the same
      * {@code householdId}), including this owner. Derived and stamped at response time from the
-     * current owners; not persisted. Drives the {@code GOLD} membership tier (3 or more members).
+     * current owners; not persisted.
      */
     @Transient
     private Integer householdMemberCount;
