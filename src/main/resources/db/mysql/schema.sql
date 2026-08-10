@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   birth_date DATE,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
+  title VARCHAR(10),
   INDEX(last_name)
 ) engine=InnoDB;
 

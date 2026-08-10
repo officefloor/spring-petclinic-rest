@@ -22,6 +22,7 @@ import java.util.Locale;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
@@ -39,6 +40,22 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives an owner's salutation from its optional title and last name: {@code "<title> <lastName>"}
+     * when a non-blank title is present, or just the last name when no title was supplied.
+     *
+     * @param owner the owner to derive the salutation for
+     * @return the composed salutation
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        String lastName = owner.getLastName();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
+    }
 
     /**
      * Derives an owner's age band from its birth date, computed as the owner's age on its
