@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -132,6 +133,26 @@ public interface OwnerMapper {
         }
         int dash = code.indexOf('-');
         return dash < 0 ? code : code.substring(0, dash);
+    }
+
+    /**
+     * Fixed region-to-timezone table mapping a canonical region to its IANA timezone name:
+     * {@code NSW->Australia/Sydney}, {@code VIC->Australia/Melbourne}, {@code QLD->Australia/Brisbane}.
+     */
+    java.util.Map<String, String> REGION_TIMEZONES = java.util.Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * Derives an owner's IANA timezone name from its {@link #locality(Owner) locality/region} using
+     * the fixed region-to-timezone table ({@code NSW->Australia/Sydney}, {@code VIC->Australia/Melbourne},
+     * {@code QLD->Australia/Brisbane}). Returns {@code null} when the region has no known timezone, so
+     * the field is omitted from the response.
+     *
+     * @param owner the owner to derive the timezone for
+     * @return the region's IANA timezone name, or {@code null} when the region has no known timezone
+     */
+    default String timezone(Owner owner) {
+        return REGION_TIMEZONES.get(locality(owner));
     }
 
     /**
