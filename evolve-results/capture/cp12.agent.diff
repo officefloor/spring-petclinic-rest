@@ -1,0 +1,159 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..4fc9ae01
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,53 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * Canonicalises a free-text street address so it is stored, returned and compared in one consistent
++ * form. Whitespace is trimmed and any run collapsed to a single space, the text is upper-cased, and
++ * common abbreviations are expanded per token: {@code ST -> STREET}, {@code RD -> ROAD},
++ * {@code AVE -> AVENUE}. So {@code '  12  main  st '} becomes {@code '12 MAIN STREET'}. The result is
++ * idempotent, so re-normalising an already-normalised address leaves it unchanged.
++ *
++ * <p>A {@code null}, empty or whitespace-only address normalises to the empty string, which the
++ * required-field check treats as blank.
++ *
++ * <p>Not an OfficeFloor function class — a plain helper shared by the create-owner steps.
++ */
++public final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    /** Trimmed, whitespace-collapsed, upper-cased, with common abbreviations expanded. */
++    public static String normalize(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (String token : collapsed.split(" ")) {
++            if (sb.length() > 0) {
++                sb.append(' ');
++            }
++            sb.append(expand(token));
++        }
++        return sb.toString();
++    }
++
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+index 2b21e935..11a19335 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+@@ -12,11 +12,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Runs after {@link BuildOwner}. When the request opts in with {@code sharesHousehold: true}, assigns
+- * the new owner a {@code householdId} shared by every owner with the same last name and address
+- * (compared case-insensitively with collapsed whitespace) and back-fills that same id onto the
+- * existing household members, so both sides carry it. The id is derived deterministically from the
+- * canonical last name and address, so it is stable across requests. Owners that do not opt in keep a
+- * null householdId.
++ * the new owner a {@code householdId} shared by every owner with the same last name (compared
++ * case-insensitively with collapsed whitespace) and the same {@link AddressNormalizer normalized}
++ * address, and back-fills that same id onto the existing household members, so both sides carry it. The
++ * id is derived deterministically from the canonical last name and the normalized address, so it is
++ * stable across requests. Owners that do not opt in keep a null householdId.
+  */
+ public class AssignOwnerHousehold {
+ 
+@@ -25,12 +25,12 @@ public class AssignOwnerHousehold {
+             return;
+         }
+         String lastName = canonical(owner.getLastName());
+-        String address = canonical(owner.getAddress());
++        String address = AddressNormalizer.normalize(owner.getAddress());
+         String householdId = householdId(lastName, address);
+         owner.setHouseholdId(householdId);
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(canonical(existing.getLastName()))
+-                    && address.equals(canonical(existing.getAddress()))
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
+                     && !householdId.equals(existing.getHouseholdId())) {
+                 existing.setHouseholdId(householdId);
+                 ownerRepository.save(existing);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
+index cd4e72a2..e1fba646 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
+@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
+ 
+ /**
+  * Runs before {@link BuildOwner}. Rejects the request when any existing owner already has the same
+- * last name and the same address, compared case-insensitively with collapsed whitespace, by throwing
+- * {@link DuplicateHouseholdException} (handled as 409). The check is skipped when the request opts in
+- * with {@code sharesHousehold: true}, which permits several owners to share a household.
++ * last name (compared case-insensitively with collapsed whitespace) and the same
++ * {@link AddressNormalizer normalized} address, by throwing {@link DuplicateHouseholdException}
++ * (handled as 409). The check is skipped when the request opts in with {@code sharesHousehold: true},
++ * which permits several owners to share a household.
+  */
+ public class EnsureUniqueOwnerHousehold {
+ 
+@@ -22,10 +23,10 @@ public class EnsureUniqueOwnerHousehold {
+             return;
+         }
+         String lastName = canonical(request.getLastName());
+-        String address = canonical(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(canonical(existing.getLastName()))
+-                    && address.equals(canonical(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateRequiredOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateRequiredOwnerFields.java
+index 835ed2fc..b57bac57 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateRequiredOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateRequiredOwnerFields.java
+@@ -13,20 +13,27 @@ import org.springframework.web.bind.annotation.RequestBody;
+  * firstName, lastName, address, city or telephone by throwing {@link MissingRequiredFieldsException}
+  * (handled as 400). Binds the body (without {@code @Valid}) so a blank/missing field is reported as a
+  * required-field error rather than a bean-validation error, then republishes it for {@link BuildOwner}.
++ *
++ * <p>The address is {@link AddressNormalizer normalized} (trimmed, whitespace-collapsed, upper-cased,
++ * abbreviations expanded) before it is checked, so an address that is blank <em>after</em> normalization
++ * is rejected, and the normalized value is written back so downstream steps store, return and compare it
++ * in that one canonical form.
+  */
+ public class ValidateRequiredOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingRequiredFieldsException {
++        String address = AddressNormalizer.normalize(request.getAddress());
+         List<String> missing = new ArrayList<>();
+         addIfBlank(missing, "firstName", request.getFirstName());
+         addIfBlank(missing, "lastName", request.getLastName());
+-        addIfBlank(missing, "address", request.getAddress());
++        addIfBlank(missing, "address", address);
+         addIfBlank(missing, "city", request.getCity());
+         addIfBlank(missing, "telephone", request.getTelephone());
+         if (!missing.isEmpty()) {
+             throw new MissingRequiredFieldsException(missing);
+         }
++        request.setAddress(address);
+         validated.set(request);
+     }
+ 
