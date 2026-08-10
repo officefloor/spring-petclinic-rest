@@ -41,6 +41,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -118,10 +119,11 @@ public interface OwnerMapper {
     /**
      * The owner's membership points. Starts at 0; gains 2 when an email address is present,
      * 1 when the owner has no namesakes (namesakeCount is 0), 2 for a household of 3 or more
-     * (householdSize is 3 or greater), and 3 when the owner's tenure exceeds 365 days (more
-     * than 365 whole days between the registrationDate and today). Because a newly created
-     * owner has zero tenure, the tenure points are only earned once more than a year has
-     * passed since registration.
+     * (householdSize is 3 or greater), and 3 when the owner's tenure spans at least one
+     * elapsed fiscal year (the current fiscal year, starting 1 July, is later than the
+     * registrationDate's fiscal year). Because a newly created owner registers in the current
+     * fiscal year, the tenure points are only earned once the fiscal year has rolled over
+     * since registration.
      */
     default Integer membershipPoints(Owner owner) {
         int points = 0;
@@ -137,8 +139,8 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-            && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
-                java.time.LocalDate.now()) > 365) {
+            && fiscalEndYear(java.time.LocalDate.now())
+                - fiscalEndYear(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
@@ -193,15 +195,43 @@ public interface OwnerMapper {
     }
 
     /**
+     * The fiscal year, starting on 1 July, that a date falls in, expressed as the last two
+     * digits of the calendar year in which the fiscal year ends. Dates on or after 1 July
+     * belong to the fiscal year ending the following calendar year (e.g. 2026-08-10 -&gt; 27);
+     * dates before 1 July belong to the fiscal year ending in the same calendar year
+     * (e.g. 2026-03-01 -&gt; 26).
+     */
+    private static int fiscalEndYear(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    private static int fiscalYearOf(java.time.LocalDate date) {
+        return fiscalEndYear(date) % 100;
+    }
+
+    /**
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the two-digit fiscal year
+     * (starting 1 July) of the business-day-adjusted registrationDate (e.g. 'FY27'). Returns
+     * {@code null} when no registrationDate is available.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()));
+    }
+
+    /**
      * The owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY
-     * is the last two digits of the registrationDate year (e.g. 'NSW-1A2B3C4D-M26').
+     * is the two-digit fiscal year (starting 1 July) of the registrationDate
+     * (e.g. 'NSW-1A2B3C4D-M27').
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-            owner.getRegistrationDate().getYear() % 100);
+            fiscalYearOf(owner.getRegistrationDate()));
     }
 
     /**
