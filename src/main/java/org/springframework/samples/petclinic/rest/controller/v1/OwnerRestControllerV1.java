@@ -449,6 +449,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Counts the members of the owner-to-be's household after this create, i.e. one more than the
+     * number of existing owners already carrying the same {@code householdId}. Because the household
+     * identifier is a deterministic function of the normalized last name and address, every owner in
+     * the household — including those who knowingly join it via {@code sharesHousehold} — shares the
+     * identifier, so a direct equality count over the stored identifiers is sufficient. The count
+     * includes the owner being created (hence the {@code + 1}).
+     *
+     * @param householdId the stable household identifier of the owner being created
+     * @return the number of household members after this create (always at least 1)
+     */
+    private int householdSize(String householdId) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count() + 1;
+    }
+
+    /**
      * Normalizes a name for case-insensitive comparison by trimming surrounding whitespace and
      * lower-casing.
      *
@@ -492,7 +509,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setCustomerCode(nextCustomerCode(ownerFieldsDto.getCity(), ownerFieldsDto.getLastName()));
-        owner.setHouseholdId(householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress()));
+        String ownerHouseholdId = householdId(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        owner.setHouseholdId(ownerHouseholdId);
+        owner.setHouseholdSize(householdSize(ownerHouseholdId));
         owner.setNamesakeCount(countNamesakes(ownerFieldsDto.getFirstName(), ownerFieldsDto.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning(registrationDate));
         this.clinicService.saveOwner(owner);

@@ -45,12 +45,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier: {@code 'SILVER'} when namesakeCount is 0 and an
+     * Returns the owner's membership tier: {@code 'GOLD'} when the owner's household had 3 or more
+     * members after the owner was created; otherwise {@code 'SILVER'} when namesakeCount is 0 and an
      * email is present, otherwise {@code 'BRONZE'}.
      */
     default @Nullable String membershipTier(@Nullable Owner owner) {
         if (owner == null) {
             return null;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
@@ -106,6 +110,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
