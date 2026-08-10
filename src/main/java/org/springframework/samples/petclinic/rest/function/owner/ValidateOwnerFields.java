@@ -11,9 +11,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}: rejects a request that is missing or blank in any of
  * firstName, lastName, address, city or telephone. Throwing lists every offending field, so the
- * client sees them all at once. On success it publishes the body for {@link BuildOwner} to map.
+ * client sees them all at once. It also normalizes the telephone by stripping every non-digit
+ * character and requiring exactly 10 digits, rejecting with 400 otherwise; the normalized value is
+ * written back onto the body. On success it publishes the body for {@link BuildOwner} to map.
  */
 public class ValidateOwnerFields {
+
+    /** Owner telephone must be exactly this many digits after non-digits are stripped. */
+    private static final int TELEPHONE_DIGITS = 10;
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsInvalidException {
@@ -26,6 +31,11 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
+        String telephone = request.getTelephone().replaceAll("\\D", "");
+        if (telephone.length() != TELEPHONE_DIGITS) {
+            throw new OwnerFieldsInvalidException(List.of("telephone"));
+        }
+        request.setTelephone(telephone);
         validated.set(request);
     }
 
