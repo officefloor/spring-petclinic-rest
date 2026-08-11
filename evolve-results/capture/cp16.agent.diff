@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index f5b33282..f9f7abf4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -5,19 +5,36 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'}: LAST3 is
+- * the upper-cased first three letters of the owner's last name and NNNN is a global
+- * 4-digit zero-padded sequence equal to one more than the current number of owners
+- * (e.g. {@code 'SMI-0007'}). Runs after {@link BuildOwner} (the entity, hence its last
+- * name, exists) and before {@link SaveOwner} (so the new owner is not yet counted), and
+- * mutates the built {@link Owner} in place.
++ * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}:
++ * CITY3 is the upper-cased first three letters of the owner's city, LAST3 the upper-cased
++ * first three letters of the owner's last name, and NNNN a per-city 4-digit zero-padded
++ * sequence equal to one more than the number of owners already in that city (e.g.
++ * {@code 'SYD-SMI-0007'}). Runs after {@link BuildOwner} (the entity, hence its city and
++ * last name, exists) and before {@link SaveOwner} (so the new owner is not yet counted),
++ * and mutates the built {@link Owner} in place.
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String lastName = owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
++        String city3 = prefix(owner.getCity());
++        String last3 = prefix(owner.getLastName());
++        String city = normalize(owner.getCity());
++        int sequence = 1;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equals(normalize(existing.getCity()))) {
++                sequence++;
++            }
++        }
++        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    }
++
++    /** Upper-cased first three letters of the value. */
++    private static String prefix(String value) {
++        return value.substring(0, Math.min(3, value.length())).toUpperCase();
++    }
++
++    /** Lower-case and trim, treating null as empty, for case-insensitive city comparison. */
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().toLowerCase();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+index 4cd11bd8..d3388291 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
+  * Assigns the owner's {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'}:
+  * customerCode is the value assigned by {@link AssignCustomerCode} and YY is the last two
+  * digits of the owner's {@code registrationDate} year, zero-padded (e.g.
+- * {@code 'SMI-0007-M26'}). Runs after {@link AssignCustomerCode} (so customerCode exists)
++ * {@code 'SYD-SMI-0007-M26'}). Runs after {@link AssignCustomerCode} (so customerCode exists)
+  * and mutates the built {@link Owner} in place.
+  */
+ public class AssignMembershipNumber {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 47631e5f..13296daf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2088,18 +2088,19 @@ components:
+               readOnly: true
+             customerCode:
+               title: Customer code
+-              description: A business identifier formatted '<LAST3>-<NNNN>', where LAST3
+-                is the upper-cased first three letters of lastName and NNNN is a global
+-                4-digit zero-padded sequence assigned at creation.
++              description: A business identifier formatted '<CITY3>-<LAST3>-<NNNN>', where
++                CITY3 is the upper-cased first three letters of city, LAST3 the upper-cased
++                first three letters of lastName and NNNN a per-city 4-digit zero-padded
++                sequence assigned at creation.
+               type: string
+-              example: 'SMI-0007'
++              example: 'SYD-SMI-0007'
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: A membership identifier formatted '<customerCode>-M<YY>', where
+                 YY is the last two digits of the registrationDate year. Assigned at creation.
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'SYD-SMI-0007-M26'
+               readOnly: true
+             householdId:
+               title: Household ID
