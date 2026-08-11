@@ -212,6 +212,23 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
+    /**
+     * Whether the owner's tenure — the whole number of days from the registration date to the
+     * current server date — exceeds one year (strictly more than 365 days). This gates the top
+     * membership level: only an owner past a full year of tenure can reach level 4. A {@code null}
+     * registration date, or one in the future, counts as zero tenure and so never exceeds the
+     * threshold, which is why a newly created owner (zero tenure) can never exceed level 3.
+     *
+     * @param registrationDate the date the owner registered, or {@code null} when absent
+     * @return {@code true} when the tenure is strictly greater than 365 days
+     */
+    public static boolean tenureExceedsOneYear(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return false;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
