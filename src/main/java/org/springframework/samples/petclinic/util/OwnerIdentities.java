@@ -11,16 +11,16 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 
 /**
  * Derives an owner's {@code identityKey}: the single value all create-time duplicate detection is
- * expressed through. The key is
- * {@code normalizedTelephone + "|" + (email or empty) + "|" + (householdId or empty)}, so two
- * owners are duplicates only when their <em>whole</em> key is equal. Because the telephone is part
- * of the key, two members of the same household (same {@code householdId}) with different telephones
- * have different keys and are both allowed; only an exact full-key match is a duplicate.
+ * expressed through. The key is the lower-case hex SHA-256 of
+ * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}, so two owners are
+ * duplicates only when all three normalized components agree. Because the telephone is part of the
+ * key, two owners sharing a last name (same soundex) and postcode but with <em>different</em>
+ * telephones have different keys and are both allowed — they are a soft match, not a hard duplicate.
  *
  * <p>Each component is normalized the same way for every owner so the comparison is stable:
- * the telephone to E.164 (see {@link OwnerTelephone}), the email trimmed and lower-cased, and a
- * blank or absent email/householdId represented as the empty string. Normalization is idempotent,
- * so the returned key equals the one used for comparison.
+ * the telephone to E.164 (see {@link OwnerTelephone}), the email trimmed and lower-cased (blank or
+ * absent represented as the empty string), and the last name reduced to its Soundex code. Every
+ * normalization is idempotent, so the returned key equals the one used for comparison.
  */
 public final class OwnerIdentities {
 
@@ -28,9 +28,73 @@ public final class OwnerIdentities {
     }
 
     public static String identityKey(Owner owner) {
-        return normalizeTelephone(owner.getTelephone()) + "|"
+        return sha256Hex(normalizeTelephone(owner.getTelephone()) + "|"
                 + normalizeEmail(owner.getEmail()) + "|"
-                + normalizeHouseholdId(owner.getHouseholdId());
+                + soundex(owner.getLastName()));
+    }
+
+    /**
+     * The American Soundex code of {@code name}: its first letter (upper-cased) followed by three
+     * digits derived from the remaining consonants, zero-padded or truncated to length four. Letters
+     * are coded b/f/p/v→1, c/g/j/k/q/s/x/z→2, d/t→3, l→4, m/n→5, r→6; vowels (a/e/i/o/u/y) reset the
+     * run so an equal digit on either side is counted twice, while h/w are transparent and never
+     * break a run. Non-letters are ignored; a name with no letters yields the empty string.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isLetter(c)) {
+                letters.append(Character.toUpperCase(c));
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder().append(letters.charAt(0));
+        char prev = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue; // transparent: neither coded nor a break in the run
+            }
+            char d = soundexDigit(c);
+            if (d != '0') {
+                if (d != prev) {
+                    code.append(d);
+                }
+                prev = d;
+            }
+            else {
+                prev = '0'; // a vowel resets the run
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**
@@ -100,9 +164,5 @@ public final class OwnerIdentities {
         }
         String trimmed = email.trim();
         return trimmed.isEmpty() ? "" : trimmed.toLowerCase(Locale.ROOT);
-    }
-
-    private static String normalizeHouseholdId(String householdId) {
-        return (householdId == null || householdId.isBlank()) ? "" : householdId;
     }
 }

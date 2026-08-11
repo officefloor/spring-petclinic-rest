@@ -6,13 +6,15 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+import org.springframework.samples.petclinic.util.OwnerIdentities;
 
 /**
  * Flags the freshly built {@link Owner} as a soft (non-blocking) duplicate before it is saved.
  * A soft duplicate is one that is <em>not</em> a hard duplicate (an exact {@code identityKey}
- * match, already rejected with 409 by {@link CheckUniqueIdentity}) but that shares an existing
- * owner's {@code lastName} and {@code postcode} while having a <em>different</em> telephone.
+ * match, already rejected with 409 by {@link CheckUniqueIdentity}) but whose last name has the same
+ * {@code soundex} code and whose {@code postcode} matches an existing owner. Because the telephone
+ * (and email) are part of the {@code identityKey}, two owners with the same last name and postcode
+ * but a different telephone have differing keys and so fall through to here as a soft match.
  *
  * <p>When such an existing owner is found the new owner is still created, with
  * {@code possibleDuplicate} set to {@code true} and {@code possibleDuplicateOf} set to the matching
@@ -33,12 +35,12 @@ public class CheckPossibleDuplicate {
             owner.setPossibleDuplicateOf(null);
             return; // a declared household member is not a suspected duplicate.
         }
-        String lastName = normalize(owner.getLastName());
+        String identityKey = OwnerIdentities.identityKey(owner);
+        String soundex = OwnerIdentities.soundex(owner.getLastName());
         String postcode = normalize(owner.getPostcode());
-        String telephone = normalizeTelephone(owner.getTelephone());
 
         Integer matchId = null;
-        if (!lastName.isEmpty() && !postcode.isEmpty()) {
+        if (!soundex.isEmpty() && !postcode.isEmpty()) {
             for (Owner existing : ownerRepository.findAll()) {
                 if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                     continue; // never match self
@@ -46,9 +48,9 @@ public class CheckPossibleDuplicate {
                 if (Boolean.TRUE.equals(existing.getDeleted())) {
                     continue; // a soft-deleted owner is not a suspected duplicate match.
                 }
-                if (lastName.equals(normalize(existing.getLastName()))
-                        && postcode.equals(normalize(existing.getPostcode()))
-                        && !telephone.equals(normalizeTelephone(existing.getTelephone()))) {
+                if (!identityKey.equals(OwnerIdentities.identityKey(existing))
+                        && soundex.equals(OwnerIdentities.soundex(existing.getLastName()))
+                        && postcode.equals(normalize(existing.getPostcode()))) {
                     if (matchId == null || existing.getId() < matchId) {
                         matchId = existing.getId();
                     }
@@ -62,16 +64,5 @@ public class CheckPossibleDuplicate {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private static String normalizeTelephone(String telephone) {
-        try {
-            return OwnerTelephone.toE164(telephone);
-        }
-        catch (InvalidTelephoneException ex) {
-            // A value that cannot form a valid E.164 number is represented by its raw form
-            // (or empty when absent) so the comparison stays total.
-            return telephone == null ? "" : telephone.trim();
-        }
     }
 }

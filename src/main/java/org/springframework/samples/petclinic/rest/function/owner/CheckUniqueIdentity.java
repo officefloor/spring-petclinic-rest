@@ -9,17 +9,21 @@ import org.springframework.samples.petclinic.util.OwnerIdentities;
 
 /**
  * Rejects a create-owner request that exactly duplicates an existing owner's identity. The identity
- * is the full {@code identityKey} — {@code telephone + email + householdId} — computed by
- * {@link OwnerIdentities#identityKey(Owner)}, so an owner is a duplicate only when its <em>whole</em>
- * key matches. Because the telephone is part of the key, two members of the same household (same
- * {@code householdId}) with different telephones have different keys and are both allowed; only an
- * exact full-key match is rejected with 409 (see {@link DuplicateIdentityException}).
+ * is the {@code identityKey} — the SHA-256 of {@code telephone + email + soundex(lastName)} —
+ * computed by {@link OwnerIdentities#identityKey(Owner)}, so an owner is a duplicate only when all
+ * three components agree. Because the telephone is part of the key, two owners with the same last
+ * name and postcode but a different telephone have different keys and are both allowed (they become a
+ * soft match, see {@link CheckPossibleDuplicate}); only an exact key match is rejected with 409 (see
+ * {@link DuplicateIdentityException}). This single key subsumes the former household-duplicate block.
  *
  * <p>A request may opt in with {@code sharesHousehold=true} to declare that it intentionally joins an
  * existing household; doing so <em>bypasses this block</em> entirely.
  *
- * <p>Runs after {@link BuildOwner} and {@link AssignHousehold} so the new owner's {@code householdId}
- * is already assigned, and before {@link SaveOwner} so the new owner is not compared against itself.
+ * <p>The email-domain blocklist is applied earlier by {@code ValidateOwnerFields} (a 400 before this
+ * step runs), so any request reaching here already carries an allowed email.
+ *
+ * <p>Runs after {@link BuildOwner} so the new owner is built, and before {@link SaveOwner} so the new
+ * owner is not compared against itself.
  */
 public class CheckUniqueIdentity {
 
