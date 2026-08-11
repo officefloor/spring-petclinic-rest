@@ -19,6 +19,7 @@ public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws InvalidEmailException, InvalidTelephoneException, InvalidPostcodeException {
+        OwnerAddress.applyStructured(request);
         request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         OwnerEmail.normalize(request);
         OwnerPostcode.validate(request);
