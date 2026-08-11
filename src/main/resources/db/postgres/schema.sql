@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       postcode   VARCHAR(9),
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
+                                      capacity_warning BOOLEAN,
                                       address_line1 TEXT,
                                       address_line2 TEXT,
   deleted BOOLEAN DEFAULT FALSE

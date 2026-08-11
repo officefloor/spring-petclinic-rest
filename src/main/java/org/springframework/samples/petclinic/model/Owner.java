@@ -93,6 +93,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "deleted")
     private Boolean deleted = Boolean.FALSE;
 
@@ -241,6 +244,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public Boolean getDeleted() {
