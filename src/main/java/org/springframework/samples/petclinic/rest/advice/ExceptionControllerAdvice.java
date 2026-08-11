@@ -189,4 +189,27 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link InvalidTelephoneException} thrown when an owner is created with a telephone
+     * that does not contain exactly 10 digits once every non-digit character has been stripped.
+     * Returns a 400 Bad Request whose body carries an {@code errors} array naming the offending
+     * {@code telephone} field.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        logger.debug("Invalid owner telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
