@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+index e9f64af5..a5b9cabb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.mapper;
+ 
+ import java.util.Map;
+ 
++import org.springframework.samples.petclinic.model.Owner;
++
+ /**
+  * Derives an owner's canonical region ("locality"). The postcode is preferred:
+  * a 4-digit postcode is matched against each region's inclusive range first, and
+@@ -65,6 +67,29 @@ public final class Localities {
+         return forCity(city);
+     }
+ 
++    /**
++     * Returns the owner's canonical region ("locality"), sourced from the region-and-hash
++     * {@code customerCode} identity: the {@code <REGION>} prefix of the {@code customerCode}
++     * (the part before the first {@code '-'}) when one has been assigned, so the locality is
++     * exactly the region the identity was built on. When the owner has no customer code yet
++     * (for example seed data created before the identity was assigned) derivation falls back to
++     * {@link #forCityAndPostcode(String, String)} over the owner's city and postcode, which
++     * computes the same region the identity would have used.
++     *
++     * @param owner the owner whose locality is required
++     * @return the canonical region string, or {@code "UNKNOWN"} when unknown
++     */
++    public static String forOwner(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode != null) {
++            int dash = customerCode.indexOf('-');
++            if (dash > 0) {
++                return customerCode.substring(0, dash);
++            }
++        }
++        return forCityAndPostcode(owner.getCity(), owner.getPostcode());
++    }
++
+     /**
+      * Returns the region whose inclusive postcode range contains {@code postcode},
+      * or {@code null} when the postcode is {@code null}, non-numeric, or in no
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8ad8348b..74f36b7d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.mapper.Localities.forCityAndPostcode(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.mapper.Localities.forOwner(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 36818462..e8655705 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -165,7 +165,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
++        owner.setCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
++            owner.getTelephone(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+@@ -212,36 +213,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Builds the customer code for a new owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where
+-     * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} is the
+-     * upper-cased first three letters of the last name, and {@code NNNN} is a per-city 4-digit
+-     * zero-padded sequence equal to one more than the number of owners already in that city
+-     * (e.g. {@code 'SYD-SMI-0007'}).
++     * Builds the customer code for a new owner, formatted {@code '<REGION>-<HASH8>'} where
++     * {@code REGION} is the canonical region derived from the owner's postcode (falling back to
++     * the city when the postcode is absent or in no known range, see
++     * {@link org.springframework.samples.petclinic.mapper.Localities#forCityAndPostcode}), and
++     * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
++     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). Unlike
++     * the previous city-prefixed scheme it carries no per-city sequence number, so the identity is
++     * a pure function of the owner's region, telephone and last name.
+      *
+-     * @param city     the owner's city
+-     * @param lastName the owner's last name
++     * @param city                the owner's city
++     * @param postcode            the owner's postcode, may be {@code null}
++     * @param normalizedTelephone the owner's telephone, already normalized to E.164
++     * @param lastName            the owner's last name
+      * @return the assigned customer code
+      */
+-    private String nextCustomerCode(String city, String lastName) {
+-        String cityPrefix = first3Upper(city);
+-        String lastPrefix = first3Upper(lastName);
+-        String cityKey = normalizeForHousehold(city);
+-        long sequence = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(cityKey))
+-            .count() + 1L;
+-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
++    private String customerCode(String city, String postcode, String normalizedTelephone, String lastName) {
++        String region = org.springframework.samples.petclinic.mapper.Localities
++            .forCityAndPostcode(city, postcode);
++        String hash8 = sha256UpperHex((normalizedTelephone == null ? "" : normalizedTelephone)
++            + (lastName == null ? "" : lastName), 8);
++        return region + "-" + hash8;
+     }
+ 
+     /**
+-     * Returns the upper-cased first three characters of {@code value}, or fewer if the value is
+-     * shorter. A {@code null} value yields the empty string.
++     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the
++     * UTF-8 bytes of {@code value}.
+      *
+-     * @param value the source value
+-     * @return the upper-cased first three characters
++     * @param value  the source value to hash
++     * @param length the number of leading hex characters to return
++     * @return the leading upper-case hex characters of the digest
+      */
+-    private String first3Upper(String value) {
+-        String v = (value == null ? "" : value);
+-        return v.substring(0, Math.min(3, v.length())).toUpperCase(java.util.Locale.ROOT);
++    private String sha256UpperHex(String value, int length) {
++        try {
++            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
++                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.substring(0, length).toUpperCase(java.util.Locale.ROOT);
++        }
++        catch (java.security.NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
+     }
+ 
+     /**
