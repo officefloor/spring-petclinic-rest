@@ -455,6 +455,21 @@ public class Owner extends Person {
         return REGION_TIMEZONE.get(getLocality());
     }
 
+    /**
+     * The owner's segment, formatted {@code <TIER>_<AREA>}. {@code TIER} is {@code PREMIUM} when
+     * {@link #getMembershipLevel() membershipLevel} is 3 or more, otherwise {@code STANDARD}.
+     * {@code AREA} is {@code METRO} when the {@link #getLocality() locality} is a known region
+     * (NSW, VIC or QLD), otherwise {@code REGIONAL}. Thus one of {@code PREMIUM_METRO},
+     * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        Integer level = getMembershipLevel();
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
     /** Region whose postcode range contains the given postcode, or {@code null} when none does. */
     private static String regionForPostcode(String postcode) {
         if (postcode == null) {
