@@ -102,7 +102,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+        owner.setTelephone(normalizedTelephone);
+        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(java.util.Objects::nonNull)
+            .map(telephone -> telephone.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (telephoneInUse) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "An owner with this telephone number already exists");
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
