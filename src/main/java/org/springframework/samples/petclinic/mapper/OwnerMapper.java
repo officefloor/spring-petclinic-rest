@@ -37,7 +37,20 @@ public abstract class OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code identityKey}, the single consolidated duplicate-detection key:
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. A {@code null}
+     * email or householdId contributes an empty segment.
+     */
+    protected String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code EMAIL} when an email address is

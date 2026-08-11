@@ -40,9 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -159,13 +157,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
         rejectWhenDailyLimitReached(owner.getRegistrationDate());
         rejectWhenCityAtCapacity(owner.getCity());
-        applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
-        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
-        rejectDuplicateTelephone(telephone);
-        owner.setTelephone(telephone);
-        String email = normalizeEmail(ownerFieldsDto.getEmail());
-        rejectDuplicateEmail(email);
-        owner.setEmail(email);
+        applyHousehold(owner);
+        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        rejectDuplicateIdentity(owner);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -398,58 +393,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a normalized telephone that is already used by any other owner, so telephones stay
-     * unique across owners. Existing telephones are normalized to E.164 the same way before the
-     * comparison, so numbers that differ only in formatting still count as duplicates.
+     * The single, consolidated duplicate check. Rejects the owner being created when its whole
+     * {@link #identityKey(Owner) identityKey} exactly equals that of an existing owner. Because the
+     * key is the normalized telephone, email and householdId joined together, this one check
+     * subsumes the former separate telephone, email and household duplicate rules: only an exact
+     * full-key match counts as a duplicate, so two members of the same household (same householdId)
+     * with different telephones have different keys and are both allowed.
      *
-     * @param e164Telephone the E.164 telephone of the owner being created
-     * @throws DuplicateTelephoneException if another owner already uses the same E.164 telephone
+     * @param owner the owner being created, with its normalized telephone, email and householdId
+     *              already applied
+     * @throws DuplicateIdentityException if another owner already has the same identityKey
      */
-    private void rejectDuplicateTelephone(String e164Telephone) {
+    private void rejectDuplicateIdentity(Owner owner) {
+        String identityKey = identityKey(owner);
         boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .map(this::toComparableTelephone)
-            .filter(existing -> existing != null)
-            .anyMatch(e164Telephone::equals);
+            .map(this::identityKey)
+            .anyMatch(identityKey::equals);
         if (inUse) {
-            throw new DuplicateTelephoneException(e164Telephone);
+            throw new DuplicateIdentityException(identityKey);
         }
     }
 
     /**
-     * Rejects a lower-cased email that is already used by any other owner, so emails stay unique
-     * across owners. When the owner being created supplied no email there is nothing to check.
-     * Existing emails are compared case-insensitively, so values that differ only in case still
-     * count as duplicates.
+     * Derives an owner's {@code identityKey}: {@code normalizedTelephone + '|' + (email or empty) +
+     * '|' + householdId}. A {@code null} email or householdId contributes an empty segment. Every
+     * duplicate decision is made by comparing whole identityKeys.
      *
-     * @param email the lower-cased email of the owner being created, may be {@code null}
-     * @throws DuplicateEmailException if another owner already uses the same lower-cased email
+     * @param owner the owner whose identityKey to derive
+     * @return the derived identityKey
      */
-    private void rejectDuplicateEmail(String email) {
-        if (email == null) {
-            return;
-        }
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .anyMatch(existing -> existing.equalsIgnoreCase(email));
-        if (inUse) {
-            throw new DuplicateEmailException(email);
-        }
-    }
-
-    /**
-     * Normalizes an existing owner's stored telephone to E.164 for duplicate comparison, returning
-     * {@code null} when it cannot be normalized so a malformed legacy value is simply skipped rather
-     * than aborting the whole create.
-     */
-    private String toComparableTelephone(String telephone) {
-        try {
-            return normalizeTelephone(telephone);
-        } catch (InvalidTelephoneException ex) {
-            return null;
-        }
+    private String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
     }
 
     /**
@@ -457,17 +434,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * as an existing owner when their lastName and address both match (compared case-insensitively
      * with runs of whitespace collapsed to a single space).
      *
-     * <p>When no such existing owner exists there is nothing to do. Otherwise the request must
-     * deliberately opt in to sharing that household by setting {@code sharesHousehold=true}: when it
-     * does, the new owner and every existing owner in the household are assigned the same stable
-     * {@link #householdId(String, String) householdId}; when it does not, the create is rejected.
+     * <p>When no such existing owner exists there is nothing to do. Otherwise the new owner and
+     * every existing owner in the household are assigned the same stable
+     * {@link #householdId(String, String) householdId}. The household itself is no longer a
+     * rejection: duplicate detection is now decided solely by the whole {@code identityKey}, of
+     * which the householdId is one segment, so two members of the same household with different
+     * telephones have different keys and are both allowed.
      *
-     * @param owner            the owner being created
-     * @param sharesHousehold  the request's {@code sharesHousehold} flag, may be {@code null}
-     * @throws DuplicateHouseholdException if another owner shares the same lastName and address and
-     *                                     the request did not opt in with {@code sharesHousehold=true}
+     * @param owner the owner being created
      */
-    private void applyHousehold(Owner owner, Boolean sharesHousehold) {
+    private void applyHousehold(Owner owner) {
         String lastNameKey = toHouseholdKey(owner.getLastName());
         String addressKey = toHouseholdKey(owner.getAddress());
         List<Owner> household = this.clinicService.findAllOwners().stream()
@@ -476,9 +452,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .toList();
         if (household.isEmpty()) {
             return;
-        }
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
         }
         String householdId = householdId(lastNameKey, addressKey);
         owner.setHouseholdId(householdId);

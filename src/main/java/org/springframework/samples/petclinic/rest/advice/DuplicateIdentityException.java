@@ -17,15 +17,16 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a submitted owner email, once lower-cased, is already in use by another owner.
- * Carries the offending (lower-cased) value so it can be reported to the client.
+ * Thrown when a submitted owner's derived {@code identityKey}
+ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) exactly matches the
+ * identityKey of an existing owner. Carries the offending key so it can be reported to the client.
  */
-public class DuplicateEmailException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
     private final String rejectedValue;
 
-    public DuplicateEmailException(String rejectedValue) {
-        super("Email is already used by another owner: " + rejectedValue);
+    public DuplicateIdentityException(String rejectedValue) {
+        super("Owner identityKey is already used by another owner: " + rejectedValue);
         this.rejectedValue = rejectedValue;
     }
 

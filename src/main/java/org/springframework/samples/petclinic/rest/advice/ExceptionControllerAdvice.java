@@ -235,71 +235,26 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateTelephoneException} thrown when an owner is created with a
-     * normalized telephone that is already in use by another owner. Returns a 409 Conflict
-     * whose body carries an {@code errors} array naming the offending {@code telephone} field.
+     * Handles {@link DuplicateIdentityException} thrown when an owner is created whose whole derived
+     * {@code identityKey} (normalized telephone, email and householdId joined together) exactly
+     * matches that of an existing owner. This single check subsumes the former separate telephone,
+     * email and household duplicate rules. Returns a 409 Conflict whose body carries an
+     * {@code errors} array naming the offending {@code identityKey} field.
      *
-     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param e The {@link DuplicateIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner telephone at {} {}: {}",
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner identityKey at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getRejectedValue());
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("telephone"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateEmailException} thrown when an owner is created with a
-     * lower-cased email that is already in use by another owner. Returns a 409 Conflict
-     * whose body carries an {@code errors} array naming the offending {@code email} field.
-     *
-     * @param e The {@link DuplicateEmailException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateEmailException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner email at {} {}: {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getRejectedValue());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("email"));
-        return ResponseEntity.status(status).body(detail);
-    }
-
-    /**
-     * Handles {@link DuplicateHouseholdException} thrown when an owner is created whose lastName
-     * and address (compared case-insensitively with collapsed whitespace) already belong to
-     * another owner, without the request opting in via {@code sharesHousehold=true}. Returns a
-     * 409 Conflict whose body carries an {@code errors} array naming the offending {@code lastName}
-     * and {@code address} fields.
-     *
-     * @param e The {@link DuplicateHouseholdException} to be handled
-     * @param request {@link HttpServletRequest} object referring to the current request.
-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
-     */
-    @ExceptionHandler(DuplicateHouseholdException.class)
-    @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
-        logger.debug("Duplicate owner household at {} {}: {}, {}",
-            request.getMethod(),
-            request.getRequestURI(),
-            e.getLastName(),
-            e.getAddress());
-        HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
-        detail.setProperty("errors", List.of("lastName", "address"));
+        detail.setProperty("errors", List.of("identityKey"));
         return ResponseEntity.status(status).body(detail);
     }
 
