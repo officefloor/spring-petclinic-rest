@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f1737d02..5be3532d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,7 +31,8 @@ public abstract class OwnerMapper {
+     @Mapping(target = "membershipPoints",
+         expression = "java(org.springframework.samples.petclinic.mapper.Membership.pointsOf(owner))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
++        expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() "
++            + ": org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.Locality.of(owner))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0e997f70..85bfa4a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -96,6 +96,9 @@ public class Owner extends Person {
+     @Transient
+     private Integer householdSize;
+ 
++    @Transient
++    private Integer membershipLevel;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -251,6 +254,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+new file mode 100644
+index 00000000..c395bc6e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+@@ -0,0 +1,54 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.Membership;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Derives the read-time {@code membershipLevel} on an owner, applying the household ceiling: a
++ * new owner's level may not exceed <em>one above the current maximum</em> derived level among the
++ * <em>other</em> members of its household (those sharing its {@code householdId}, matched exactly
++ * as {@link CountHouseholdMembers} counts them). With no other household member — a household of
++ * one, or no {@code householdId} — no cap applies and the plain derived level stands.
++ *
++ * <p>Each sibling's level is recomputed here against the current household size so it reflects the
++ * household as it stands now, mirroring how {@link CountHouseholdMembers} derives {@code
++ * householdSize}. Runs after {@link CountHouseholdMembers} (so the owner's own {@code
++ * householdSize} is set) and before the responder, mutating the owner in place; the mapper reads
++ * the stored level.
++ */
++public class CapMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        int level = Membership.levelOf(owner);
++        String householdId = owner.getHouseholdId();
++        if (householdId != null) {
++            List<Owner> household = new ArrayList<>();
++            for (Owner existing : ownerRepository.findAll()) {
++                if (householdId.equals(existing.getHouseholdId())) {
++                    household.add(existing);
++                }
++            }
++            int size = household.size();
++            Integer maxOther = null;
++            for (Owner member : household) {
++                if (owner.getId() != null && owner.getId().equals(member.getId())) {
++                    continue; // exclude the owner itself
++                }
++                member.setHouseholdSize(size); // so the sibling's level sees the current household
++                int memberLevel = Membership.levelOf(member);
++                if (maxOther == null || memberLevel > maxOther) {
++                    maxOther = memberLevel;
++                }
++            }
++            if (maxOther != null) {
++                level = Math.min(level, maxOther + 1);
++            }
++        }
++        owner.setMembershipLevel(level);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 9b058728..e3a824d6 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -104,6 +104,11 @@ bulkWarning:
+ countHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+   govern: [ transaction ]
++  next: capMembership
++
++capMembership:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ recordIdempotency:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 3cdec9fc..4d1ac736 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -14,6 +14,11 @@ bulkWarning:
+ countHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+   govern: [ readonly-transaction ]
++  next: capMembership
++
++capMembership:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
