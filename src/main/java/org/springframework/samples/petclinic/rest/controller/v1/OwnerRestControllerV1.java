@@ -329,6 +329,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The exact number of national (subscriber) digits required for a given country calling code,
+     * i.e. the digits that follow the country code in an E.164 number. A country code that is not
+     * listed here has no fixed-length requirement beyond the general 8-to-15-digit E.164 bound.
+     * Australia ({@code '+61'}) requires 9 national digits and the NANP ({@code '+1'}) requires 10.
+     */
+    private static final java.util.Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
+        java.util.Map.of("61", 9, "1", 10);
+
+    /**
      * Normalizes a telephone number to E.164 form. Spaces, dashes and brackets (indeed any
      * non-digit character) are stripped. If the submitted value carries a leading {@code '+'}
      * its country code is kept as-is; otherwise the default country code {@code '+61'} is
@@ -336,10 +345,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * resulting value must be a {@code '+'} followed by 8 to 15 digits. So {@code '0412 345 678'}
      * is stored as {@code '+61412345678'}.
      *
+     * <p>In addition, when the number's country code has a fixed national-number length (see
+     * {@link #NATIONAL_NUMBER_LENGTHS}), the national digits that follow the country code must
+     * match that length exactly: {@code '+61'} requires 9 national digits and {@code '+1'}
+     * requires 10. So {@code '+61 123'} is rejected because its 3 national digits are not 9.
+     *
      * @param telephone the raw telephone number as submitted
      * @return the normalized E.164 telephone number
      * @throws ResponseStatusException with a 400 status if the value cannot form a valid E.164
-     *         number (8 to 15 digits after the '+')
+     *         number (8 to 15 digits after the '+'), or if its national-number length is wrong
+     *         for its country code
      */
     private String normalizeTelephone(String telephone) {
         String raw = telephone == null ? "" : telephone.trim();
@@ -358,7 +373,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
         }
+        validateNationalNumberLength(e164);
         return e164;
+    }
+
+    /**
+     * Validates that an E.164 number's national-number length is correct for its country code.
+     * The country code is matched by longest known prefix (so {@code '+61'} is preferred over
+     * {@code '+1'} would-be matches); when the code has a fixed national-number length the digits
+     * following it must match exactly. Country codes without a fixed length are left unchecked.
+     *
+     * @param e164 the normalized E.164 number (a {@code '+'} followed by digits)
+     * @throws ResponseStatusException with a 400 status if the national-number length is wrong
+     *         for the country code
+     */
+    private void validateNationalNumberLength(String e164) {
+        String allDigits = e164.substring(1);
+        String bestCode = null;
+        for (String code : NATIONAL_NUMBER_LENGTHS.keySet()) {
+            if (allDigits.startsWith(code)
+                    && (bestCode == null || code.length() > bestCode.length())) {
+                bestCode = code;
+            }
+        }
+        if (bestCode == null) {
+            return;
+        }
+        int nationalLength = allDigits.length() - bestCode.length();
+        int required = NATIONAL_NUMBER_LENGTHS.get(bestCode);
+        if (nationalLength != required) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Telephone for country code '+" + bestCode + "' must have " + required
+                    + " national digits");
+        }
     }
 
     /**
