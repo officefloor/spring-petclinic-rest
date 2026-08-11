@@ -111,13 +111,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
-        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate effectiveDate = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        java.time.LocalDate businessDate = toBusinessDay(effectiveDate);
+        owner.setRegistrationDate(businessDate);
         long createdToday = this.clinicService.findAllOwners().stream()
             .map(Owner::getRegistrationDate)
-            .filter(today::equals)
+            .filter(businessDate::equals)
             .count();
         if (createdToday >= 100) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
@@ -166,6 +166,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rolls a registration date forward to a business day. When {@code date} falls on a Saturday or
+     * Sunday it is advanced to the following Monday; a weekday is returned unchanged. This is applied
+     * to the effective registration date (whether supplied in the request or defaulted to the server
+     * date) so that every stored {@code registrationDate}, and any value derived from it, lands on a
+     * business day.
+     *
+     * @param date the effective registration date
+     * @return the same date if it is a weekday, otherwise the following Monday
+     */
+    private java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     /**
