@@ -191,7 +191,7 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link InvalidTelephoneException} thrown when an owner is created with a telephone
-     * that does not contain exactly 10 digits once every non-digit character has been stripped.
+     * that cannot be normalized to valid E.164 form (a '+' followed by 8 to 15 digits).
      * Returns a 400 Bad Request whose body carries an {@code errors} array naming the offending
      * {@code telephone} field.
      *

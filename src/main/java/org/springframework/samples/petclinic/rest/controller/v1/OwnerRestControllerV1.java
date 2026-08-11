@@ -165,19 +165,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a submitted telephone by removing every non-digit character and requiring the
-     * result to be exactly 10 digits.
+     * Normalizes a submitted telephone into E.164 form. Spaces, dashes and brackets are stripped.
+     * A leading '+' with its country code is kept; otherwise the country code '+61' is assumed and
+     * a single leading '0' is dropped from the national digits. The resulting value must be a '+'
+     * followed by 8 to 15 digits.
      *
      * @param telephone the raw telephone value as submitted
-     * @return the 10-digit normalized telephone
-     * @throws InvalidTelephoneException if the stripped value is not exactly 10 digits
+     * @return the E.164 normalized telephone (e.g. {@code +61412345678})
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+        String nationalSignificantNumber;
+        if (cleaned.startsWith("+")) {
+            nationalSignificantNumber = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            nationalSignificantNumber = "61" + national;
+        }
+        if (!nationalSignificantNumber.matches("[0-9]{8,15}")) {
             throw new InvalidTelephoneException(telephone);
         }
-        return digits;
+        return "+" + nationalSignificantNumber;
     }
 
     /**
@@ -202,19 +211,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a normalized telephone that is already used by any other owner, so telephones stay
-     * unique across owners. Existing telephones are normalized the same way before comparison.
+     * unique across owners. Existing telephones are normalized to E.164 the same way before the
+     * comparison, so numbers that differ only in formatting still count as duplicates.
      *
-     * @param normalizedTelephone the normalized telephone of the owner being created
-     * @throws DuplicateTelephoneException if another owner already uses the same normalized telephone
+     * @param e164Telephone the E.164 telephone of the owner being created
+     * @throws DuplicateTelephoneException if another owner already uses the same E.164 telephone
      */
-    private void rejectDuplicateTelephone(String normalizedTelephone) {
+    private void rejectDuplicateTelephone(String e164Telephone) {
         boolean inUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
-            .anyMatch(normalizedTelephone::equals);
+            .map(this::toComparableTelephone)
+            .filter(existing -> existing != null)
+            .anyMatch(e164Telephone::equals);
         if (inUse) {
-            throw new DuplicateTelephoneException(normalizedTelephone);
+            throw new DuplicateTelephoneException(e164Telephone);
+        }
+    }
+
+    /**
+     * Normalizes an existing owner's stored telephone to E.164 for duplicate comparison, returning
+     * {@code null} when it cannot be normalized so a malformed legacy value is simply skipped rather
+     * than aborting the whole create.
+     */
+    private String toComparableTelephone(String telephone) {
+        try {
+            return normalizeTelephone(telephone);
+        } catch (InvalidTelephoneException ex) {
+            return null;
         }
     }
 
@@ -229,7 +253,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
