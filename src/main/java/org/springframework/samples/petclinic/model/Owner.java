@@ -94,6 +94,9 @@ public class Owner extends Person {
     private Boolean bulkSignupWarning;
 
     @Transient
+    private Boolean capacityWarning;
+
+    @Transient
     private Integer householdSize;
 
     @Transient
@@ -244,6 +247,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public Integer getHouseholdSize() {
