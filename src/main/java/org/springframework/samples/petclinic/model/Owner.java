@@ -68,8 +68,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -249,44 +249,12 @@ public class Owner extends Person {
         return "+" + countryCode + " " + grouped;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    /**
-     * A single Luhn check digit (0-9) computed over the digits contained in the
-     * {@link #customerCode}. Non-digit characters in the code are ignored; the standard Luhn
-     * algorithm doubles every second digit from the right (subtracting 9 when the result exceeds
-     * 9) and the check digit is {@code (10 - (sum % 10)) % 10}. {@code null} until a customer code
-     * is assigned.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /** The month on which the fiscal year starts: 1 July. */
@@ -303,31 +271,33 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two digits of
-     * the calendar year in which the fiscal year containing the {@code registrationDate} began (the
-     * fiscal year starts on 1 July; e.g. a registration on 2026-08-11 yields {@code FY26}). Derived
-     * from the (business-day-adjusted) {@code registrationDate}; {@code null} until it is assigned.
+     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the two-digit fiscal-year
+     * (FY) segment carried inside the {@link #memberId} (e.g. a {@code memberId} of
+     * {@code NSW261A2B3C4D5} yields {@code FY26}). The FY segment sits immediately after the region
+     * prefix and before the 8-hex {@code HASH8} and single check digit, so it is read back off the
+     * member id (ignoring any {@code -<n>} collision suffix). {@code null} until a member id is
+     * assigned.
      */
     @Transient
     public String getFiscalYear() {
-        if (this.registrationDate == null) {
+        String base = memberIdBase();
+        if (base == null || base.length() < 11) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearStart(this.registrationDate) % 100);
+        return "FY" + base.substring(base.length() - 11, base.length() - 9);
     }
 
     /**
-     * The owner's membership number, formatted {@code <customerCode>-M<YY>} where {@code YY} is
-     * the last two digits of the fiscal year of the {@code registrationDate} (the fiscal year
-     * starts on 1 July; e.g. {@code NSW-1A2B3C4D-M26}). Derived from the owner's own fields;
-     * {@code null} until both are assigned.
+     * The {@link #memberId} with any {@code -<n>} collision suffix stripped, i.e. the
+     * {@code <REGION><FY><HASH8><CHK>} core from which the region and fiscal-year segments are read
+     * back. {@code null} when no member id is assigned.
      */
-    @Transient
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
+    private String memberIdBase() {
+        if (this.memberId == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearStart(this.registrationDate) % 100);
+        int dash = this.memberId.indexOf('-');
+        return dash < 0 ? this.memberId : this.memberId.substring(0, dash);
     }
 
     /**
@@ -414,7 +384,7 @@ public class Owner extends Person {
         "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
 
     /**
-     * The region code that forms the {@code REGION} segment of the {@link #customerCode}, derived
+     * The region code that forms the {@code REGION} segment of the {@link #memberId}, derived
      * by looking up the region by {@link #postcode} range first (NSW 2000-2099, VIC 3000-3099,
      * QLD 4000-4099), and only falling back to the fixed city-to-region table (Sydney->NSW,
      * Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range. Returns
@@ -430,18 +400,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the {@code REGION} segment of its {@link #customerCode} (everything
-     * before the first {@code '-'}). Because the customer code is {@code <REGION>-<HASH8>} with
-     * {@code REGION} derived from the postcode, the locality now simply reads that region back off
-     * the identity. Returns {@code UNKNOWN} until a customer code is assigned.
+     * The owner's locality: the {@code REGION} segment of its {@link #memberId} (its leading region
+     * prefix). Because the member id is {@code <REGION><FY><HASH8><CHK>} with {@code REGION} derived
+     * from the postcode, and the {@code FY} (2), {@code HASH8} (8) and {@code CHK} (1) tail is a fixed
+     * 11 characters, the locality reads that region back off the identity (ignoring any {@code -<n>}
+     * collision suffix). Returns {@code UNKNOWN} until a member id is assigned.
      */
     @Transient
     public String getLocality() {
-        if (this.customerCode == null) {
+        String base = memberIdBase();
+        if (base == null) {
             return "UNKNOWN";
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
+        return base.length() > 11 ? base.substring(0, base.length() - 11) : base;
     }
 
     /**
