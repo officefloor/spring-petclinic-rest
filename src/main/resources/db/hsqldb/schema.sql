@@ -46,6 +46,7 @@ CREATE TABLE owners (
   postcode   VARCHAR(4),
   registration_date DATE,
   birth_date DATE,
+  title VARCHAR(10),
   customer_code VARCHAR(20),
   membership_number VARCHAR(32),
   household_id VARCHAR(64),

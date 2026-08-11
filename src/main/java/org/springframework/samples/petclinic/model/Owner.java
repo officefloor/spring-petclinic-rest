@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -163,6 +166,14 @@ public class Owner extends Person {
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getCustomerCode() {

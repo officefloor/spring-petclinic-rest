@@ -20,6 +20,9 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation",
+        expression = "java(owner.getTitle() != null && !owner.getTitle().isBlank() "
+            + "? owner.getTitle() + \" \" + owner.getLastName() : owner.getLastName())")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplay.of(owner))")
     @Mapping(target = "initials",
