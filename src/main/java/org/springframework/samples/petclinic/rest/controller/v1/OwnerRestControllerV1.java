@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -142,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(address);
         owner.setTelephone(telephone);
+        validatePostcode(owner.getPostcode(), owner.getLocality());
         if (sharesHousehold) {
             owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
         }
@@ -273,6 +275,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * The fixed, region-keyed inclusive 4-digit postcode ranges. A region absent from this table
+     * (locality {@code UNKNOWN}) imposes no range, so any 4-digit postcode is accepted there.
+     */
+    private static final java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates a supplied {@code postcode} against the owner's city region. Postcode is optional:
+     * a {@code null} or blank value is accepted (validation only applies WHEN PRESENT). When
+     * present, the value has already passed the 4-digit format check (Bean Validation on the
+     * request body); this enforces that it falls within the inclusive range for the city's region
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known region imposes no range.
+     *
+     * @param postcode the supplied postcode (may be {@code null})
+     * @param region the owner's locality/region derived from its city
+     * @throws InvalidPostcodeException if the postcode is out of range for the region
+     */
+    private static void validatePostcode(String postcode, String region) {
+        if (isBlank(postcode)) {
+            return;
+        }
+        int[] range = REGION_POSTCODES.get(region);
+        if (range == null) {
+            return;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode);
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidPostcodeException(postcode);
+        }
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(postcode);
+        }
     }
 
     /**
