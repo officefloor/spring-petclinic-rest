@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a1bdf298..a1737750 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,9 +33,41 @@ public interface OwnerMapper {
+         expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey",
+         expression = "java(identityKey(owner))")
++    @Mapping(target = "checkDigit",
++        expression = "java(checkDigit(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Compute the owner's check digit: a single Luhn check digit (0-9) over the digits contained in
++     * the customerCode. Returns null when no customerCode has been assigned so owners without a code
++     * serialize cleanly.
++     */
++    default Integer checkDigit(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        if (customerCode == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = customerCode.length() - 1; i >= 0; i--) {
++            char c = customerCode.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * Derive the owner's identity key, the single value into which all duplicate detection is
+      * consolidated: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 09772503..f6019d43 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2194,6 +2194,17 @@ components:
+               type: string
+               readOnly: true
+               example: '+61412345678||A1B2C3D4E5F6'
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the
++                owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              readOnly: true
++              example: 4
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
