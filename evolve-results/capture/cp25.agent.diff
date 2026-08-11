@@ -1,0 +1,123 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java
+new file mode 100644
+index 00000000..8dbf9d19
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a request to create an owner supplies an email whose lower-cased value is already
++ * used by another owner. Carries the offending (raw) value so the exception handler can report
++ * it.
++ */
++public class DuplicateEmailException extends RuntimeException {
++
++    private final String rejectedValue;
++
++    public DuplicateEmailException(String rejectedValue) {
++        super("An owner with the same email already exists");
++        this.rejectedValue = rejectedValue;
++    }
++
++    public String getRejectedValue() {
++        return this.rejectedValue;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index cfda1721..6d2d36d4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -212,6 +212,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DuplicateEmailException} raised when a request to create an owner supplies an
++     * email whose lower-cased value already belongs to another owner.
++     *
++     * @param e The {@link DuplicateEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
++     *         whose {@code errors} array names the {@code email} field.
++     */
++    @ExceptionHandler(DuplicateEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        logger.debug("Duplicate email at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getRejectedValue());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
++        detail.setProperty("errors", List.of("email"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link DuplicateHouseholdException} raised when a request to create an owner supplies a
+      * last name and address that (compared case-insensitively with collapsed whitespace) already
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 77a72f03..fcae602e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
++import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+@@ -141,6 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isTelephoneInUse(telephone)) {
+             throw new DuplicateTelephoneException(ownerFieldsDto.getTelephone());
+         }
++        if (isEmailInUse(ownerFieldsDto.getEmail())) {
++            throw new DuplicateEmailException(ownerFieldsDto.getEmail());
++        }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         if (!sharesHousehold
+             && isHouseholdInUse(ownerFieldsDto.getLastName(), address)) {
+@@ -404,6 +408,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(e164Telephone::equals);
+     }
+ 
++    /**
++     * Determines whether any existing owner already uses the given email, compared case-insensitively
++     * on its lower-cased value. Stored emails are themselves lower-cased, so the supplied value is
++     * lower-cased and compared directly. A {@code null} or blank email is never considered in use.
++     *
++     * @param email the email of the owner being created, as supplied by the client
++     * @return {@code true} if another owner already has the same lower-cased email
++     */
++    private boolean isEmailInUse(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        String normalizedEmail = email.toLowerCase(java.util.Locale.ROOT);
++        return this.clinicService.findAllOwners().stream()
++            .map(Owner::getEmail)
++            .filter(existing -> existing != null)
++            .anyMatch(normalizedEmail::equals);
++    }
++
+     /**
+      * Determines whether any existing owner already shares a household with the owner being created,
+      * i.e. has both the same last name and the same address. Both fields are compared
