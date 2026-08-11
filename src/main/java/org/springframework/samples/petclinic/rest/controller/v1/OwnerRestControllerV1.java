@@ -134,7 +134,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String lastNameKey = normalizeForHousehold(owner.getLastName());
         String householdId = householdId(lastNameKey, owner.getPostcode());
         owner.setHouseholdId(householdId);
+        // Soft-deleted owners are excluded from all duplicate/identity detection: a deleted owner
+        // no longer blocks a new owner that would otherwise match it.
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(
                 householdId(normalizeForHousehold(existing.getLastName()), existing.getPostcode())))
             .toList();
@@ -142,6 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (telephone|email|householdId); a new owner is rejected only when its whole key matches.
         String identityKey = owner.getIdentityKey();
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (identityInUse) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -589,7 +593,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft delete: flag the owner deleted and retain the row rather than removing it.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
