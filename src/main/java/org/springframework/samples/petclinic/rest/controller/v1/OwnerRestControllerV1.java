@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -162,14 +163,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
         rejectWhenDailyLimitReached(owner.getRegistrationDate());
         rejectWhenCityAtCapacity(owner.getCity());
-        applyHousehold(owner);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        applyHousehold(owner, sharesHousehold);
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateIdentity(owner);
         owner.setCustomerCode(customerCode(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        flagPossibleDuplicate(owner);
+        flagPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -294,10 +296,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owner's id. When no such owner exists the flag is set to {@code false} and no match id is
      * recorded. An owner with no postcode can never soft-match and is always {@code false}.
      *
-     * @param owner the owner being created, with its normalized telephone already applied
+     * <p>A declared household member (created with {@code sharesHousehold=true}) is never a suspected
+     * duplicate: its match with an existing household member is a deliberate, declared one, so it is
+     * always flagged {@code false}.
+     *
+     * @param owner           the owner being created, with its normalized telephone already applied
+     * @param sharesHousehold whether the request declared it shares a household; a declared member is
+     *                        never flagged as a possible duplicate
      */
-    private void flagPossibleDuplicate(Owner owner) {
-        Owner match = findPossibleDuplicate(owner);
+    private void flagPossibleDuplicate(Owner owner, boolean sharesHousehold) {
+        Owner match = sharesHousehold ? null : findPossibleDuplicate(owner);
         if (match != null) {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(match.getId());
@@ -608,53 +616,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Applies the household rule to an owner being created. An owner belongs to the same household
-     * as an existing owner when their lastName and address both match (compared case-insensitively
-     * with runs of whitespace collapsed to a single space).
+     * Applies the household rule to an owner being created. The household is keyed on
+     * (lastName, postcode): the owner is assigned the deterministic {@link #householdId(Owner)
+     * householdId} derived from its normalized lastName and postcode, so owners sharing a lastName
+     * and postcode automatically share the identifier — the link is computed, not created by a flag.
      *
-     * <p>When no such existing owner exists there is nothing to do. Otherwise the new owner and
-     * every existing owner in the household are assigned the same stable
-     * {@link #householdId(String, String) householdId}. The household itself is no longer a
-     * rejection: duplicate detection is now decided solely by the whole {@code identityKey}, of
-     * which the householdId is one segment, so two members of the same household with different
-     * telephones have different keys and are both allowed.
+     * <p>Because the household is keyed on (lastName, postcode), any existing owner that derives the
+     * same householdId is a member of the same household, and a second owner joining it is a
+     * household duplicate. Such a create is rejected with 409 unless the request declares
+     * {@code sharesHousehold=true}, in which case it is allowed through as a declared household
+     * member. The {@code sharesHousehold} directive only bypasses this duplicate block.
      *
-     * @param owner the owner being created
+     * @param owner           the owner being created
+     * @param sharesHousehold whether the request declared it shares a household, bypassing the block
+     * @throws HouseholdDuplicateException if an existing owner already shares the household and the
+     *                                     request did not declare {@code sharesHousehold=true}
      */
-    private void applyHousehold(Owner owner) {
-        String lastNameKey = toHouseholdKey(owner.getLastName());
-        String addressKey = toHouseholdKey(owner.getAddress());
-        List<Owner> household = this.clinicService.findAllOwners().stream()
-            .filter(existing -> toHouseholdKey(existing.getLastName()).equals(lastNameKey)
-                && toHouseholdKey(existing.getAddress()).equals(addressKey))
-            .toList();
-        if (household.isEmpty()) {
-            return;
-        }
-        String householdId = householdId(lastNameKey, addressKey);
+    private void applyHousehold(Owner owner, boolean sharesHousehold) {
+        String householdId = householdId(owner);
         owner.setHouseholdId(householdId);
-        for (Owner existing : household) {
-            if (!householdId.equals(existing.getHouseholdId())) {
-                existing.setHouseholdId(householdId);
-                this.clinicService.saveOwner(existing);
-            }
+        boolean householdExists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(householdId(existing)));
+        if (householdExists && !sharesHousehold) {
+            throw new HouseholdDuplicateException(householdId);
         }
     }
 
     /**
-     * Derives the stable, shared household identifier for a household, formatted {@code HH-<HEX12>}
-     * where HEX12 is the first 12 upper-cased hex characters of the SHA-256 of the normalized
-     * lastName and address keys. Being a pure function of the household, every owner in it derives
-     * the same value regardless of creation order.
+     * Derives the stable, shared household identifier for an owner, formatted {@code HH-<HEX12>}
+     * where HEX12 is the first 12 upper-cased hex characters of the SHA-256 of the owner's normalized
+     * lastName, a {@code '|'} separator, and its postcode. Being a pure function of (lastName,
+     * postcode), every owner sharing a lastName and postcode derives the same value regardless of
+     * creation order. A {@code null} postcode contributes an empty segment.
      *
-     * @param lastNameKey the normalized household lastName key
-     * @param addressKey  the normalized household address key
+     * @param owner the owner whose household identifier to derive
      * @return the household identifier
      */
-    private String householdId(String lastNameKey, String addressKey) {
+    private String householdId(Owner owner) {
+        String lastNameKey = toHouseholdKey(owner.getLastName());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((lastNameKey + "|" + addressKey).getBytes(StandardCharsets.UTF_8));
+                .digest((lastNameKey + "|" + postcode).getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 hex.append(String.format("%02x", b));

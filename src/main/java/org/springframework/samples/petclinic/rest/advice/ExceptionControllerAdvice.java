@@ -282,6 +282,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link HouseholdDuplicateException} thrown when an owner is created that joins an
+     * existing household (it derives the same deterministic {@code householdId} from its lastName and
+     * postcode as an existing owner) without declaring {@code sharesHousehold=true}. Returns a 409
+     * Conflict whose body carries an {@code errors} array naming the offending {@code household}
+     * field.
+     *
+     * @param e The {@link HouseholdDuplicateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(HouseholdDuplicateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleHouseholdDuplicateException(HouseholdDuplicateException e, HttpServletRequest request) {
+        logger.debug("Household duplicate at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("household"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link CityAtCapacityException} thrown when an owner is created whose city already
      * contains the maximum number of owners. Returns a 409 Conflict whose body carries an
      * {@code errors} array naming the offending {@code city} field.
