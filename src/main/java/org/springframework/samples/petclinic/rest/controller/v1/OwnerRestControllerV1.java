@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -79,6 +80,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Maximum number of owners a single city may contain. A create is rejected once the owner's
+     * city already holds this many owners.
+     */
+    private static final int CITY_CAPACITY = 50;
 
     private final ClinicService clinicService;
 
@@ -130,6 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        rejectWhenCityAtCapacity(owner.getCity());
         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(telephone);
@@ -193,6 +201,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
                 && equalsIgnoreCase(existing.getLastName(), lastName))
             .count();
+    }
+
+    /**
+     * Rejects creating an owner when their city already contains {@link #CITY_CAPACITY} or more
+     * owners. Existing owners are counted case-insensitively by city, matching how the per-city
+     * customer-code sequence is derived.
+     *
+     * @param city the new owner's city
+     * @throws CityAtCapacityException if the city already holds {@link #CITY_CAPACITY} owners
+     */
+    private void rejectWhenCityAtCapacity(String city) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
+            .count();
+        if (count >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(city);
+        }
     }
 
     private boolean equalsIgnoreCase(String a, String b) {
