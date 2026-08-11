@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -181,13 +182,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Email is optional; when present it must be a syntactically valid address and is
         // stored lower-cased. An invalid address is rejected with a 400.
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
-        // Derive the household id up front (a deterministic function of the normalized last name and
-        // address) whenever the caller opts into a shared household, so it can feed the identity key
-        // below. Owners not admitted into a household have a null household id.
+        // Derive the household id up front. It is a deterministic function of the normalized last name
+        // and the postcode, so owners sharing a last name and postcode independently derive the same
+        // value and are the same household. It is always computed (never null), regardless of whether
+        // the caller opts into a shared household; 'sharesHousehold' now only bypasses the household
+        // duplicate block below.
         String normalizedLastName = collapse(ownerFieldsDto.getLastName());
-        String householdId = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            ? householdId(normalizedLastName, normalizedAddress)
-            : null;
+        String householdId = householdId(normalizedLastName, ownerFieldsDto.getPostcode());
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // All duplicate detection is consolidated into a single derived identity key:
         // 'normalizedTelephone + | + (email or empty) + | + householdId'. Because the telephone is
         // part of the key, two members of the same household (same householdId) with different
@@ -200,17 +202,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityInUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
         }
-        // For a shared household, backfill the shared identifier onto any existing member of this
-        // household so the whole household carries the same stable value.
-        if (householdId != null) {
-            for (Owner existing : this.clinicService.findAllOwners()) {
-                if (collapse(existing.getLastName()).equals(normalizedLastName)
-                    && normalizeAddress(existing.getAddress()).equals(normalizedAddress)
-                    && !householdId.equals(existing.getHouseholdId())) {
-                    existing.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(existing);
-                }
-            }
+        // Because the household is keyed on (last name, postcode), any existing owner carrying this
+        // computed household id is already a member of this household. A second such owner is rejected
+        // as a household duplicate (409) unless the caller declares 'sharesHousehold', which bypasses
+        // the block and admits the owner as a declared household member.
+        boolean householdMemberExists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+        if (householdMemberExists && !sharesHousehold) {
+            throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), normalizedAddress);
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -239,11 +238,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // SHA-256(normalizedTelephone + lastName). Sequence numbers are no longer used.
         owner.setCustomerCode(customerCode(
             deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName()));
-        // Soft-match detection: an owner that cleared the hard-duplicate identity check above may
-        // still resemble an existing owner when it shares that owner's last name and postcode but
-        // carries a different telephone. Flag such an owner as a possible duplicate, recording the
-        // matching owner's id; otherwise the flag is false with no matched id.
-        Owner possibleDuplicateOwner = findPossibleDuplicate(
+        // Soft-match detection: an owner that cleared the hard-duplicate checks above may still
+        // resemble an existing owner when it shares that owner's last name and postcode but carries a
+        // different telephone. A declared household member ('sharesHousehold') is never a suspected
+        // duplicate, so it is exempt; any other owner reaching here shares no household with an
+        // existing owner (a household match without 'sharesHousehold' was already rejected above).
+        // Flag a matched owner as a possible duplicate, recording its id; otherwise the flag is false
+        // with no matched id.
+        Owner possibleDuplicateOwner = sharesHousehold ? null : findPossibleDuplicate(
             owner.getLastName(), owner.getPostcode(), normalizedTelephone);
         owner.setPossibleDuplicate(possibleDuplicateOwner != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOwner == null ? null : possibleDuplicateOwner.getId());
@@ -404,14 +406,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derive the stable household identifier shared by owners with the same normalized last name
-     * and address. It is a deterministic function of those two values, so every member of a
+     * and postcode. It is a deterministic function of those two values, so every member of a
      * household independently derives the same identifier: the first 12 upper-case hex characters
-     * of {@code SHA-256(normalizedLastName + '\n' + normalizedAddress)}.
+     * of {@code SHA-256(normalizedLastName + '|' + postcode)}. A {@code null} postcode contributes
+     * an empty segment.
      */
-    private static String householdId(String normalizedLastName, String normalizedAddress) {
+    private static String householdId(String normalizedLastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((normalizedLastName + "\n" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+                .digest((normalizedLastName + "|" + (postcode == null ? "" : postcode))
+                    .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
