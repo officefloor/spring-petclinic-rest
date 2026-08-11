@@ -229,6 +229,51 @@ public class Owner extends Person {
         return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
     }
 
+    /**
+     * The owner's membership points, accumulated from the membership factors. Points start at 0 and
+     * gain 2 when an email address is present, 1 when the owner has no namesakes (namesakeCount is
+     * 0), 2 for a household of 3 or more members, and 3 when the owner's tenure exceeds one year.
+     *
+     * @param owner the owner to score
+     * @return the total membership points (never negative)
+     */
+    public static int membershipPoints(Owner owner) {
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            points += 2;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
+        if (tenureExceedsOneYear(owner.getRegistrationDate())) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Maps membership points to the numeric membership level: 1 for 0-1 points, 2 for 2-3, 3 for
+     * 4-5, and 4 for 6 or more.
+     *
+     * @param points the owner's membership points
+     * @return the membership level, from 1 to 4
+     */
+    public static int membershipLevel(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }

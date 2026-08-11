@@ -24,8 +24,10 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(org.springframework.samples.petclinic.model.Owner.membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(4, 1 + ((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0) + (org.springframework.samples.petclinic.model.Owner.tenureExceedsOneYear(owner.getRegistrationDate()) ? 1 : 0)))")
+        expression = "java(org.springframework.samples.petclinic.model.Owner.membershipLevel(org.springframework.samples.petclinic.model.Owner.membershipPoints(owner)))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Localities.forOwner(owner))")
     @Mapping(target = "ageBand",
