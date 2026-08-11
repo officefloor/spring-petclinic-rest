@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Step of {@code POST /api/owners}: rejects the request 409 when the owner's city already contains
- * 50 or more owners. City is compared exactly, consistent with the per-city sequence in
- * {@link AssignCustomerCode}. Runs before {@link BuildOwner} so no owner is persisted on conflict.
+ * 50 or more owners. City is compared exactly, consistent with the region derivation in
+ * {@link AssignMemberId}. Runs before {@link BuildOwner} so no owner is persisted on conflict.
  */
 public class RequireCityCapacity {
 

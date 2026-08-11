@@ -9,8 +9,9 @@ import java.time.Month;
  * label is {@code FY26}.
  *
  * <p>Fed the owner's persisted (business-day-adjusted) registration date, this is the single source
- * of truth for the {@code fiscalYear} response field, the membership number's year segment and the
- * tenure count in {@link MembershipLevel}, so they always agree.
+ * of truth for the member id's FY segment and the tenure count in {@link MembershipLevel}. The
+ * {@code fiscalYear} response field is in turn read back off that member id (see
+ * {@link #labelOfMemberId(String)}), so they always agree.
  *
  * <p>Kept as a standalone class (not a method on {@link OwnerMapper}) so MapStruct does not mistake
  * it for an implicit mapping method.
@@ -37,6 +38,28 @@ public final class FiscalYear {
     /** The fiscal-year label {@code FY<YY>} for {@code date}, e.g. {@code FY26}. */
     public static String label(LocalDate date) {
         return String.format("FY%02d", yearSegment(date));
+    }
+
+    /**
+     * The fiscal-year label {@code FY<YY>} carried by a {@code '<REGION><FY><HASH8><CHK>'} member id
+     * &mdash; its two-digit year segment, which directly follows the leading region letters. So the
+     * response's {@code fiscalYear} references the unified member id rather than recomputing from the
+     * registration date, and the two cannot disagree. Returns {@code null} when the member id is
+     * absent or carries no two-digit year segment.
+     */
+    public static String labelOfMemberId(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        if (i + 2 > memberId.length()
+                || !Character.isDigit(memberId.charAt(i)) || !Character.isDigit(memberId.charAt(i + 1))) {
+            return null;
+        }
+        return "FY" + memberId.substring(i, i + 2);
     }
 
     /**

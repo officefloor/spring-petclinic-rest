@@ -102,7 +102,7 @@ public final class OwnerIdentity {
     }
 
     /**
-     * The hash segment of an owner's {@code '<REGION>-<HASH8>'} customer code: the first 8
+     * The HASH8 segment of an owner's {@code '<REGION><FY><HASH8><CHK>'} member id: the first 8
      * upper-case hex characters of SHA-256 over the normalised telephone concatenated with the
      * last name. The telephone is expected to already be in E.164 form (as stored).
      */

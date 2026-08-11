@@ -29,11 +29,11 @@ public final class Timezone {
     }
 
     /**
-     * The IANA timezone for the region carried by a {@code '<REGION>-<HASH8>'} customer code.
-     * The region is resolved through {@link Locality#ofCustomerCode(String)}, so the timezone
-     * derives from the same single source of an owner's locality.
+     * The IANA timezone for the region carried by a {@code '<REGION><FY><HASH8><CHK>'} member id.
+     * The region is resolved through {@link Locality#ofMemberId(String)}, so the timezone derives
+     * from the same single source of an owner's locality.
      */
-    public static String ofCustomerCode(String customerCode) {
-        return of(Locality.ofCustomerCode(customerCode));
+    public static String ofMemberId(String memberId) {
+        return of(Locality.ofMemberId(memberId));
     }
 }

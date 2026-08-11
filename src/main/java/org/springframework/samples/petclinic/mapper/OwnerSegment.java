@@ -26,7 +26,7 @@ public final class OwnerSegment {
     /** The {@code '<TIER>_<AREA>'} segment for {@code owner}. */
     public static String of(Owner owner) {
         String tier = MembershipLevel.of(owner) >= 3 ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(Locality.ofCustomerCode(owner.getCustomerCode()))
+        String area = METRO_REGIONS.contains(Locality.ofMemberId(owner.getMemberId()))
             ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }

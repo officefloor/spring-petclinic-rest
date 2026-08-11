@@ -16,7 +16,7 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The event's {@code seq} is a process-wide monotonically increasing integer across creates, and
  * its identifier is the owner's current primary identifier via {@link PrimaryIdentifier} &mdash; the
- * {@code customerCode} today, whatever replaces it later.
+ * unified {@code memberId}.
  */
 public class LogOwnerCreatedEvent {
 

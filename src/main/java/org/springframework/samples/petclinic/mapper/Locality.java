@@ -42,20 +42,21 @@ public final class Locality {
     }
 
     /**
-     * The region carried by a {@code '<REGION>-<HASH8>'} customer code &mdash; its prefix up to the
-     * first {@code '-'}. This is now the single source of an owner's locality, so the value derives
-     * from the region-and-hash identity rather than being recomputed from city and postcode.
-     * Returns {@code "UNKNOWN"} when the code is absent or carries no region prefix.
+     * The region carried by a {@code '<REGION><FY><HASH8><CHK>'} member id &mdash; its leading run
+     * of letters, up to the first digit (the two-digit fiscal year that follows the region). This
+     * is now the single source of an owner's locality, so the value derives from the unified member
+     * id rather than being recomputed from city and postcode. Returns {@code "UNKNOWN"} when the
+     * member id is absent or carries no region prefix.
      */
-    public static String ofCustomerCode(String customerCode) {
-        if (customerCode == null) {
+    public static String ofMemberId(String memberId) {
+        if (memberId == null) {
             return "UNKNOWN";
         }
-        int dash = customerCode.indexOf('-');
-        if (dash <= 0) {
-            return "UNKNOWN";
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
         }
-        return customerCode.substring(0, dash);
+        return i == 0 ? "UNKNOWN" : memberId.substring(0, i);
     }
 
     /** The region whose range contains {@code postcode}, or {@code null} when none does. */

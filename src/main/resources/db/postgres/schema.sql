@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       title      TEXT,
                                       registration_date DATE,
                                       birth_date DATE,
-                                      customer_code TEXT,
+                                      member_id TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
                                       household_size INTEGER,

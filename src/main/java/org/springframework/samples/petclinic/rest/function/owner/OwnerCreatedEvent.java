@@ -4,16 +4,15 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * Immutable structured audit event emitted when an owner is created.
  *
  * <p>Serialised to a compact JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} and written to the
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} and written to the
  * {@code AUDIT} logger. {@code seq} is a monotonically increasing integer across creates and
- * {@code customerCode} holds the owner's current primary identifier (see
- * {@link org.springframework.samples.petclinic.mapper.PrimaryIdentifier}), so a later switch of the
- * primary identifier to a {@code memberId} carries through here without changing this event.
+ * {@code memberId} holds the owner's current primary identifier (see
+ * {@link org.springframework.samples.petclinic.mapper.PrimaryIdentifier}).
  *
  * <p>The record is deeply immutable (all components are values), so once emitted the event cannot be
  * altered.
  */
-public record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(int seq, Integer ownerId, String memberId, int membershipLevel,
         String event) {
 
     /** The marker every create event carries. */
@@ -23,7 +22,7 @@ public record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, i
     public String toJson() {
         return "{\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
-                + ",\"customerCode\":" + jsonString(this.customerCode)
+                + ",\"memberId\":" + jsonString(this.memberId)
                 + ",\"membershipLevel\":" + this.membershipLevel
                 + ",\"event\":" + jsonString(this.event)
                 + "}";
