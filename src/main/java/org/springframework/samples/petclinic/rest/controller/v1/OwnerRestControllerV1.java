@@ -120,8 +120,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         // Normalize the address up front so every downstream use (the required-field check,
         // household-duplicate detection, the shared household id and the stored/returned value)
-        // works from the same canonical form.
-        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        // works from the same canonical form. The structured 'addressLine1'/'addressLine2' fields are
+        // preferred when present; the flat 'address' remains accepted for backward compatibility. Each
+        // supplied line is normalized the same way, and the composed address is the normalized
+        // addressLine1 with a single space and the normalized addressLine2 appended when present.
+        String normalizedAddressLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String normalizedAddressLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        boolean structuredAddress = !isBlank(normalizedAddressLine1);
+        String normalizedAddress;
+        if (structuredAddress) {
+            normalizedAddress = normalizedAddressLine2.isEmpty()
+                ? normalizedAddressLine1
+                : normalizedAddressLine1 + " " + normalizedAddressLine2;
+        } else {
+            normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        }
         List<String> missingFields = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
             missingFields.add("firstName");
@@ -214,7 +227,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // Store the composed, normalized address plus the normalized structured lines. The structured
+        // lines are only retained when the owner was supplied in the structured form; a flat-address
+        // owner keeps them null.
         owner.setAddress(normalizedAddress);
+        owner.setAddressLine1(structuredAddress ? normalizedAddressLine1 : null);
+        owner.setAddressLine2(structuredAddress && !normalizedAddressLine2.isEmpty()
+            ? normalizedAddressLine2 : null);
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizedEmail);
         owner.setHouseholdId(householdId);
