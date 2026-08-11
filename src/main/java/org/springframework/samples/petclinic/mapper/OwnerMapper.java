@@ -34,6 +34,9 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.Locality.ofCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand",
+        expression = "java(org.springframework.samples.petclinic.mapper.AgeBand"
+            + ".of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
             + ".key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")
