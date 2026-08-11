@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -56,6 +57,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -79,6 +83,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private final PetMapper petMapper;
 
     private final VisitMapper visitMapper;
+
+    /** HTTP header carrying the caller-supplied idempotency key for owner creates. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Records the owner created for each previously-seen idempotency key, so a create that repeats a
+     * key returns the originally created owner instead of creating a duplicate. Keyed by the raw
+     * header value; the stored value is the response returned for the first successful create.
+     */
+    private final Map<String, OwnerDto> idempotentCreations = new ConcurrentHashMap<>();
 
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
@@ -118,6 +132,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Idempotent create: when the request carries an 'Idempotency-Key' header that we have already
+        // seen, return the owner originally created for that key with 200 instead of creating a
+        // duplicate (which would otherwise be rejected as a 409 conflict). A brand-new key is recorded
+        // below once the create succeeds; a request without the header is never treated as idempotent.
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            OwnerDto existing = idempotentCreations.get(idempotencyKey);
+            if (existing != null) {
+                return new ResponseEntity<>(existing, HttpStatus.OK);
+            }
+        }
         // Normalize the address up front so every downstream use (the required-field check,
         // household-duplicate detection, the shared household id and the stored/returned value)
         // works from the same canonical form. The structured 'addressLine1'/'addressLine2' fields are
@@ -284,6 +309,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ownerDto.getMembershipNumber());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+        // Remember the created owner against its idempotency key (when one was supplied) so a later
+        // create repeating the same key returns this same owner rather than creating a duplicate.
+        if (idempotencyKey != null) {
+            idempotentCreations.put(idempotencyKey, ownerDto);
+        }
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
@@ -383,6 +413,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Read the {@code Idempotency-Key} header from the current request, or {@code null} when the
+     * header is absent, blank, or no request is bound to the thread. The header is not part of the
+     * generated API signature, so it is read from the ambient request rather than a method parameter.
+     */
+    private static String currentIdempotencyKey() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+            return null;
+        }
+        String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return isBlank(key) ? null : key;
     }
 
     private static boolean isBlank(String value) {
