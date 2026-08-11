@@ -44,24 +44,18 @@ build:
   next: assignHousehold
 
 # Assign the deterministic 'householdId' (first 12 hex of SHA-256 over lastName + '|' + postcode),
-# so owners with the same last name and postcode share it automatically.
+# so owners with the same last name and postcode share it automatically. Still used for the
+# household member count and level ceiling; duplicate detection no longer keys off it.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId
-  govern: [ transaction ]
-  next: checkHousehold
-
-# Household-duplicate block: reject with 409 when the new owner's computed householdId already
-# belongs to an existing owner, UNLESS the body declared 'sharesHousehold' (a declared household
-# member bypasses this block). Runs after the householdId is assigned and before the identity check.
-checkHousehold:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckHouseholdUnique
   govern: [ transaction ]
   next: checkIdentity
 
 # Consolidated duplicate check: reject with 409 when the new owner's whole identityKey
-# (normalizedTelephone|email|householdId) equals an existing owner's. Runs after the householdId
-# has been assigned/back-filled (so it is part of the key) and before save (so the not-yet-saved
-# owner is not compared against itself).
+# (64-hex SHA-256 over normalizedTelephone|lowerEmail|soundex(lastName)) equals an existing owner's,
+# ignoring soft-deleted owners. This is the single duplicate rule: the former separate
+# household-duplicate 409 block no longer applies. Runs before save so the not-yet-saved owner is
+# not compared against itself.
 checkIdentity:
   class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdentityUnique
   govern: [ transaction ]

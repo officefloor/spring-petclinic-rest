@@ -7,14 +7,16 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityConfli
 
 /**
  * The single, consolidated duplicate check for {@code POST /api/owners}: rejects the request with
- * 409 when the new owner's whole {@link OwnerIdentityKey identityKey}
- * ({@code normalizedTelephone|email|householdId}) equals an existing owner's. This replaces the
- * former separate telephone, email and household checks; because the telephone is part of the key,
- * two members of one household (same householdId) with different telephones have different keys and
- * are both allowed — only an exact full-key match is a duplicate.
+ * 409 when the new owner's whole {@link OwnerIdentityKey identityKey} (the 64-hex SHA-256 over
+ * {@code normalizedTelephone|lowerEmail|soundex(lastName)}) equals an existing owner's. This is now
+ * the only duplicate rule — the former separate telephone, email and household-duplicate checks are
+ * gone. Because the telephone is part of the key, two people with the same last name (same soundex)
+ * and postcode but different telephones have different keys and are both allowed — only an exact
+ * full-key match is a duplicate; the near miss is a soft match (see {@link AssignPossibleDuplicate}).
  *
- * <p>Runs after {@link AssignHouseholdId} so the householdId segment is populated before the key is
- * built, and before {@link SaveOwner} so the not-yet-saved owner is not compared against itself.
+ * <p>Soft-deleted owners are ignored, so a new identity is never blocked by one. Runs before
+ * {@link SaveOwner} so the not-yet-saved owner is not compared against itself. The email-domain
+ * blocklist has already been applied upstream (in {@link ValidateOwnerFields}).
  */
 public class CheckOwnerIdentityUnique {
 
