@@ -237,8 +237,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // owner's postcode (falling back to the city-to-region table, else 'UNKNOWN', matching the
         // locality derivation) and HASH8 is the first 8 upper-case hex characters of
         // SHA-256(normalizedTelephone + lastName). Sequence numbers are no longer used.
-        owner.setCustomerCode(customerCode(
-            deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName()));
+        // Compute the base code, then de-duplicate it: if the computed value collides with an
+        // existing owner's customerCode, append '-<n>' using the smallest n of 2 or more that
+        // yields a value no existing owner already carries.
+        owner.setCustomerCode(deduplicateCustomerCode(customerCode(
+            deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName())));
         // Soft-match detection: an owner that cleared the hard-duplicate checks above may still
         // resemble an existing owner when it shares that owner's last name and postcode but carries a
         // different telephone. A declared household member ('sharesHousehold') is never a suspected
@@ -551,6 +554,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String customerCode(String region, String normalizedTelephone, String lastName) {
         return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+    }
+
+    /**
+     * Ensure the computed customer code is unique across existing owners. When {@code base} is
+     * already free it is returned unchanged; otherwise {@code '-<n>'} is appended using the smallest
+     * {@code n} of 2 or more that produces a value no existing owner already carries.
+     */
+    private String deduplicateCustomerCode(String base) {
+        java.util.Set<String> inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!inUse.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (inUse.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
