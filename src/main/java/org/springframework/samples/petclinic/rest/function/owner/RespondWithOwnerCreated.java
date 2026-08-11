@@ -23,7 +23,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner),
+                org.springframework.samples.petclinic.util.MembershipLevels.cappedLevelFor(owner),
                 owner.getMembershipNumber());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }

@@ -61,6 +61,21 @@ public final class MembershipLevels {
         return 4;
     }
 
+    /**
+     * The owner's effective membership level after applying the household level ceiling.
+     *
+     * <p>A newly created owner's level cannot exceed one above the maximum membership level among the
+     * household members that already existed when it was created. That ceiling is captured at creation
+     * time as {@link Owner#getMembershipLevelCap()} (see {@code AssignMembershipLevelCap}); when set,
+     * the derived {@link #levelFor(Owner)} is capped to it. An owner created with no existing household
+     * member has no cap, so its level is the derived value unchanged.
+     */
+    public static int cappedLevelFor(Owner owner) {
+        int level = levelFor(owner);
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
+    }
+
     private static long tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {

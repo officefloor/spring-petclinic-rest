@@ -56,6 +56,7 @@ CREATE TABLE owners (
   bulk_signup_warning BOOLEAN DEFAULT FALSE,
   possible_duplicate BOOLEAN DEFAULT FALSE,
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   deleted BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX owners_last_name ON owners (last_name);
