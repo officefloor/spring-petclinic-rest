@@ -7,16 +7,16 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Turns a {@link DuplicateTelephoneException} into a 409 naming {@code telephone} in the
+ * Turns a {@link DuplicateIdentityException} into a 409 naming {@code identityKey} in the
  * body's {@code errors} array, mirroring the shape of the other owner-field responses.
  */
-public class DuplicateTelephoneHandler {
+public class DuplicateIdentityHandler {
 
-    public void handle(@Parameter DuplicateTelephoneException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "Telephone is already used by another owner");
-        detail.setProperty("errors", java.util.List.of("telephone"));
+                "An owner with the same identity already exists");
+        detail.setProperty("errors", java.util.List.of("identityKey"));
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
