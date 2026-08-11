@@ -14,16 +14,25 @@ import java.security.NoSuchAlgorithmException;
  */
 public final class IdentityKeys {
 
+    /**
+     * The fixed version tag mixed into every version-2 identifier so that no value produced under the
+     * version-1 algorithm is ever produced again.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private IdentityKeys() {
     }
 
     /**
-     * Derive the identity key into which all duplicate detection is consolidated: the full lower-case
-     * hex SHA-256 over {@code (telephone or empty) + '|' + lowerEmail + '|' + soundex(lastName)}. A
-     * null email or last name contributes an empty segment.
+     * Derive the version-2 identity key into which all duplicate detection is consolidated: the full
+     * lower-case hex SHA-256 over the fixed {@code 'V2'} version tag and
+     * {@code (telephone or empty) + '|' + lowerEmail + '|' + soundex(lastName)}. Mixing in the version
+     * tag guarantees the key differs from the version-1 key for the same owner. A null email or last
+     * name contributes an empty segment.
      */
     public static String identityKey(String telephone, String email, String lastName) {
-        String raw = (telephone == null ? "" : telephone)
+        String raw = VERSION_TAG + "|"
+            + (telephone == null ? "" : telephone)
             + "|" + (email == null ? "" : email.toLowerCase())
             + "|" + soundex(lastName);
         return sha256Hex(raw);

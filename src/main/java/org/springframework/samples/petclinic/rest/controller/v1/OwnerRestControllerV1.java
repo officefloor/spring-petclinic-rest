@@ -301,16 +301,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // the following Monday, so everything derived from it (e.g. the membership number's year
         // segment) uses the adjusted date.
         owner.setRegistrationDate(effectiveRegistrationDate);
-        // Assign the unified member id: '<REGION><FY><HASH8><CHK>' where REGION is the region derived
-        // from the owner's postcode (falling back to the city-to-region table, else 'UNKNOWN', matching
-        // the locality derivation), FY is the 2-digit fiscal year of the (already business-day-adjusted)
-        // registration date, HASH8 is the first 8 upper-case hex characters of
-        // SHA-256(normalizedTelephone + lastName), and CHK is a single Luhn check digit over the digits
-        // of '<REGION><FY><HASH8>'. Compute the base value, then de-duplicate it: if it collides with an
-        // existing owner's memberId, append '-<n>' using the smallest n of 2 or more that yields a value
-        // no existing owner already carries.
+        // Assign the unified member id: '<REGION><FY><HASH8><CHK>' where REGION is the version-2
+        // region code derived from the owner's postcode (falling back to the city-to-region table,
+        // else 'UNKNOWN') with the fixed 'V2' version tag mixed in, FY is the 2-digit fiscal year of
+        // the (already business-day-adjusted) registration date, HASH8 is the first 8 upper-case hex
+        // characters of SHA-256(normalizedTelephone + lastName), and CHK is a single Luhn check digit
+        // over the digits of '<REGION><FY><HASH8>'. The version tag keeps the member id distinct from
+        // the value the version-1 algorithm would have produced. Compute the base value, then
+        // de-duplicate it: if it collides with an existing owner's memberId, append '-<n>' using the
+        // smallest n of 2 or more that yields a value no existing owner already carries.
         owner.setMemberId(deduplicateMemberId(memberId(
-            deriveRegion(owner.getPostcode(), owner.getCity()),
+            deriveRegionV2(owner.getPostcode(), owner.getCity()),
             effectiveRegistrationDate, normalizedTelephone, owner.getLastName())));
         // Soft-match detection: an owner that cleared the hard-duplicate check above may still
         // resemble an existing owner when its identity key differs but it shares that owner's
@@ -329,14 +330,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
         // Alongside the human-readable line, publish an immutable, machine-readable event describing
-        // the create: a JSON object stamped with a process-wide monotonically increasing sequence, the
-        // owner id, the owner's current primary identifier (the unified memberId) and its numeric
-        // membership level.
+        // the create. This is the schema-version-2 event: a JSON object stamped with an explicit
+        // 'schemaVersion' of 2, a process-wide monotonically increasing sequence, the owner id, the
+        // owner's current primary identifier (the version-2 memberId), its numeric membership level
+        // and its owner segment recomputed from the version-2 identity.
         Map<String, Object> ownerCreatedEvent = new LinkedHashMap<>();
+        ownerCreatedEvent.put("schemaVersion", 2);
         ownerCreatedEvent.put("seq", AUDIT_EVENT_SEQ.incrementAndGet());
         ownerCreatedEvent.put("ownerId", owner.getId());
         ownerCreatedEvent.put("memberId", owner.getMemberId());
         ownerCreatedEvent.put("membershipLevel", ownerDto.getMembershipLevel());
+        ownerCreatedEvent.put("ownerSegment", ownerMapper.ownerSegment(owner));
         ownerCreatedEvent.put("event", "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(ownerCreatedEvent));
         // Enqueue a welcome notification for the newly created owner: a NOTIFY line carrying the
@@ -518,13 +522,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Derive the stable household identifier shared by owners with the same normalized last name
      * and postcode. It is a deterministic function of those two values, so every member of a
      * household independently derives the same identifier: the first 12 upper-case hex characters
-     * of {@code SHA-256(normalizedLastName + '|' + postcode)}. A {@code null} postcode contributes
-     * an empty segment.
+     * of {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}. The fixed {@code 'V2'}
+     * version tag is mixed in so the value differs from the version-1 household id. A {@code null}
+     * postcode contributes an empty segment.
      */
     private static String householdId(String normalizedLastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((normalizedLastName + "|" + (postcode == null ? "" : postcode))
+                .digest((IdentityKeys.VERSION_TAG + "|" + normalizedLastName
+                        + "|" + (postcode == null ? "" : postcode))
                     .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
@@ -794,6 +800,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "UNKNOWN";
         }
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Derive the version-2 region code that goes INSIDE the identifiers (the member id): the plain
+     * region from {@link #deriveRegion} with the fixed {@code 'V2'} version tag mixed in as a prefix
+     * (e.g. {@code 'NSW'} -&gt; {@code 'V2NSW'}). This is used only for the identifiers; the
+     * user-facing {@code locality}, {@code timezone} and the owner segment's derived region keep the
+     * plain region code and never carry the version tag.
+     */
+    private static String deriveRegionV2(String postcode, String city) {
+        return IdentityKeys.VERSION_TAG + deriveRegion(postcode, city);
     }
 
     /**

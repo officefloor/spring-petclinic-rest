@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -35,8 +36,10 @@ public interface OwnerMapper {
         expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion",
+        expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity",
+        expression = "java(identity(owner))")
     @Mapping(target = "ageBand",
         expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear",
@@ -205,14 +208,27 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's identity key, the single value into which all duplicate detection is
-     * consolidated: the full lower-case hex SHA-256 over
+     * Derive the owner's version-2 identity key, the single value into which all duplicate detection
+     * is consolidated: the full lower-case hex SHA-256 over the fixed 'V2' version tag and
      * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are
      * duplicates only when their whole identity keys are equal. A null email or last name contributes
      * an empty segment.
      */
     default String identityKey(Owner owner) {
         return IdentityKeys.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+    }
+
+    /**
+     * Build the owner's version-2 {@code identity} object, grouping the three rederived identifiers:
+     * the stored {@code memberId} and {@code householdId} (both assigned with the version-2 algorithm
+     * at create time) plus the derived {@link #identityKey(Owner) identityKey}.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(identityKey(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
     }
 
     /**
