@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -18,8 +19,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * '+' and country code when present, otherwise assuming '+61' and dropping a single leading '0'),
  * rejecting with 400 when it cannot form a valid E.164 number; the normalized value is
  * written back onto the body. When an optional {@code email} is present it must be a syntactically
- * valid address (else 400); it is lower-cased and written back. On success it publishes the body for
- * {@link BuildOwner} to map.
+ * valid address (else 400); it is lower-cased and written back. A supplied {@code registrationDate}
+ * later than the server's current date is rejected with 400 (an absent date is accepted and defaults
+ * to today when the owner is built). On success it publishes the body for {@link BuildOwner} to map.
  */
 public class ValidateOwnerFields {
 
@@ -39,6 +41,12 @@ public class ValidateOwnerFields {
         }
         checkPresent("city", request.getCity(), errors);
         checkPresent("telephone", request.getTelephone(), errors);
+        // A supplied registrationDate may not be in the future: reject a date later than the
+        // server's current date. Absent is accepted (it defaults to today when the owner is built).
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            errors.add("registrationDate");
+        }
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
