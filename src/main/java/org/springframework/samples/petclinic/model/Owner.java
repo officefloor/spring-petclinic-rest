@@ -80,6 +80,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "postcode")
     private String postcode;
 
@@ -361,12 +364,30 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4, derived from {@link #getMembershipPoints()}:
-     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more
-     * points.
+     * The owner's membership level, a number from 1 to 4. Ordinarily it is the level derived from
+     * {@link #getMembershipPoints()} (level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5
+     * points, and level 4 for 6 or more points). When an explicit level has been assigned at creation
+     * time — because it was capped to at most one above the maximum level among the owner's existing
+     * household members — that stored value is returned instead.
+     */
+    public Integer getMembershipLevel() {
+        if (this.membershipLevel != null) {
+            return this.membershipLevel;
+        }
+        return getComputedMembershipLevel();
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
+    }
+
+    /**
+     * The membership level derived purely from {@link #getMembershipPoints()} (before any
+     * household level ceiling is applied): level 1 for 0-1 points, level 2 for 2-3 points, level 3
+     * for 4-5 points, and level 4 for 6 or more points.
      */
     @Transient
-    public Integer getMembershipLevel() {
+    public Integer getComputedMembershipLevel() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;

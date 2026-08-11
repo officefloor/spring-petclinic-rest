@@ -196,12 +196,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // same stable householdId as anyone sharing its normalized last name and postcode, without any
         // explicit link. This computed value drives duplicate detection and the household size.
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
-        // A second owner joining an existing household (same computed householdId) is rejected as a
-        // household duplicate. Declaring 'sharesHousehold' only bypasses this block — it no longer
-        // creates the link, since the link is now implicit in the computed householdId.
-        if (!sharesHousehold && isHouseholdInUse(owner)) {
-            throw new DuplicateIdentityException(owner.getIdentityKey());
-        }
+        // A new owner may join an existing household (same computed householdId); rather than being
+        // rejected, the joiner is admitted with a capped membership level (see below).
         // Remaining duplicate detection is consolidated into the single derived identity key: a create
         // is rejected when the new owner's whole identity key equals an existing owner's.
         if (isIdentityKeyInUse(owner.getIdentityKey())) {
@@ -223,6 +219,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(deduplicateCustomerCode(customerCodeFor(owner)));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
+        owner.setMembershipLevel(cappedMembershipLevel(owner));
         // A declared household member (one that set 'sharesHousehold' to join an existing household) is
         // not a suspected duplicate; otherwise fall back to the soft last-name + postcode match.
         Integer possibleDuplicateOf = sharesHousehold ? null : possibleDuplicateOf(owner);
@@ -767,23 +764,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether the owner being created joins an existing household, i.e. some other owner
-     * already carries the same computed {@code householdId} (equivalently, shares its normalized last
-     * name and postcode). An owner with no postcode is never treated as joining a household, mirroring
-     * the soft-duplicate rule that an owner with no postcode can never match one.
+     * Computes the membership level to assign to the owner being created, applying the household
+     * level ceiling: a new owner's level may not exceed one above the current maximum membership
+     * level among their existing household members. The owner's own naturally derived level (see
+     * {@link Owner#getComputedMembershipLevel()}) is returned unchanged when there is no existing
+     * household member; otherwise it is capped at {@code maxHouseholdLevel + 1}. Existing members are
+     * the non-deleted owners already sharing the owner's {@code householdId}; the owner being created
+     * is not yet persisted, so it is naturally excluded.
      *
-     * @param owner the owner being created, with {@code householdId} already computed
-     * @return {@code true} if another owner already belongs to the same household
+     * @param owner the owner being created, with {@code householdId} and the fields driving its
+     *              membership level already set
+     * @return the (possibly capped) membership level to store on the owner
      */
-    private boolean isHouseholdInUse(Owner owner) {
-        if (isBlank(owner.getPostcode())) {
-            return false;
-        }
+    private int cappedMembershipLevel(Owner owner) {
+        int naturalLevel = owner.getComputedMembershipLevel();
         String householdId = owner.getHouseholdId();
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> existing.getId() != null
+        if (householdId == null) {
+            return naturalLevel;
+        }
+        java.util.OptionalInt maxHouseholdLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getId() != null
                 && !existing.isDeleted()
-                && householdId.equals(existing.getHouseholdId()));
+                && householdId.equals(existing.getHouseholdId()))
+            .mapToInt(Owner::getMembershipLevel)
+            .max();
+        if (maxHouseholdLevel.isEmpty()) {
+            return naturalLevel;
+        }
+        return Math.min(naturalLevel, maxHouseholdLevel.getAsInt() + 1);
     }
 
     /**
