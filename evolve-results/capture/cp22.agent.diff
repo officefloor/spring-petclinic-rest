@@ -1,0 +1,145 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 16c7a2a3..c0c468da 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -131,6 +134,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 383eb83d..6228d456 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -152,9 +152,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // Reject the request once the day's owner-creation limit is reached: when 100 or more owners
+         // already carry this adjusted business day's registration date, no further owners may be
+         // created for that day.
+-        if (countOwnersRegisteredOn(effectiveRegistrationDate) >= MAX_OWNERS_PER_DAY) {
++        int ownersRegisteredToday = countOwnersRegisteredOn(effectiveRegistrationDate);
++        if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
+             throw new DailyOwnerLimitExceededException(effectiveRegistrationDate);
+         }
++        // Flag a bulk signup once more than 80 owners have already been created for this
++        // business day, sharing the same daily accumulation path as the create-limit rule above.
++        boolean bulkSignupWarning = ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD;
+         // Reject the request when the owner's city is already full: a city that already holds the
+         // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
+         if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
+@@ -211,6 +215,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // name, compared case-insensitively. Computed against the current owners so the new owner
+         // itself is never counted.
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
++        // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
++        owner.setBulkSignupWarning(bulkSignupWarning);
+         // Store the business-day-adjusted effective registration date computed above. This defaults
+         // to the server's current date when none was supplied and rolls any weekend date forward to
+         // the following Monday, so everything derived from it (e.g. the membership number's year
+@@ -440,6 +446,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int MAX_OWNERS_PER_DAY = 100;
+ 
++    /**
++     * The number of owners that may be created on a single day before the bulk-signup warning is
++     * flagged. Once more than this many owners already carry a given day's registration date, a
++     * newly created owner is flagged with {@code bulkSignupWarning} set true.
++     */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     /**
+      * Count the existing owners whose registration date is the given day. Called before the new
+      * owner is saved, so the returned value reflects the owners that already existed at creation
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..2fe92913 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..6b29bf04 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2ad0e1e7..80a775d2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT(11),
++  bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831a..9d354cb2 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7ac0b9d8..02166de2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2152,6 +2152,15 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created for this
++                owner's registration date at the time this owner was created,
++                otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
