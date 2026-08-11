@@ -31,6 +31,28 @@ public final class OwnerIdentity {
         return tel + "|" + em + "|" + hh;
     }
 
+    /**
+     * The hash segment of an owner's {@code '<REGION>-<HASH8>'} customer code: the first 8
+     * upper-case hex characters of SHA-256 over the normalised telephone concatenated with the
+     * last name. The telephone is expected to already be in E.164 form (as stored).
+     */
+    public static String customerHash(String normalizedTelephone, String lastName) {
+        String tel = normalizedTelephone == null ? "" : normalizedTelephone;
+        String last = lastName == null ? "" : lastName;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((tel + last).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
     /** Stable 16-char upper-case hex identifier derived from a household's last name and address. */
     public static String householdId(String lastName, String address) {
         try {

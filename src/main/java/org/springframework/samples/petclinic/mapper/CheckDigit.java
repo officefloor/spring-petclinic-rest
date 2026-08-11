@@ -4,8 +4,9 @@ package org.springframework.samples.petclinic.mapper;
  * Computes an owner's {@code checkDigit} &mdash; a single Luhn check digit (0-9) over the digits
  * contained in the owner's {@code customerCode}.
  *
- * <p>Non-digit characters (the separators in {@code '<CITY3>-<LAST3>-<NNNN>'}) are ignored. The
- * digits are processed right-to-left, doubling every second digit starting with the rightmost;
+ * <p>Non-digit characters (the region letters and the separator in {@code '<REGION>-<HASH8>'}, and
+ * the {@code A-F} hex letters of the hash) are ignored. The digits are processed right-to-left,
+ * doubling every second digit starting with the rightmost;
  * a doubled value above nine has nine subtracted. The check digit is the amount that brings the
  * running sum up to the next multiple of ten.
  */

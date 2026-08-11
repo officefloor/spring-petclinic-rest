@@ -41,6 +41,23 @@ public final class Locality {
         return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
+    /**
+     * The region carried by a {@code '<REGION>-<HASH8>'} customer code &mdash; its prefix up to the
+     * first {@code '-'}. This is now the single source of an owner's locality, so the value derives
+     * from the region-and-hash identity rather than being recomputed from city and postcode.
+     * Returns {@code "UNKNOWN"} when the code is absent or carries no region prefix.
+     */
+    public static String ofCustomerCode(String customerCode) {
+        if (customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = customerCode.indexOf('-');
+        if (dash <= 0) {
+            return "UNKNOWN";
+        }
+        return customerCode.substring(0, dash);
+    }
+
     /** The region whose range contains {@code postcode}, or {@code null} when none does. */
     private static String regionForPostcode(String postcode) {
         if (postcode == null || !postcode.matches("[0-9]{4}")) {
