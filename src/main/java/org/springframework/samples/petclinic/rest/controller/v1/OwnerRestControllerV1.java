@@ -114,6 +114,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
         }
+        java.time.LocalDate today = java.time.LocalDate.now();
+        long createdToday = this.clinicService.findAllOwners().stream()
+            .map(Owner::getRegistrationDate)
+            .filter(today::equals)
+            .count();
+        if (createdToday >= 100) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "The maximum number of owners for today has already been reached");
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(java.util.Objects::nonNull)
