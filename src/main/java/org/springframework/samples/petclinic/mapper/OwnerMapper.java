@@ -23,8 +23,23 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "membershipNumber",
+        expression = "java(membershipNumber(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Build the owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is
+     * the last two digits of the registrationDate year. Returns null when either source field is
+     * absent so owners without an assigned code or registration date serialize cleanly.
+     */
+    default String membershipNumber(Owner owner) {
+        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+            owner.getRegistrationDate().getYear() % 100);
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
