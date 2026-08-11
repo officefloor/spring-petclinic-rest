@@ -34,6 +34,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Locality.ofCustomerCode(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.mapper.Timezone.ofCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
