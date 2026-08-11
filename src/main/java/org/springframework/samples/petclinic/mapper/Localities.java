@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Map;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Derives an owner's canonical region ("locality"). The postcode is preferred:
  * a 4-digit postcode is matched against each region's inclusive range first, and
@@ -63,6 +65,29 @@ public final class Localities {
             return region;
         }
         return forCity(city);
+    }
+
+    /**
+     * Returns the owner's canonical region ("locality"), sourced from the region-and-hash
+     * {@code customerCode} identity: the {@code <REGION>} prefix of the {@code customerCode}
+     * (the part before the first {@code '-'}) when one has been assigned, so the locality is
+     * exactly the region the identity was built on. When the owner has no customer code yet
+     * (for example seed data created before the identity was assigned) derivation falls back to
+     * {@link #forCityAndPostcode(String, String)} over the owner's city and postcode, which
+     * computes the same region the identity would have used.
+     *
+     * @param owner the owner whose locality is required
+     * @return the canonical region string, or {@code "UNKNOWN"} when unknown
+     */
+    public static String forOwner(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
+        }
+        return forCityAndPostcode(owner.getCity(), owner.getPostcode());
     }
 
     /**

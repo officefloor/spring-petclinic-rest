@@ -165,7 +165,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdMembers.size() + 1);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
+            owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -212,36 +213,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a new owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where
-     * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} is the
-     * upper-cased first three letters of the last name, and {@code NNNN} is a per-city 4-digit
-     * zero-padded sequence equal to one more than the number of owners already in that city
-     * (e.g. {@code 'SYD-SMI-0007'}).
+     * Builds the customer code for a new owner, formatted {@code '<REGION>-<HASH8>'} where
+     * {@code REGION} is the canonical region derived from the owner's postcode (falling back to
+     * the city when the postcode is absent or in no known range, see
+     * {@link org.springframework.samples.petclinic.mapper.Localities#forCityAndPostcode}), and
+     * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
+     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). Unlike
+     * the previous city-prefixed scheme it carries no per-city sequence number, so the identity is
+     * a pure function of the owner's region, telephone and last name.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param city                the owner's city
+     * @param postcode            the owner's postcode, may be {@code null}
+     * @param normalizedTelephone the owner's telephone, already normalized to E.164
+     * @param lastName            the owner's last name
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String cityPrefix = first3Upper(city);
-        String lastPrefix = first3Upper(lastName);
-        String cityKey = normalizeForHousehold(city);
-        long sequence = this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(cityKey))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+    private String customerCode(String city, String postcode, String normalizedTelephone, String lastName) {
+        String region = org.springframework.samples.petclinic.mapper.Localities
+            .forCityAndPostcode(city, postcode);
+        String hash8 = sha256UpperHex((normalizedTelephone == null ? "" : normalizedTelephone)
+            + (lastName == null ? "" : lastName), 8);
+        return region + "-" + hash8;
     }
 
     /**
-     * Returns the upper-cased first three characters of {@code value}, or fewer if the value is
-     * shorter. A {@code null} value yields the empty string.
+     * Returns the first {@code length} upper-case hex characters of the SHA-256 digest of the
+     * UTF-8 bytes of {@code value}.
      *
-     * @param value the source value
-     * @return the upper-cased first three characters
+     * @param value  the source value to hash
+     * @param length the number of leading hex characters to return
+     * @return the leading upper-case hex characters of the digest
      */
-    private String first3Upper(String value) {
-        String v = (value == null ? "" : value);
-        return v.substring(0, Math.min(3, v.length())).toUpperCase(java.util.Locale.ROOT);
+    private String sha256UpperHex(String value, int length) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, length).toUpperCase(java.util.Locale.ROOT);
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
