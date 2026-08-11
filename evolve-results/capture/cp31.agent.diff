@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java
+new file mode 100644
+index 00000000..d7464949
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/CheckDigit.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Computes an owner's {@code checkDigit} &mdash; a single Luhn check digit (0-9) over the digits
++ * contained in the owner's {@code customerCode}.
++ *
++ * <p>Non-digit characters (the separators in {@code '<CITY3>-<LAST3>-<NNNN>'}) are ignored. The
++ * digits are processed right-to-left, doubling every second digit starting with the rightmost;
++ * a doubled value above nine has nine subtracted. The check digit is the amount that brings the
++ * running sum up to the next multiple of ten.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /** Luhn check digit (0-9) over the digits contained in {@code s}. */
++    public static int of(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f3a1316d..7c6702a2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,8 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" "
+             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "checkDigit",
++        expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1b286643..02c97a0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2117,6 +2117,16 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: A single Luhn check digit (0-9) computed over the digits of the
++                owner's customerCode (non-digit separators are ignored).
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable shared identifier for owners in the same household
