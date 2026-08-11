@@ -177,8 +177,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // declared member is not a suspected duplicate, so no owner is ever flagged here.
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
-        owner.setCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
-            owner.getTelephone(), owner.getLastName()));
+        owner.setCustomerCode(deduplicateCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
+            owner.getTelephone(), owner.getLastName())));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -246,6 +246,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String hash8 = sha256UpperHex((normalizedTelephone == null ? "" : normalizedTelephone)
             + (lastName == null ? "" : lastName), 8);
         return region + "-" + hash8;
+    }
+
+    /**
+     * Ensures the computed {@code customerCode} is unique across existing owners. When {@code baseCode}
+     * does not collide with any existing owner's {@code customerCode} it is returned unchanged.
+     * Otherwise {@code '-<n>'} is appended, using the smallest {@code n} of 2 or more that yields a
+     * value not already in use, and that de-duplicated code is returned.
+     *
+     * @param baseCode the freshly computed customer code
+     * @return {@code baseCode} if unused, otherwise {@code baseCode + "-" + n} for the smallest free n
+     */
+    private String deduplicateCustomerCode(String baseCode) {
+        java.util.Set<String> inUse = this.clinicService.findAllOwners().stream()
+            .map(org.springframework.samples.petclinic.model.Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!inUse.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (inUse.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
