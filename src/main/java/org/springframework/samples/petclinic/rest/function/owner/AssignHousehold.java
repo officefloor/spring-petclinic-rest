@@ -3,65 +3,42 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns a shared {@code householdId} when a create-owner request opts in with
- * {@code sharesHousehold=true} and there is an existing owner with the same last name and
- * address (the address compared in its normalized form via {@link AddressNormalizer} — the
- * the same normalized last-name-and-address rule). The identifier is <em>stable</em>: it is derived
- * deterministically from the normalized last name and address, so every housemate computes
- * the same value regardless of creation order. The value is set on the newly built
- * {@link Owner} and back-filled onto the existing housemate(s) so both carry it.
+ * Assigns the owner's <em>deterministic</em> {@code householdId}: the first 12 hex characters
+ * of SHA-256 over {@code normalizedLastName + '|' + postcode}. Because the value is derived
+ * purely from the last name and postcode, every owner sharing those two fields computes the
+ * <em>same</em> identifier automatically — no cross-owner lookup and no back-fill are needed.
  *
- * <p>Runs after {@link BuildOwner} (so the entity exists) and before {@link SaveOwner}; when
- * the request does not opt in, or opts in but has no existing household to join, it is a no-op.
+ * <p>This is why {@code sharesHousehold} no longer <em>creates</em> the household link: the link
+ * exists by construction. The flag only tells the later duplicate checks to admit a second owner
+ * of the same household as a declared member (see {@link CheckOwnerIdentityUnique}).
+ *
+ * <p>Runs after {@link BuildOwner} (so the entity — hence its last name and postcode — exists)
+ * and before {@link CheckOwnerIdentityUnique}, mutating the built {@link Owner} in place.
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner built, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = normalize(request.getLastName());
-        String address = AddressNormalizer.normalize(request.getAddress());
-        List<Owner> housemates = new ArrayList<>();
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
-                housemates.add(existing);
-            }
-        }
-        if (housemates.isEmpty()) {
-            return;
-        }
-        String householdId = householdId(lastName, address);
-        built.setHouseholdId(householdId);
-        for (Owner mate : housemates) {
-            if (!householdId.equals(mate.getHouseholdId())) {
-                mate.setHouseholdId(householdId);
-                ownerRepository.save(mate);
-            }
-        }
+    public void service(@Val Owner built) {
+        String lastName = normalize(built.getLastName());
+        String postcode = built.getPostcode() == null ? "" : built.getPostcode();
+        built.setHouseholdId(householdId(lastName, postcode));
     }
 
-    /** A stable household identifier: first 12 upper-case hex chars of SHA-256 over the
-     *  normalized last name and address, so all housemates derive the same value. */
-    private static String householdId(String lastName, String address) {
+    /** A stable household identifier: first 12 hex chars of SHA-256 over the normalized last
+     *  name and postcode, so all members of the same household derive the same value. */
+    static String householdId(String normalizedLastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + address).getBytes(StandardCharsets.UTF_8));
+                    .digest((normalizedLastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, 12).toUpperCase();
+            return sb.substring(0, 12);
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
