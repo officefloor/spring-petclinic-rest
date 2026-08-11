@@ -160,7 +160,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where {@code YY} is
-     * the last two digits of the {@code registrationDate} year (e.g. {@code LON-SMI-0007-M26}).
+     * the last two digits of the {@code registrationDate} year (e.g. {@code NSW-1A2B3C4D-M26}).
      * Derived from the owner's own fields; {@code null} until both are assigned.
      */
     @Transient
@@ -191,27 +191,43 @@ public class Owner extends Person {
         return Math.min(level, 3);
     }
 
-    /** City -> canonical region for the {@code locality} derivation. */
+    /** City -> canonical region for the {@code region} derivation. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
-    /** Region -> inclusive 4-digit postcode range {low, high} for the {@code locality} derivation. */
+    /** Region -> inclusive 4-digit postcode range {low, high} for the {@code region} derivation. */
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     /**
-     * The owner's locality, derived by looking up the region by {@link #postcode} range first
-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only falling back to the fixed
-     * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is
-     * absent or in no known range. Returns {@code UNKNOWN} when neither source resolves a region.
+     * The region code that forms the {@code REGION} segment of the {@link #customerCode}, derived
+     * by looking up the region by {@link #postcode} range first (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), and only falling back to the fixed city-to-region table (Sydney->NSW,
+     * Melbourne->VIC, Brisbane->QLD) when the postcode is absent or in no known range. Returns
+     * {@code UNKNOWN} when neither source resolves a region.
      */
     @Transient
-    public String getLocality() {
+    public String getRegion() {
         String region = regionForPostcode(this.postcode);
         if (region != null) {
             return region;
         }
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /**
+     * The owner's locality: the {@code REGION} segment of its {@link #customerCode} (everything
+     * before the first {@code '-'}). Because the customer code is {@code <REGION>-<HASH8>} with
+     * {@code REGION} derived from the postcode, the locality now simply reads that region back off
+     * the identity. Returns {@code UNKNOWN} until a customer code is assigned.
+     */
+    @Transient
+    public String getLocality() {
+        if (this.customerCode == null) {
+            return "UNKNOWN";
+        }
+        int dash = this.customerCode.indexOf('-');
+        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
     }
 
     /** Region whose postcode range contains the given postcode, or {@code null} when none does. */
