@@ -22,7 +22,7 @@ public class RequireOwnerFields {
         List<String> missing = new ArrayList<>();
         requireText("firstName", request.getFirstName(), missing);
         requireText("lastName", request.getLastName(), missing);
-        requireText("address", request.getAddress(), missing);
+        requireAddress(request.getAddress(), missing);
         requireText("city", request.getCity(), missing);
         requireText("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
@@ -34,6 +34,16 @@ public class RequireOwnerFields {
     private static void requireText(String field, String value, List<String> missing) {
         if (value == null || value.isBlank()) {
             missing.add(field);
+        }
+    }
+
+    /**
+     * The address is rejected when it is blank <em>after</em> normalization, so a value that
+     * collapses to nothing is treated the same as a missing one.
+     */
+    private static void requireAddress(String value, List<String> missing) {
+        if (AddressNormalizer.normalize(value).isEmpty()) {
+            missing.add("address");
         }
     }
 }
