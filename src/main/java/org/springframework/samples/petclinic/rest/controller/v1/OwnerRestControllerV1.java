@@ -134,6 +134,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner with this telephone number already exists");
         }
+        String normalizedEmail = owner.getEmail();
+        if (normalizedEmail != null) {
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .map(Owner::getEmail)
+                .filter(java.util.Objects::nonNull)
+                .map(existing -> existing.toLowerCase(java.util.Locale.ROOT))
+                .anyMatch(normalizedEmail::equals);
+            if (emailInUse) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "An owner with this email address already exists");
+            }
+        }
         String lastNameKey = normalizeForHousehold(owner.getLastName());
         String addressKey = normalizeForHousehold(owner.getAddress());
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
