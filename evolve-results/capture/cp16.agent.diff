@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 37493ef3..6bab7add 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -122,7 +122,7 @@ public class Owner extends Person {
+ 
+     /**
+      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where {@code YY} is
+-     * the last two digits of the {@code registrationDate} year (e.g. {@code SMI-0007-M26}).
++     * the last two digits of the {@code registrationDate} year (e.g. {@code LON-SMI-0007-M26}).
+      * Derived from the owner's own fields; {@code null} until both are assigned.
+      */
+     @Transient
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 021c9d8a..80a820b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -141,7 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
++        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+             owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
+@@ -290,23 +290,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Builds the customer code assigned to a newly created owner. The code is formatted
+-     * {@code <LAST3>-<NNNN>} where {@code LAST3} is the upper-cased first three letters of
+-     * the owner's last name and {@code NNNN} is a global 4-digit zero-padded sequence equal
+-     * to one more than the current number of owners (e.g. {@code SMI-0007}).
++     * {@code <CITY3>-<LAST3>-<NNNN>} where {@code CITY3} is the upper-cased first three letters
++     * of the owner's city, {@code LAST3} is the upper-cased first three letters of the owner's
++     * last name and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more
++     * than the number of owners already in that city (e.g. {@code LON-SMI-0007}).
+      *
++     * @param city the city of the owner being created
+      * @param lastName the last name of the owner being created
+      * @return the customer code to assign
+      */
+-    private String nextCustomerCode(String lastName) {
+-        StringBuilder last3 = new StringBuilder();
+-        for (int i = 0; i < lastName.length() && last3.length() < 3; i++) {
+-            char c = lastName.charAt(i);
+-            if (Character.isLetter(c)) {
+-                last3.append(Character.toUpperCase(c));
++    private String nextCustomerCode(String city, String lastName) {
++        String city3 = letterPrefix3(city);
++        String last3 = letterPrefix3(lastName);
++        String normalizedCity = normalizeIdentity(city);
++        long sequence = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
++            .count() + 1L;
++        return String.format("%s-%s-%04d", city3, last3, sequence);
++    }
++
++    /**
++     * Returns the upper-cased first three letters of the given value, skipping any non-letter
++     * characters. Values with fewer than three letters yield a shorter prefix.
++     *
++     * @param value the source text
++     * @return the upper-cased letter prefix (at most three characters, never {@code null})
++     */
++    private static String letterPrefix3(String value) {
++        StringBuilder prefix = new StringBuilder(3);
++        if (value != null) {
++            for (int i = 0; i < value.length() && prefix.length() < 3; i++) {
++                char c = value.charAt(i);
++                if (Character.isLetter(c)) {
++                    prefix.append(Character.toUpperCase(c));
++                }
+             }
+         }
+-        long sequence = this.clinicService.findAllOwners().size() + 1L;
+-        return String.format("%s-%04d", last3, sequence);
++        return prefix.toString();
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1faa40ad..ea91e29e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2101,11 +2101,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3 is
+-                the upper-cased first three letters of lastName and NNNN is a global
++                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where
++                CITY3 is the upper-cased first three letters of city, LAST3 the
++                upper-cased first three letters of lastName and NNNN is a per-city
+                 4-digit zero-padded sequence assigned on create.
+               type: string
+-              example: SMI-0007
++              example: LON-SMI-0007
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+@@ -2113,7 +2114,7 @@ components:
+                 The owner's membership number, formatted '<customerCode>-M<YY>' where
+                 YY is the last two digits of the registrationDate year.
+               type: string
+-              example: SMI-0007-M26
++              example: LON-SMI-0007-M26
+               readOnly: true
+             householdId:
+               title: Household ID
