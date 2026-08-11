@@ -22,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -168,6 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCode(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        flagPossibleDuplicate(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -281,6 +283,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
                 && equalsIgnoreCase(existing.getLastName(), lastName))
             .count();
+    }
+
+    /**
+     * Flags an owner as a possible (soft) duplicate. Although it is not a hard duplicate (its whole
+     * {@link #identityKey(Owner) identityKey} is unique, so the create was not rejected), it may
+     * still resemble an existing owner: when it shares an existing owner's lastName (compared
+     * case-insensitively) and postcode while carrying a different telephone, the owner is flagged
+     * with {@code possibleDuplicate=true} and {@code possibleDuplicateOf} set to that existing
+     * owner's id. When no such owner exists the flag is set to {@code false} and no match id is
+     * recorded. An owner with no postcode can never soft-match and is always {@code false}.
+     *
+     * @param owner the owner being created, with its normalized telephone already applied
+     */
+    private void flagPossibleDuplicate(Owner owner) {
+        Owner match = findPossibleDuplicate(owner);
+        if (match != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(match.getId());
+        } else {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
+    }
+
+    /**
+     * Finds the existing owner this owner soft-matches: same lastName (case-insensitive) and same
+     * postcode, but a different telephone. When several existing owners match, the one with the
+     * lowest id is chosen so the result is deterministic. Returns {@code null} when the owner has no
+     * postcode or no such existing owner exists.
+     *
+     * @param owner the owner being created
+     * @return the matching existing owner, or {@code null} when there is no soft-match
+     */
+    private Owner findPossibleDuplicate(Owner owner) {
+        if (isBlank(owner.getPostcode())) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !equalsIgnoreCase(existing.getTelephone(), owner.getTelephone()))
+            .min(Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     /**
