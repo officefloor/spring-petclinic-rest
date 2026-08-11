@@ -2,13 +2,18 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Map;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
- * Derives an owner's locality (canonical region). The postcode is preferred: a 4-digit
- * postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099)
- * fixes the region directly, which disambiguates cities that share a name. Only when the
- * postcode is absent or in no known range does it fall back to the fixed city-to-region
- * table. Kept out of {@link OwnerMapper} so MapStruct does not mistake the helper for an
- * implicit mapping method and apply it to every string property.
+ * Derives an owner's locality (canonical region). Locality now flows from the owner's
+ * region-and-hash {@code customerCode}: the REGION prefix of {@code '<REGION>-<HASH8>'} is the
+ * canonical region, so locality and the identity always agree. When the customerCode has not been
+ * assigned it falls back to deriving the region directly. In that direct derivation the postcode is
+ * preferred: a 4-digit postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
+ * QLD 4000-4099) fixes the region, which disambiguates cities that share a name; only when the
+ * postcode is absent or in no known range does it fall back to the fixed city-to-region table.
+ * Kept out of {@link OwnerMapper} so MapStruct does not mistake the helper for an implicit mapping
+ * method and apply it to every string property.
  */
 public final class Locality {
 
@@ -23,6 +28,22 @@ public final class Locality {
         "QLD", new int[] {4000, 4099});
 
     private Locality() {
+    }
+
+    /**
+     * The owner's locality, read from the REGION prefix of its region-and-hash customerCode so it
+     * agrees with the identity. Falls back to deriving the region from the city and postcode when
+     * the customerCode has not been assigned (e.g. records that never went through create).
+     */
+    public static String of(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.lastIndexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
+        }
+        return of(owner.getCity(), owner.getPostcode());
     }
 
     /**

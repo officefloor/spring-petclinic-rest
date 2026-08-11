@@ -1,40 +1,48 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.mapper.Locality;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}:
- * CITY3 is the upper-cased first three letters of the owner's city, LAST3 the upper-cased
- * first three letters of the owner's last name, and NNNN a per-city 4-digit zero-padded
- * sequence equal to one more than the number of owners already in that city (e.g.
- * {@code 'SYD-SMI-0007'}). Runs after {@link BuildOwner} (the entity, hence its city and
- * last name, exists) and before {@link SaveOwner} (so the new owner is not yet counted),
- * and mutates the built {@link Owner} in place.
+ * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'}: REGION is the
+ * canonical region derived from the owner's postcode (via {@link Locality}, falling back to the
+ * city table, and {@code "UNKNOWN"} when neither resolves), and HASH8 is the first eight
+ * upper-case hex characters of SHA-256 over the normalized telephone concatenated with the last
+ * name (e.g. {@code 'NSW-1A2B3C4D'}). The identity is content-derived and carries no sequence
+ * number, so it is stable and independent of creation order.
+ *
+ * <p>Runs after {@link NormalizeOwnerTelephone} (so the telephone is already E.164) and
+ * {@link BuildOwner} (so the entity, hence its city, postcode and last name, exists), and before
+ * {@link SaveOwner}; it mutates the built {@link Owner} in place. Every value built from the
+ * customerCode — the membership number and its Luhn check digit, the create audit record, and the
+ * derived locality — therefore reflects this region-and-hash identity.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city3 = prefix(owner.getCity());
-        String last3 = prefix(owner.getLastName());
-        String city = normalize(owner.getCity());
-        int sequence = 1;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (city.equals(normalize(existing.getCity()))) {
-                sequence++;
+    public void service(@Val Owner owner) {
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        String hash8 = hash8(owner.getTelephone() + owner.getLastName());
+        owner.setCustomerCode(region + "-" + hash8);
+    }
+
+    /** First eight upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
             }
+            return sb.substring(0, 8).toUpperCase();
         }
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
-    }
-
-    /** Upper-cased first three letters of the value. */
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
-    }
-
-    /** Lower-case and trim, treating null as empty, for case-insensitive city comparison. */
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase();
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
