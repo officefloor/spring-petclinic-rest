@@ -6,12 +6,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
-public class OwnerHouseholdConflictExceptionHandler {
+public class OwnerIdentityConflictExceptionHandler {
 
-    public void handle(@Parameter OwnerHouseholdConflictException ex,
+    public void handle(@Parameter OwnerIdentityConflictException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "An owner with this last name already lives at this address");
+                "An owner with this identity already exists");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }

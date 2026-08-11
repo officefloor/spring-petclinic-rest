@@ -11,14 +11,15 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Runs after {@link BuildOwner} when the request set {@code sharesHousehold: true}: the new owner is
- * joining an existing household (another owner with the same last name at the same address, already
- * permitted by {@link CheckOwnerHouseholdUnique}). Assigns a stable, shared {@code householdId} to the
- * new owner and back-fills it onto the existing household member(s), so every owner in the household
- * reports the same identifier.
+ * joining an existing household (another owner with the same last name at the same address). Assigns
+ * a stable, shared {@code householdId} to the new owner and back-fills it onto the existing household
+ * member(s), so every owner in the household reports the same identifier. The shared householdId then
+ * forms part of each member's {@link OwnerIdentityKey identityKey}, so household members with
+ * different telephones have different keys and are not treated as duplicates.
  *
- * <p>The identifier is derived deterministically from the normalized last name and address (compared
- * the same way as {@link CheckOwnerHouseholdUnique}), so it is stable across creations and identical
- * for everyone in one household regardless of the order they were added.
+ * <p>The identifier is derived deterministically from the normalized last name and address, so it is
+ * stable across creations and identical for everyone in one household regardless of the order they
+ * were added.
  */
 public class AssignHouseholdId {
 

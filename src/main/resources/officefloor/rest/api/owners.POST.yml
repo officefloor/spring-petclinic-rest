@@ -6,25 +6,6 @@ composition:
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   govern: [ transaction ]
-  next: checkTelephoneUnique
-
-# Reject with 409 when the normalized telephone is already used by another owner.
-checkTelephoneUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerTelephoneUnique
-  govern: [ transaction ]
-  next: checkEmailUnique
-
-# Reject with 409 when the lower-cased email is already used by another owner.
-checkEmailUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerEmailUnique
-  govern: [ transaction ]
-  next: checkHouseholdUnique
-
-# Reject with 409 when another owner shares this last name and address (compared
-# case-insensitively with collapsed whitespace), unless the body sets 'sharesHousehold' true.
-checkHouseholdUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerHouseholdUnique
-  govern: [ transaction ]
   next: checkCityCapacity
 
 # Reject with 409 when the owner's city already contains 50 or more owners.
@@ -48,6 +29,15 @@ build:
 # same-lastName/same-address owner(s) a single stable, shared 'householdId'.
 assignHousehold:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId
+  govern: [ transaction ]
+  next: checkIdentity
+
+# Consolidated duplicate check: reject with 409 when the new owner's whole identityKey
+# (normalizedTelephone|email|householdId) equals an existing owner's. Runs after the householdId
+# has been assigned/back-filled (so it is part of the key) and before save (so the not-yet-saved
+# owner is not compared against itself).
+checkIdentity:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckOwnerIdentityUnique
   govern: [ transaction ]
   next: assignHouseholdMemberCount
 
