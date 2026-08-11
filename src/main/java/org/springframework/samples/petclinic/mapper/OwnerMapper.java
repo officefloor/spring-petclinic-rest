@@ -34,6 +34,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected ClinicService clinicService;
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -335,6 +336,20 @@ public abstract class OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Derives the owner's {@code salutation}: the owner's {@code title} and {@code lastName}
+     * separated by a single space (e.g. {@code DR Franklin}), or just the {@code lastName} when no
+     * title was supplied (a {@code null} or blank title).
+     */
+    protected String salutation(Owner owner) {
+        String title = owner.getTitle();
+        String lastName = owner.getLastName();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     public abstract Owner toOwner(OwnerDto ownerDto);
