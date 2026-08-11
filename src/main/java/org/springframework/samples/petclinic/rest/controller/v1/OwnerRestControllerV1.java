@@ -167,8 +167,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -445,7 +445,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * itself, as of this create. Members are the owners sharing the given {@code householdId};
      * the new owner is not yet persisted, so its own membership is added to the existing count.
      * An owner not assigned to a shared household ({@code householdId} is {@code null}) is a
-     * household of one. This snapshot drives the {@code GOLD} membership tier (3 or more members).
+     * household of one.
      *
      * @param householdId the shared household identifier assigned to the owner being created, or
      *                    {@code null} if the owner does not share a household
