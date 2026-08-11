@@ -211,6 +211,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // duplicate. Reject with 409 when a new owner's whole identity key equals an existing one's.
         String identityKey = identityKey(normalizedTelephone, normalizedEmail, householdId);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(
                 identityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
         if (identityInUse) {
@@ -221,6 +222,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // as a household duplicate (409) unless the caller declares 'sharesHousehold', which bypasses
         // the block and admits the owner as a declared household member.
         boolean householdMemberExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (householdMemberExists && !sharesHousehold) {
             throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), normalizedAddress);
@@ -310,7 +312,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft delete: flag the owner deleted and retain the row rather than removing it, so the
+        // owner is still readable via GET afterwards (now carrying 'deleted' true) while the create
+        // endpoint's duplicate/identity checks below skip it.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
