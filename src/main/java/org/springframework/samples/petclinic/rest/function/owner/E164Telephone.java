@@ -13,8 +13,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * </ul>
  * So {@code "0412 345 678"} becomes {@code "+61412345678"}. Returns {@code null} when the
  * input cannot form a valid E.164 number.
+ *
+ * <p>{@link #display(String)} does the inverse presentation step: it renders a stored E.164
+ * number back for humans (country code, space, national digits grouped in threes), e.g.
+ * {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
  */
-final class E164Telephone {
+public final class E164Telephone {
 
     private static final int MIN_DIGITS = 8;
     private static final int MAX_DIGITS = 15;
@@ -56,5 +60,33 @@ final class E164Telephone {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Formats a stored E.164 number for humans: a {@code '+'} and country code, a space, then the
+     * national digits grouped in threes (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). The country code is taken as one digit for the {@code '+1'} NANP
+     * and two digits otherwise, matching the country codes this app normalizes to. Returns
+     * {@code null} when the value is absent or not in E.164 (leading {@code '+'}) form.
+     */
+    public static String display(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String trimmed = e164.trim();
+        if (!trimmed.startsWith("+")) {
+            return null;
+        }
+        String digits = trimmed.substring(1).replaceAll("\\D", "");
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return null;
+        }
+        String national = digits.substring(countryCodeLength);
+        StringBuilder display = new StringBuilder("+").append(digits, 0, countryCodeLength);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
     }
 }
