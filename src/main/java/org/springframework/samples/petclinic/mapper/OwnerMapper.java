@@ -28,6 +28,8 @@ public interface OwnerMapper {
         expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Localities.forCity(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+        expression = "java((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
