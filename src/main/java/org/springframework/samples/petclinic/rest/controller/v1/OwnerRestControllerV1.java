@@ -114,8 +114,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
         validatePostcode(owner.getPostcode(), owner.getCity());
+        java.time.LocalDate serverDate = java.time.LocalDate.now();
+        if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(serverDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Registration date must not be later than the current server date");
+        }
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() != null
-            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+            ? owner.getRegistrationDate() : serverDate;
         java.time.LocalDate businessDate = toBusinessDay(effectiveDate);
         owner.setRegistrationDate(businessDate);
         long createdToday = this.clinicService.findAllOwners().stream()
