@@ -40,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -101,11 +102,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalizes a telephone number on create by stripping every non-digit character and
+     * requiring exactly 10 digits. The stored/returned value is the resulting 10-digit string.
+     *
+     * @param telephone the raw telephone number as submitted
+     * @return the normalized 10-digit telephone number
+     * @throws ResponseStatusException with a 400 status if the value is not exactly 10 digits
+     *         after stripping non-digit characters
+     */
+    private String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Telephone must contain exactly 10 digits after removing non-digit characters");
+        }
+        return digits;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

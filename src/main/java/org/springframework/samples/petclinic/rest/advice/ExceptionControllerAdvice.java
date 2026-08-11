@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Global Exception handler for REST controllers.
@@ -84,6 +85,25 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(AccessDeniedException.class)
     public void handleAccessDeniedException(AccessDeniedException e) throws AccessDeniedException {
         throw e;
+    }
+
+    /**
+     * Handles {@link ResponseStatusException} thrown by controllers to signal a specific HTTP status
+     * (e.g. a 400 Bad Request for a business-rule violation). Without this handler the broad
+     * {@link #handleGeneralException} would catch it first and report it as a 500.
+     *
+     * @param e The {@link ResponseStatusException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} carrying the status and reason from the exception.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        String detailMessage = e.getReason() != null ? e.getReason() : ERROR_INVALID_REQUEST;
+        logger.warn("Request failed at {} {}: {}", request.getMethod(), request.getRequestURI(), detailMessage);
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
+        return ResponseEntity.status(status).body(detail);
     }
 
     /**
