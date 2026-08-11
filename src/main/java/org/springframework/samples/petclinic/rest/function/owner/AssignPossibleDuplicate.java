@@ -16,6 +16,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * 409 and never reaches here) and before {@link SaveOwner} (so the not-yet-saved owner is not
  * compared against itself). When more than one existing owner matches, the earliest (lowest id) is
  * reported, for a deterministic result.
+ *
+ * <p>An existing owner in the <em>same household</em> (same computed {@code householdId}) is never a
+ * soft match: reaching here past the household-duplicate block means this owner is a declared
+ * household member, and a declared member is not a suspected duplicate.
  */
 public class AssignPossibleDuplicate {
 
@@ -36,6 +40,12 @@ public class AssignPossibleDuplicate {
                     continue;
                 }
                 if (!postcode.equals(existing.getPostcode())) {
+                    continue;
+                }
+                // A member of the same computed household is a declared member, not a suspected
+                // duplicate.
+                if (owner.getHouseholdId() != null
+                        && owner.getHouseholdId().equals(existing.getHouseholdId())) {
                     continue;
                 }
                 // A shared telephone is a hard-duplicate concern, not a soft match.

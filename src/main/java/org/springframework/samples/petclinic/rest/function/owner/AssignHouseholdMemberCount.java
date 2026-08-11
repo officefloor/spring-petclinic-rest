@@ -6,13 +6,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code householdMemberCount}: the number of owners in this owner's household
- * (all owners sharing the same {@code householdId}) once this create completes, including the new
- * owner itself. Runs after {@link AssignHouseholdId} has assigned and back-filled the shared
+ * (all owners sharing the same computed {@code householdId}) once this create completes, including
+ * the new owner itself. Runs after {@link AssignHouseholdId} has assigned the deterministic
  * {@code householdId}, but before the new owner is saved, so the existing members are counted from
  * the repository and the not-yet-persisted new owner is added in as one.
  *
- * <p>An owner not joining a household has no {@code householdId}; its household is just itself, so
- * the count is 1.
+ * <p>Because the householdId is keyed on (lastName, postcode), the members counted here are exactly
+ * the owners sharing this owner's last name and postcode.
  */
 public class AssignHouseholdMemberCount {
 

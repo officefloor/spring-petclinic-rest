@@ -6,56 +6,49 @@ import java.security.NoSuchAlgorithmException;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Runs after {@link BuildOwner} when the request set {@code sharesHousehold: true}: the new owner is
- * joining an existing household (another owner with the same last name at the same address). Assigns
- * a stable, shared {@code householdId} to the new owner and back-fills it onto the existing household
- * member(s), so every owner in the household reports the same identifier. The shared householdId then
- * forms part of each member's {@link OwnerIdentityKey identityKey}, so household members with
- * different telephones have different keys and are not treated as duplicates.
+ * Assigns every owner a deterministic {@code householdId}: the first 12 hex characters of
+ * {@code SHA-256(normalizedLastName + '|' + postcode)}. The identifier is a pure function of the
+ * household's last name and postcode, so two owners with the same last name at the same postcode
+ * share it automatically — no back-fill and no dependence on {@code sharesHousehold} or the order
+ * owners were created.
  *
- * <p>The identifier is derived deterministically from the normalized last name and address, so it is
- * stable across creations and identical for everyone in one household regardless of the order they
- * were added.
+ * <p>The shared householdId is what every household rule keys off: it forms part of each owner's
+ * {@link OwnerIdentityKey identityKey}, it is the key the household-duplicate check
+ * ({@link CheckHouseholdUnique}) matches on, and it is the key the household-size input to the
+ * membership level ({@link AssignHouseholdMemberCount}) groups by. {@code sharesHousehold} no longer
+ * creates the link; it only bypasses the duplicate block for a declared household member.
  */
 public class AssignHouseholdId {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = normalize(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        String householdId = deriveHouseholdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        // Back-fill the shared id onto the existing household member(s) so both sides match.
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
-                    && !householdId.equals(existing.getHouseholdId())) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
-            }
-        }
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(deriveHouseholdId(normalize(owner.getLastName()), postcode(owner)));
     }
 
-    /** Stable 12-character upper-case hex identifier derived from the household's name and address. */
-    private static String deriveHouseholdId(String lastName, String address) {
+    /**
+     * The first 12 hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)} — a stable
+     * identifier shared by every owner with the same last name and postcode.
+     */
+    private static String deriveHouseholdId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "\n" + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
+                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** The postcode as supplied, trimmed; an absent postcode contributes the empty string. */
+    private static String postcode(Owner owner) {
+        String postcode = owner.getPostcode();
+        return postcode == null ? "" : postcode.trim();
     }
 
     /** Lower-case, trim, and collapse internal whitespace runs to a single space. */
