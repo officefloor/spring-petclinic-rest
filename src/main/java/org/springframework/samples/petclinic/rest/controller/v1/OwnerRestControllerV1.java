@@ -104,12 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String normalizedAddress = normalizeAddress(owner.getAddress());
-        if (normalizedAddress.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Address must not be blank after normalization");
-        }
-        owner.setAddress(normalizedAddress);
+        applyAddress(owner);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
@@ -308,6 +303,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param address the raw address as submitted, or {@code null} when absent
      * @return the normalized address, or the empty string when the value is blank
      */
+    /**
+     * Resolves and normalizes an owner's postal address, accepting either the structured form
+     * ({@code addressLine1} plus an optional {@code addressLine2}) or the flat {@code address}
+     * input for backward compatibility. The structured form is preferred: when a non-blank
+     * {@code addressLine1} is supplied, both structured lines are normalized (see
+     * {@link #normalizeAddress(String)}) and the stored {@code address} is composed from them —
+     * the normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when an {@code addressLine2} is present. Otherwise the flat
+     * {@code address} input is normalized and stored, and the structured lines are cleared.
+     *
+     * <p>An owner is valid only when it supplies an address in one of these forms; a request with
+     * neither a non-blank {@code addressLine1} nor a non-blank flat {@code address} is rejected.
+     *
+     * @param owner the owner whose address fields are resolved and normalized in place
+     * @throws ResponseStatusException with a 400 status when no address is supplied in either form
+     */
+    private void applyAddress(Owner owner) {
+        String line1 = normalizeAddress(owner.getAddressLine1());
+        String line2 = normalizeAddress(owner.getAddressLine2());
+        String flat = normalizeAddress(owner.getAddress());
+        String composed;
+        if (!line1.isEmpty()) {
+            composed = line2.isEmpty() ? line1 : line1 + " " + line2;
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+        } else {
+            composed = flat;
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+        }
+        if (composed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Address must not be blank after normalization");
+        }
+        owner.setAddress(composed);
+    }
+
     private String normalizeAddress(String address) {
         String collapsed = (address == null ? "" : address)
             .trim().replaceAll("\\s+", " ").toUpperCase(java.util.Locale.ROOT);
