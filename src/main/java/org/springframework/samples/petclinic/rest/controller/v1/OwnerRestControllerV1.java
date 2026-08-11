@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -127,6 +128,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone.length() != 10) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
+        // Email is optional; when present it must be a syntactically valid address and is
+        // stored lower-cased. An invalid address is rejected with a 400.
+        String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
         // Reject the request if the normalized telephone is already used by any other owner.
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
@@ -139,6 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);
+        owner.setEmail(normalizedEmail);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -158,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -241,5 +247,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /**
+     * Pragmatic syntactic check for an email address: a non-empty local part, an {@code @},
+     * and a domain with at least one dot-separated label, none of which contain whitespace or
+     * a second {@code @}. This is deliberately permissive but rejects obviously malformed input.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /**
+     * Validate and normalize an optional owner email. Returns {@code null} when no email was
+     * supplied (the field is optional). When supplied it must be a syntactically valid address,
+     * otherwise an {@link InvalidOwnerFieldsException} is thrown so the request is rejected with a
+     * 400. A valid address is returned lower-cased.
+     */
+    private static String normalizeEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return trimmed.toLowerCase();
     }
 }
