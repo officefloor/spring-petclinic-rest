@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 695db6f8..b158c599 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,8 +24,8 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.GOLD : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER : org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isEmpty()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.Localities.forCity(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 64c4dc4a..5d7376ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -166,9 +166,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a694a419..b127a60f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2143,20 +2143,19 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier. 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members
+-                after this owner was created. Otherwise 'SILVER' when the owner
+-                has no namesakes (namesakeCount is 0) and an email address is
+-                present, and 'BRONZE' in all remaining cases.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++                The owner's numeric membership level, assigned at creation and
++                ranging from 1 to 3. It starts at 1, gains 1 when an email
++                address is present, gains a further 1 when the owner has no
++                namesakes (namesakeCount is 0), and is capped at 3. Level 4 is
++                reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
