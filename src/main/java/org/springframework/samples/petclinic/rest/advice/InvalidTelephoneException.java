@@ -17,16 +17,16 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a request to create an owner supplies a telephone that does not contain
- * exactly ten digits once every non-digit character has been stripped. Carries the
- * offending (raw) value so the exception handler can report it.
+ * Thrown when a request to create an owner supplies a telephone that cannot be reduced to a
+ * valid E.164 number (a leading {@code '+'} followed by 8 to 15 digits). Carries the offending
+ * (raw) value so the exception handler can report it.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     private final String rejectedValue;
 
     public InvalidTelephoneException(String rejectedValue) {
-        super("Telephone must contain exactly 10 digits after removing non-digit characters");
+        super("Telephone must be a valid E.164 number with 8 to 15 digits after the '+'");
         this.rejectedValue = rejectedValue;
     }
 

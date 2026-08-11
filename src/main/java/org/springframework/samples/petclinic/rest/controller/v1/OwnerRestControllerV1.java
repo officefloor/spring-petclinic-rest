@@ -151,7 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -238,34 +238,52 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone by removing every non-digit character and requiring exactly ten
-     * digits to remain.
+     * Normalizes a telephone into E.164 form. Spaces, dashes and brackets are stripped. A value
+     * already carrying a leading {@code '+'} keeps its country code; otherwise country code
+     * {@code +61} is assumed and a single leading {@code '0'} is dropped from the national digits.
+     * The result must carry a leading {@code '+'} followed by 8 to 15 digits.
      *
      * @param rawTelephone the telephone value as supplied by the client
-     * @return the stripped 10-digit telephone value
-     * @throws InvalidTelephoneException if the stripped value is not exactly ten digits
+     * @return the telephone in E.164 form (e.g. {@code +61412345678})
+     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
      */
     private static String normalizeTelephone(String rawTelephone) {
-        String digits = rawTelephone == null ? "" : rawTelephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        if (rawTelephone == null) {
             throw new InvalidTelephoneException(rawTelephone);
         }
-        return digits;
+        String cleaned = rawTelephone.replaceAll("[\\s\\-()]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            String digits = cleaned.substring(1);
+            if (!digits.matches("[0-9]+")) {
+                throw new InvalidTelephoneException(rawTelephone);
+            }
+            e164 = "+" + digits;
+        } else {
+            if (!cleaned.matches("[0-9]+")) {
+                throw new InvalidTelephoneException(rawTelephone);
+            }
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            e164 = "+61" + national;
+        }
+        int digitCount = e164.length() - 1;
+        if (digitCount < 8 || digitCount > 15) {
+            throw new InvalidTelephoneException(rawTelephone);
+        }
+        return e164;
     }
 
     /**
-     * Determines whether any existing owner already uses the given normalized telephone. Each
-     * stored telephone is reduced to its digits before comparison so values that normalize to the
-     * same number are treated as duplicates regardless of formatting.
+     * Determines whether any existing owner already uses the given E.164 telephone. Stored
+     * telephones are themselves E.164, so the values are compared directly.
      *
-     * @param normalizedTelephone the digits-only telephone of the owner being created
-     * @return {@code true} if another owner already has the same normalized telephone
+     * @param e164Telephone the E.164 telephone of the owner being created
+     * @return {@code true} if another owner already has the same E.164 telephone
      */
-    private boolean isTelephoneInUse(String normalizedTelephone) {
+    private boolean isTelephoneInUse(String e164Telephone) {
         return this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
-            .anyMatch(normalizedTelephone::equals);
+            .anyMatch(e164Telephone::equals);
     }
 }

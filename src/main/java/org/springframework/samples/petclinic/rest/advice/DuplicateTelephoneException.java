@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a request to create an owner supplies a telephone whose normalized (digits-only)
- * value is already used by another owner. Carries the offending (raw) value so the exception
- * handler can report it.
+ * Thrown when a request to create an owner supplies a telephone whose E.164 value is already
+ * used by another owner. Carries the offending (raw) value so the exception handler can report
+ * it.
  */
 public class DuplicateTelephoneException extends RuntimeException {
 
