@@ -257,6 +257,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateEmailException} thrown when an owner is created with a
+     * lower-cased email that is already in use by another owner. Returns a 409 Conflict
+     * whose body carries an {@code errors} array naming the offending {@code email} field.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        logger.debug("Duplicate owner email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateHouseholdException} thrown when an owner is created whose lastName
      * and address (compared case-insensitively with collapsed whitespace) already belong to
      * another owner, without the request opting in via {@code sharesHousehold=true}. Returns a
