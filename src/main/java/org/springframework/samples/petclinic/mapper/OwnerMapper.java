@@ -30,6 +30,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.model.Owner.membershipLevel(org.springframework.samples.petclinic.model.Owner.membershipPoints(owner)))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Localities.forOwner(owner))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.mapper.Localities.timezoneForOwner(owner))")
     @Mapping(target = "ageBand",
         expression = "java(owner.getBirthDate() == null ? null : org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.fromValue(org.springframework.samples.petclinic.model.Owner.ageBandOf(owner.getBirthDate(), owner.getRegistrationDate())))")
     @Mapping(target = "contactPreference",
