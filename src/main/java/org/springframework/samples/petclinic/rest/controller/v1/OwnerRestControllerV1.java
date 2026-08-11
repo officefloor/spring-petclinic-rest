@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -108,6 +109,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Normalize the address up front so every downstream use (the required-field check,
+        // household-duplicate detection, the shared household id and the stored/returned value)
+        // works from the same canonical form.
+        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
         List<String> missingFields = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
             missingFields.add("firstName");
@@ -115,7 +120,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        if (isBlank(ownerFieldsDto.getAddress())) {
+        // Reject an address that is blank once normalized (e.g. whitespace-only input).
+        if (isBlank(normalizedAddress)) {
             missingFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -147,7 +153,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // household and every member (the new owner and any existing ones) is stamped with the same
         // stable 'householdId'.
         String normalizedLastName = collapse(ownerFieldsDto.getLastName());
-        String normalizedAddress = collapse(ownerFieldsDto.getAddress());
         String householdId = null;
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             householdId = householdId(normalizedLastName, normalizedAddress);
@@ -155,7 +160,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             // household carries the same stable value.
             for (Owner existing : this.clinicService.findAllOwners()) {
                 if (collapse(existing.getLastName()).equals(normalizedLastName)
-                    && collapse(existing.getAddress()).equals(normalizedAddress)
+                    && normalizeAddress(existing.getAddress()).equals(normalizedAddress)
                     && !householdId.equals(existing.getHouseholdId())) {
                     existing.setHouseholdId(householdId);
                     this.clinicService.saveOwner(existing);
@@ -164,13 +169,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } else {
             boolean householdInUse = this.clinicService.findAllOwners().stream()
                 .anyMatch(existing -> collapse(existing.getLastName()).equals(normalizedLastName)
-                    && collapse(existing.getAddress()).equals(normalizedAddress));
+                    && normalizeAddress(existing.getAddress()).equals(normalizedAddress));
             if (householdInUse) {
                 throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
             }
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setAddress(normalizedAddress);
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizedEmail);
         owner.setHouseholdId(householdId);
@@ -297,6 +303,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Common street-type abbreviations expanded during address normalization.
+     */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
+    /**
+     * Normalize an owner address into its canonical stored/compared form: trim, collapse every run
+     * of whitespace to a single space, upper-case, and expand common street-type abbreviations
+     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). Returns an empty string for
+     * a {@code null} or blank input. The transformation is idempotent, so an already-normalized
+     * address maps to itself.
+     */
+    private static String normalizeAddress(String value) {
+        if (value == null) {
+            return "";
+        }
+        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase();
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
     }
 
     /**
