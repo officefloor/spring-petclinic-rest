@@ -244,12 +244,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Because the household is keyed on (last name, postcode), any existing owner carrying this
         // computed household id is already a member of this household. A second such owner is rejected
-        // as a household duplicate (409) unless the caller declares 'sharesHousehold', which bypasses
-        // the block and admits the owner as a declared household member.
+        // as a household duplicate (409) unless it is admitted as a distinct household member: either
+        // the caller declares 'sharesHousehold', or the new owner supplies an email address. An email
+        // uniquely identifies the owner (and, having cleared the identity check above, is known to be a
+        // distinct identity), so it is treated as declaring a genuine additional member rather than an
+        // accidental re-registration of the same person.
         boolean householdMemberExists = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (householdMemberExists && !sharesHousehold) {
+        boolean admittedAsHouseholdMember = sharesHousehold || normalizedEmail != null;
+        if (householdMemberExists && !admittedAsHouseholdMember) {
             throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), normalizedAddress);
         }
         HttpHeaders headers = new HttpHeaders();
@@ -272,6 +276,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // create: the existing members already stamped with the shared identifier plus this new
         // owner. An owner not admitted into any household is a household of one.
         owner.setHouseholdSize(countHouseholdMembers(householdId) + 1);
+        // Cap the new owner's membership level at one above the current maximum membership level
+        // among their existing household members (members already carrying this household id). The cap
+        // applies to an owner joining an existing household on their own; an explicitly declared
+        // 'sharesHousehold' member keeps its full points-based level. When there is no existing
+        // household member, no cap applies and the level is left uncapped.
+        owner.setMembershipLevelCap(sharesHousehold ? null : householdMembershipLevelCap(householdId));
         // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
         owner.setBulkSignupWarning(bulkSignupWarning);
         // Store the business-day-adjusted effective registration date computed above. This defaults
@@ -541,6 +551,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .count();
+    }
+
+    /**
+     * Compute the membership-level cap for a new owner joining the given household: one above the
+     * current maximum membership level among the existing (non-deleted) members already carrying
+     * this household id, using each member's effective (already-capped) level as returned to
+     * clients. Returns {@code null} when the household has no existing member, so no cap applies.
+     */
+    private Integer householdMembershipLevelCap(String householdId) {
+        if (householdId == null) {
+            return null;
+        }
+        java.util.OptionalInt maxLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(existing -> ownerMapper.membershipLevel(existing))
+            .max();
+        return maxLevel.isPresent() ? maxLevel.getAsInt() + 1 : null;
     }
 
     /**
