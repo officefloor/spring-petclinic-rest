@@ -123,20 +123,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new InvalidOwnerFieldsException(missingFields);
         }
-        // Normalize the telephone by stripping every non-digit character; it must
-        // contain exactly 10 digits afterwards, otherwise the request is rejected.
-        String normalizedTelephone = ownerFieldsDto.getTelephone().replaceAll("\\D", "");
-        if (normalizedTelephone.length() != 10) {
-            throw new InvalidOwnerFieldsException(List.of("telephone"));
-        }
+        // Normalize the telephone into E.164 form; a number that cannot form a valid
+        // E.164 value is rejected with a 400.
+        String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
         // Email is optional; when present it must be a syntactically valid address and is
         // stored lower-cased. An invalid address is rejected with a 400.
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
-        // Reject the request if the normalized telephone is already used by any other owner.
+        // Reject the request if the E.164 telephone is already used by any other owner.
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
-            .map(existing -> existing.replaceAll("\\D", ""))
             .anyMatch(normalizedTelephone::equals);
         if (telephoneInUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
@@ -167,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(toE164(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
@@ -252,6 +248,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /**
+     * Convert a raw telephone into E.164 form. Spaces, dashes and brackets are stripped. A leading
+     * {@code '+'} with its country code is preserved; otherwise the Australian country code
+     * {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the national digits.
+     * The result must be a {@code '+'} followed by 8 to 15 digits, otherwise an
+     * {@link InvalidOwnerFieldsException} is thrown so the request is rejected with a 400.
+     */
+    private static String toE164(String raw) {
+        String cleaned = raw.trim().replaceAll("[\\s()\\-]", "");
+        boolean hasCountryCode = cleaned.startsWith("+");
+        String digits = hasCountryCode ? cleaned.substring(1) : cleaned;
+        if (!digits.matches("\\d+")) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        if (!hasCountryCode) {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            digits = "61" + digits;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        return "+" + digits;
     }
 
     /**
