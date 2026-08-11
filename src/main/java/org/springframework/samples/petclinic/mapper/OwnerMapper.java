@@ -37,6 +37,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -185,39 +186,73 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The highest membership level attainable. Level 4 is reserved for tenure: it is reached only
-     * once the owner has been registered for more than {@link #TENURE_LEVEL_DAYS} days.
+     * The minimum household size (counting the owner itself) that earns household membership
+     * points.
      */
-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+    private static final int HOUSEHOLD_POINTS_SIZE = 3;
 
     /**
-     * An owner must have been registered for strictly more than this many days to qualify for the
-     * tenure-based membership level (level 4). A newly created owner has zero tenure and so never
-     * clears this threshold.
+     * An owner must have been registered for strictly more than this many days to earn the
+     * tenure membership points. A newly created owner has zero tenure and so never clears this
+     * threshold.
      */
-    private static final int TENURE_LEVEL_DAYS = 365;
+    private static final int TENURE_POINTS_DAYS = 365;
 
     /**
-     * Derives the owner's membership level, a number from 1 to {@value #MAX_MEMBERSHIP_LEVEL}:
-     * it starts at 1, gains 1 when an email is present, gains 1 when the owner has no namesakes
-     * (namesakeCount is 0), and gains a final level once the owner's tenure exceeds
-     * {@value #TENURE_LEVEL_DAYS} days. Because a newly created owner has zero tenure, a new owner
-     * never exceeds level 3. The result is capped at {@value #MAX_MEMBERSHIP_LEVEL}.
+     * Derives the owner's membership points: it starts at 0, gains 2 when an email is present,
+     * gains 1 when the owner has no namesakes (namesakeCount is 0), gains 2 when the owner's
+     * household has {@value #HOUSEHOLD_POINTS_SIZE} or more members, and gains 3 once the owner's
+     * tenure exceeds {@value #TENURE_POINTS_DAYS} days.
      */
-    protected Integer membershipLevel(Owner owner) {
-        int level = 1;
+    protected Integer membershipPoints(Owner owner) {
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
         }
-        if (tenureDays(owner) > TENURE_LEVEL_DAYS) {
-            level++;
+        if (householdSize(owner) >= HOUSEHOLD_POINTS_SIZE) {
+            points += 2;
         }
-        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Derives the owner's membership level from their {@link #membershipPoints(Owner) membership
+     * points}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or more.
+     */
+    protected Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
+    }
+
+    /**
+     * The number of owners in this owner's household — the count of owners (including this one)
+     * sharing its {@code householdId}. Returns 0 when the owner has no household identifier.
+     */
+    private long householdSize(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 0;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
     }
 
     /**
