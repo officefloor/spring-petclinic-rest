@@ -1,0 +1,414 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 02afc518..cc56c8f3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -170,6 +170,21 @@ public class Owner extends Person {
+         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+     }
+ 
++    /**
++     * The owner's identity key, the single derived value all duplicate detection is based on. It is
++     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
++     * is the stored E.164 value, the email is the stored lower-cased value (empty when absent) and
++     * the household segment is the {@code householdId} (empty when the owner does not share a
++     * household). Two owners are duplicates only when their whole identity keys are equal.
++     */
++    @Transient
++    public String getIdentityKey() {
++        String telephonePart = this.telephone == null ? "" : this.telephone;
++        String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
++        String householdPart = this.householdId == null ? "" : this.householdId;
++        return telephonePart + "|" + emailPart + "|" + householdPart;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
+deleted file mode 100644
+index ef2241c6..00000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
++++ /dev/null
+@@ -1,44 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.advice;
+-
+-/**
+- * Thrown when a request to create an owner supplies a last name and address that, compared
+- * case-insensitively with collapsed whitespace, already belong to another owner - i.e. the two
+- * owners would share a household. The request may opt in to this by setting {@code sharesHousehold}
+- * to {@code true}, in which case the owner is created and this exception is not raised.
+- */
+-public class DuplicateHouseholdException extends RuntimeException {
+-
+-    private final String lastName;
+-
+-    private final String address;
+-
+-    public DuplicateHouseholdException(String lastName, String address) {
+-        super("An owner with the same last name and address already exists");
+-        this.lastName = lastName;
+-        this.address = address;
+-    }
+-
+-    public String getLastName() {
+-        return this.lastName;
+-    }
+-
+-    public String getAddress() {
+-        return this.address;
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java
+similarity index 59%
+rename from src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java
+rename to src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java
+index 8dbf9d19..244753ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateEmailException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java
+@@ -17,16 +17,18 @@
+ package org.springframework.samples.petclinic.rest.advice;
+ 
+ /**
+- * Thrown when a request to create an owner supplies an email whose lower-cased value is already
+- * used by another owner. Carries the offending (raw) value so the exception handler can report
+- * it.
++ * Thrown when a request to create an owner produces an identity key
++ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) whose whole value is
++ * already used by another owner. This single check consolidates the former separate telephone,
++ * email and household duplicate checks. Carries the offending identity key so the exception handler
++ * can report it.
+  */
+-public class DuplicateEmailException extends RuntimeException {
++public class DuplicateIdentityException extends RuntimeException {
+ 
+     private final String rejectedValue;
+ 
+-    public DuplicateEmailException(String rejectedValue) {
+-        super("An owner with the same email already exists");
++    public DuplicateIdentityException(String rejectedValue) {
++        super("An owner with the same identity key already exists");
+         this.rejectedValue = rejectedValue;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java
+deleted file mode 100644
+index 8eab724a..00000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateTelephoneException.java
++++ /dev/null
+@@ -1,36 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.advice;
+-
+-/**
+- * Thrown when a request to create an owner supplies a telephone whose E.164 value is already
+- * used by another owner. Carries the offending (raw) value so the exception handler can report
+- * it.
+- */
+-public class DuplicateTelephoneException extends RuntimeException {
+-
+-    private final String rejectedValue;
+-
+-    public DuplicateTelephoneException(String rejectedValue) {
+-        super("An owner with the same telephone already exists");
+-        this.rejectedValue = rejectedValue;
+-    }
+-
+-    public String getRejectedValue() {
+-        return this.rejectedValue;
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 6d2d36d4..b93f4cb0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -191,70 +191,26 @@ public class ExceptionControllerAdvice {
+     }
+ 
+     /**
+-     * Handles {@link DuplicateTelephoneException} raised when a request to create an owner supplies a
+-     * telephone whose normalized value already belongs to another owner.
++     * Handles {@link DuplicateIdentityException} raised when a request to create an owner produces an
++     * identity key ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) whose
++     * whole value already belongs to another owner. This single check consolidates the former
++     * separate telephone, email and household duplicate checks.
+      *
+-     * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param e The {@link DuplicateIdentityException} to be handled
+      * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+-     *         whose {@code errors} array names the {@code telephone} field.
++     *         whose {@code errors} array names the {@code identityKey} field.
+      */
+-    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ExceptionHandler(DuplicateIdentityException.class)
+     @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
+         HttpStatus status = HttpStatus.CONFLICT;
+-        logger.debug("Duplicate telephone at {} {}: {}",
++        logger.debug("Duplicate identity key at {} {}: {}",
+             request.getMethod(),
+             request.getRequestURI(),
+             e.getRejectedValue());
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+-        detail.setProperty("errors", List.of("telephone"));
+-        return ResponseEntity.status(status).body(detail);
+-    }
+-
+-    /**
+-     * Handles {@link DuplicateEmailException} raised when a request to create an owner supplies an
+-     * email whose lower-cased value already belongs to another owner.
+-     *
+-     * @param e The {@link DuplicateEmailException} to be handled
+-     * @param request {@link HttpServletRequest} object referring to the current request.
+-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+-     *         whose {@code errors} array names the {@code email} field.
+-     */
+-    @ExceptionHandler(DuplicateEmailException.class)
+-    @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+-        HttpStatus status = HttpStatus.CONFLICT;
+-        logger.debug("Duplicate email at {} {}: {}",
+-            request.getMethod(),
+-            request.getRequestURI(),
+-            e.getRejectedValue());
+-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+-        detail.setProperty("errors", List.of("email"));
+-        return ResponseEntity.status(status).body(detail);
+-    }
+-
+-    /**
+-     * Handles {@link DuplicateHouseholdException} raised when a request to create an owner supplies a
+-     * last name and address that (compared case-insensitively with collapsed whitespace) already
+-     * belong to another owner, and the request did not opt in via {@code sharesHousehold}.
+-     *
+-     * @param e The {@link DuplicateHouseholdException} to be handled
+-     * @param request {@link HttpServletRequest} object referring to the current request.
+-     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+-     *         whose {@code errors} array names the {@code lastName} and {@code address} fields.
+-     */
+-    @ExceptionHandler(DuplicateHouseholdException.class)
+-    @ResponseBody
+-    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+-        HttpStatus status = HttpStatus.CONFLICT;
+-        logger.debug("Duplicate household at {} {}: {} / {}",
+-            request.getMethod(),
+-            request.getRequestURI(),
+-            e.getLastName(),
+-            e.getAddress());
+-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+-        detail.setProperty("errors", List.of("lastName", "address"));
++        detail.setProperty("errors", List.of("identityKey"));
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ac34d6be..5901f7bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,9 +35,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+@@ -139,24 +137,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new MissingOwnerFieldsException(missingFields);
+         }
+         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+-        if (isTelephoneInUse(telephone)) {
+-            throw new DuplicateTelephoneException(ownerFieldsDto.getTelephone());
+-        }
+-        if (isEmailInUse(ownerFieldsDto.getEmail())) {
+-            throw new DuplicateEmailException(ownerFieldsDto.getEmail());
+-        }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (!sharesHousehold
+-            && isHouseholdInUse(ownerFieldsDto.getLastName(), address)) {
+-            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+-        }
+-        if (isCityAtCapacity(ownerFieldsDto.getCity())) {
+-            throw new CityAtCapacityException(ownerFieldsDto.getCity());
+-        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(address);
+         owner.setTelephone(telephone);
++        if (sharesHousehold) {
++            owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
++        }
++        // All duplicate detection is consolidated into the single derived identity key: a create is
++        // rejected only when the new owner's whole identity key equals an existing owner's.
++        if (isIdentityKeyInUse(owner.getIdentityKey())) {
++            throw new DuplicateIdentityException(owner.getIdentityKey());
++        }
++        if (isCityAtCapacity(owner.getCity())) {
++            throw new CityAtCapacityException(owner.getCity());
++        }
+         LocalDate effectiveDate = owner.getRegistrationDate() != null
+             ? owner.getRegistrationDate() : LocalDate.now();
+         LocalDate registrationDate = toBusinessDay(effectiveDate);
+@@ -167,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+-            owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
++            backfillHousehold(owner.getLastName(), owner.getAddress(), owner.getHouseholdId());
+         }
+         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
+         this.clinicService.saveOwner(owner);
+@@ -407,53 +403,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Determines whether any existing owner already uses the given E.164 telephone. Stored
+-     * telephones are themselves E.164, so the values are compared directly.
++     * Determines whether any existing owner already carries the given identity key. The identity key
++     * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) is the single value
++     * all duplicate detection is based on, so two owners collide only when their whole identity keys
++     * are equal.
+      *
+-     * @param e164Telephone the E.164 telephone of the owner being created
+-     * @return {@code true} if another owner already has the same E.164 telephone
++     * @param identityKey the identity key of the owner being created
++     * @return {@code true} if another owner already has the same identity key
+      */
+-    private boolean isTelephoneInUse(String e164Telephone) {
+-        return this.clinicService.findAllOwners().stream()
+-            .map(Owner::getTelephone)
+-            .filter(existing -> existing != null)
+-            .anyMatch(e164Telephone::equals);
+-    }
+-
+-    /**
+-     * Determines whether any existing owner already uses the given email, compared case-insensitively
+-     * on its lower-cased value. Stored emails are themselves lower-cased, so the supplied value is
+-     * lower-cased and compared directly. A {@code null} or blank email is never considered in use.
+-     *
+-     * @param email the email of the owner being created, as supplied by the client
+-     * @return {@code true} if another owner already has the same lower-cased email
+-     */
+-    private boolean isEmailInUse(String email) {
+-        if (email == null || email.isBlank()) {
+-            return false;
+-        }
+-        String normalizedEmail = email.toLowerCase(java.util.Locale.ROOT);
+-        return this.clinicService.findAllOwners().stream()
+-            .map(Owner::getEmail)
+-            .filter(existing -> existing != null)
+-            .anyMatch(normalizedEmail::equals);
+-    }
+-
+-    /**
+-     * Determines whether any existing owner already shares a household with the owner being created,
+-     * i.e. has both the same last name and the same address. Both fields are compared
+-     * case-insensitively after collapsing runs of whitespace to a single space and trimming.
+-     *
+-     * @param lastName the last name of the owner being created
+-     * @param address the address of the owner being created
+-     * @return {@code true} if another owner already has the same last name and address
+-     */
+-    private boolean isHouseholdInUse(String lastName, String address) {
+-        String normalizedLastName = normalizeIdentity(lastName);
+-        String normalizedAddress = normalizeIdentity(address);
++    private boolean isIdentityKeyInUse(String identityKey) {
+         return this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
+-                && normalizeIdentity(existing.getAddress()).equals(normalizedAddress));
++            .map(Owner::getIdentityKey)
++            .anyMatch(identityKey::equals);
+     }
+ 
+     /**
+@@ -586,18 +547,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Assigns the owner being created to the household identified by the given last name and
+-     * address and returns the household's stable shared identifier. The identifier is derived
+-     * deterministically from the normalized last name and address, so every member of the same
+-     * household resolves to the same value regardless of creation order. Any existing member that
+-     * does not yet carry the identifier is back-filled so all household members share it.
++     * Back-fills the given household identifier onto every existing member of the household (those
++     * sharing the same last name and address) that does not yet carry it, so all household members
++     * share the stable identifier regardless of creation order. The identifier itself is derived
++     * deterministically by {@link #householdIdFor(String, String)}.
+      *
+      * @param lastName the last name of the owner being created
+      * @param address the address of the owner being created
+-     * @return the stable household identifier shared by all members of the household
++     * @param householdId the stable household identifier assigned to the owner being created
+      */
+-    private String joinHousehold(String lastName, String address) {
+-        String householdId = householdIdFor(lastName, address);
++    private void backfillHousehold(String lastName, String address, String householdId) {
+         String normalizedLastName = normalizeIdentity(lastName);
+         String normalizedAddress = normalizeIdentity(address);
+         for (Owner existing : this.clinicService.findAllOwners()) {
+@@ -608,7 +567,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 this.clinicService.saveOwner(existing);
+             }
+         }
+-        return householdId;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 56c5e408..fd790f64 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2168,6 +2168,18 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's identity key, the single derived value all duplicate detection
++                is based on, formatted 'normalizedTelephone|email|householdId' where the
++                telephone is the stored E.164 value, the email is its lower-cased value
++                (empty when absent) and the household segment is the householdId (empty when
++                the owner does not share a household). A create is rejected with 409 only when
++                a new owner's whole identity key equals an existing owner's.
++              type: string
++              example: '+61412345678|owner@example.test|A1B2C3D4E5F60718'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
