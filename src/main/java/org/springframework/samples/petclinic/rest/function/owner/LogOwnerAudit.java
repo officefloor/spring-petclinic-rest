@@ -16,8 +16,9 @@ public class LogOwnerAudit {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info(
+                "Owner created: id={} customerCode={} registrationDate={} membershipPoints={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner));
+                MembershipLevel.points(owner), MembershipLevel.of(owner));
     }
 }

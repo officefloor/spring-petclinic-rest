@@ -28,6 +28,8 @@ public interface OwnerMapper {
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "checkDigit",
         expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.of(owner.getCustomerCode()))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
     @Mapping(target = "locality",
