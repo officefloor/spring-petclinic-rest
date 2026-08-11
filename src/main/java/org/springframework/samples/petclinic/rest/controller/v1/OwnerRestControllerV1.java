@@ -116,15 +116,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner with this telephone number already exists");
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastNameKey = normalizeForHousehold(owner.getLastName());
-            String addressKey = normalizeForHousehold(owner.getAddress());
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(lastNameKey)
-                    && normalizeForHousehold(existing.getAddress()).equals(addressKey));
-            if (householdInUse) {
+        String lastNameKey = normalizeForHousehold(owner.getLastName());
+        String addressKey = normalizeForHousehold(owner.getAddress());
+        List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(lastNameKey)
+                && normalizeForHousehold(existing.getAddress()).equals(addressKey))
+            .toList();
+        if (!householdMembers.isEmpty()) {
+            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "An owner with this last name already exists at this address");
+            }
+            String householdId = householdId(lastNameKey, addressKey);
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (!householdId.equals(member.getHouseholdId())) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
             }
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
@@ -165,6 +174,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Derives the stable shared household identifier for a household, keyed on the normalized last
+     * name and address. Because it is a pure function of those normalized keys, every owner in the
+     * same household deterministically computes the same value. The identifier is the first 12
+     * upper-case hex characters of the SHA-256 digest of the two keys joined with a NUL separator
+     * (the separator prevents distinct name/address pairs from colliding).
+     *
+     * @param lastNameKey the normalized last-name comparison key
+     * @param addressKey  the normalized address comparison key
+     * @return the stable household identifier
+     */
+    private String householdId(String lastNameKey, String addressKey) {
+        String seed = lastNameKey + " " + addressKey;
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 12).toUpperCase(java.util.Locale.ROOT);
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
