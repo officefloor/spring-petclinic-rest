@@ -119,7 +119,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        String address = normalizeAddress(ownerFieldsDto.getAddress());
+        // Prefer the structured address fields when present; the flat 'address' input remains accepted
+        // for backward compatibility. When structured, the stored/returned address is the composed
+        // normalized addressLine1 (with a single space and the normalized addressLine2 appended when
+        // addressLine2 is present); otherwise it is the normalized flat 'address'.
+        boolean structured = !isBlank(ownerFieldsDto.getAddressLine1());
+        String addressLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        String address;
+        if (structured) {
+            address = addressLine2.isEmpty() ? addressLine1 : addressLine1 + " " + addressLine2;
+        } else {
+            address = normalizeAddress(ownerFieldsDto.getAddress());
+        }
         List<String> missingFields = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
             missingFields.add("firstName");
@@ -144,6 +156,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(address);
+        owner.setAddressLine1(structured ? addressLine1 : null);
+        owner.setAddressLine2(structured && !addressLine2.isEmpty() ? addressLine2 : null);
         owner.setTelephone(telephone);
         validateEmailDomain(owner.getEmail());
         validatePostcode(owner.getPostcode(), owner.getRegion());
