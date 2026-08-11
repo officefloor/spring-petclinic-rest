@@ -142,6 +142,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
             owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
         }
@@ -373,6 +374,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
                 && normalizeIdentity(existing.getAddress()).equals(normalizedAddress));
+    }
+
+    /**
+     * Counts how many existing owners already share the given first name and last name with the
+     * owner being created. Both names are compared case-insensitively (after trimming and
+     * collapsing runs of whitespace). The count reflects the state before the new owner is
+     * persisted, so a first, otherwise-unique owner yields {@code 0}.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of existing owners sharing the same first and last name
+     */
+    private int namesakeCount(String firstName, String lastName) {
+        String normalizedFirstName = normalizeIdentity(firstName);
+        String normalizedLastName = normalizeIdentity(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getFirstName()).equals(normalizedFirstName)
+                && normalizeIdentity(existing.getLastName()).equals(normalizedLastName))
+            .count();
     }
 
     /**
