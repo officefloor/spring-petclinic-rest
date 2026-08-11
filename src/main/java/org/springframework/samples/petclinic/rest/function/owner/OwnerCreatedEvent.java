@@ -5,8 +5,10 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured record of a successful owner create, serialized to the {@code AUDIT} logger
- * as the JSON object {@code {seq, ownerId, primaryIdentifier, membershipLevel, event}} with
- * {@code event} fixed to {@code "OWNER_CREATED"}.
+ * as the schema-version-2 JSON object
+ * {@code {schemaVersion, seq, ownerId, primaryIdentifier, membershipLevel, event}} with
+ * {@code schemaVersion} fixed to {@code 2} and {@code event} fixed to {@code "OWNER_CREATED"}.
+ * The primary identifier it carries is the owner's version-2 {@code memberId}.
  *
  * <p>{@code primaryIdentifier} carries the owner's <em>current</em> primary identifier, whatever
  * that happens to be. Today that is the unified {@code memberId} (so the JSON key is
@@ -18,6 +20,9 @@ public record OwnerCreatedEvent(long seq, int ownerId, String primaryIdentifier,
 
     /** The one event type this record represents. */
     public static final String EVENT = "OWNER_CREATED";
+
+    /** The audit event schema version this record serializes to. */
+    public static final int SCHEMA_VERSION = 2;
 
     /** JSON key for {@link #primaryIdentifier()} — tracks the current primary identifier's name. */
     private static final String IDENTIFIER_FIELD = "memberId";
@@ -34,7 +39,8 @@ public record OwnerCreatedEvent(long seq, int ownerId, String primaryIdentifier,
     /** This event as a compact JSON object with the fields in specification order. */
     public String toJson() {
         return "{"
-                + "\"seq\":" + this.seq
+                + "\"schemaVersion\":" + SCHEMA_VERSION
+                + ",\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
                 + ",\"" + IDENTIFIER_FIELD + "\":" + quote(this.primaryIdentifier)
                 + ",\"membershipLevel\":" + this.membershipLevel

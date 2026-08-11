@@ -8,15 +8,17 @@ import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.FiscalYear;
-import org.springframework.samples.petclinic.mapper.Locality;
+import org.springframework.samples.petclinic.mapper.RegionCode;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code memberId}, the single unified identifier formatted
- * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the canonical region derived from the owner's
- * postcode (via {@link Locality}, falling back to the city table, and {@code "UNKNOWN"} when neither
- * resolves), FY is the two-digit fiscal year of the business-day-adjusted {@code registrationDate}
+ * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the version-2 identity region (see
+ * {@link RegionCode}) — the fixed {@code 'V2'} tag mixed into the canonical region derived from the
+ * owner's postcode (falling back to the city table, and {@code "UNKNOWN"} when neither resolves),
+ * so e.g. {@code 'V2NSW'} — FY is the two-digit fiscal year of the business-day-adjusted
+ * {@code registrationDate}
  * (see {@link FiscalYear}), HASH8 is the first eight upper-case hex characters of SHA-256 over the
  * normalized telephone concatenated with the last name, and CHK is a single Luhn check digit
  * computed over the digits of {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW261A2B3C4D7'}). The
@@ -31,13 +33,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@link BuildOwner} (so the entity, hence its city, postcode, last name and registrationDate,
  * exists), and before {@link SaveOwner} (so the new owner is not yet among {@code findAll()}); it
  * mutates the built {@link Owner} in place. Every value built from the memberId — the create audit
- * record, the owner-created event and the derived locality — therefore reflects this
- * region-and-hash identity.
+ * record and the owner-created event — therefore reflects this version-2 region-and-hash identity.
+ * The user-facing {@link Locality} is derived independently and stays the plain, un-tagged region.
  */
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        String region = RegionCode.identityRegion(owner.getCity(), owner.getPostcode());
         String fy = String.format("%02d", FiscalYear.endYearOf(owner.getRegistrationDate()) % 100);
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
         String base = region + fy + hash8;

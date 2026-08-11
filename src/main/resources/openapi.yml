@@ -2102,6 +2102,42 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: The owner's version-2 identifiers, grouped together. Every value is rederived
+        with a fixed 'V2' version tag mixed in, so none reproduces a version-1 value.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: The unified business identifier formatted '<REGION><FY><HASH8><CHK>',
+            where REGION is the version-2 identity region ('V2' mixed into the canonical
+            region derived from the postcode, e.g. 'V2NSW'), FY is the two-digit fiscal year
+            (see 'fiscalYear') of the business-day-adjusted registrationDate, HASH8 is the first
+            eight upper-case hex characters of SHA-256 over the normalized telephone
+            concatenated with lastName, and CHK is a single Luhn check digit computed over the
+            digits of '<REGION><FY><HASH8>'. Content-derived and carries no sequence number; a
+            '-<n>' suffix is appended only to de-duplicate a collision. Assigned at creation.
+          type: string
+          example: 'V2NSW261A2B3C4D7'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: The owner's version-2 duplicate-detection key, the 64-character SHA-256
+            hex digest over 'V2|normalizedTelephone|email|soundex(lastName)' (the email segment
+            empty when the owner has no email). The 'V2' version tag is mixed into the hashed
+            input. Two owners may not share the same whole identityKey.
+          type: string
+          example: '3f786850e387550fdab836ed7e6dc881de23001b42322db8...'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: A stable version-2 shared identifier for owners of the same household,
+            the first 12 hex characters of SHA-256 over 'V2|normalizedLastName|postcode'. Every
+            owner sharing a last name and postcode derives the same value.
+          type: string
+          example: 'A1B2C3D4E5F6'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2146,30 +2182,17 @@ components:
               type: string
               example: 'G.F.'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: The unified business identifier formatted
-                '<REGION><FY><HASH8><CHK>', where REGION is the canonical region derived
-                from the postcode, FY is the two-digit fiscal year (see 'fiscalYear') of the
-                business-day-adjusted registrationDate, HASH8 is the first eight upper-case
-                hex characters of SHA-256 over the normalized telephone concatenated with
-                lastName, and CHK is a single Luhn check digit computed over the digits of
-                '<REGION><FY><HASH8>'. Content-derived and carries no sequence number; a
-                '-<n>' suffix is appended only to de-duplicate a collision. Assigned at
-                creation.
-              type: string
-              example: 'NSW261A2B3C4D7'
+            apiVersion:
+              title: API version
+              description: The version of the owner API surface this response conforms to.
+                Fixed at 2 for the version-2 identity release, which groups the identifiers
+                under 'identity'.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: A stable shared identifier for owners who share a household
-                (same last name and address). Assigned when an owner is created with
-                'sharesHousehold=true' to join an existing same-household owner; both
-                housemates then carry the same value. Absent for owners not in a shared
-                household.
-              type: string
-              example: 'A1B2C3D4E5F6'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             namesakeCount:
               title: Namesake count
               description: The number of existing owners that, at the moment this owner was
@@ -2205,12 +2228,12 @@ components:
               readOnly: true
             locality:
               title: Locality
-              description: The canonical region, read at request time from the REGION prefix
-                of the region-and-hash memberId so it always agrees with the identity.
-                When no memberId is present it is derived directly, preferring the
-                postcode range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and falling
-                back to the city-to-region table (Sydney->NSW, Melbourne->VIC,
-                Brisbane->QLD), or 'UNKNOWN' when neither resolves a region.
+              description: The canonical, user-facing region. It is NOT an identifier and never
+                carries the version-2 tag embedded in the memberId's region; it is derived
+                directly at request time, preferring the postcode range (NSW 2000-2099,
+                VIC 3000-3099, QLD 4000-4099) and falling back to the city-to-region table
+                (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when neither
+                resolves a region.
               type: string
               example: 'NSW'
               readOnly: true
@@ -2306,15 +2329,6 @@ components:
                 over its soft capacity ('capacityWarning' is true) - otherwise false.
               type: boolean
               example: false
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: The owner's derived duplicate-detection key, formed as
-                'normalizedTelephone|email|householdId' (the email segment empty when the
-                owner has no email, the householdId segment empty when the owner is not in a
-                shared household). Two owners may not share the same whole identityKey.
-              type: string
-              example: '+61412345678||A1B2C3D4E5F6'
               readOnly: true
             selfLink:
               title: Self link

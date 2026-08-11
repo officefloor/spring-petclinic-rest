@@ -8,12 +8,13 @@ import java.util.Locale;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's {@code identityKey}: the single duplicate-detection key that all owner
- * duplicate rules are now expressed through. The key is the 64-character SHA-256 hex digest of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the telephone
- * is the stored (already E.164-normalized) value, the email is lower-cased or an empty segment
- * when absent, and {@code soundex(lastName)} is the American Soundex code of the last name (see
- * {@link Soundex}).
+ * Derives an owner's {@code identityKey} at version 2: the single duplicate-detection key that all
+ * owner duplicate rules are now expressed through. The key is the 64-character SHA-256 hex digest of
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+ * fixed {@code 'V2'} version tag is mixed into the hashed input (so every key differs from its
+ * version-1 value and no version-1 value is produced again), the telephone is the stored (already
+ * E.164-normalized) value, the email is lower-cased or an empty segment when absent, and
+ * {@code soundex(lastName)} is the American Soundex code of the last name (see {@link Soundex}).
  *
  * <p>Two owners are duplicates only when their <em>whole</em> identityKey is equal: because the
  * telephone is part of the key, two owners with the same last name (hence the same soundex) and
@@ -26,11 +27,14 @@ public final class IdentityKey {
     private IdentityKey() {
     }
 
-    /** The duplicate-detection identity key for {@code owner}: SHA-256 hex over
-     *  {@code normalizedTelephone|lowerEmail|soundex(lastName)}. */
+    /** The fixed version-2 tag mixed into the hashed identity-key input. */
+    private static final String VERSION_TAG = "V2";
+
+    /** The version-2 duplicate-detection identity key for {@code owner}: SHA-256 hex over
+     *  {@code 'V2'|normalizedTelephone|lowerEmail|soundex(lastName)}. */
     public static String of(Owner owner) {
-        String raw = segment(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|"
-                + Soundex.of(owner.getLastName());
+        String raw = VERSION_TAG + "|" + segment(owner.getTelephone()) + "|" + email(owner.getEmail())
+                + "|" + Soundex.of(owner.getLastName());
         return sha256Hex(raw);
     }
 

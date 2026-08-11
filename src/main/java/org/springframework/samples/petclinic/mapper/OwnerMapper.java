@@ -41,8 +41,9 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.Timezone.of(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.mapper.ContactPreference.of(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.mapper.IdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity",
+        expression = "java(org.springframework.samples.petclinic.mapper.OwnerIdentityMapper.of(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
     @Mapping(target = "fiscalYear",
