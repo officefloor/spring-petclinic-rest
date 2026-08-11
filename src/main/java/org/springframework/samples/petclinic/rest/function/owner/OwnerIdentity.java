@@ -53,13 +53,22 @@ public final class OwnerIdentity {
         }
     }
 
-    /** Stable 16-char upper-case hex identifier derived from a household's last name and address. */
-    public static String householdId(String lastName, String address) {
+    /**
+     * The household's stable, deterministic identifier: the first 12 upper-case hex characters of
+     * SHA-256 over {@code normalizedLastName + '|' + postcode}. Owners sharing a last name and
+     * postcode therefore resolve to the same value automatically, regardless of creation order or
+     * whether they opted into {@code sharesHousehold}. Returns {@code null} when no postcode is
+     * given, since a household is keyed on (last name, postcode) and cannot form without one.
+     */
+    public static String householdId(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
         try {
-            String key = normalizeName(lastName) + " " + AddressNormalizer.normalize(address);
+            String key = normalizeName(lastName) + "|" + postcode;
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();

@@ -7,8 +7,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Step of {@code POST /api/owners}: records on the owner the size of its household after this
  * create — the number of owners sharing its {@code householdId} once the new owner is included.
- * Runs after {@link AssignHouseholdId} (which stamps the shared identifier on the new owner and
- * its existing housemates) and before the owner is persisted, so it counts the existing members
+ * Runs after {@link AssignHouseholdId} (which stamps the deterministic identifier on the new owner)
+ * and before the owner is persisted. Because the {@code householdId} is derived from the last name
+ * and postcode, existing housemates already carry the same value, so it counts the existing members
  * carrying the same {@code householdId} plus the new owner itself.
  *
  * <p>An owner with no household leaves the size null.
