@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1f546bff..93311235 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+         owner.setTelephone(normalizedTelephone);
+         owner.setEmail(normalizeEmail(owner.getEmail()));
++        validateEmailDomain(owner.getEmail());
+         validatePostcode(owner.getPostcode(), owner.getCity());
+         java.time.LocalDate serverDate = java.time.LocalDate.now();
+         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(serverDate)) {
+@@ -475,6 +476,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
+     }
+ 
++    /**
++     * The set of disposable email domains an owner's email may not use. These throwaway-mailbox
++     * providers are rejected because they cannot be relied on for durable contact.
++     */
++    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /**
++     * Rejects an owner whose email domain is on the disposable-domain blocklist. The email has
++     * already been normalized to lower-case, so the domain (the part after the last {@code '@'}) is
++     * compared case-insensitively against {@link #DISPOSABLE_EMAIL_DOMAINS}. A {@code null} email
++     * (absent) is accepted, keeping the field optional.
++     *
++     * @param email the normalized email address, or {@code null} when absent
++     * @throws ResponseStatusException with a 400 status when the email domain is blocklisted
++     */
++    private void validateEmailDomain(String email) {
++        if (email == null) {
++            return;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return;
++        }
++        String domain = email.substring(at + 1);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "Email domain " + domain + " is not allowed");
++        }
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
