@@ -1,0 +1,175 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 375fb3f9..306e21c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -74,6 +74,12 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -331,6 +337,22 @@ public class Owner extends Person {
+         this.postcode = postcode;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 198ba964..0874ee7e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -172,6 +172,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             backfillHousehold(owner.getLastName(), owner.getAddress(), owner.getHouseholdId());
+         }
+         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
++        Integer possibleDuplicateOf = possibleDuplicateOf(owner);
++        owner.setPossibleDuplicate(possibleDuplicateOf != null);
++        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+@@ -463,6 +466,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(identityKey::equals);
+     }
+ 
++    /**
++     * Finds an existing owner that the owner being created is a possible (soft) duplicate of: one
++     * that shares the same last name (compared case-insensitively, whitespace-collapsed) and the
++     * same postcode but carries a <em>different</em> telephone. Such a create is not rejected as a
++     * hard duplicate, but is flagged. An owner with no postcode can never be a soft duplicate. When
++     * several owners match, the earliest (lowest id) is returned so the result is deterministic.
++     *
++     * @param owner the owner being created (telephone already normalized, postcode set)
++     * @return the id of the matching existing owner, or {@code null} when there is no soft match
++     */
++    private Integer possibleDuplicateOf(Owner owner) {
++        if (isBlank(owner.getPostcode())) {
++            return null;
++        }
++        String normalizedLastName = normalizeIdentity(owner.getLastName());
++        return this.clinicService.findAllOwners().stream()
++            .filter(existing -> existing.getId() != null
++                && normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
++                && owner.getPostcode().equals(existing.getPostcode())
++                && !java.util.Objects.equals(owner.getTelephone(), existing.getTelephone()))
++            .map(Owner::getId)
++            .min(Integer::compareTo)
++            .orElse(null);
++    }
++
+     /**
+      * Counts how many existing owners already share the given first name and last name with the
+      * owner being created. Both names are compared case-insensitively (after trimming and
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c9fdb0e8..b1126ef1 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 447b19f1..0458050c 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,9 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 12d14777..04b98865 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   postcode VARCHAR(4),
++  possible_duplicate BIT,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index de9185b2..eb11ba7d 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
+-                                      postcode TEXT
++                                      postcode TEXT,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 187d5e2c..3d3ed2ee 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2199,6 +2199,26 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when this owner, though not a hard duplicate, was created while
++                sharing an existing owner's last name and postcode with a different
++                telephone; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner is a possible duplicate of
++                (same last name and postcode, different telephone). Absent when
++                possibleDuplicate is false.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
