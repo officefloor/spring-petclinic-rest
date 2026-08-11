@@ -25,6 +25,8 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber",
         expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipTier",
+        expression = "java(membershipTier(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -39,6 +41,16 @@ public interface OwnerMapper {
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
             owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Determine the owner's membership tier: 'SILVER' when the owner has no namesakes
+     * (namesakeCount is 0) and an email address is present, otherwise 'BRONZE'.
+     */
+    default String membershipTier(Owner owner) {
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
     }
 
     Owner toOwner(OwnerDto ownerDto);
