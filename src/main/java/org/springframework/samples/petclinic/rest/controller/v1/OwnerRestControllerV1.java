@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -136,6 +137,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(normalizedTelephone::equals);
         if (telephoneInUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
+        // Reject the request when another owner already shares this last name and address (compared
+        // case-insensitively with collapsed whitespace), unless the caller explicitly opts in by
+        // setting 'sharesHousehold' true.
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String normalizedLastName = collapse(ownerFieldsDto.getLastName());
+            String normalizedAddress = collapse(ownerFieldsDto.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> collapse(existing.getLastName()).equals(normalizedLastName)
+                    && collapse(existing.getAddress()).equals(normalizedAddress));
+            if (householdInUse) {
+                throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            }
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -252,6 +266,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /**
+     * Normalize an owner identity field for household-duplicate comparison: trim, collapse every
+     * run of whitespace to a single space, and lower-case. Used so that last name and address are
+     * compared case-insensitively with collapsed whitespace.
+     */
+    private static String collapse(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**

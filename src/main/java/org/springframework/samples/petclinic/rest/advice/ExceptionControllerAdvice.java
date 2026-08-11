@@ -211,4 +211,28 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link DuplicateOwnerHouseholdException} raised when an owner is created whose last
+     * name and address (compared case-insensitively with collapsed whitespace) already belong to
+     * another owner and the request did not opt in via {@code sharesHousehold}. Returns a 409
+     * Conflict.
+     *
+     * @param e The {@link DuplicateOwnerHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerHouseholdException(DuplicateOwnerHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("lastName", "address"));
+        logger.debug("Duplicate owner household at {} {}: {}, {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
