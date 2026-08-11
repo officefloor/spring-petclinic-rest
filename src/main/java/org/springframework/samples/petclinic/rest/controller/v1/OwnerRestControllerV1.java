@@ -175,7 +175,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DailyRegistrationLimitException(registrationDate);
         }
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(customerCodeFor(owner));
+        owner.setCustomerCode(deduplicateCustomerCode(customerCodeFor(owner)));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
         // A declared household member (one that set 'sharesHousehold' to join an existing household) is
@@ -414,6 +414,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String customerCodeFor(Owner owner) {
         return owner.getRegion() + "-" + telephoneNameHash(owner.getTelephone(), owner.getLastName());
+    }
+
+    /**
+     * De-duplicates a freshly computed customer code against the codes already assigned to existing
+     * owners. When no existing owner carries the given code it is returned unchanged; otherwise the
+     * smallest suffix {@code -<n>} with {@code n >= 2} that yields a code no existing owner holds is
+     * appended, guaranteeing distinct owners always receive distinct customer codes.
+     *
+     * @param customerCode the customer code computed for the owner being created
+     * @return the de-duplicated customer code, unique among existing owners
+     */
+    private String deduplicateCustomerCode(String customerCode) {
+        java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existing.contains(customerCode)) {
+            return customerCode;
+        }
+        int n = 2;
+        while (existing.contains(customerCode + "-" + n)) {
+            n++;
+        }
+        return customerCode + "-" + n;
     }
 
     /**
