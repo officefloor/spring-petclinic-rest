@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -64,6 +66,9 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Dedicated audit logger; emits one line per successful owner create. */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -217,6 +222,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // owners already in that city.
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
+        // Emit an audit trail line for the successful create, carrying the owner id, the assigned
+        // customer code and the effective registration date.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
