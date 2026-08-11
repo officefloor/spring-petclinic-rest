@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1b74c1f5..44dcb873 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -71,6 +71,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence for the structured OWNER_CREATED audit events, incremented
++     * once per successful create so every emitted event carries a strictly greater {@code seq} than
++     * the one before it.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
++        new java.util.concurrent.atomic.AtomicLong();
++
+     /**
+      * The request header carrying a client-supplied idempotency token for owner creation. When a
+      * create repeats with a token already seen, the originally created owner is returned with 200
+@@ -234,6 +242,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+             owner.getMembershipNumber());
++        AUDIT.info(ownerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -482,6 +491,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return owner.getRegion() + "-" + telephoneNameHash(owner.getTelephone(), owner.getLastName());
+     }
+ 
++    /**
++     * The owner's current primary identifier, as carried by the structured audit event. Today this
++     * is the {@link Owner#getCustomerCode() customerCode}; when the customer code is later unified
++     * into the member id, this single accessor changes to return the member id, so the emitted event
++     * automatically carries the new identifier without any change to the event's shape.
++     *
++     * @param owner the owner just created
++     * @return the owner's current primary identifier
++     */
++    private static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Renders the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. The
++     * {@code customerCode} field carries the owner's current {@link #primaryIdentifier(Owner) primary
++     * identifier}. All values are numeric or a code drawn from {@code [A-Z0-9-]}, so no JSON escaping
++     * is required.
++     *
++     * @param seq   the monotonically increasing event sequence for this create
++     * @param owner the owner just created
++     * @return the event serialized as a JSON string
++     */
++    private static String ownerCreatedEvent(long seq, Owner owner) {
++        return String.format(
++            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
++            seq, owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
++    }
++
+     /**
+      * De-duplicates a freshly computed customer code against the codes already assigned to existing
+      * owners. When no existing owner carries the given code it is returned unchanged; otherwise the
