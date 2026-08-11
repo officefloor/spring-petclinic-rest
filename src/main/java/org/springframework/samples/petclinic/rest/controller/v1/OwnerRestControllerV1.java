@@ -125,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "The maximum number of owners for today has already been reached");
         }
+        owner.setBulkSignupWarning(createdToday > 80);
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(java.util.Objects::nonNull)
