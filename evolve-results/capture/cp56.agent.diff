@@ -1,0 +1,472 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index aabe63a0..aa970bcd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,9 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "identityKey",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+     @Mapping(target = "telephoneDisplay",
+@@ -108,18 +106,22 @@ public interface OwnerMapper {
+ 
+     /**
+      * Derives the owner's locality from the region-and-hash identity: the REGION prefix of the
+-     * {@code customerCode} (everything before the first {@code '-'}). This is the same region the
+-     * identity is built from ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion},
+-     * postcode range first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then
+-     * {@code UNKNOWN}), so the locality a client reads back always matches the code's region prefix.
+-     * Owners with no {@code customerCode} (e.g. seed data) fall back to deriving the region directly.
++     * {@code memberId} (its leading run of letters, up to the 2-digit fiscal year that follows).
++     * This is the same region the identity is built from
++     * ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion}, postcode range
++     * first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then {@code UNKNOWN}),
++     * so the locality a client reads back always matches the memberId's region prefix. Owners with no
++     * {@code memberId} (e.g. seed data) fall back to deriving the region directly.
+      */
+     default String locality(Owner owner) {
+-        String code = owner.getCustomerCode();
+-        if (code != null) {
+-            int dash = code.indexOf('-');
+-            if (dash > 0) {
+-                return code.substring(0, dash);
++        String memberId = owner.getMemberId();
++        if (memberId != null) {
++            int i = 0;
++            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
++                i++;
++            }
++            if (i > 0) {
++                return memberId.substring(0, i);
+             }
+         }
+         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.of(owner);
+@@ -238,50 +240,6 @@ public interface OwnerMapper {
+         return String.format("FY%02d", Math.floorMod(fiscalYearOf(registrationDate), 100));
+     }
+ 
+-    /**
+-     * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
+-     * last two digits of the {@link #fiscalYearOf(java.time.LocalDate) fiscal year} of the
+-     * registrationDate (e.g. {@code LON-SMI-0007-M27}) — the same YY as {@link #fiscalYear(Owner)}.
+-     * Returns {@code null} when either source field is absent, so owners without a customer code or
+-     * registration date (e.g. seed data) simply have no membership number.
+-     */
+-    default String membershipNumber(Owner owner) {
+-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+-            return null;
+-        }
+-        int yy = Math.floorMod(fiscalYearOf(owner.getRegistrationDate()), 100);
+-        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+-    }
+-
+-    /**
+-     * Computes the owner's Luhn check digit (0-9) over the digits contained in the customerCode.
+-     * Returns {@code null} when the customer code is absent (e.g. seed data).
+-     */
+-    default Integer checkDigit(Owner owner) {
+-        String code = owner.getCustomerCode();
+-        if (code == null) {
+-            return null;
+-        }
+-        int sum = 0;
+-        boolean dbl = true;
+-        for (int i = code.length() - 1; i >= 0; i--) {
+-            char c = code.charAt(i);
+-            if (c < '0' || c > '9') {
+-                continue;
+-            }
+-            int d = c - '0';
+-            if (dbl) {
+-                d *= 2;
+-                if (d > 9) {
+-                    d -= 9;
+-                }
+-            }
+-            sum += d;
+-            dbl = !dbl;
+-        }
+-        return (10 - (sum % 10)) % 10;
+-    }
+-
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7fce8ce2..a2df4d0c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -68,8 +68,8 @@ public class Owner extends Person {
+     @Column(name = "birth_date")
+     private java.time.LocalDate birthDate;
+ 
+-    @Column(name = "customer_code")
+-    private String customerCode;
++    @Column(name = "member_id")
++    private String memberId;
+ 
+     @Column(name = "household_id")
+     private String householdId;
+@@ -178,12 +178,12 @@ public class Owner extends Person {
+         this.birthDate = birthDate;
+     }
+ 
+-    public String getCustomerCode() {
+-        return this.customerCode;
++    public String getMemberId() {
++        return this.memberId;
+     }
+ 
+-    public void setCustomerCode(String customerCode) {
+-        this.customerCode = customerCode;
++    public void setMemberId(String memberId) {
++        this.memberId = memberId;
+     }
+ 
+     public String getHouseholdId() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+similarity index 50%
+rename from src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+rename to src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+index 9ca9bb96..1ee4354e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMemberId.java
+@@ -3,6 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.time.LocalDate;
++import java.time.Month;
+ import java.util.HashSet;
+ import java.util.Set;
+ 
+@@ -11,37 +13,42 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
+- * region code derived from the owner's postcode (the same derivation the locality shares, see
+- * {@link OwnerRegion}) and HASH8 is the first 8 upper-case hex characters of SHA-256 over the owner's
+- * normalized (E.164) telephone concatenated with the last name.
++ * Assigns the owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where REGION is
++ * the region code derived from the owner's postcode (the same derivation the locality shares, see
++ * {@link OwnerRegion}), FY is the 2-digit fiscal year of the owner's registrationDate (the same YY
++ * as the {@code fiscalYear} field), HASH8 is the first 8 upper-case hex characters of SHA-256 over
++ * the owner's normalized (E.164) telephone concatenated with the last name, and CHK is a single Luhn
++ * check digit computed over the digits of {@code <REGION><FY><HASH8>}.
+  *
+  * <p>The identity is therefore a stable function of who the owner is, not of how many owners already
+- * exist — the old per-city sequence number is gone.
++ * exist — the old per-city sequence number is gone. This unifies what used to be the separate
++ * {@code customerCode}, {@code membershipNumber} and {@code checkDigit}.
+  *
+- * <p>Should the computed code collide with an existing owner's {@code customerCode}, it is
++ * <p>Should the computed memberId collide with an existing owner's {@code memberId}, it is
+  * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
+- * unique, so distinct owners always end up with distinct customer codes.
++ * unique, so distinct owners always end up with distinct member ids.
+  */
+-public class AssignCustomerCode {
++public class AssignMemberId {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = OwnerRegion.of(owner);
++        String fy = fiscalYear2(owner.getRegistrationDate());
+         String hash8 = hash8(normalizedTelephone(owner.getTelephone()) + owner.getLastName());
+-        String base = region + "-" + hash8;
+-        owner.setCustomerCode(deduplicate(base, existingCustomerCodes(ownerRepository)));
++        String body = region + fy + hash8;
++        String base = body + luhn(body);
++        owner.setMemberId(deduplicate(base, existingMemberIds(ownerRepository)));
+     }
+ 
+-    /** The {@code customerCode}s already assigned to other owners in the data store. */
+-    private static Set<String> existingCustomerCodes(OwnerRepository ownerRepository) {
+-        Set<String> codes = new HashSet<>();
++    /** The {@code memberId}s already assigned to other owners in the data store. */
++    private static Set<String> existingMemberIds(OwnerRepository ownerRepository) {
++        Set<String> ids = new HashSet<>();
+         for (Owner existing : ownerRepository.findAll()) {
+-            String code = existing.getCustomerCode();
+-            if (code != null) {
+-                codes.add(code);
++            String id = existing.getMemberId();
++            if (id != null) {
++                ids.add(id);
+             }
+         }
+-        return codes;
++        return ids;
+     }
+ 
+     /**
+@@ -60,6 +67,39 @@ public class AssignCustomerCode {
+         }
+     }
+ 
++    /**
++     * The last two digits of the fiscal year (1 July - 30 June, named by the calendar year in which
++     * it ends) of {@code date}, zero-padded. Falls back to the current date's fiscal year when no
++     * registration date is present.
++     */
++    private static String fiscalYear2(LocalDate date) {
++        LocalDate d = date != null ? date : LocalDate.now();
++        int fy = d.getMonthValue() >= Month.JULY.getValue() ? d.getYear() + 1 : d.getYear();
++        return String.format("%02d", Math.floorMod(fy, 100));
++    }
++
++    /** Luhn check digit (0-9) over the digits contained in {@code s}. */
++    private static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * The owner's telephone normalized to E.164 (the same way {@link OwnerIdentityKey} does),
+      * falling back to the trimmed raw value when it cannot form a valid E.164 number. On the create
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 41c7a040..736ab199 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -12,17 +12,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Emits an audit line on the dedicated {@code AUDIT} logger after a successful create,
+- * carrying the newly-assigned owner id, its customerCode, its registrationDate, its
+- * numeric membershipLevel and its membershipNumber. Runs after {@code save}, so the
+- * owner's generated id is available. The logged level is the household-capped one, so it
+- * matches what the response and later reads return.
++ * carrying the newly-assigned owner id, its memberId, its registrationDate and its
++ * numeric membershipLevel. Runs after {@code save}, so the owner's generated id is
++ * available. The logged level is the household-capped one, so it matches what the response
++ * and later reads return.
+  *
+  * <p>Alongside the human-readable line, emits an immutable structured event on the same
+  * {@code AUDIT} logger: a JSON object
+- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where
++ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where
+  * {@code seq} is a monotonically increasing integer across creates. The event carries the
+- * owner's current primary identifier via {@link #primaryIdentifier(Owner)} — the
+- * customerCode today, and whatever replaces it later.
++ * owner's primary identifier via {@link #primaryIdentifier(Owner)} — the memberId.
+  */
+ public class AuditOwnerCreated {
+ 
+@@ -33,22 +32,17 @@ public class AuditOwnerCreated {
+ 
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
+         int membershipLevel = HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository);
+-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            membershipLevel, ownerMapper.membershipNumber(owner));
++        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
+ 
+         long seq = SEQ.incrementAndGet();
+-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
++        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+             seq, owner.getId(), jsonString(primaryIdentifier(owner)), membershipLevel);
+     }
+ 
+-    /**
+-     * The owner's current primary identifier carried by the structured event. Today that is the
+-     * {@code customerCode}; when the customerCode is later unified into the {@code memberId},
+-     * return that here instead and the event carries the memberId with no other change.
+-     */
++    /** The owner's primary identifier carried by the structured event: the {@code memberId}. */
+     private static String primaryIdentifier(Owner owner) {
+-        return owner.getCustomerCode();
++        return owner.getMemberId();
+     }
+ 
+     /** Renders a value as a JSON string literal (quoted, with the minimal escaping), or {@code null}. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
+index 70ed20a4..73af0eb7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
+@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Derives an owner's REGION code — the single source of truth now shared by both the region prefix
+- * of the {@code customerCode} and the owner's locality. The postcode decides first (NSW 2000-2099,
++ * of the {@code memberId} and the owner's locality. The postcode decides first (NSW 2000-2099,
+  * VIC 3000-3099, QLD 4000-4099); when the postcode is absent or in no known range, the fixed
+  * city-to-region table ({@link OwnerMapper#CITY_REGION}: Sydney-&gt;NSW, Melbourne-&gt;VIC,
+  * Brisbane-&gt;QLD) is consulted, falling back to {@code UNKNOWN} for an unlisted city.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index e90ef55b..eb886ef6 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(30),
++  member_id VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index f43b99ff..2e6491c6 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, customer_code, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners (id, first_name, last_name, address, city, telephone, email, postcode, registration_date, birth_date, member_id, household_id, namesake_count, bulk_signup_warning, household_member_count, possible_duplicate, possible_duplicate_of) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 247cfb78..8ed89d10 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,7 @@ CREATE TABLE owners (
+   postcode   VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(30),
++  member_id VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index b7412e5e..f8509f0d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(10),
+   registration_date DATE,
+   birth_date DATE,
+-  customer_code VARCHAR(30),
++  member_id VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INT,
+   bulk_signup_warning BIT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 83d2f453..ed52591f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       postcode   TEXT,
+                                       registration_date DATE,
+                                       birth_date DATE,
+-                                      customer_code TEXT,
++                                      member_id TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 821ab81b..699d3945 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -75,11 +75,12 @@ assignNamesakeCount:
+   govern: [ transaction ]
+   next: assignCode
+ 
+-# Assign the '<REGION>-<HASH8>' customer code before saving: REGION from the postcode and
+-# HASH8 = SHA-256(normalizedTelephone + lastName)[0:8] upper hex. A stable per-owner identity,
+-# so this no longer depends on the count of existing owners.
++# Assign the '<REGION><FY><HASH8><CHK>' memberId before saving: REGION from the postcode, FY the
++# 2-digit fiscal year of registrationDate, HASH8 = SHA-256(normalizedTelephone + lastName)[0:8] upper
++# hex, and CHK a Luhn digit over the preceding digits. A stable per-owner identity, so this no longer
++# depends on the count of existing owners.
+ assignCode:
+-  class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMemberId
+   govern: [ transaction ]
+   next: assignBulkSignupWarning
+ 
+@@ -119,7 +120,7 @@ register:
+   govern: [ transaction ]
+   next: audit
+ 
+-# Emit an AUDIT log line carrying the owner id, customerCode and registrationDate,
++# Emit an AUDIT log line carrying the owner id, memberId and registrationDate,
+ # after save so the generated id is available.
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fc5ed1d2..b2e3901d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2153,26 +2153,11 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
+-            customerCode:
+-              title: Customer code
+-              description: "Assigned identifier formatted '<REGION>-<HASH8>': the region code derived from the postcode, a hyphen, and the first 8 upper-case hex characters of SHA-256 over the normalized (E.164) telephone concatenated with lastName."
++            memberId:
++              title: Member ID
++              description: "Assigned identifier formatted '<REGION><FY><HASH8><CHK>': the region code derived from the postcode, the 2-digit fiscal year (the same YY as 'fiscalYear') of the business-day-adjusted registrationDate, the first 8 upper-case hex characters of SHA-256 over the normalized (E.164) telephone concatenated with lastName, and a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>'."
+               type: string
+-              example: 'NSW-3C70EBD8'
+-              readOnly: true
+-            checkDigit:
+-              title: Check digit
+-              description: "A single Luhn check digit (0-9) computed over the digits contained in the customerCode."
+-              type: integer
+-              format: int32
+-              minimum: 0
+-              maximum: 9
+-              example: 4
+-              readOnly: true
+-            membershipNumber:
+-              title: Membership number
+-              description: "Assigned identifier formatted '<customerCode>-M<YY>', where YY is the last two digits of the fiscal year (1 July - 30 June, named by its ending calendar year) of the business-day-adjusted registrationDate - the same YY as 'fiscalYear'."
+-              type: string
+-              example: 'SMI-0007-M27'
++              example: 'NSW273C70EBD84'
+               readOnly: true
+             fiscalYear:
+               title: Fiscal year
+@@ -2270,7 +2255,7 @@ components:
+               title: Locality
+               description: >-
+                 The region code of the owner's identity: the REGION prefix of the
+-                customerCode (postcode range first - NSW 2000-2099, VIC 3000-3099,
++                memberId (postcode range first - NSW 2000-2099, VIC 3000-3099,
+                 QLD 4000-4099 - then the fixed city table Sydney->NSW, Melbourne->VIC,
+                 Brisbane->QLD, else 'UNKNOWN').
+               type: string
