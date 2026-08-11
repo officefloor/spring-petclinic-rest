@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainException.java
+new file mode 100644
+index 00000000..174378cc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainException.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when an owner request supplies an {@code email} whose domain is on the disposable-domain
++ * blocklist (e.g. mailinator.com). Handled by {@link DisposableEmailDomainExceptionHandler}, which
++ * responds 400 with the offending value.
++ */
++public class DisposableEmailDomainException extends Exception {
++
++    private final String email;
++
++    public DisposableEmailDomainException(String email) {
++        super("Email domain is on the disposable-domain blocklist: " + email);
++        this.email = email;
++    }
++
++    public String getEmail() {
++        return this.email;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainExceptionHandler.java
+new file mode 100644
+index 00000000..b3fa729e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailDomainExceptionHandler.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class DisposableEmailDomainExceptionHandler {
++
++    public void handle(@Parameter DisposableEmailDomainException ex,
++            ObjectResponse<ResponseEntity<Errors>> response) {
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new Errors(List.of("email"))));
++    }
++
++    /** Response body: {@code {"errors": ["email"]}}. */
++    public record Errors(List<String> errors) {
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireEmailDomain.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireEmailDomain.java
+new file mode 100644
+index 00000000..3f747810
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireEmailDomain.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException;
++
++/**
++ * Step of {@code POST /api/owners}: rejects an owner whose {@code email} domain is on the
++ * disposable-domain blocklist. Email is optional, so a null/blank value is left untouched (it runs
++ * after {@link NormalizeOwnerEmail}, which has already trimmed, lower-cased and syntactically
++ * validated any present value). A present email whose domain matches a blocked domain is rejected
++ * 400 via {@link DisposableEmailDomainException}.
++ */
++public class RequireEmailDomain {
++
++    /** Disposable email domains that are not accepted for owner registration. */
++    private static final Set<String> BLOCKED_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    public void service(@Val OwnerFieldsDto request) throws DisposableEmailDomainException {
++        String email = request.getEmail();
++        if (email == null || email.isBlank()) {
++            return; // optional when absent
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return; // syntax already validated upstream; nothing to classify
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        if (BLOCKED_DOMAINS.contains(domain)) {
++            throw new DisposableEmailDomainException(email);
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException.yml
+new file mode 100644
+index 00000000..de44ca1b
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 78c50852..e70625ef 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -15,6 +15,10 @@ normalizeTelephone:
+ 
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
++  next: requireEmailDomain
++
++requireEmailDomain:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireEmailDomain
+   next: normalizeAddress
+ 
+ normalizeAddress:
