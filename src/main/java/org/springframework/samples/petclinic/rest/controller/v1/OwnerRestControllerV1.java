@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -132,6 +133,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new InvalidOwnerFieldsException(missingFields);
+        }
+        // Reject the request when the owner's city is already full: a city that already holds the
+        // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
+        if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new CityAtCapacityException(ownerFieldsDto.getCity());
         }
         // Normalize the telephone into E.164 form; a number that cannot form a valid
         // E.164 value is rejected with a 400.
@@ -381,6 +387,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getFirstName() != null && existing.getLastName() != null)
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(firstName)
                 && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
+    }
+
+    /**
+     * The maximum number of owners a single city may contain. Once a city holds this many owners a
+     * request to create another owner in it is rejected as a conflict.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /**
+     * Count the existing owners registered in the given city, compared case-insensitively (as in
+     * {@link #nextCustomerCode}). Called before the new owner is saved, so the returned value
+     * reflects the owners that already existed at creation time.
+     */
+    private int countOwnersInCity(String city) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
     }
 

@@ -235,4 +235,25 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link CityAtCapacityException} raised when an owner is created in a city that already
+     * contains the maximum number of owners (50). Returns a 409 Conflict.
+     *
+     * @param e The {@link CityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("city"));
+        logger.debug("City at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
