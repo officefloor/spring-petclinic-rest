@@ -26,6 +26,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipTier",
         expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
             + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\")")
+    @Mapping(target = "locality",
+        expression = "java(org.springframework.samples.petclinic.mapper.Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
