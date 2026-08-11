@@ -170,6 +170,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdMembers.size() + 1);
+        // Soft-match: not a hard duplicate (the identity key is unique, checked above), but shares an
+        // existing owner's last name and postcode while carrying a different telephone. Such an owner is
+        // still created, flagged as a possible duplicate of the earliest matching owner.
+        Owner softMatch = null;
+        if (owner.getPostcode() != null) {
+            String softLastNameKey = normalizeForHousehold(owner.getLastName());
+            softMatch = this.clinicService.findAllOwners().stream()
+                .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(softLastNameKey)
+                    && owner.getPostcode().equals(existing.getPostcode())
+                    && !java.util.Objects.equals(owner.getTelephone(), existing.getTelephone()))
+                .min(java.util.Comparator.comparing(Owner::getId))
+                .orElse(null);
+        }
+        owner.setPossibleDuplicate(softMatch != null);
+        owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
         owner.setCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
             owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
