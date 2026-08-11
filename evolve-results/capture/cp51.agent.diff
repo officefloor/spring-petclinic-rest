@@ -1,0 +1,247 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4de0db78..0caa935f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -132,6 +132,17 @@ public interface OwnerMapper {
+      * new owner never earns the tenure points.
+      */
+     default int membershipPoints(Owner owner) {
++        int householdMemberCount = owner.getHouseholdMemberCount() == null ? 0 : owner.getHouseholdMemberCount();
++        return membershipPointsForHousehold(owner, householdMemberCount);
++    }
++
++    /**
++     * As {@link #membershipPoints(Owner)}, but scores the household-of-3-or-more bonus against the
++     * supplied {@code householdMemberCount} rather than the owner's stored one. Used to evaluate an
++     * existing household member's points at the household's <em>current</em> size (see
++     * {@link org.springframework.samples.petclinic.rest.function.owner.HouseholdLevelCap}).
++     */
++    default int membershipPointsForHousehold(Owner owner, int householdMemberCount) {
+         int points = 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         if (hasEmail) {
+@@ -141,8 +152,7 @@ public interface OwnerMapper {
+         if (noNamesakes) {
+             points += 1;
+         }
+-        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
+-        if (largeHousehold) {
++        if (householdMemberCount >= 3) {
+             points += 2;
+         }
+         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+@@ -158,7 +168,19 @@ public interface OwnerMapper {
+      * 0-1 points, 2 for 2-3 points, 3 for 4-5 points, 4 for 6 or more points.
+      */
+     default int membershipLevel(Owner owner) {
+-        int points = membershipPoints(owner);
++        return levelForPoints(membershipPoints(owner));
++    }
++
++    /**
++     * As {@link #membershipLevel(Owner)}, but evaluated with the supplied {@code householdMemberCount}
++     * (see {@link #membershipPointsForHousehold(Owner, int)}).
++     */
++    default int membershipLevelForHousehold(Owner owner, int householdMemberCount) {
++        return levelForPoints(membershipPointsForHousehold(owner, householdMemberCount));
++    }
++
++    /** Maps membership points to the numeric level band. */
++    default int levelForPoints(int points) {
+         if (points <= 1) {
+             return 1;
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 6b7ac287..386930d9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -6,20 +6,23 @@ import org.slf4j.LoggerFactory;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Emits an audit line on the dedicated {@code AUDIT} logger after a successful create,
+  * carrying the newly-assigned owner id, its customerCode, its registrationDate, its
+  * numeric membershipLevel and its membershipNumber. Runs after {@code save}, so the
+- * owner's generated id is available.
++ * owner's generated id is available. The logged level is the household-capped one, so it
++ * matches what the response and later reads return.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper) {
++    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
+         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++            HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository),
++            ownerMapper.membershipNumber(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+index 449e322b..77549ecd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+@@ -9,14 +9,19 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdConfl
+ /**
+  * The household-duplicate block for {@code POST /api/owners}: because a household is keyed on the
+  * computed {@code householdId} (last name + postcode), a new owner whose householdId already belongs
+- * to an existing owner is a household duplicate and is rejected with 409 — <em>unless</em> the
+- * request declared {@code sharesHousehold}, which bypasses this block so the owner is created as a
+- * declared household member. This is what {@code sharesHousehold} now does: it no longer builds the
+- * link (the link is computed), it only waives the block.
++ * to an existing owner is a household duplicate and is rejected with 409 — <em>unless</em> it is a
++ * distinct household member. A new owner is treated as a distinct member (and created) when either:
++ * <ul>
++ *   <li>the request declared {@code sharesHousehold}, which explicitly waives the block; or</li>
++ *   <li>the new owner carries a distinguishing email — a non-blank address that no existing member
++ *       of the household already uses — so it is plainly a different person, not a re-registration.</li>
++ * </ul>
++ * A new owner with no email (or one repeating an existing member's email) that does not declare
++ * {@code sharesHousehold} is still a household duplicate and rejected with 409.
+  *
+  * <p>Runs after {@link AssignHouseholdId} has assigned the shared householdId and before
+  * {@link SaveOwner}, so the not-yet-saved owner is not compared against itself. The full-identity
+- * duplicate check ({@link CheckOwnerIdentityUnique}) is separate and still applies to a declared
++ * duplicate check ({@link CheckOwnerIdentityUnique}) is separate and still applies to a distinct
+  * member, so a member repeating another member's whole identityKey is still a 409.
+  */
+ public class CheckHouseholdUnique {
+@@ -32,6 +37,7 @@ public class CheckHouseholdUnique {
+         if (householdId == null) {
+             return;
+         }
++        String email = normalizeEmail(owner.getEmail());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                 continue;
+@@ -39,10 +45,20 @@ public class CheckHouseholdUnique {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // a soft-deleted owner no longer blocks a new household
+             }
+-            if (householdId.equals(existing.getHouseholdId())) {
++            if (!householdId.equals(existing.getHouseholdId())) {
++                continue;
++            }
++            // A same-household member is a duplicate unless the new owner distinguishes itself with a
++            // non-blank email that this member does not already use.
++            if (email.isEmpty() || email.equals(normalizeEmail(existing.getEmail()))) {
+                 throw new OwnerHouseholdConflictException(
+                         "An owner in household " + householdId + " already exists");
+             }
+         }
+     }
++
++    /** Lower-cased, trimmed email; a null or blank email normalizes to the empty string. */
++    private static String normalizeEmail(String email) {
++        return email == null ? "" : email.trim().toLowerCase();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdLevelCap.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdLevelCap.java
+new file mode 100644
+index 00000000..24529e15
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdLevelCap.java
+@@ -0,0 +1,55 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Applies the household ceiling to an owner's membership level: a new owner's
++ * {@code membershipLevel} cannot exceed one above the current maximum membership level among the
++ * other members of their household (all owners sharing the same {@code householdId}). With no other
++ * household member, no cap applies and the owner's own level is returned unchanged.
++ *
++ * <p>Each existing member's level is evaluated at the household's <em>current</em> size (the number
++ * of members sharing the household now, including this owner), not the size stored on that member
++ * when it was created — so a household that has since grown to three or more lifts every member's
++ * household-size bonus, and with it the ceiling.
++ */
++public final class HouseholdLevelCap {
++
++    private HouseholdLevelCap() {
++    }
++
++    /**
++     * The owner's membership level capped at one above the maximum level among their other household
++     * members, or their own level when the household has no other member.
++     */
++    public static int cappedMembershipLevel(Owner owner, OwnerMapper ownerMapper,
++            OwnerRepository ownerRepository) {
++        int ownLevel = ownerMapper.membershipLevel(owner);
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return ownLevel;
++        }
++        List<Owner> members = new ArrayList<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())
++                    && (owner.getId() == null || !owner.getId().equals(existing.getId()))) {
++                members.add(existing);
++            }
++        }
++        if (members.isEmpty()) {
++            return ownLevel;
++        }
++        int currentHouseholdSize = members.size() + 1; // the other members plus this owner
++        int maxMemberLevel = 0;
++        for (Owner member : members) {
++            maxMemberLevel = Math.max(maxMemberLevel,
++                    ownerMapper.membershipLevelForHousehold(member, currentHouseholdSize));
++        }
++        return Math.min(ownLevel, maxMemberLevel + 1);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 75c204b4..82dba847 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -4,11 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner));
++    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
++            ObjectResponse<OwnerDto> response) {
++        OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        dto.setMembershipLevel(HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository));
++        response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d8b47081..0c98257b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -7,13 +7,15 @@ import net.officefloor.web.ObjectResponse;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper,
++    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        dto.setMembershipLevel(HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
