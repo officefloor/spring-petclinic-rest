@@ -213,6 +213,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DisposableEmailDomainException} raised when a request to create an owner supplies
+     * an {@code email} whose domain is on the disposable-domain blocklist.
+     *
+     * @param e The {@link DisposableEmailDomainException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status,
+     *         whose {@code errors} array names the {@code email} field.
+     */
+    @ExceptionHandler(DisposableEmailDomainException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailDomainException(DisposableEmailDomainException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Disposable email domain at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link FutureRegistrationDateException} raised when a request to create an owner supplies a
      * {@code registrationDate} that is later than the current server date.
      *

@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+import org.springframework.samples.petclinic.rest.advice.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
@@ -144,6 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(address);
         owner.setTelephone(telephone);
+        validateEmailDomain(owner.getEmail());
         validatePostcode(owner.getPostcode(), owner.getRegion());
         // The household is keyed deterministically on (lastName, postcode): every owner receives the
         // same stable householdId as anyone sharing its normalized last name and postcode, without any
@@ -288,6 +290,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * The set of disposable email domains that owners may not register with. Compared
+     * case-insensitively against the domain part of the supplied email.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * Rejects an owner whose email domain is on the disposable-domain blocklist
+     * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Email is optional:
+     * a {@code null} or blank value, or one without an {@code '@'} domain part, is accepted here (the
+     * {@code @Email} Bean Validation constraint governs format). The domain is compared
+     * case-insensitively; the stored email is already lower-cased.
+     *
+     * @param email the owner's email (may be {@code null})
+     * @throws DisposableEmailDomainException if the email's domain is on the blocklist
+     */
+    private static void validateEmailDomain(String email) {
+        if (isBlank(email)) {
+            return;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase(java.util.Locale.ROOT);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailDomainException(email);
+        }
     }
 
     /**
