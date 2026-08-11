@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -156,9 +157,36 @@ public class ExceptionControllerAdvice {
                 request.getMethod(),
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
+            List<String> errorFields = bindingResult.getFieldErrors().stream()
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", errorFields);
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
+     * blanks out one or more required fields that Bean Validation does not otherwise reject.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status,
+     *         whose {@code errors} array lists the name of each missing or blank field.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Missing owner fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
         return ResponseEntity.status(status).body(detail);
     }
 
