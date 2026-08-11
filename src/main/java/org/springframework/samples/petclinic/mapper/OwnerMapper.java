@@ -46,10 +46,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine the owner's membership tier: 'SILVER' when the owner has no namesakes
-     * (namesakeCount is 0) and an email address is present, otherwise 'BRONZE'.
+     * Determine the owner's membership tier: 'GOLD' when the owner's household (owners sharing the
+     * same householdId) had 3 or more members after the owner was created; otherwise 'SILVER' when
+     * the owner has no namesakes (namesakeCount is 0) and an email address is present, otherwise
+     * 'BRONZE'.
      */
     default String membershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
+        }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";

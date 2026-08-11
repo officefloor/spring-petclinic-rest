@@ -215,6 +215,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // name, compared case-insensitively. Computed against the current owners so the new owner
         // itself is never counted.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        // Record the size of this owner's household (owners sharing the same householdId) after this
+        // create: the existing members already stamped with the shared identifier plus this new
+        // owner. An owner not admitted into any household is a household of one. A household of three
+        // or more members promotes the owner to the GOLD membership tier.
+        owner.setHouseholdSize(countHouseholdMembers(householdId) + 1);
         // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
         owner.setBulkSignupWarning(bulkSignupWarning);
         // Store the business-day-adjusted effective registration date computed above. This defaults
@@ -419,6 +424,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getFirstName() != null && existing.getLastName() != null)
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(firstName)
                 && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
+    }
+
+    /**
+     * Count the existing owners that already belong to the given household (i.e. carry the same
+     * non-null householdId). Called after any existing members have been backfilled with the shared
+     * identifier but before the new owner is saved, so the returned value reflects the members that
+     * already existed at creation time (the new owner itself is not included). Returns 0 when the
+     * new owner is not part of any household ({@code householdId} is null).
+     */
+    private int countHouseholdMembers(String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .count();
     }
 
