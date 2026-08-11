@@ -102,6 +102,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String normalizedAddress = normalizeAddress(owner.getAddress());
+        if (normalizedAddress.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Address must not be blank after normalization");
+        }
+        owner.setAddress(normalizedAddress);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
@@ -158,6 +164,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
         prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(java.util.Locale.ROOT);
         long sequence = this.clinicService.findAllOwners().size() + 1L;
         return String.format("%s-%04d", prefix, sequence);
+    }
+
+    /**
+     * Normalizes a street address applied whenever an owner is created: leading and trailing
+     * whitespace is trimmed, any internal run of whitespace is collapsed to a single space, the
+     * value is upper-cased, and common street-type abbreviations are expanded to their full form
+     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). The expansion is applied
+     * per whitespace-delimited token, so only standalone abbreviations are expanded. A {@code null}
+     * value normalizes to the empty string. So {@code '  12  main  st '} becomes
+     * {@code '12 MAIN STREET'}.
+     *
+     * @param address the raw address as submitted, or {@code null} when absent
+     * @return the normalized address, or the empty string when the value is blank
+     */
+    private String normalizeAddress(String address) {
+        String collapsed = (address == null ? "" : address)
+            .trim().replaceAll("\\s+", " ").toUpperCase(java.util.Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        for (int i = 0; i < tokens.length; i++) {
+            switch (tokens[i]) {
+                case "ST" -> tokens[i] = "STREET";
+                case "RD" -> tokens[i] = "ROAD";
+                case "AVE" -> tokens[i] = "AVENUE";
+                default -> { }
+            }
+        }
+        return String.join(" ", tokens);
     }
 
     /**
