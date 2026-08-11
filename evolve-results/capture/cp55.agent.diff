@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a67d7223..fe8fcb7a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -39,6 +39,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegment.of(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.Locality.ofCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 00000000..03468173
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's marketing segment, formatted {@code '<TIER>_<AREA>'}.
++ *
++ * <p>TIER is {@code PREMIUM} when the owner's {@link MembershipLevel} is 3 or more, otherwise
++ * {@code STANDARD}. AREA is {@code METRO} when the owner's {@link Locality} is a known region
++ * (NSW, VIC or QLD), otherwise {@code REGIONAL}. So the segment is one of {@code PREMIUM_METRO},
++ * {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}.
++ *
++ * <p>Kept as a standalone class (not a method on {@link OwnerMapper}) so MapStruct does not
++ * mistake it for an implicit mapping method, mirroring {@link Locality} and {@link Timezone}.
++ */
++public final class OwnerSegment {
++
++    /** The known regions whose locality counts as METRO. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /** The {@code '<TIER>_<AREA>'} segment for {@code owner}. */
++    public static String of(Owner owner) {
++        String tier = MembershipLevel.of(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(Locality.ofCustomerCode(owner.getCustomerCode()))
++            ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 813bac22..a35e422d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2238,6 +2238,16 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: The owner's marketing segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is
++                'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise
++                'REGIONAL'. One of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
++                'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             locality:
+               title: Locality
+               description: The canonical region derived from the owner's city using the
