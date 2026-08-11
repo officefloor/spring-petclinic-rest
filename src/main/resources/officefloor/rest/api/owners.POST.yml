@@ -1,6 +1,16 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: when the request carries an 'Idempotency-Key' already recorded for a completed
+# create, respond 200 with the originally created owner and skip the whole create pipeline (so no
+# duplicate is made and no later quota/duplicate rule fires). Otherwise take the 'proceed' branch to
+# run the normal pipeline; the key is recorded against the new owner by the 'register' step below.
+idempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  govern: [ transaction ]
+  outputs:
+    proceed: validate
+
 # Validate required fields first, so a missing/blank field is a 400 listing every
 # offending field before the body is mapped to an entity.
 validate:
@@ -97,6 +107,14 @@ assignPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: register
+
+# Record the request's 'Idempotency-Key' (when present) against the saved owner id, so a later
+# repeat with the same key returns this owner instead of creating a duplicate. Runs after save so
+# the generated id is available.
+register:
+  class: org.springframework.samples.petclinic.rest.function.owner.RegisterIdempotency
   govern: [ transaction ]
   next: audit
 
