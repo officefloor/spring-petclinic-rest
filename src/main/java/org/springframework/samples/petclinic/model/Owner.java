@@ -145,6 +145,20 @@ public class Owner extends Person {
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
     }
 
+    /** City -> canonical region for the {@code locality} derivation. */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * The owner's locality, derived from {@link #city} using the fixed city-to-region table
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD). Returns {@code UNKNOWN} when the city is
+     * not in the table (or is absent).
+     */
+    @Transient
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
