@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -138,6 +139,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new InvalidOwnerFieldsException(missingFields);
+        }
+        // A supplied registration date may not lie in the future: reject with 400 when the caller
+        // provides a date later than the server's current date. Checked against the raw supplied value
+        // (before any business-day adjustment) so a future date is never silently accepted.
+        if (ownerFieldsDto.getRegistrationDate() != null
+            && ownerFieldsDto.getRegistrationDate().isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(ownerFieldsDto.getRegistrationDate());
         }
         // Determine the effective registration date up front so every downstream use (the daily
         // create-limit, the stored value and anything derived from it such as the membership number's
