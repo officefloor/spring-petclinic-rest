@@ -157,6 +157,47 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
+    /** National-number length by country code, mirroring the create-time E.164 normalization. */
+    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTH = Map.of("61", 9, "1", 10);
+
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans: the country code, a space, then the
+     * national digits grouped in threes from the left (e.g. {@code +61412345678 -> +61 412 345 678}).
+     * The country code is recognised from the known set ({@code +61} with 9 national digits, {@code +1}
+     * with 10) that the create-time normalization produces. Values that are absent or not in E.164 form
+     * are returned unchanged, so the raw {@link #telephone} still stands in for a display value.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.startsWith("+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        if (!digits.matches("[0-9]+")) {
+            return this.telephone;
+        }
+        String countryCode = null;
+        for (Map.Entry<String, Integer> entry : COUNTRY_NATIONAL_LENGTH.entrySet()) {
+            if (digits.startsWith(entry.getKey())
+                && digits.length() - entry.getKey().length() == entry.getValue()) {
+                countryCode = entry.getKey();
+                break;
+            }
+        }
+        if (countryCode == null) {
+            return this.telephone;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i += 3) {
+            if (grouped.length() > 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national, i, Math.min(i + 3, national.length()));
+        }
+        return "+" + countryCode + " " + grouped;
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
