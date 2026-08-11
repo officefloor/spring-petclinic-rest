@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+new file mode 100644
+index 00000000..b3122668
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a request to create an owner names a city that, compared case-insensitively with
++ * collapsed whitespace, already contains 50 or more owners. The city is considered full and the
++ * new owner is rejected.
++ */
++public class CityAtCapacityException extends RuntimeException {
++
++    private final String city;
++
++    public CityAtCapacityException(String city) {
++        super("The owner's city already contains the maximum number of owners");
++        this.city = city;
++    }
++
++    public String getCity() {
++        return this.city;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 30e287ec..d4495643 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -236,6 +236,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityAtCapacityException} raised when a request to create an owner names a city
++     * that already contains 50 or more owners.
++     *
++     * @param e The {@link CityAtCapacityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
++     *         whose {@code errors} array names the {@code city} field.
++     */
++    @ExceptionHandler(CityAtCapacityException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        logger.debug("City at capacity at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getCity());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
++        detail.setProperty("errors", List.of("city"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
+      * blanks out one or more required fields that Bean Validation does not otherwise reject.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 80a820b3..1a8b225a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+@@ -134,6 +135,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             && isHouseholdInUse(ownerFieldsDto.getLastName(), address)) {
+             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+         }
++        if (isCityAtCapacity(ownerFieldsDto.getCity())) {
++            throw new CityAtCapacityException(ownerFieldsDto.getCity());
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(address);
+@@ -415,6 +419,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * The maximum number of owners permitted in a single city. Once a city already contains this
++     * many owners it is considered full and no further owners may be created there.
++     */
++    private static final int CITY_CAPACITY = 50;
++
++    /**
++     * Determines whether the given city has already reached its capacity, i.e. already contains
++     * {@value #CITY_CAPACITY} or more existing owners. Cities are compared case-insensitively after
++     * collapsing runs of whitespace to a single space and trimming.
++     *
++     * @param city the city of the owner being created
++     * @return {@code true} if the city already contains {@value #CITY_CAPACITY} or more owners
++     */
++    private boolean isCityAtCapacity(String city) {
++        String normalizedCity = normalizeIdentity(city);
++        long count = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
++            .count();
++        return count >= CITY_CAPACITY;
++    }
++
+     /**
+      * Assigns the owner being created to the household identified by the given last name and
+      * address and returns the household's stable shared identifier. The identifier is derived
