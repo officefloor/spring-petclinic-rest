@@ -170,6 +170,21 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
+    /**
+     * The owner's identity key, the single derived value all duplicate detection is based on. It is
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
+     * is the stored E.164 value, the email is the stored lower-cased value (empty when absent) and
+     * the household segment is the {@code householdId} (empty when the owner does not share a
+     * household). Two owners are duplicates only when their whole identity keys are equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
