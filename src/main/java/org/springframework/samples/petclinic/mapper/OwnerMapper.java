@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
@@ -126,8 +127,8 @@ public interface OwnerMapper {
      * Derives the owner's membership points. Starts at 0; adds 2 when an email address is present;
      * adds 1 when the owner has no namesakes ({@code namesakeCount} is 0); adds 2 for a household of
      * 3 or more members ({@code householdMemberCount} is 3 or greater); adds 3 when the owner's
-     * tenure exceeds 365 days. A newly created owner has zero tenure, so a new owner never earns the
-     * tenure points.
+     * tenure spans more than one elapsed fiscal year. A newly created owner has zero tenure, so a
+     * new owner never earns the tenure points.
      */
     default int membershipPoints(Owner owner) {
         int points = 0;
@@ -145,7 +146,7 @@ public interface OwnerMapper {
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365) {
+                && (fiscalYearOf(java.time.LocalDate.now()) - fiscalYearOf(registrationDate)) > 1) {
             points += 3;
         }
         return points;
@@ -170,16 +171,41 @@ public interface OwnerMapper {
     }
 
     /**
+     * The fiscal year (1 July - 30 June) that {@code date} falls in, named by the calendar year in
+     * which it ends: a date in July-December belongs to the fiscal year ending the following
+     * calendar year, a date in January-June to the fiscal year ending the same calendar year. So
+     * 2026-08-11 is fiscal year 2027 and 2026-03-11 is fiscal year 2026.
+     */
+    default int fiscalYearOf(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Derives the owner's fiscal year, formatted {@code FY<YY>} where YY is the last two digits of
+     * the {@link #fiscalYearOf(java.time.LocalDate) fiscal year} of the business-day-adjusted
+     * registrationDate (e.g. {@code FY27}). Returns {@code null} when no registration date is present
+     * (e.g. seed data), so the field is simply absent.
+     */
+    default String fiscalYear(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", Math.floorMod(fiscalYearOf(registrationDate), 100));
+    }
+
+    /**
      * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the registrationDate year (e.g. {@code LON-SMI-0007-M26}). Returns {@code null}
-     * when either source field is absent, so owners without a customer code or registration date
-     * (e.g. seed data) simply have no membership number.
+     * last two digits of the {@link #fiscalYearOf(java.time.LocalDate) fiscal year} of the
+     * registrationDate (e.g. {@code LON-SMI-0007-M27}) — the same YY as {@link #fiscalYear(Owner)}.
+     * Returns {@code null} when either source field is absent, so owners without a customer code or
+     * registration date (e.g. seed data) simply have no membership number.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        int yy = Math.floorMod(owner.getRegistrationDate().getYear(), 100);
+        int yy = Math.floorMod(fiscalYearOf(owner.getRegistrationDate()), 100);
         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
     }
 
