@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -121,6 +122,35 @@ public interface OwnerMapper {
         }
         int yy = Math.floorMod(owner.getRegistrationDate().getYear(), 100);
         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+    }
+
+    /**
+     * Computes the owner's Luhn check digit (0-9) over the digits contained in the customerCode.
+     * Returns {@code null} when the customer code is absent (e.g. seed data).
+     */
+    default Integer checkDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);
