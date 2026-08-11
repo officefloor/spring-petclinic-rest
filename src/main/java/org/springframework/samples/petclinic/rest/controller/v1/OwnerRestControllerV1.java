@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        validatePostcode(owner.getPostcode(), owner.getCity());
         java.time.LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : java.time.LocalDate.now();
         java.time.LocalDate businessDate = toBusinessDay(effectiveDate);
@@ -393,6 +394,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Telephone for country code '+" + bestCode + "' must have " + required
                     + " national digits");
+        }
+    }
+
+    /**
+     * The inclusive 4-digit postcode range permitted for each canonical region, keyed by the
+     * region derived from the owner's city ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+     * {@code Brisbane -> QLD}): NSW {@code 2000-2099}, VIC {@code 3000-3099}, QLD
+     * {@code 4000-4099}. A city whose region is not listed here accepts any 4-digit postcode.
+     */
+    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's optional postcode against their city's region. The postcode is only
+     * checked when present (a {@code null} postcode is accepted, keeping the request contract
+     * backward-compatible). Its four-digit shape is already enforced by Bean Validation on the
+     * request DTO. When the city maps to a known region (see {@link #REGION_POSTCODE_RANGES}) the
+     * postcode must fall within that region's inclusive range; a city with no known region accepts
+     * any 4-digit postcode.
+     *
+     * @param postcode the owner's postcode as submitted, or {@code null} when absent
+     * @param city     the owner's city, used to derive the region whose range applies
+     * @throws ResponseStatusException with a 400 status when a supplied postcode is out of range
+     *         for the city's region
+     */
+    private void validatePostcode(String postcode, String city) {
+        if (postcode == null) {
+            return;
+        }
+        String region = org.springframework.samples.petclinic.mapper.Localities.forCity(city);
+        int[] range = REGION_POSTCODE_RANGES.get(region);
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Postcode " + postcode + " is not valid for region " + region);
         }
     }
 
