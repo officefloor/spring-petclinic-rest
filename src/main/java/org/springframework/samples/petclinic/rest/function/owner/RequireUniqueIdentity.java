@@ -36,6 +36,9 @@ public class RequireUniqueIdentity {
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a new registration
+            }
             String existingKey = OwnerIdentity.key(existing.getTelephone(), existing.getEmail(),
                     existing.getHouseholdId());
             if (identityKey.equals(existingKey)) {
