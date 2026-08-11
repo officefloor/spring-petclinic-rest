@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -122,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new MissingOwnerFieldsException(missingFields);
         }
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        if (isTelephoneInUse(telephone)) {
+            throw new DuplicateTelephoneException(ownerFieldsDto.getTelephone());
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(telephone);
@@ -243,5 +247,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(rawTelephone);
         }
         return digits;
+    }
+
+    /**
+     * Determines whether any existing owner already uses the given normalized telephone. Each
+     * stored telephone is reduced to its digits before comparison so values that normalize to the
+     * same number are treated as duplicates regardless of formatting.
+     *
+     * @param normalizedTelephone the digits-only telephone of the owner being created
+     * @return {@code true} if another owner already has the same normalized telephone
+     */
+    private boolean isTelephoneInUse(String normalizedTelephone) {
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
     }
 }

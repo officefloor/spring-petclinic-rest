@@ -191,6 +191,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateTelephoneException} raised when a request to create an owner supplies a
+     * telephone whose normalized value already belongs to another owner.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+     *         whose {@code errors} array names the {@code telephone} field.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
      * blanks out one or more required fields that Bean Validation does not otherwise reject.
      *
