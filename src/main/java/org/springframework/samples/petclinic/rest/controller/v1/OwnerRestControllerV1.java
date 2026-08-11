@@ -120,8 +120,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new InvalidOwnerFieldsException(missingFields);
         }
+        // Normalize the telephone by stripping every non-digit character; it must
+        // contain exactly 10 digits afterwards, otherwise the request is rejected.
+        String normalizedTelephone = ownerFieldsDto.getTelephone().replaceAll("\\D", "");
+        if (normalizedTelephone.length() != 10) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizedTelephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
