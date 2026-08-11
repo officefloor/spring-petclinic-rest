@@ -478,18 +478,100 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key, the single derived value all duplicate detection is based on. It is
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
-     * is the stored E.164 value, the email is the stored lower-cased value (empty when absent) and
-     * the household segment is the deterministic {@code householdId} derived from the last name and
-     * postcode (empty only when no household id has been assigned). Two owners are duplicates only
-     * when their whole identity keys are equal.
+     * the full lower-case hex SHA-256 digest of {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}, where the telephone is the stored E.164 value, the email is the stored
+     * lower-cased value (empty when absent) and the last-name segment is the American Soundex code of
+     * the last name. Two owners are duplicates only when their whole identity keys are equal, so
+     * owners sharing a last name (by soundex) and postcode but carrying different telephones no longer
+     * collide here — they are surfaced as a soft (possible) duplicate instead.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        String key = telephonePart + "|" + emailPart + "|" + soundex(getLastName());
+        return sha256Hex(key);
+    }
+
+    /**
+     * The American Soundex code of {@code name}: the first letter followed by three digits (padded
+     * with {@code '0'} when there are too few coded consonants, truncated to four characters
+     * otherwise). Non-letters are ignored; a {@code null}, blank, or letter-free value yields the
+     * empty string. Consonants are grouped b/f/p/v=1, c/g/j/k/q/s/x/z=2, d/t=3, l=4, m/n=5, r=6;
+     * adjacent same-coded letters (and same-coded letters separated only by {@code h}/{@code w}) are
+     * coded once, while a vowel between them causes both to be coded.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (char c : name.toUpperCase(Locale.ROOT).toCharArray()) {
+            if (c >= 'A' && c <= 'Z') {
+                letters.append(c);
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder().append(letters.charAt(0));
+        char prevCode = soundexCode(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                // Acts as a connector: same-coded consonants either side stay adjacent.
+                continue;
+            }
+            if (c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U' || c == 'Y') {
+                // A vowel separates same-coded consonants, so both are coded.
+                prevCode = '0';
+                continue;
+            }
+            char digit = soundexCode(c);
+            if (digit != '0' && digit != prevCode) {
+                code.append(digit);
+            }
+            prevCode = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    private static char soundexCode(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
+    }
+
+    /** The full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     public String getHouseholdId() {

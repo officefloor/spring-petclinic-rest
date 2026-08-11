@@ -197,9 +197,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // explicit link. This computed value drives duplicate detection and the household size.
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
         // A new owner may join an existing household (same computed householdId); rather than being
-        // rejected, the joiner is admitted with a capped membership level (see below).
-        // Remaining duplicate detection is consolidated into the single derived identity key: a create
-        // is rejected when the new owner's whole identity key equals an existing owner's.
+        // rejected, the joiner is admitted with a capped membership level (see below). The householdId
+        // no longer feeds duplicate detection.
+        // Duplicate detection is consolidated into the single derived identity key (telephone, email
+        // and the last name's Soundex): a create is rejected when the new owner's whole identity key
+        // equals an existing owner's.
         if (isIdentityKeyInUse(owner.getIdentityKey())) {
             throw new DuplicateIdentityException(owner.getIdentityKey());
         }
@@ -579,10 +581,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determines whether any existing owner already carries the given identity key. The identity key
-     * ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) is the single value
-     * all duplicate detection is based on, so two owners collide only when their whole identity keys
-     * are equal.
+     * Determines whether any existing (non-deleted) owner already carries the given identity key. The
+     * identity key (the SHA-256 hex over {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}) is the single value all duplicate detection is based on, so two owners
+     * collide only when their whole identity keys are equal.
      *
      * @param identityKey the identity key of the owner being created
      * @return {@code true} if another owner already has the same identity key
@@ -596,10 +598,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds an existing owner that the owner being created is a possible (soft) duplicate of: one
-     * that shares the same last name (compared case-insensitively, whitespace-collapsed) and the
-     * same postcode but carries a <em>different</em> telephone. Such a create is not rejected as a
-     * hard duplicate, but is flagged. An owner with no postcode can never be a soft duplicate. When
-     * several owners match, the earliest (lowest id) is returned so the result is deterministic.
+     * whose last name has the same Soundex code and whose postcode matches, but whose whole identity
+     * key <em>differs</em> (so it is not a hard duplicate). Because the telephone is part of the
+     * identity key, two owners sharing a last name (by Soundex) and postcode but carrying different
+     * telephones fall here rather than being rejected. Such a create is not rejected, but is flagged.
+     * An owner with no postcode can never be a soft duplicate. When several owners match, the earliest
+     * (lowest id) is returned so the result is deterministic.
      *
      * @param owner the owner being created (telephone already normalized, postcode set)
      * @return the id of the matching existing owner, or {@code null} when there is no soft match
@@ -608,13 +612,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(owner.getPostcode())) {
             return null;
         }
-        String normalizedLastName = normalizeIdentity(owner.getLastName());
+        String lastNameSoundex = Owner.soundex(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getId() != null
                 && !existing.isDeleted()
-                && normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
+                && Owner.soundex(existing.getLastName()).equals(lastNameSoundex)
                 && owner.getPostcode().equals(existing.getPostcode())
-                && !java.util.Objects.equals(owner.getTelephone(), existing.getTelephone()))
+                && !identityKey.equals(existing.getIdentityKey()))
             .map(Owner::getId)
             .min(Integer::compareTo)
             .orElse(null);
