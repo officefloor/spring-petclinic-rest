@@ -259,6 +259,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DailyRegistrationLimitException} raised when a request to create an owner would
+     * exceed the daily registration limit, i.e. 100 or more owners have already been created today.
+     *
+     * @param e The {@link DailyRegistrationLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests
+     *         status.
+     */
+    @ExceptionHandler(DailyRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyRegistrationLimitException(DailyRegistrationLimitException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        logger.debug("Daily registration limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
      * blanks out one or more required fields that Bean Validation does not otherwise reject.
      *
