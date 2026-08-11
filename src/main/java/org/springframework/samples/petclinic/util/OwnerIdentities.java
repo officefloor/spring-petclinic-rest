@@ -11,8 +11,8 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
 
 /**
  * Derives an owner's {@code identityKey}: the single value all create-time duplicate detection is
- * expressed through. The key is the lower-case hex SHA-256 of
- * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}, so two owners are
+ * expressed through. Under the version-2 algorithm the key is the lower-case hex SHA-256 of
+ * {@code "V2" + "|" + normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}, so two owners are
  * duplicates only when all three normalized components agree. Because the telephone is part of the
  * key, two owners sharing a last name (same soundex) and postcode but with <em>different</em>
  * telephones have different keys and are both allowed — they are a soft match, not a hard duplicate.
@@ -24,11 +24,22 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone;
  */
 public final class OwnerIdentities {
 
+    /**
+     * The fixed version tag mixed into every derived identifier by the version-2 algorithm. It is
+     * folded into the {@link #memberId(Owner) memberId} (via its region segment), the
+     * {@link #householdId(Owner) householdId} and the {@link #identityKey(Owner) identityKey}, so
+     * every identifier changes and no value produced under version 1 is produced again. The tag
+     * appears <em>only</em> inside the identifiers — never in the user-facing {@code locality},
+     * {@code timezone} or the owner segment's derived region, which stay the plain region code.
+     */
+    private static final String VERSION_TAG = "V2";
+
     private OwnerIdentities() {
     }
 
     public static String identityKey(Owner owner) {
-        return sha256Hex(normalizeTelephone(owner.getTelephone()) + "|"
+        return sha256Hex(VERSION_TAG + "|"
+                + normalizeTelephone(owner.getTelephone()) + "|"
                 + normalizeEmail(owner.getEmail()) + "|"
                 + soundex(owner.getLastName()));
     }
@@ -108,8 +119,9 @@ public final class OwnerIdentities {
 
     /**
      * Builds the owner's unified {@code memberId}: {@code '<REGION><FY><HASH8><CHK>'} (no separators).
-     * REGION is the canonical region derived from the owner's postcode (falling back to city — see
-     * {@link Localities}); FY is the two-digit fiscal year of the owner's {@code registrationDate}
+     * REGION is the version-2 identity region — the canonical region derived from the owner's postcode
+     * (falling back to city — see {@link Localities}) with the fixed {@code 'V2'} version tag mixed in
+     * (see {@link #identityRegion(Owner)}); FY is the two-digit fiscal year of the owner's {@code registrationDate}
      * (fiscal years start 1 July — see {@link FiscalYears}); HASH8 is the first 8 upper-case hex
      * characters of SHA-256 over {@code normalizedTelephone + lastName}; and CHK is a single Luhn
      * check digit computed over the decimal digits of {@code '<REGION><FY><HASH8>'} (see
@@ -117,10 +129,21 @@ public final class OwnerIdentities {
      * {@link #identityKey(Owner)}, so owners differing only in telephone formatting share the HASH8.
      */
     public static String memberId(Owner owner) {
-        String region = Localities.localityFor(owner.getCity(), owner.getPostcode());
+        String region = identityRegion(owner);
         String fy = FiscalYears.yearSegment(owner.getRegistrationDate());
         String base = region + fy + hash8(owner);
         return base + CheckDigits.luhn(base);
+    }
+
+    /**
+     * The region code used <em>inside</em> the identifiers: the canonical region (derived from
+     * postcode, falling back to city — see {@link Localities}) with the fixed {@link #VERSION_TAG}
+     * mixed in. This is what the version-2 {@link #memberId(Owner) memberId} embeds, so its region
+     * segment differs from every version-1 value. The plain region without the tag remains the
+     * user-facing {@code locality} and the owner segment's region.
+     */
+    private static String identityRegion(Owner owner) {
+        return Localities.localityFor(owner.getCity(), owner.getPostcode()) + VERSION_TAG;
     }
 
     /**
@@ -136,14 +159,14 @@ public final class OwnerIdentities {
 
     /**
      * The owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
-     * {@code normalizedLastName + "|" + postcode}. Owners with the same last name (normalized to a
+     * {@code "V2" + "|" + normalizedLastName + "|" + postcode}. Owners with the same last name (normalized to a
      * trimmed, whitespace-collapsed, lower-cased form) and the same postcode therefore compute the
      * same identifier and belong to the same household automatically — no request has to declare it.
      */
     public static String householdId(Owner owner) {
         String lastName = normalizeName(owner.getLastName());
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode().trim();
-        return sha256Hex(lastName + "|" + postcode).substring(0, 12);
+        return sha256Hex(VERSION_TAG + "|" + lastName + "|" + postcode).substring(0, 12);
     }
 
     /** Full lower-case hex SHA-256 over the UTF-8 bytes of {@code value}. */

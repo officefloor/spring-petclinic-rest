@@ -39,26 +39,16 @@ public final class Localities {
     }
 
     /**
-     * Derives the owner's locality from its {@code memberId} identity
-     * ({@code '<REGION><FY><HASH8><CHK>'}), whose leading REGION is the canonical region: the locality
-     * is the leading run of letters, which stops at the first digit of the FY segment. Owners with no
-     * {@code memberId} yet (e.g. seed data) fall back to deriving the region directly from postcode
-     * and city.
+     * Derives the owner's user-facing locality: the plain canonical region code (e.g. {@code "NSW"}),
+     * derived directly from the owner's postcode (falling back to city). The locality is <em>not</em>
+     * an identifier, so it never carries the {@code 'V2'} version tag that the version-2 identity
+     * algorithm mixes into the {@code memberId}; it stays the bare region code. The same plain region
+     * backs the {@code timezone} and the owner segment's area.
      *
      * @param owner the owner (must not be {@code null}).
      * @return the canonical region for the owner, or {@code "UNKNOWN"} when none resolves.
      */
     public static String localityFor(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int i = 0;
-            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-                i++;
-            }
-            if (i > 0) {
-                return memberId.substring(0, i);
-            }
-        }
         return localityFor(owner.getCity(), owner.getPostcode());
     }
 

@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.OwnerIdentities;
 
 import java.util.Collection;
 import java.util.List;
@@ -39,8 +41,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
     @Mapping(target = "ageBand",
             expression = "java(org.springframework.samples.petclinic.util.AgeBands.bandFor(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.util.OwnerIdentities.identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentity(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.util.FiscalYears.labelFor(owner))")
     @Mapping(target = "ownerSegment",
@@ -52,6 +54,19 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * Groups the owner's version-2 identifiers into the nested {@code identity} object of the
+     * response. The {@code memberId} and {@code householdId} are read from the persisted owner; the
+     * {@code identityKey} is derived on the fly (see {@link OwnerIdentities#identityKey(Owner)}).
+     */
+    default OwnerIdentityDto toOwnerIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentities.identityKey(owner));
+        return identity;
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)

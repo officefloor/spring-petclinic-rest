@@ -1,8 +1,10 @@
 package org.springframework.samples.petclinic.util;
 
 /**
- * Immutable structured audit event emitted when an owner is created, rendered as the JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+ * Immutable structured audit event emitted when an owner is created, rendered under schema version 2
+ * as the JSON object
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+ * The {@code memberId} it carries is the owner's version-2 primary identifier.
  *
  * <p>{@code seq} is a monotonically increasing sequence assigned by the emitter (see
  * {@code RespondWithOwnerCreated}). The {@code memberId} field carries the owner's current
@@ -17,11 +19,15 @@ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int memb
     /** The fixed {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT = "OWNER_CREATED";
 
+    /** The audit schema version this event is emitted under. */
+    public static final int SCHEMA_VERSION = 2;
+
     /** Render this event as a compact JSON object. */
     public String toJson() {
         return new StringBuilder()
                 .append('{')
-                .append("\"seq\":").append(this.seq)
+                .append("\"schemaVersion\":").append(SCHEMA_VERSION)
+                .append(",\"seq\":").append(this.seq)
                 .append(",\"ownerId\":").append(this.ownerId)
                 .append(",\"memberId\":").append(quote(this.memberId))
                 .append(",\"membershipLevel\":").append(this.membershipLevel)
