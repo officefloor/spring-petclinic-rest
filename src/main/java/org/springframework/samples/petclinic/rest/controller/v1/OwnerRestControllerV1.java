@@ -163,6 +163,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(ownerFieldsDto.getCity());
         }
+        // Postcode is optional; when present it must be a 4-digit value that is valid for the
+        // owner's city per the fixed region ranges. A malformed or out-of-range postcode is
+        // rejected with a 400. An absent postcode leaves the request contract unchanged.
+        validatePostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
         // Normalize the telephone into E.164 form; a number that cannot form a valid
         // E.164 value is rejected with a 400.
         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
@@ -511,6 +515,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count() + 1L;
         return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * The fixed city-to-region table used to validate a supplied postcode against the owner's city
+     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). A city not present here has no known region
+     * and accepts any 4-digit postcode.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * The fixed region-to-postcode ranges (inclusive): NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
+     * Each entry is a two-element {@code {low, high}} array.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validate an optional owner postcode. Does nothing when no postcode was supplied (the field is
+     * optional and the request contract stays backward-compatible). When supplied it must be exactly
+     * 4 digits and, if the city maps to a known region, must fall within that region's inclusive
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any
+     * 4-digit postcode. A malformed or out-of-range postcode throws an
+     * {@link InvalidOwnerFieldsException} so the request is rejected with a 400.
+     */
+    private static void validatePostcode(String city, String postcode) {
+        if (postcode == null || postcode.isEmpty()) {
+            return;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+        String region = city == null ? null : CITY_REGION.get(city);
+        if (region == null) {
+            return;
+        }
+        int[] range = REGION_POSTCODES.get(region);
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
     }
 
     /**
