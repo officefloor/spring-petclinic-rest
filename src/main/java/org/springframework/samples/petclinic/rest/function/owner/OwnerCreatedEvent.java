@@ -9,11 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * {@code event} fixed to {@code "OWNER_CREATED"}.
  *
  * <p>{@code primaryIdentifier} carries the owner's <em>current</em> primary identifier, whatever
- * that happens to be. Today that is the {@code customerCode} (so the JSON key is
- * {@code "customerCode"}); when the customer code is later unified into the {@code memberId}, only
- * {@link #from(long, Owner)} and {@link #IDENTIFIER_FIELD} change and the event automatically
- * carries the {@code memberId} instead. Every field is captured at construction, so a published
- * event never changes.
+ * that happens to be. Today that is the unified {@code memberId} (so the JSON key is
+ * {@code "memberId"}), read in one place so any future identifier change flows through
+ * {@link #from(long, Owner)} and {@link #IDENTIFIER_FIELD}. Every field is captured at
+ * construction, so a published event never changes.
  */
 public record OwnerCreatedEvent(long seq, int ownerId, String primaryIdentifier, int membershipLevel) {
 
@@ -21,7 +20,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String primaryIdentifier,
     public static final String EVENT = "OWNER_CREATED";
 
     /** JSON key for {@link #primaryIdentifier()} — tracks the current primary identifier's name. */
-    private static final String IDENTIFIER_FIELD = "customerCode";
+    private static final String IDENTIFIER_FIELD = "memberId";
 
     /**
      * Captures the event for a just-saved {@code owner} at sequence {@code seq}, reading the owner's
@@ -29,7 +28,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String primaryIdentifier,
      * changes flow through here.
      */
     public static OwnerCreatedEvent from(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(), Membership.levelOf(owner));
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(), Membership.levelOf(owner));
     }
 
     /** This event as a compact JSON object with the fields in specification order. */

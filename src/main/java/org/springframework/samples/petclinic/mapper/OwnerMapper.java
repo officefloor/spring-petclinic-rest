@@ -43,8 +43,6 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.ContactPreference.of(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.mapper.IdentityKey.of(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.of(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
     @Mapping(target = "fiscalYear",
