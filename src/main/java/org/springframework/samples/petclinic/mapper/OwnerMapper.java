@@ -29,8 +29,19 @@ public interface OwnerMapper {
         expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference",
+        expression = "java(contactPreference(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Determine the owner's preferred contact channel: 'EMAIL' when an email address is present,
+     * otherwise 'PHONE'.
+     */
+    default String contactPreference(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Build the owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is
