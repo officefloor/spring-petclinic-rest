@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -133,6 +134,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new InvalidOwnerFieldsException(missingFields);
+        }
+        // Reject the request once the day's owner-creation limit is reached: when 100 or more owners
+        // already carry today's registration date, no further owners may be created today.
+        LocalDate today = LocalDate.now();
+        if (countOwnersRegisteredOn(today) >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitExceededException(today);
         }
         // Reject the request when the owner's city is already full: a city that already holds the
         // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
@@ -404,6 +411,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private int countOwnersInCity(String city) {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+            .count();
+    }
+
+    /**
+     * The maximum number of owners that may be created on a single day. Once this many owners
+     * already carry a given day's registration date, a request to create another owner that day is
+     * rejected with a 429.
+     */
+    private static final int MAX_OWNERS_PER_DAY = 100;
+
+    /**
+     * Count the existing owners whose registration date is the given day. Called before the new
+     * owner is saved, so the returned value reflects the owners that already existed at creation
+     * time.
+     */
+    private int countOwnersRegisteredOn(LocalDate date) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> date.equals(existing.getRegistrationDate()))
             .count();
     }
 
