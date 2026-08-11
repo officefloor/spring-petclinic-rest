@@ -138,7 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -149,22 +149,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the next customer code, formatted {@code <LAST3>-<NNNN>} where LAST3 is the
-     * upper-cased first three letters of the owner's last name and NNNN is a global 4-digit
-     * zero-padded sequence equal to one more than the current number of owners (e.g. {@code SMI-0007}).
+     * Builds the next customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is the
+     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three letters
+     * of the owner's last name and NNNN is a per-city 4-digit zero-padded sequence equal to one more
+     * than the number of owners already in that city (e.g. {@code MAD-SMI-0007}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
      * Builds the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the registrationDate year, zero-padded (e.g. {@code SMI-0007-M26}).
+     * last two digits of the registrationDate year, zero-padded (e.g. {@code MAD-SMI-0007-M26}).
      *
      * @param customerCode     the owner's assigned customer code
      * @param registrationDate the owner's registration date
