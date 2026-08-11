@@ -1,6 +1,23 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# A create carrying an already-seen 'Idempotency-Key' replays the originally created owner (200)
+# rather than running the create pipeline again (which would reject the repeat as a duplicate).
+idempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  outputs:
+    replay: replayLoad
+    fresh: validate
+
+replayLoad:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadOwnerById
+  govern: [ readonly-transaction ]
+  next: replayRespond
+
+replayRespond:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: registrationDate
@@ -61,6 +78,11 @@ bulkSignup:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: record
+
+record:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: respond
 
