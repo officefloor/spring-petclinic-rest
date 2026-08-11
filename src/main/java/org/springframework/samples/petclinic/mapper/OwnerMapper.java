@@ -31,7 +31,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipPoints",
         expression = "java(org.springframework.samples.petclinic.mapper.Membership.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
+        expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() "
+            + ": org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Locality.of(owner))")
     @Mapping(target = "timezone",
