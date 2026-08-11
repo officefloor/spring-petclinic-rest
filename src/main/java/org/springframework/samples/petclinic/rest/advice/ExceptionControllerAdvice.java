@@ -213,6 +213,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidEmailException} thrown when an owner is created or updated with an
+     * email that is present but not a syntactically valid address. Returns a 400 Bad Request whose
+     * body carries an {@code errors} array naming the offending {@code email} field.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        logger.debug("Invalid owner email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} thrown when an owner is created with a
      * normalized telephone that is already in use by another owner. Returns a 409 Conflict
      * whose body carries an {@code errors} array naming the offending {@code telephone} field.
