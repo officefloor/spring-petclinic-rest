@@ -311,6 +311,10 @@ public class Owner extends Person {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone for the {@code timezone} derivation. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     /**
      * The region code that forms the {@code REGION} segment of the {@link #customerCode}, derived
      * by looking up the region by {@link #postcode} range first (NSW 2000-2099, VIC 3000-3099,
@@ -340,6 +344,17 @@ public class Owner extends Person {
         }
         int dash = this.customerCode.indexOf('-');
         return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
+    }
+
+    /**
+     * The owner's timezone as an IANA name, derived from its {@link #getLocality() locality} (the
+     * region) via the fixed region-to-timezone table: {@code NSW->Australia/Sydney},
+     * {@code VIC->Australia/Melbourne}, {@code QLD->Australia/Brisbane}. Returns {@code null} when
+     * the locality is not one of those regions.
+     */
+    @Transient
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
     }
 
     /** Region whose postcode range contains the given postcode, or {@code null} when none does. */
