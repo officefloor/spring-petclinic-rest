@@ -36,6 +36,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -91,6 +94,29 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation: the optional {@link #title} (MR/MRS/MS/DR) followed by a single space
+     * and the last name, or just the last name when no title was supplied. A blank title is treated
+     * as absent.
+     *
+     * @return the composed salutation
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
+    }
 
     public String getAddress() {
         return this.address;
