@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5fa149a9..a389c305 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Transient
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -141,6 +144,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MarkBulkSignupWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MarkBulkSignupWarning.java
+new file mode 100644
+index 00000000..45e576a5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MarkBulkSignupWarning.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Derives the read-time {@code bulkSignupWarning} flag on an owner: {@code true} once more than
++ * {@link #BULK_THRESHOLD} owners have already been registered on the current business day
++ * (server date rolled forward off any weekend, matching {@link BusinessDay}), otherwise
++ * {@code false}. Runs before the responder so the flag is carried onto the returned DTO.
++ */
++public class MarkBulkSignupWarning {
++
++    /** The warning is raised once the count of owners created today exceeds this value. */
++    public static final int BULK_THRESHOLD = 80;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        LocalDate today = BusinessDay.rollForward(LocalDate.now());
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (today.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        owner.setBulkSignupWarning(count > BULK_THRESHOLD);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index aa32fa90..bb13b3f0 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -74,6 +74,11 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: bulkWarning
++
++bulkWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.MarkBulkSignupWarning
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index 97ea1697..e5591779 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -4,6 +4,11 @@ composition:
+ load:
+   class: org.springframework.samples.petclinic.rest.function.owner.LoadOwner
+   govern: [ readonly-transaction ]
++  next: bulkWarning
++
++bulkWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.MarkBulkSignupWarning
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9c4d91eb..938a1ef0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2137,6 +2137,13 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: Derived at read time. True when more than 80 owners have already
++                been created on the current business day, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
