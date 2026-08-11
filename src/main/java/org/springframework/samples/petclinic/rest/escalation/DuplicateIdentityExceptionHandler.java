@@ -7,14 +7,14 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateEmailExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateEmailException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<Errors>> response) {
-        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(new Errors(List.of("email"))));
+        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(new Errors(List.of("identityKey"))));
     }
 
-    /** Response body: {@code {"errors": ["email"]}}. */
+    /** Response body: {@code {"errors": ["identityKey"]}}. */
     public record Errors(List<String> errors) {
     }
 }
