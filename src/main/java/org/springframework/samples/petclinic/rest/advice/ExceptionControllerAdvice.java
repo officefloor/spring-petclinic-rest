@@ -213,6 +213,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link FutureRegistrationDateException} raised when a request to create an owner supplies a
+     * {@code registrationDate} that is later than the current server date.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status,
+     *         whose {@code errors} array names the {@code registrationDate} field.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Future registration date at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateIdentityException} raised when a request to create an owner produces an
      * identity key ({@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}) whose
      * whole value already belongs to another owner. This single check consolidates the former
