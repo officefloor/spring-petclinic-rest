@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ef62c268..a71edd71 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.Locality.ofCustomerCode(owner.getCustomerCode()))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.mapper.Timezone.ofCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Timezone.java b/src/main/java/org/springframework/samples/petclinic/mapper/Timezone.java
+new file mode 100644
+index 00000000..03ecee34
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Timezone.java
+@@ -0,0 +1,39 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's IANA timezone from their locality/region via a fixed
++ * region-to-timezone table.
++ *
++ * <p>The table pins each known region to its IANA name (NSW -&gt; Australia/Sydney,
++ * VIC -&gt; Australia/Melbourne, QLD -&gt; Australia/Brisbane). A region outside the
++ * table &mdash; including the {@code "UNKNOWN"} locality &mdash; yields {@code "UNKNOWN"}.
++ *
++ * <p>Kept as a standalone class (not a method on {@link OwnerMapper}) so MapStruct does
++ * not mistake it for an implicit {@code String -> String} mapping method and apply it to
++ * every string property, mirroring {@link Locality}.
++ */
++public final class Timezone {
++
++    /** Fixed region -&gt; IANA timezone table. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
++    private Timezone() {
++    }
++
++    /** The IANA timezone for {@code region}, or {@code "UNKNOWN"} when it is not in the table. */
++    public static String of(String region) {
++        return region == null ? "UNKNOWN" : REGION_TIMEZONE.getOrDefault(region, "UNKNOWN");
++    }
++
++    /**
++     * The IANA timezone for the region carried by a {@code '<REGION>-<HASH8>'} customer code.
++     * The region is resolved through {@link Locality#ofCustomerCode(String)}, so the timezone
++     * derives from the same single source of an owner's locality.
++     */
++    public static String ofCustomerCode(String customerCode) {
++        return of(Locality.ofCustomerCode(customerCode));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 50070f9c..fb6c173b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2190,6 +2190,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's IANA timezone derived from their locality/region
++                using the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane), or 'UNKNOWN' when the
++                region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk sign-up warning
+               description: True when more than 80 owners had already been created for this
