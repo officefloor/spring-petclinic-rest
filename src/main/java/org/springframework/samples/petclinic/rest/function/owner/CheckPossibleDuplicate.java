@@ -43,6 +43,9 @@ public class CheckPossibleDuplicate {
                 if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                     continue; // never match self
                 }
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue; // a soft-deleted owner is not a suspected duplicate match.
+                }
                 if (lastName.equals(normalize(existing.getLastName()))
                         && postcode.equals(normalize(existing.getPostcode()))
                         && !telephone.equals(normalizeTelephone(existing.getTelephone()))) {

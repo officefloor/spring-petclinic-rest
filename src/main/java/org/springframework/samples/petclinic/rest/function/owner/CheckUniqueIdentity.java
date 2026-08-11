@@ -35,6 +35,9 @@ public class CheckUniqueIdentity {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // never collide with self (should not yet be persisted, but be safe)
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a new registration.
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateIdentityException(householdId);
             }
