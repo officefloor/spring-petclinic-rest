@@ -252,10 +252,12 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 3 derived from the owner's own fields as
-     * captured at creation time. It starts at 1, gains 1 when an email is present, gains a further
-     * 1 when the owner has no namesakes ({@code namesakeCount} is 0), and is capped at 3. Level 4
-     * is reserved for tenure and is never produced here.
+     * The owner's membership level, a number from 1 to 4. The first three levels are derived from the
+     * owner's own fields as captured at creation time: it starts at 1, gains 1 when an email is present,
+     * gains a further 1 when the owner has no namesakes ({@code namesakeCount} is 0), and is capped at 3.
+     * Level 4 is reserved for tenure: it is granted, on top of the capped-at-3 factors, only once the
+     * owner's tenure — whole days from {@link #registrationDate} to today — exceeds 365. Because a newly
+     * created owner registers today and so has zero tenure, a new owner never exceeds level 3.
      */
     @Transient
     public Integer getMembershipLevel() {
@@ -268,7 +270,13 @@ public class Owner extends Person {
         if (noNamesakes) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        boolean longTenure = this.registrationDate != null
+            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
+        if (longTenure) {
+            level++;
+        }
+        return level;
     }
 
     /** City -> canonical region for the {@code region} derivation. */
