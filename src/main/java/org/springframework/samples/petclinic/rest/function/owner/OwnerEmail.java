@@ -1,11 +1,11 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+import org.springframework.samples.petclinic.util.DisposableEmailDomains;
 
 /**
  * Shared email handling for the owner create/update pipelines. Email is optional; when a
@@ -19,13 +19,6 @@ final class OwnerEmail {
      * least one dot and no whitespace. Rejects values like {@code not-an-email} (no {@code @}).
      */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-
-    /**
-     * Disposable email domains that are refused: a present email whose domain is one of these is
-     * rejected with a 400, so throwaway addresses cannot be registered against an owner.
-     */
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-            "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmail() {
     }
@@ -48,7 +41,7 @@ final class OwnerEmail {
         }
         String normalized = trimmed.toLowerCase(Locale.ROOT);
         String domain = normalized.substring(normalized.indexOf('@') + 1);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        if (DisposableEmailDomains.isBlocked(domain)) {
             throw new InvalidEmailException(email);
         }
         request.setEmail(normalized);
