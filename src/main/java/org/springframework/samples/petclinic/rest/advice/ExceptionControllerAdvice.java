@@ -237,6 +237,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link CityAtCapacityException} raised when a request to create an owner names a city
+     * that already contains 50 or more owners.
+     *
+     * @param e The {@link CityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+     *         whose {@code errors} array names the {@code city} field.
+     */
+    @ExceptionHandler(CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("City at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
      * blanks out one or more required fields that Bean Validation does not otherwise reject.
      *

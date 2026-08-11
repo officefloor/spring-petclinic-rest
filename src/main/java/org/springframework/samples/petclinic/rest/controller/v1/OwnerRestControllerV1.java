@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -133,6 +134,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!sharesHousehold
             && isHouseholdInUse(ownerFieldsDto.getLastName(), address)) {
             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), address);
+        }
+        if (isCityAtCapacity(ownerFieldsDto.getCity())) {
+            throw new CityAtCapacityException(ownerFieldsDto.getCity());
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -413,6 +417,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeIdentity(existing.getFirstName()).equals(normalizedFirstName)
                 && normalizeIdentity(existing.getLastName()).equals(normalizedLastName))
             .count();
+    }
+
+    /**
+     * The maximum number of owners permitted in a single city. Once a city already contains this
+     * many owners it is considered full and no further owners may be created there.
+     */
+    private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Determines whether the given city has already reached its capacity, i.e. already contains
+     * {@value #CITY_CAPACITY} or more existing owners. Cities are compared case-insensitively after
+     * collapsing runs of whitespace to a single space and trimming.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} if the city already contains {@value #CITY_CAPACITY} or more owners
+     */
+    private boolean isCityAtCapacity(String city) {
+        String normalizedCity = normalizeIdentity(city);
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
+            .count();
+        return count >= CITY_CAPACITY;
     }
 
     /**
