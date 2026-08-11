@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a7f234f7..d52631e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -22,10 +22,12 @@ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -62,6 +64,9 @@ import org.springframework.web.context.request.RequestContextHolder;
+ import org.springframework.web.context.request.ServletRequestAttributes;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
++
+ import jakarta.transaction.Transactional;
+ 
+ /**
+@@ -76,6 +81,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit logger; emits one line per successful owner create. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Process-wide, monotonically increasing sequence stamped onto each structured
++     * {@code OWNER_CREATED} audit event so consumers can order and de-duplicate them.
++     */
++    private static final AtomicLong AUDIT_EVENT_SEQ = new AtomicLong();
++
++    /** Serializes structured audit events to compact JSON. */
++    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -305,6 +319,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
+             ownerDto.getMembershipNumber());
++        // Alongside the human-readable line, publish an immutable, machine-readable event describing
++        // the create: a JSON object stamped with a process-wide monotonically increasing sequence, the
++        // owner id, the owner's current primary identifier and its numeric membership level. The
++        // primary identifier is the customerCode for now; when the customerCode is later unified into
++        // the memberId, this field carries the memberId instead.
++        Map<String, Object> ownerCreatedEvent = new LinkedHashMap<>();
++        ownerCreatedEvent.put("seq", AUDIT_EVENT_SEQ.incrementAndGet());
++        ownerCreatedEvent.put("ownerId", owner.getId());
++        ownerCreatedEvent.put("customerCode", owner.getCustomerCode());
++        ownerCreatedEvent.put("membershipLevel", ownerDto.getMembershipLevel());
++        ownerCreatedEvent.put("event", "OWNER_CREATED");
++        AUDIT.info(AUDIT_MAPPER.writeValueAsString(ownerCreatedEvent));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         // Remember the created owner against its idempotency key (when one was supplied) so a later
