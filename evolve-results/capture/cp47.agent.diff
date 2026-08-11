@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+index ea3bfd36..6d817899 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+@@ -2,26 +2,37 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.DayOfWeek;
+ import java.time.LocalDate;
++import java.util.Set;
+ 
+ /**
+- * Rolls a registration date forward onto a business day: a Saturday or Sunday moves forward to the
+- * next Monday; a weekday is returned unchanged. Applied to the EFFECTIVE registration date (whether
+- * supplied in the request or defaulted to the server date) so that every stored {@code
+- * registrationDate}, and every value derived from it, falls on a business day.
++ * Rolls a registration date forward onto a business day: a Saturday, Sunday or listed public holiday
++ * moves forward to the next non-holiday weekday; a plain weekday is returned unchanged. Applied to
++ * the EFFECTIVE registration date (whether supplied in the request or defaulted to the server date)
++ * so that every stored {@code registrationDate}, and every value derived from it, falls on a
++ * business day.
+  */
+ public final class BusinessDay {
+ 
++    /** Fixed list of public holidays that are never valid business days. */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++            LocalDate.of(2026, 1, 1),
++            LocalDate.of(2026, 1, 26),
++            LocalDate.of(2026, 4, 25),
++            LocalDate.of(2026, 12, 25),
++            LocalDate.of(2026, 12, 28));
++
+     private BusinessDay() {
+     }
+ 
+     public static LocalDate adjust(LocalDate date) {
+-        DayOfWeek dow = date.getDayOfWeek();
+-        if (dow == DayOfWeek.SATURDAY) {
+-            return date.plusDays(2);
+-        }
+-        if (dow == DayOfWeek.SUNDAY) {
+-            return date.plusDays(1);
++        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
++
++    private static boolean isWeekend(LocalDate date) {
++        DayOfWeek dow = date.getDayOfWeek();
++        return dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
+index 53205f93..72b33442 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ResolveRegistrationDate.java
+@@ -16,8 +16,8 @@ import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationD
+  * dated in the future.
+  *
+  * <p>The effective date is the one supplied in the request body, or the server's current date when
+- * the request omits it. Either way, a weekend date is rolled forward to the next Monday (see
+- * {@link BusinessDay}). {@link CheckDailyOwnerLimit} counts existing owners against this adjusted
++ * the request omits it. Either way, a weekend or public-holiday date is rolled forward to the next
++ * non-holiday business day (see {@link BusinessDay}). {@link CheckDailyOwnerLimit} counts existing owners against this adjusted
+  * day, {@link BuildOwner} stores it as the owner's {@code registrationDate}, and
+  * {@link AssignMembershipNumber} derives the year segment from it.
+  */
