@@ -171,15 +171,13 @@ public interface OwnerMapper {
 
     /**
      * Derive the owner's identity key, the single value into which all duplicate detection is
-     * consolidated: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two
-     * owners are duplicates only when their whole identity keys are equal. A null email or
-     * householdId contributes an empty segment.
+     * consolidated: the full lower-case hex SHA-256 over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are
+     * duplicates only when their whole identity keys are equal. A null email or last name contributes
+     * an empty segment.
      */
     default String identityKey(Owner owner) {
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        return IdentityKeys.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
