@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ad3ecc20..313a3d8e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,8 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$",
++        message = "Telephone must be in E.164 form: a '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index de515dcf..e3ba8249 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,20 +123,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new InvalidOwnerFieldsException(missingFields);
+         }
+-        // Normalize the telephone by stripping every non-digit character; it must
+-        // contain exactly 10 digits afterwards, otherwise the request is rejected.
+-        String normalizedTelephone = ownerFieldsDto.getTelephone().replaceAll("\\D", "");
+-        if (normalizedTelephone.length() != 10) {
+-            throw new InvalidOwnerFieldsException(List.of("telephone"));
+-        }
++        // Normalize the telephone into E.164 form; a number that cannot form a valid
++        // E.164 value is rejected with a 400.
++        String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
+         // Email is optional; when present it must be a syntactically valid address and is
+         // stored lower-cased. An invalid address is rejected with a 400.
+         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
+-        // Reject the request if the normalized telephone is already used by any other owner.
++        // Reject the request if the E.164 telephone is already used by any other owner.
+         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+             .map(Owner::getTelephone)
+             .filter(existing -> existing != null)
+-            .map(existing -> existing.replaceAll("\\D", ""))
+             .anyMatch(normalizedTelephone::equals);
+         if (telephoneInUse) {
+             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+@@ -167,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(toE164(ownerFieldsDto.getTelephone()));
+         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+@@ -254,6 +250,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return value == null || value.trim().isEmpty();
+     }
+ 
++    /**
++     * Convert a raw telephone into E.164 form. Spaces, dashes and brackets are stripped. A leading
++     * {@code '+'} with its country code is preserved; otherwise the Australian country code
++     * {@code '+61'} is assumed and a single leading {@code '0'} is dropped from the national digits.
++     * The result must be a {@code '+'} followed by 8 to 15 digits, otherwise an
++     * {@link InvalidOwnerFieldsException} is thrown so the request is rejected with a 400.
++     */
++    private static String toE164(String raw) {
++        String cleaned = raw.trim().replaceAll("[\\s()\\-]", "");
++        boolean hasCountryCode = cleaned.startsWith("+");
++        String digits = hasCountryCode ? cleaned.substring(1) : cleaned;
++        if (!digits.matches("\\d+")) {
++            throw new InvalidOwnerFieldsException(List.of("telephone"));
++        }
++        if (!hasCountryCode) {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            digits = "61" + digits;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
++            throw new InvalidOwnerFieldsException(List.of("telephone"));
++        }
++        return "+" + digits;
++    }
++
+     /**
+      * Pragmatic syntactic check for an email address: a non-empty local part, an {@code @},
+      * and a domain with at least one dot-separated label, none of which contain whitespace or
