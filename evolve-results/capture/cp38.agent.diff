@@ -1,0 +1,48 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a7e3d5b4..df43a4a0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -698,11 +699,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
++    /**
++     * Disposable email domains that are not accepted for an owner. An email whose domain (the part
++     * after the {@code @}, compared case-insensitively) is on this blocklist is rejected with a 400.
++     */
++    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     /**
+      * Validate and normalize an optional owner email. Returns {@code null} when no email was
+-     * supplied (the field is optional). When supplied it must be a syntactically valid address,
+-     * otherwise an {@link InvalidOwnerFieldsException} is thrown so the request is rejected with a
+-     * 400. A valid address is returned lower-cased.
++     * supplied (the field is optional). When supplied it must be a syntactically valid address whose
++     * domain is not on the disposable-domain blocklist, otherwise an
++     * {@link InvalidOwnerFieldsException} is thrown so the request is rejected with a 400. A valid
++     * address is returned lower-cased.
+      */
+     private static String normalizeEmail(String email) {
+         if (email == null || email.isEmpty()) {
+@@ -712,6 +721,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+             throw new InvalidOwnerFieldsException(List.of("email"));
+         }
+-        return trimmed.toLowerCase();
++        String normalized = trimmed.toLowerCase();
++        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new InvalidOwnerFieldsException(List.of("email"));
++        }
++        return normalized;
+     }
+ }
