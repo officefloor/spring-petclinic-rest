@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -27,6 +28,10 @@ public class ValidateOwnerFields {
 
     /** Syntactic email check: a non-empty local part, an {@code @}, then a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$");
+
+    /** Disposable email domains that are rejected with 400. */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws OwnerFieldsInvalidException {
@@ -63,7 +68,13 @@ public class ValidateOwnerFields {
             if (!EMAIL.matcher(email).matches()) {
                 throw new OwnerFieldsInvalidException(List.of("email"));
             }
-            request.setEmail(email.toLowerCase());
+            email = email.toLowerCase();
+            // Reject disposable-domain addresses (the domain part after the final '@').
+            String domain = email.substring(email.lastIndexOf('@') + 1);
+            if (DISPOSABLE_DOMAINS.contains(domain)) {
+                throw new OwnerFieldsInvalidException(List.of("email"));
+            }
+            request.setEmail(email);
         }
         validated.set(request);
     }
