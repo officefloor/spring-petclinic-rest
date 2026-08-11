@@ -152,9 +152,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Reject the request once the day's owner-creation limit is reached: when 100 or more owners
         // already carry this adjusted business day's registration date, no further owners may be
         // created for that day.
-        if (countOwnersRegisteredOn(effectiveRegistrationDate) >= MAX_OWNERS_PER_DAY) {
+        int ownersRegisteredToday = countOwnersRegisteredOn(effectiveRegistrationDate);
+        if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(effectiveRegistrationDate);
         }
+        // Flag a bulk signup once more than 80 owners have already been created for this
+        // business day, sharing the same daily accumulation path as the create-limit rule above.
+        boolean bulkSignupWarning = ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD;
         // Reject the request when the owner's city is already full: a city that already holds the
         // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
@@ -211,6 +215,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // name, compared case-insensitively. Computed against the current owners so the new owner
         // itself is never counted.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
+        owner.setBulkSignupWarning(bulkSignupWarning);
         // Store the business-day-adjusted effective registration date computed above. This defaults
         // to the server's current date when none was supplied and rolls any weekend date forward to
         // the following Monday, so everything derived from it (e.g. the membership number's year
@@ -439,6 +445,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * rejected with a 429.
      */
     private static final int MAX_OWNERS_PER_DAY = 100;
+
+    /**
+     * The number of owners that may be created on a single day before the bulk-signup warning is
+     * flagged. Once more than this many owners already carry a given day's registration date, a
+     * newly created owner is flagged with {@code bulkSignupWarning} set true.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
     /**
      * Count the existing owners whose registration date is the given day. Called before the new
