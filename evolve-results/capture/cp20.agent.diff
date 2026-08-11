@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 46931c0d..293f8cc8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -139,17 +140,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isCityAtCapacity(ownerFieldsDto.getCity())) {
+             throw new CityAtCapacityException(ownerFieldsDto.getCity());
+         }
+-        LocalDate today = LocalDate.now();
+-        if (isDailyRegistrationLimitReached(today)) {
+-            throw new DailyRegistrationLimitException(today);
+-        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(address);
+         owner.setTelephone(telephone);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        LocalDate effectiveDate = owner.getRegistrationDate() != null
++            ? owner.getRegistrationDate() : LocalDate.now();
++        LocalDate registrationDate = toBusinessDay(effectiveDate);
++        if (isDailyRegistrationLimitReached(registrationDate)) {
++            throw new DailyRegistrationLimitException(registrationDate);
+         }
++        owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         if (sharesHousehold) {
+@@ -462,6 +463,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return {@code true} if {@value #DAILY_REGISTRATION_LIMIT} or more owners were already
+      *         registered on the given date
+      */
++    /**
++     * Rolls a registration date forward onto a business day. A date that already falls on a
++     * weekday is returned unchanged; a Saturday or Sunday is rolled forward to the following
++     * Monday. This adjusted date is what gets stored as the {@code registrationDate} and drives
++     * everything derived from it (the membership number's year segment, the daily create-limit).
++     *
++     * @param date the effective registration date (supplied by the client or defaulted to the
++     *             server's current date)
++     * @return the same date if it is a weekday, otherwise the following Monday
++     */
++    private static LocalDate toBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++
+     private boolean isDailyRegistrationLimitReached(LocalDate date) {
+         long count = this.clinicService.findAllOwners().stream()
+             .filter(existing -> date.equals(existing.getRegistrationDate()))
