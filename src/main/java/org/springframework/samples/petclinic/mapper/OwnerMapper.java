@@ -31,6 +31,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.util.Localities.localityFor(owner))")
+    @Mapping(target = "timezone",
+            expression = "java(org.springframework.samples.petclinic.util.Localities.timezoneFor(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
     @Mapping(target = "ageBand",
