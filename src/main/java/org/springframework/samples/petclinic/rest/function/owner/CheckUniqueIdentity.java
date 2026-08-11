@@ -3,32 +3,40 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
-import org.springframework.samples.petclinic.util.OwnerIdentities;
 
 /**
- * Rejects a create-owner request whose whole {@code identityKey} equals an existing owner's. The
- * key — normalized telephone, email and householdId joined by {@code '|'} (see
- * {@link OwnerIdentities}) — consolidates what were three separate checks (telephone, email and
- * household): only an exact full-key match is a duplicate, reported as a 409 (see
- * {@link DuplicateIdentityException}).
+ * Rejects a create-owner request that would land in a household that already exists. The household
+ * is keyed on {@code (lastName, postcode)} through the deterministic {@code householdId} assigned by
+ * {@link AssignHousehold}, so a second owner sharing an existing owner's last name and postcode is a
+ * household duplicate and is rejected with 409 (see {@link DuplicateIdentityException}).
  *
- * <p>Runs after {@link BuildOwner} and {@link AssignHousehold} so the new owner's
- * {@code householdId} is already assigned and forms part of the key. Because the telephone is part
- * of the key, two members of the same household (same {@code householdId}) with different telephones
- * have different keys and are both allowed.
+ * <p>A request may opt in with {@code sharesHousehold=true} to declare that it intentionally joins
+ * that household. Doing so <em>bypasses this block</em> — the owner is created as a declared
+ * household member — so {@code sharesHousehold} now only lifts the duplicate rejection rather than
+ * creating the link (the link is implicit in the shared {@code householdId}).
+ *
+ * <p>Runs after {@link BuildOwner} and {@link AssignHousehold} so the new owner's {@code householdId}
+ * is already assigned, and before {@link SaveOwner} so the new owner is not compared against itself.
  */
 public class CheckUniqueIdentity {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository)
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String identityKey = OwnerIdentities.identityKey(owner);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // declared household member: bypass the duplicate block.
+        }
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return;
+        }
         for (Owner existing : ownerRepository.findAll()) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // never collide with self (should not yet be persisted, but be safe)
             }
-            if (identityKey.equals(OwnerIdentities.identityKey(existing))) {
-                throw new DuplicateIdentityException(identityKey);
+            if (householdId.equals(existing.getHouseholdId())) {
+                throw new DuplicateIdentityException(householdId);
             }
         }
     }

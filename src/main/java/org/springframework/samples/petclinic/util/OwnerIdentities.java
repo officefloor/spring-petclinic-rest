@@ -43,12 +43,25 @@ public final class OwnerIdentities {
     public static String customerCode(Owner owner) {
         String region = Localities.localityFor(owner.getCity(), owner.getPostcode());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = shaHex(normalizeTelephone(owner.getTelephone()) + lastName, 8);
+        String hash8 = sha256Hex(normalizeTelephone(owner.getTelephone()) + lastName)
+                .substring(0, 8).toUpperCase(Locale.ROOT);
         return region + "-" + hash8;
     }
 
-    /** First {@code length} upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
-    private static String shaHex(String value, int length) {
+    /**
+     * The owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
+     * {@code normalizedLastName + "|" + postcode}. Owners with the same last name (normalized to a
+     * trimmed, whitespace-collapsed, lower-cased form) and the same postcode therefore compute the
+     * same identifier and belong to the same household automatically — no request has to declare it.
+     */
+    public static String householdId(Owner owner) {
+        String lastName = normalizeName(owner.getLastName());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode().trim();
+        return sha256Hex(lastName + "|" + postcode).substring(0, 12);
+    }
+
+    /** Full lower-case hex SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));
@@ -56,11 +69,18 @@ public final class OwnerIdentities {
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, length).toUpperCase(Locale.ROOT);
+            return sb.toString();
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is required but unavailable", ex);
         }
+    }
+
+    private static String normalizeName(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeTelephone(String telephone) {

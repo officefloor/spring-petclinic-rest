@@ -2067,11 +2067,12 @@ components:
         sharesHousehold:
           title: Shares household
           description: >-
-            Create-time flag. When true, this owner joins the shared household of any existing
-            owner with the same last name and address, taking that household's householdId (which
-            then forms part of its identityKey). Duplicate rejection is decided solely by the
-            identityKey: only an owner whose whole identityKey equals an existing owner's is
-            rejected with 409. Write-only; never returned.
+            Create-time flag. The householdId is deterministic from (lastName, postcode), so owners
+            with the same last name and postcode are already the same household. A second owner in an
+            existing household is normally rejected as a household duplicate (409); setting this flag
+            true only bypasses that block, declaring the owner an intentional household member. A
+            declared member is created and is not flagged as a possibleDuplicate. Write-only; never
+            returned.
           type: boolean
           writeOnly: true
           example: true
@@ -2149,21 +2150,22 @@ components:
             householdId:
               title: Household ID
               description: >-
-                A stable identifier shared by owners who intentionally share a household
-                (same last name and address, created with sharesHousehold=true). Present
-                only for owners that belong to a shared household.
+                A deterministic household identifier: the first 12 hex characters of SHA-256 over
+                '<normalizedLastName>|<postcode>'. Assigned to every owner, so owners with the same
+                last name and postcode share it automatically.
               type: string
-              example: 'H-9F86D081884C'
+              example: '9f86d0818884'
               readOnly: true
             identityKey:
               title: Identity key
               description: >-
-                The owner's derived duplicate-detection key, formatted
-                '<normalizedTelephone>|<email or empty>|<householdId or empty>'. Two owners
-                are duplicates only when their whole identityKey is equal; a create request
-                whose identityKey matches an existing owner's is rejected with 409.
+                The owner's derived identity string, formatted
+                '<normalizedTelephone>|<email or empty>|<householdId or empty>'. Duplicate
+                rejection (409) is now decided by the household — a second owner sharing an
+                existing owner's householdId is a household duplicate unless it sets
+                sharesHousehold.
               type: string
-              example: '+61412345678||'
+              example: '+61412345678||9f86d0818884'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2201,7 +2203,8 @@ components:
               description: >-
                 True when, at the time this owner was created, an existing owner shared the
                 same lastName and postcode but had a different telephone (a soft, non-blocking
-                duplicate); otherwise false.
+                duplicate); otherwise false. Always false for an owner created with
+                sharesHousehold=true, since a declared household member is not a suspected duplicate.
               type: boolean
               example: false
               readOnly: true

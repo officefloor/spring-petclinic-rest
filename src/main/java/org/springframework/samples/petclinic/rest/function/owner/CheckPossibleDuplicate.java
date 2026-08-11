@@ -5,6 +5,7 @@ import java.util.Locale;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
@@ -20,10 +21,18 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  *
  * <p>Runs after {@link CheckUniqueIdentity} (so hard duplicates are already out) and before
  * {@link SaveOwner} (so the new owner is not compared against itself).
+ *
+ * <p>An owner that declared {@code sharesHousehold=true} is an intentional household member, not a
+ * suspected duplicate, so it is never flagged: {@code possibleDuplicate} is left {@code false}.
  */
 public class CheckPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return; // a declared household member is not a suspected duplicate.
+        }
         String lastName = normalize(owner.getLastName());
         String postcode = normalize(owner.getPostcode());
         String telephone = normalizeTelephone(owner.getTelephone());
