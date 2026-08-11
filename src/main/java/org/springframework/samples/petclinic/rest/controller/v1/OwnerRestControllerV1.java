@@ -172,6 +172,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             backfillHousehold(owner.getLastName(), owner.getAddress(), owner.getHouseholdId());
         }
         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
+        Integer possibleDuplicateOf = possibleDuplicateOf(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
@@ -461,6 +464,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .map(Owner::getIdentityKey)
             .anyMatch(identityKey::equals);
+    }
+
+    /**
+     * Finds an existing owner that the owner being created is a possible (soft) duplicate of: one
+     * that shares the same last name (compared case-insensitively, whitespace-collapsed) and the
+     * same postcode but carries a <em>different</em> telephone. Such a create is not rejected as a
+     * hard duplicate, but is flagged. An owner with no postcode can never be a soft duplicate. When
+     * several owners match, the earliest (lowest id) is returned so the result is deterministic.
+     *
+     * @param owner the owner being created (telephone already normalized, postcode set)
+     * @return the id of the matching existing owner, or {@code null} when there is no soft match
+     */
+    private Integer possibleDuplicateOf(Owner owner) {
+        if (isBlank(owner.getPostcode())) {
+            return null;
+        }
+        String normalizedLastName = normalizeIdentity(owner.getLastName());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getId() != null
+                && normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !java.util.Objects.equals(owner.getTelephone(), existing.getTelephone()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**
