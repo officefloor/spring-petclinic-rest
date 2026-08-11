@@ -116,6 +116,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner with this telephone number already exists");
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String lastNameKey = normalizeForHousehold(owner.getLastName());
+            String addressKey = normalizeForHousehold(owner.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(lastNameKey)
+                    && normalizeForHousehold(existing.getAddress()).equals(addressKey));
+            if (householdInUse) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "An owner with this last name already exists at this address");
+            }
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -138,6 +149,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(java.util.Locale.ROOT);
         long sequence = this.clinicService.findAllOwners().size() + 1L;
         return String.format("%s-%04d", prefix, sequence);
+    }
+
+    /**
+     * Normalizes a value for household-duplicate comparison: leading and trailing whitespace is
+     * trimmed, any internal run of whitespace is collapsed to a single space, and the result is
+     * lower-cased so the comparison is case-insensitive. A {@code null} value normalizes to the
+     * empty string.
+     *
+     * @param value the raw value (last name or address) as submitted
+     * @return the normalized comparison key
+     */
+    private String normalizeForHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
