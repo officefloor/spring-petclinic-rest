@@ -139,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -158,6 +159,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", last3, sequence);
+    }
+
+    /**
+     * Counts the existing owners that already share the given firstName and lastName, compared
+     * case-insensitively. Evaluated before the owner being created is saved, so it reflects only
+     * the owners that pre-existed this create.
+     *
+     * @param firstName the new owner's first name
+     * @param lastName  the new owner's last name
+     * @return the number of existing namesakes
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> equalsIgnoreCase(existing.getFirstName(), firstName)
+                && equalsIgnoreCase(existing.getLastName(), lastName))
+            .count();
+    }
+
+    private boolean equalsIgnoreCase(String a, String b) {
+        return a == null ? b == null : a.equalsIgnoreCase(b);
     }
 
     /**
