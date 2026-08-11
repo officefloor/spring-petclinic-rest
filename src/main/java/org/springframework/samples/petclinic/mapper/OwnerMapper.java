@@ -23,6 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipNumber",
         expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel",
@@ -60,6 +62,49 @@ public interface OwnerMapper {
             return "ADULT";
         }
         return "SENIOR";
+    }
+
+    /**
+     * The E.164 country calling codes whose split from the national number is recognised when
+     * formatting {@code telephoneDisplay} (matching the codes validated on create). The longest
+     * matching code wins so a shorter code that is a prefix of another cannot mask it.
+     */
+    java.util.Set<String> KNOWN_COUNTRY_CODES = java.util.Set.of("1", "61");
+
+    /**
+     * Format the stored E.164 telephone for humans: the '+' and country calling code, a space, then
+     * the national digits grouped in threes (e.g. '+61412345678' -&gt; '+61 412 345 678'). The
+     * country code is split off using the recognised calling codes; when none matches, a single-digit
+     * code is assumed so the value is still rendered as '+&lt;code&gt; &lt;grouped national&gt;'.
+     * Returns the stored value unchanged when it is null or not in E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        if (!digits.matches("\\d+")) {
+            return telephone;
+        }
+        String countryCode = digits.substring(0, 1);
+        String national = digits.substring(1);
+        for (int codeLength = Math.min(3, digits.length() - 1); codeLength >= 1; codeLength--) {
+            String candidate = digits.substring(0, codeLength);
+            if (KNOWN_COUNTRY_CODES.contains(candidate)) {
+                countryCode = candidate;
+                national = digits.substring(codeLength);
+                break;
+            }
+        }
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     /**
