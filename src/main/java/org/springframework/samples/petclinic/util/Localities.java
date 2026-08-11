@@ -39,20 +39,24 @@ public final class Localities {
     }
 
     /**
-     * Derives the owner's locality from its {@code customerCode} identity ({@code '<REGION>-<HASH8>'}),
-     * whose REGION is the canonical region: the locality is the region encoded in the code. Owners
-     * with no {@code customerCode} yet (e.g. seed data) fall back to deriving the region directly from
-     * postcode and city.
+     * Derives the owner's locality from its {@code memberId} identity
+     * ({@code '<REGION><FY><HASH8><CHK>'}), whose leading REGION is the canonical region: the locality
+     * is the leading run of letters, which stops at the first digit of the FY segment. Owners with no
+     * {@code memberId} yet (e.g. seed data) fall back to deriving the region directly from postcode
+     * and city.
      *
      * @param owner the owner (must not be {@code null}).
      * @return the canonical region for the owner, or {@code "UNKNOWN"} when none resolves.
      */
     public static String localityFor(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return localityFor(owner.getCity(), owner.getPostcode());

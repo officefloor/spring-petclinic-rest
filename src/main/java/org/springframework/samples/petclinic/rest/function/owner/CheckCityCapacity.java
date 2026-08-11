@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Rejects a create-owner request whose city already contains {@value #CITY_CAPACITY} or more
- * owners. City is compared case-insensitively, matching {@link AssignCustomerCode}. A city at
+ * owners. City is compared case-insensitively, matching {@link AssignMemberId}. A city at
  * capacity is reported as a 409 (see {@link CityAtCapacityException}).
  *
  * <p>Runs after {@link ValidateOwnerFields} (which republishes the validated request as a variable)

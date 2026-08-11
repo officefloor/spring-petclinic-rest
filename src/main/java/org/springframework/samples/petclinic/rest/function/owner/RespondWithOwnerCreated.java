@@ -29,11 +29,10 @@ public class RespondWithOwnerCreated {
         HouseholdMembers.stamp(owner, ownerRepository);
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int membershipLevel = MembershipLevels.cappedLevelFor(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipLevel, owner.getMembershipNumber());
-        // In addition to the audit line, emit the immutable structured event. Its customerCode field
-        // carries the owner's current primary identifier, so it follows a later switch to memberId.
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
+        // In addition to the audit line, emit the immutable structured event. Its memberId field
+        // carries the owner's current primary identifier (the unified member id).
         OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(), owner.getId(),
                 OwnerIdentities.primaryIdentifier(owner), membershipLevel);
         AUDIT.info(event.toJson());

@@ -98,28 +98,40 @@ public final class OwnerIdentities {
     }
 
     /**
-     * Builds the owner's {@code customerCode}: {@code '<REGION>-<HASH8>'}. REGION is the canonical
-     * region derived from the owner's postcode (falling back to city — see {@link Localities}); HASH8
-     * is the first 8 upper-case hex characters of SHA-256 over
-     * {@code normalizedTelephone + lastName}. The telephone is normalized to E.164 the same way as in
-     * {@link #identityKey(Owner)}, so owners differing only in telephone formatting share a code.
-     */
-    /**
      * The owner's <em>current primary identifier</em>: the single value that owner-scoped business
-     * events publish to identify the owner. Today that is the {@link Owner#getCustomerCode()
-     * customerCode}; when the customer code is later unified into the {@code memberId}, changing this
-     * one method makes every event carry the {@code memberId} instead — the callers need not change.
+     * events publish to identify the owner. This is the unified {@link Owner#getMemberId() memberId},
+     * so every event carries the memberId without any change at the call sites.
      */
     public static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
-    public static String customerCode(Owner owner) {
+    /**
+     * Builds the owner's unified {@code memberId}: {@code '<REGION><FY><HASH8><CHK>'} (no separators).
+     * REGION is the canonical region derived from the owner's postcode (falling back to city — see
+     * {@link Localities}); FY is the two-digit fiscal year of the owner's {@code registrationDate}
+     * (fiscal years start 1 July — see {@link FiscalYears}); HASH8 is the first 8 upper-case hex
+     * characters of SHA-256 over {@code normalizedTelephone + lastName}; and CHK is a single Luhn
+     * check digit computed over the decimal digits of {@code '<REGION><FY><HASH8>'} (see
+     * {@link CheckDigits}). The telephone is normalized to E.164 the same way as in
+     * {@link #identityKey(Owner)}, so owners differing only in telephone formatting share the HASH8.
+     */
+    public static String memberId(Owner owner) {
         String region = Localities.localityFor(owner.getCity(), owner.getPostcode());
+        String fy = FiscalYears.yearSegment(owner.getRegistrationDate());
+        String base = region + fy + hash8(owner);
+        return base + CheckDigits.luhn(base);
+    }
+
+    /**
+     * The first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName} —
+     * the HASH8 segment shared by the {@link #memberId(Owner) memberId} and the region-and-hash
+     * identity.
+     */
+    private static String hash8(Owner owner) {
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = sha256Hex(normalizeTelephone(owner.getTelephone()) + lastName)
+        return sha256Hex(normalizeTelephone(owner.getTelephone()) + lastName)
                 .substring(0, 8).toUpperCase(Locale.ROOT);
-        return region + "-" + hash8;
     }
 
     /**

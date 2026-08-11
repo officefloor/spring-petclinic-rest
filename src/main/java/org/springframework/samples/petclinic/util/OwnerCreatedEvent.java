@@ -2,18 +2,17 @@ package org.springframework.samples.petclinic.util;
 
 /**
  * Immutable structured audit event emitted when an owner is created, rendered as the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
  *
  * <p>{@code seq} is a monotonically increasing sequence assigned by the emitter (see
- * {@code RespondWithOwnerCreated}). The {@code customerCode} field carries the owner's current
+ * {@code RespondWithOwnerCreated}). The {@code memberId} field carries the owner's current
  * <em>primary identifier</em> (see {@link OwnerIdentities#primaryIdentifier(org.springframework.samples.petclinic.model.Owner)}):
- * the customer code today, and whatever replaces it later (e.g. the {@code memberId}) — the value
- * follows the primary identifier without any change here.
+ * the unified member id.
  *
  * <p>The record is immutable: once constructed the event cannot be altered before or after it is
  * published.
  */
-public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel) {
+public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel) {
 
     /** The fixed {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT = "OWNER_CREATED";
@@ -24,7 +23,7 @@ public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int 
                 .append('{')
                 .append("\"seq\":").append(this.seq)
                 .append(",\"ownerId\":").append(this.ownerId)
-                .append(",\"customerCode\":").append(quote(this.customerCode))
+                .append(",\"memberId\":").append(quote(this.memberId))
                 .append(",\"membershipLevel\":").append(this.membershipLevel)
                 .append(",\"event\":").append(quote(EVENT))
                 .append('}')

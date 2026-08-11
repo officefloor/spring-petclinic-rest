@@ -41,8 +41,6 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.AgeBands.bandFor(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.util.OwnerIdentities.identityKey(owner))")
-    @Mapping(target = "checkDigit",
-            expression = "java(org.springframework.samples.petclinic.util.CheckDigits.checkDigitFor(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.util.FiscalYears.labelFor(owner))")
     @Mapping(target = "ownerSegment",

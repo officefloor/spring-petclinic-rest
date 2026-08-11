@@ -19,7 +19,7 @@ import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationD
  * the request omits it. Either way, a weekend or public-holiday date is rolled forward to the next
  * non-holiday business day (see {@link BusinessDay}). {@link CheckDailyOwnerLimit} counts existing owners against this adjusted
  * day, {@link BuildOwner} stores it as the owner's {@code registrationDate}, and
- * {@link AssignMembershipNumber} derives the year segment from it.
+ * {@link AssignMemberId} derives the fiscal-year (FY) segment of the memberId from it.
  */
 public class ResolveRegistrationDate {
 
