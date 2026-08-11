@@ -25,6 +25,8 @@ public interface OwnerMapper {
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplays.displayFor(owner))")
+    @Mapping(target = "membershipPoints",
+            expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.pointsFor(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(org.springframework.samples.petclinic.util.MembershipLevels.levelFor(owner))")
     @Mapping(target = "locality",
