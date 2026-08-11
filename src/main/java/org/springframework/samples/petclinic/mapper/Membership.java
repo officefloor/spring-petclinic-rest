@@ -3,12 +3,12 @@ package org.springframework.samples.petclinic.mapper;
 import org.springframework.samples.petclinic.model.Owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's loyalty standing from a points system. {@link #pointsOf(Owner)} starts at 0
  * and adds 2 when an email is present, 1 when {@code namesakeCount} is 0, 2 for a household of 3 or
- * more (see {@code householdSize}), and 3 for a tenure over 365 days. {@link #levelOf(Owner)} maps
+ * more (see {@code householdSize}), and 3 for a tenure of more than one elapsed fiscal year (see
+ * {@link FiscalYear}). {@link #levelOf(Owner)} maps
  * those points to a numeric {@code membershipLevel}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4
  * for 6 or more. Because a newly created owner has zero tenure, a new owner reaches at most 5
  * points and so never exceeds level 3. Kept out of {@link OwnerMapper} so MapStruct does not
@@ -28,11 +28,11 @@ public final class Membership {
     /** The household size (members, inclusive) at which the household factor applies. */
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    /** Points added when the owner's tenure exceeds {@link #TENURE_DAYS_FOR_POINTS} days. */
+    /** Points added when the owner's tenure exceeds {@link #TENURE_FISCAL_YEARS_FOR_POINTS}. */
     private static final int POINTS_TENURE = 3;
 
-    /** A tenure strictly greater than this many days earns the tenure points. */
-    private static final long TENURE_DAYS_FOR_POINTS = 365;
+    /** A tenure of strictly more than this many elapsed fiscal years earns the tenure points. */
+    private static final int TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     private Membership() {
     }
@@ -51,7 +51,7 @@ public final class Membership {
         }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_POINTS) {
+                && FiscalYear.elapsedSince(registrationDate, LocalDate.now()) > TENURE_FISCAL_YEARS_FOR_POINTS) {
             points += POINTS_TENURE;
         }
         return points;

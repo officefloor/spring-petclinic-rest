@@ -44,6 +44,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.of(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.labelOf(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
