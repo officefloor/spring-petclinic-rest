@@ -132,6 +132,17 @@ public interface OwnerMapper {
      * new owner never earns the tenure points.
      */
     default int membershipPoints(Owner owner) {
+        int householdMemberCount = owner.getHouseholdMemberCount() == null ? 0 : owner.getHouseholdMemberCount();
+        return membershipPointsForHousehold(owner, householdMemberCount);
+    }
+
+    /**
+     * As {@link #membershipPoints(Owner)}, but scores the household-of-3-or-more bonus against the
+     * supplied {@code householdMemberCount} rather than the owner's stored one. Used to evaluate an
+     * existing household member's points at the household's <em>current</em> size (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.HouseholdLevelCap}).
+     */
+    default int membershipPointsForHousehold(Owner owner, int householdMemberCount) {
         int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
@@ -141,8 +152,7 @@ public interface OwnerMapper {
         if (noNamesakes) {
             points += 1;
         }
-        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
-        if (largeHousehold) {
+        if (householdMemberCount >= 3) {
             points += 2;
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
@@ -158,7 +168,19 @@ public interface OwnerMapper {
      * 0-1 points, 2 for 2-3 points, 3 for 4-5 points, 4 for 6 or more points.
      */
     default int membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
+        return levelForPoints(membershipPoints(owner));
+    }
+
+    /**
+     * As {@link #membershipLevel(Owner)}, but evaluated with the supplied {@code householdMemberCount}
+     * (see {@link #membershipPointsForHousehold(Owner, int)}).
+     */
+    default int membershipLevelForHousehold(Owner owner, int householdMemberCount) {
+        return levelForPoints(membershipPointsForHousehold(owner, householdMemberCount));
+    }
+
+    /** Maps membership points to the numeric level band. */
+    default int levelForPoints(int points) {
         if (points <= 1) {
             return 1;
         }

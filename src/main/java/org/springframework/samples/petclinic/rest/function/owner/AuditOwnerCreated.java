@@ -6,20 +6,23 @@ import org.slf4j.LoggerFactory;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Emits an audit line on the dedicated {@code AUDIT} logger after a successful create,
  * carrying the newly-assigned owner id, its customerCode, its registrationDate, its
  * numeric membershipLevel and its membershipNumber. Runs after {@code save}, so the
- * owner's generated id is available.
+ * owner's generated id is available. The logged level is the household-capped one, so it
+ * matches what the response and later reads return.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
-    public void service(@Val Owner owner, OwnerMapper ownerMapper) {
+    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+            HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository),
+            ownerMapper.membershipNumber(owner));
     }
 }
