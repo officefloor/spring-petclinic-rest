@@ -59,6 +59,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -123,6 +126,40 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * Derives the owner's age band from a birth date, computed against the reference date
+     * (the registration date): {@code 'MINOR'} when under 18, {@code 'ADULT'} from 18 to 64,
+     * and {@code 'SENIOR'} at 65 or older. The completed-years age is the whole number of years
+     * between the birth date and the reference date. Returns {@code null} when no birth date is
+     * supplied. When the reference date is absent the current server date is used.
+     *
+     * @param birthDate the owner's date of birth, or {@code null} when absent
+     * @param reference the date to compute the age against (the registration date), may be {@code null}
+     * @return {@code 'MINOR'}, {@code 'ADULT'} or {@code 'SENIOR'}, or {@code null} when no birth date
+     */
+    public static String ageBandOf(LocalDate birthDate, LocalDate reference) {
+        if (birthDate == null) {
+            return null;
+        }
+        LocalDate asOf = reference != null ? reference : LocalDate.now();
+        int years = java.time.Period.between(birthDate, asOf).getYears();
+        if (years < 18) {
+            return "MINOR";
+        }
+        if (years < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     public String getCustomerCode() {
