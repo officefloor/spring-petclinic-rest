@@ -213,6 +213,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateHouseholdException} raised when a request to create an owner supplies a
+     * last name and address that (compared case-insensitively with collapsed whitespace) already
+     * belong to another owner, and the request did not opt in via {@code sharesHousehold}.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status,
+     *         whose {@code errors} array names the {@code lastName} and {@code address} fields.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        logger.debug("Duplicate household at {} {}: {} / {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getLastName(),
+            e.getAddress());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("lastName", "address"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
      * blanks out one or more required fields that Bean Validation does not otherwise reject.
      *

@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -126,6 +127,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         if (isTelephoneInUse(telephone)) {
             throw new DuplicateTelephoneException(ownerFieldsDto.getTelephone());
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && isHouseholdInUse(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
+            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -307,5 +312,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(Owner::getTelephone)
             .filter(existing -> existing != null)
             .anyMatch(e164Telephone::equals);
+    }
+
+    /**
+     * Determines whether any existing owner already shares a household with the owner being created,
+     * i.e. has both the same last name and the same address. Both fields are compared
+     * case-insensitively after collapsing runs of whitespace to a single space and trimming.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @return {@code true} if another owner already has the same last name and address
+     */
+    private boolean isHouseholdInUse(String lastName, String address) {
+        String normalizedLastName = normalizeIdentity(lastName);
+        String normalizedAddress = normalizeIdentity(address);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(normalizedLastName)
+                && normalizeIdentity(existing.getAddress()).equals(normalizedAddress));
+    }
+
+    /**
+     * Normalizes a text field for household-identity comparison: {@code null} becomes the empty
+     * string, surrounding whitespace is trimmed, internal runs of whitespace are collapsed to a
+     * single space, and the result is lower-cased.
+     *
+     * @param value the raw field value
+     * @return the normalized value used for case-insensitive, whitespace-insensitive comparison
+     */
+    private static String normalizeIdentity(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 }
