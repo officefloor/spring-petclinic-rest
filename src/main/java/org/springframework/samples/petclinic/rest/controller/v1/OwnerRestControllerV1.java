@@ -132,18 +132,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "The maximum number of owners for today has already been reached");
         }
         owner.setBulkSignupWarning(createdToday > 80);
+        // The household is keyed deterministically on (normalized last name, postcode): every owner
+        // computes the same householdId from those two fields, so owners sharing a last name and
+        // postcode belong to the same household automatically, without any explicit linking.
         String lastNameKey = normalizeForHousehold(owner.getLastName());
-        String addressKey = normalizeForHousehold(owner.getAddress());
+        String householdId = householdId(lastNameKey, owner.getPostcode());
+        owner.setHouseholdId(householdId);
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(lastNameKey)
-                && normalizeForHousehold(existing.getAddress()).equals(addressKey))
+            .filter(existing -> householdId.equals(
+                householdId(normalizeForHousehold(existing.getLastName()), existing.getPostcode())))
             .toList();
-        String householdId = null;
-        if (!householdMembers.isEmpty() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            householdId = householdId(lastNameKey, addressKey);
-            owner.setHouseholdId(householdId);
-        }
-        // All duplicate detection is now expressed through the single derived identityKey
+        // All duplicate detection is expressed through the single derived identityKey
         // (telephone|email|householdId); a new owner is rejected only when its whole key matches.
         String identityKey = owner.getIdentityKey();
         boolean identityInUse = this.clinicService.findAllOwners().stream()
@@ -152,13 +151,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner with this identity already exists");
         }
-        if (householdId != null) {
-            for (Owner member : householdMembers) {
-                if (!householdId.equals(member.getHouseholdId())) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
-                }
-            }
+        // Because the household is keyed on (last name, postcode), a second owner sharing a last name
+        // and postcode with an existing owner is the same household and is rejected as a household
+        // duplicate (409). Declaring 'sharesHousehold' only bypasses this block, creating the owner as
+        // a declared household member.
+        boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!householdMembers.isEmpty() && !declaredHouseholdMember) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "An owner in this household already exists");
         }
         String cityKey = normalizeForHousehold(owner.getCity());
         long cityCount = this.clinicService.findAllOwners().stream()
@@ -170,21 +170,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdMembers.size() + 1);
-        // Soft-match: not a hard duplicate (the identity key is unique, checked above), but shares an
-        // existing owner's last name and postcode while carrying a different telephone. Such an owner is
-        // still created, flagged as a possible duplicate of the earliest matching owner.
-        Owner softMatch = null;
-        if (owner.getPostcode() != null) {
-            String softLastNameKey = normalizeForHousehold(owner.getLastName());
-            softMatch = this.clinicService.findAllOwners().stream()
-                .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(softLastNameKey)
-                    && owner.getPostcode().equals(existing.getPostcode())
-                    && !java.util.Objects.equals(owner.getTelephone(), existing.getTelephone()))
-                .min(java.util.Comparator.comparing(Owner::getId))
-                .orElse(null);
-        }
-        owner.setPossibleDuplicate(softMatch != null);
-        owner.setPossibleDuplicateOf(softMatch == null ? null : softMatch.getId());
+        // The former soft-match (same last name and postcode, different telephone) now coincides
+        // exactly with the household key: such an owner is either rejected as a household duplicate
+        // above, or, when it declares 'sharesHousehold', created as a declared household member. A
+        // declared member is not a suspected duplicate, so no owner is ever flagged here.
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
         owner.setCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
             owner.getTelephone(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -336,8 +327,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param addressKey  the normalized address comparison key
      * @return the stable household identifier
      */
-    private String householdId(String lastNameKey, String addressKey) {
-        String seed = lastNameKey + " " + addressKey;
+    private String householdId(String lastNameKey, String postcode) {
+        String seed = lastNameKey + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
