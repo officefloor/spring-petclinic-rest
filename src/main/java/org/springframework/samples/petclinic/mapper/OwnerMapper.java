@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.labelOf(owner))")
     @Mapping(target = "selfLink",
         expression = "java(org.springframework.samples.petclinic.mapper.SelfLink.of(owner))")
+    @Mapping(target = "riskFlag",
+        expression = "java(org.springframework.samples.petclinic.mapper.RiskFlag.of(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
