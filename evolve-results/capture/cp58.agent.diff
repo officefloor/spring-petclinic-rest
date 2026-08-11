@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index defbea17..ae51e7fd 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.labelOf(owner))")
+     @Mapping(target = "selfLink",
+         expression = "java(org.springframework.samples.petclinic.mapper.SelfLink.of(owner))")
++    @Mapping(target = "riskFlag",
++        expression = "java(org.springframework.samples.petclinic.mapper.RiskFlag.of(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     public abstract Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+new file mode 100644
+index 00000000..2b83c45a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+@@ -0,0 +1,64 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's read-time {@code riskFlag}: {@code true} when the owner warrants a closer
++ * look for any of three independent reasons, otherwise {@code false}. The reasons are:
++ *
++ * <ol>
++ *   <li>the owner is a possible (soft) duplicate - {@link Owner#getPossibleDuplicate()} is true;</li>
++ *   <li>the owner's email domain is <em>disposable-adjacent</em> (see {@link #disposableAdjacent});</li>
++ *   <li>the owner's city is over its soft capacity - {@link Owner#getCapacityWarning()} is true,
++ *       i.e. the city has reached the soft warning threshold below the hard per-city cap.</li>
++ * </ol>
++ *
++ * <p>Kept out of {@link OwnerMapper} so MapStruct does not mistake the helper for an implicit
++ * mapping method and apply it to every boolean property.
++ */
++public final class RiskFlag {
++
++    /**
++     * Base (second-level) names of the disposable providers on the hard email blocklist enforced at
++     * creation. A domain is disposable-adjacent when one of its labels is one of these - i.e. it is
++     * in the neighbourhood of a disposable provider without being an exact, hard-blocked entry.
++     */
++    private static final Set<String> DISPOSABLE_BASES = Set.of(
++        "mailinator", "tempmail", "guerrillamail");
++
++    private RiskFlag() {
++    }
++
++    /** True when any of the three risk signals holds; otherwise false. */
++    public static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || disposableAdjacent(owner.getEmail());
++    }
++
++    /**
++     * True when the email's domain is <em>disposable-adjacent</em>: it shares a label with a known
++     * disposable provider, catching a different TLD ({@code mailinator.net}) or a subdomain
++     * ({@code inbox.mailinator.com}). The exact blocklisted domains are rejected at creation and so
++     * never reach here; this is the softer, still-suspicious neighbourhood around them.
++     */
++    private static boolean disposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_BASES.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ffc5c45a..49efcbf6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2297,6 +2297,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: Derived at read time. True when the owner warrants a closer look
++                for any of three independent reasons - 'possibleDuplicate' is true, the email
++                domain is disposable-adjacent (shares its base name with a known disposable
++                provider such as 'mailinator.net' or is a subdomain of one), or the city is
++                over its soft capacity ('capacityWarning' is true) - otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: The owner's derived duplicate-detection key, formed as
