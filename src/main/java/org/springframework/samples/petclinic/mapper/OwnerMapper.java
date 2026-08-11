@@ -43,6 +43,8 @@ public interface OwnerMapper {
         expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand",
         expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(fiscalYear(owner))")
     @Mapping(target = "salutation",
         expression = "java(salutation(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
@@ -180,24 +182,49 @@ public interface OwnerMapper {
     }
 
     /**
+     * The calendar year in which the fiscal year containing {@code date} starts. The fiscal year
+     * starts on 1 July, so dates in July through December map to their own calendar year while
+     * dates in January through June map to the previous calendar year.
+     */
+    static int fiscalYearStart(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue()
+            ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * Derive the owner's fiscal year from the (business-day-adjusted) registrationDate, formatted
+     * 'FY&lt;YY&gt;' where YY is the last two digits of the fiscal year's starting calendar year. The
+     * fiscal year starts on 1 July. Returns null when no registrationDate is available so owners
+     * without one serialize cleanly.
+     */
+    default String fiscalYear(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearStart(registrationDate) % 100);
+    }
+
+    /**
      * Build the owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is
-     * the last two digits of the registrationDate year. Returns null when either source field is
-     * absent so owners without an assigned code or registration date serialize cleanly.
+     * the last two digits of the fiscal year (see {@link #fiscalYear(Owner)}) derived from the
+     * business-day-adjusted registrationDate. Returns null when either source field is absent so
+     * owners without an assigned code or registration date serialize cleanly.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-            owner.getRegistrationDate().getYear() % 100);
+            fiscalYearStart(owner.getRegistrationDate()) % 100);
     }
 
     /**
      * Compute the owner's membership points. Starts at 0; add 2 when an email address is present;
      * add 1 when the owner has no namesakes (namesakeCount is 0); add 2 for a household of 3 or more
-     * (householdSize); add 3 for tenure of more than 365 days, measured from the registrationDate to
-     * the current date. Because a newly created owner has zero tenure, a new owner never earns the
-     * tenure points.
+     * (householdSize); add 3 for tenure of at least one elapsed fiscal year, measured as the number
+     * of fiscal-year starts (1 July) between the registrationDate and the current date. Because a
+     * newly created owner has zero elapsed fiscal years, a new owner never earns the tenure points.
      */
     default Integer membershipPoints(Owner owner) {
         int points = 0;
@@ -212,8 +239,9 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
             points += 2;
         }
-        if (owner.getRegistrationDate() != null && java.time.temporal.ChronoUnit.DAYS.between(
-                owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+        if (owner.getRegistrationDate() != null
+                && fiscalYearStart(java.time.LocalDate.now())
+                    - fiscalYearStart(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
