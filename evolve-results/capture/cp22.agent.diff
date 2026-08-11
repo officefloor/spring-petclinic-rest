@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index cb1d6e35..f4cc41f5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,33 +3,47 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.service.ClinicService;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Objects;
+ 
+ /**
+- * Maps Owner & OwnerDto using Mapstruct
++ * Maps Owner &amp; OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    /**
++     * A create is flagged with {@code bulkSignupWarning=true} once more than this many owners have
++     * already been created on the same registration date.
++     */
++    private static final int BULK_SIGNUP_THRESHOLD = 80;
++
++    @Autowired
++    protected ClinicService clinicService;
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+-    OwnerDto toOwnerDto(Owner owner);
++    @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+      * Derives the owner's locality (region) from the city using the fixed city-to-region
+      * table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), returning {@code UNKNOWN} when the
+      * city is not in the table.
+      */
+-    default String locality(Owner owner) {
++    protected String locality(Owner owner) {
+         String city = owner.getCity();
+         if (city == null) {
+             return "UNKNOWN";
+@@ -46,7 +60,7 @@ public interface OwnerMapper {
+      * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
+      * (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
+      */
+-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
++    protected OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         return noNamesakes && hasEmail
+@@ -54,17 +68,36 @@ public interface OwnerMapper {
+             : OwnerDto.MembershipTierEnum.BRONZE;
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    /**
++     * Flags a bulk-signup day: {@code true} once more than {@link #BULK_SIGNUP_THRESHOLD} other
++     * owners already carry this owner's {@code registrationDate}. The owner itself is excluded from
++     * the count, so on a create the flag reflects the owners that pre-existed it that day, matching
++     * the accumulation the per-day create limit is enforced against. Returns {@code false} when the
++     * owner has no registration date.
++     */
++    protected Boolean bulkSignupWarning(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return false;
++        }
++        long othersOnDay = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
++            .count();
++        return othersOnDay > BULK_SIGNUP_THRESHOLD;
++    }
++
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4cdace9f..8a4cb8fe 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2151,6 +2151,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners have already been created on this owner's
++                registration date (excluding this owner), signalling a bulk-signup day;
++                otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
