@@ -1,0 +1,36 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a9099f20..b597da25 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -173,9 +173,11 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Determine the owner's numeric membership level, assigned at creation. Starts at 1; add 1 when
+-     * an email address is present; add 1 when the owner has no namesakes (namesakeCount is 0);
+-     * capped at 3 (level 4 is reserved for tenure).
++     * Determine the owner's numeric membership level. Starts at 1; add 1 when an email address is
++     * present; add 1 when the owner has no namesakes (namesakeCount is 0). These pre-tenure factors
++     * are capped at 3. Level 4 is a loyalty tier reserved for tenure of more than 365 days, measured
++     * from the registrationDate to the current date; because a newly created owner has zero tenure,
++     * a new owner never exceeds level 3.
+      */
+     default Integer membershipLevel(Owner owner) {
+         int level = 1;
+@@ -187,7 +189,15 @@ public interface OwnerMapper {
+         if (noNamesakes) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        // The pre-tenure factors above are capped at 3. Level 4 is the tenure loyalty tier: it
++        // requires tenure of more than 365 days measured from the registrationDate. A new owner is
++        // registered on the current date, so its tenure is zero and it can never reach level 4.
++        level = Math.min(level, 3);
++        if (owner.getRegistrationDate() != null && java.time.temporal.ChronoUnit.DAYS.between(
++                owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
++            level++;
++        }
++        return level;
+     }
+ 
+     /**
