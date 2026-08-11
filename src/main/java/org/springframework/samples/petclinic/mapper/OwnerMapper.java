@@ -45,6 +45,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.CheckDigits.checkDigitFor(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.util.FiscalYears.labelFor(owner))")
+    @Mapping(target = "selfLink",
+            expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
