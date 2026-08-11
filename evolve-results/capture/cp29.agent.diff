@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 485da0ce..26c83b48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -105,6 +108,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8c59fb81..88945998 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -163,6 +163,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
+             throw new CityAtCapacityException(ownerFieldsDto.getCity());
+         }
++        // Postcode is optional; when present it must be a 4-digit value that is valid for the
++        // owner's city per the fixed region ranges. A malformed or out-of-range postcode is
++        // rejected with a 400. An absent postcode leaves the request contract unchanged.
++        validatePostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
+         // Normalize the telephone into E.164 form; a number that cannot form a valid
+         // E.164 value is rejected with a 400.
+         String normalizedTelephone = toE164(ownerFieldsDto.getTelephone());
+@@ -513,6 +517,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%s-%04d", city3, last3, sequence);
+     }
+ 
++    /**
++     * The fixed city-to-region table used to validate a supplied postcode against the owner's city
++     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). A city not present here has no known region
++     * and accepts any 4-digit postcode.
++     */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    /**
++     * The fixed region-to-postcode ranges (inclusive): NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
++     * Each entry is a two-element {@code {low, high}} array.
++     */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validate an optional owner postcode. Does nothing when no postcode was supplied (the field is
++     * optional and the request contract stays backward-compatible). When supplied it must be exactly
++     * 4 digits and, if the city maps to a known region, must fall within that region's inclusive
++     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any
++     * 4-digit postcode. A malformed or out-of-range postcode throws an
++     * {@link InvalidOwnerFieldsException} so the request is rejected with a 400.
++     */
++    private static void validatePostcode(String city, String postcode) {
++        if (postcode == null || postcode.isEmpty()) {
++            return;
++        }
++        if (!postcode.matches("\\d{4}")) {
++            throw new InvalidOwnerFieldsException(List.of("postcode"));
++        }
++        String region = city == null ? null : CITY_REGION.get(city);
++        if (region == null) {
++            return;
++        }
++        int[] range = REGION_POSTCODES.get(region);
++        int value = Integer.parseInt(postcode);
++        if (value < range[0] || value > range[1]) {
++            throw new InvalidOwnerFieldsException(List.of("postcode"));
++        }
++    }
++
+     /**
+      * Required national-number length for each E.164 country calling code we validate: a
+      * {@code '+61'} (Australia) number carries 9 national digits and a {@code '+1'} (NANP) number
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a865ab4d..4718c75b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index bd29326f..2af0f677 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 5b4f6f6b..0050eac3 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 4313a2c7..81619eae 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   VARCHAR(4),
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7aef7db5..09772503 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2041,6 +2041,16 @@ components:
+           type: string
+           maxLength: 255
+           example: 'george.franklin@example.com'
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; validated only when present.
++            When supplied it must be valid for the owner's city per the fixed
++            region ranges (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city
++            with no known region accepts any 4-digit postcode. Stored and returned
++            when given.
++          type: string
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: >-
