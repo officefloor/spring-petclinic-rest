@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0caa935f..aabe63a0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -124,6 +125,26 @@ public interface OwnerMapper {
+         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.of(owner);
+     }
+ 
++    /**
++     * Derives the owner's segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
++     * owner's {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise
++     * {@code STANDARD}. AREA is {@code METRO} when the {@link #locality(Owner) locality} is a known
++     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        return ownerSegment(membershipLevel(owner), locality(owner));
++    }
++
++    /**
++     * As {@link #ownerSegment(Owner)}, but for a supplied membership level and locality — so a
++     * responder can derive the segment from the household-capped level actually returned.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = REGION_TIMEZONE.containsKey(locality) ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);
++    }
++
+     /**
+      * Derives the owner's membership points. Starts at 0; adds 2 when an email address is present;
+      * adds 1 when the owner has no namesakes ({@code namesakeCount} is 0); adds 2 for a household of
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 82dba847..49003ac9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -12,7 +12,9 @@ public class RespondWithOwner {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setMembershipLevel(HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository));
++        int cappedLevel = HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository);
++        dto.setMembershipLevel(cappedLevel);
++        dto.setOwnerSegment(ownerMapper.ownerSegment(cappedLevel, ownerMapper.locality(owner)));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 0c98257b..345c521a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -15,7 +15,9 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setMembershipLevel(HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository));
++        int cappedLevel = HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository);
++        dto.setMembershipLevel(cappedLevel);
++        dto.setOwnerSegment(ownerMapper.ownerSegment(cappedLevel, ownerMapper.locality(owner)));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7fef6399..fc5ed1d2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2285,6 +2285,20 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
