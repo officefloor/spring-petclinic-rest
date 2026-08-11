@@ -20,6 +20,8 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation",
+            expression = "java(org.springframework.samples.petclinic.util.Salutations.salutationFor(owner))")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
