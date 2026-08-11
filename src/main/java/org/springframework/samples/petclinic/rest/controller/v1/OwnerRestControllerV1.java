@@ -239,6 +239,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // SHA-256(normalizedTelephone + lastName). Sequence numbers are no longer used.
         owner.setCustomerCode(customerCode(
             deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName()));
+        // Soft-match detection: an owner that cleared the hard-duplicate identity check above may
+        // still resemble an existing owner when it shares that owner's last name and postcode but
+        // carries a different telephone. Flag such an owner as a possible duplicate, recording the
+        // matching owner's id; otherwise the flag is false with no matched id.
+        Owner possibleDuplicateOwner = findPossibleDuplicate(
+            owner.getLastName(), owner.getPostcode(), normalizedTelephone);
+        owner.setPossibleDuplicate(possibleDuplicateOwner != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOwner == null ? null : possibleDuplicateOwner.getId());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         // Emit an audit trail line for the successful create, carrying the owner id, the assigned
@@ -454,6 +462,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .count();
+    }
+
+    /**
+     * Find an existing owner that this new owner is a possible (soft) duplicate of: one that shares
+     * the new owner's last name (compared case-insensitively) and postcode while carrying a different
+     * (already normalized) telephone. When several existing owners match, the earliest (lowest id) is
+     * returned so the result is deterministic. Returns {@code null} when there is no such owner —
+     * including when the new owner has no last name or postcode, since a shared postcode is required
+     * to match.
+     */
+    private Owner findPossibleDuplicate(String lastName, String postcode, String normalizedTelephone) {
+        if (isBlank(lastName) || isBlank(postcode)) {
+            return null;
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> !normalizedTelephone.equals(existing.getTelephone()))
+            .min(java.util.Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     /**
