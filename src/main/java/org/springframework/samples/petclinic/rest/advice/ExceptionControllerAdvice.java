@@ -235,6 +235,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DisposableEmailException} thrown when an owner is created or updated with an
+     * email whose domain is on the disposable-domain blocklist (mailinator.com, tempmail.com,
+     * guerrillamail.com). Returns a 400 Bad Request whose body carries an {@code errors} array
+     * naming the offending {@code email} field.
+     *
+     * @param e The {@link DisposableEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
+        logger.debug("Disposable owner email at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link InvalidPostcodeException} thrown when an owner is created with a postcode that
      * is present but not 4 digits, or that falls outside the range allowed for the region of the
      * owner's city. Returns a 400 Bad Request whose body carries an {@code errors} array naming the

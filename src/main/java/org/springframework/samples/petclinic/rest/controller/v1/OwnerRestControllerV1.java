@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -41,6 +42,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
@@ -79,6 +81,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Email domains rejected as disposable/throwaway addresses. An owner whose email domain matches
+     * one of these (compared case-insensitively) is rejected with 400.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Dedicated audit logger. On a successful owner create an audit line is emitted carrying the
@@ -574,6 +583,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalized = email.trim().toLowerCase();
         if (!EMAIL_PATTERN.matcher(normalized).matches()) {
             throw new InvalidEmailException(email);
+        }
+        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailException(email);
         }
         return normalized;
     }
