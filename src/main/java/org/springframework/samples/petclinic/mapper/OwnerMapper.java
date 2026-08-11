@@ -35,8 +35,32 @@ public interface OwnerMapper {
         expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit",
         expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand",
+        expression = "java(ageBand(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive the owner's age band from the supplied birthDate, evaluated against the owner's
+     * registrationDate: 'MINOR' when under 18, 'ADULT' when 18 to 64 inclusive, and 'SENIOR' when
+     * 65 or older. Returns null when no birthDate was supplied (or no registrationDate is available)
+     * so owners without a birth date serialize cleanly.
+     */
+    default String ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = java.time.Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
+    }
 
     /**
      * Compute the owner's check digit: a single Luhn check digit (0-9) over the digits contained in
