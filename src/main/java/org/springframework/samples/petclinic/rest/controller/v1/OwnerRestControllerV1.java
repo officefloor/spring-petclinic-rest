@@ -163,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "This city already has the maximum number of owners");
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
