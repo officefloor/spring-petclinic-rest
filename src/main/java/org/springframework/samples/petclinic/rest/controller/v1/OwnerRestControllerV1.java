@@ -116,11 +116,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner with this telephone number already exists");
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Builds the customer code for a new owner, formatted {@code '<LAST3>-<NNNN>'} where
+     * {@code LAST3} is the upper-cased first three letters of the last name and {@code NNNN}
+     * is a global 4-digit zero-padded sequence equal to one more than the current number of
+     * owners (e.g. {@code 'SMI-0007'}).
+     *
+     * @param lastName the owner's last name
+     * @return the assigned customer code
+     */
+    private String nextCustomerCode(String lastName) {
+        String prefix = (lastName == null ? "" : lastName);
+        prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(java.util.Locale.ROOT);
+        long sequence = this.clinicService.findAllOwners().size() + 1L;
+        return String.format("%s-%04d", prefix, sequence);
     }
 
     /**
