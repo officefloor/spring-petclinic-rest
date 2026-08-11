@@ -125,7 +125,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         boolean bulkSignupWarning = isBulkSignupWarning();
         List<OwnerDto> ownerDtos = ownerMapper.toOwnerDtoCollection(owners);
-        ownerDtos.forEach(ownerDto -> ownerDto.setBulkSignupWarning(bulkSignupWarning));
+        ownerDtos.forEach(ownerDto -> {
+            ownerDto.setBulkSignupWarning(bulkSignupWarning);
+            ownerDto.setCapacityWarning(isCityApproachingCapacity(ownerDto.getCity()));
+        });
         return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
@@ -138,6 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
@@ -154,6 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 if (existing != null) {
                     OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
                     existingDto.setBulkSignupWarning(isBulkSignupWarning());
+                    existingDto.setCapacityWarning(isCityApproachingCapacity(existing.getCity()));
                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
                 }
             }
@@ -245,6 +250,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info(ownerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -265,6 +271,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(currentOwner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(currentOwner);
         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+        ownerDto.setCapacityWarning(isCityApproachingCapacity(currentOwner.getCity()));
         return new ResponseEntity<>(ownerDto, HttpStatus.NO_CONTENT);
     }
 
@@ -724,6 +731,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
             .count();
         return count >= CITY_CAPACITY;
+    }
+
+    /**
+     * The number of owners in a city at or above which responses flag a capacity warning. A city
+     * holding between this many and one below {@link #CITY_CAPACITY} owners is approaching its hard
+     * limit and its owners' responses carry {@code capacityWarning} true.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Determines whether the given city is approaching its capacity, i.e. already contains between
+     * {@value #CITY_CAPACITY_WARNING_THRESHOLD} and {@value #CITY_CAPACITY} minus one owners
+     * (inclusive). Cities are compared case-insensitively after collapsing runs of whitespace to a
+     * single space and trimming, exactly as for the hard capacity check.
+     *
+     * @param city the city of the owner whose response is being built
+     * @return {@code true} if the city holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD} and
+     *         {@value #CITY_CAPACITY} minus one owners inclusive
+     */
+    private boolean isCityApproachingCapacity(String city) {
+        String normalizedCity = normalizeIdentity(city);
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
+            .count();
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 
     /**
