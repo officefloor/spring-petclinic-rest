@@ -38,10 +38,17 @@ public class ValidateOwnerFields {
         List<String> errors = new ArrayList<>();
         checkPresent("firstName", request.getFirstName(), errors);
         checkPresent("lastName", request.getLastName(), errors);
-        // Reject an address that is blank once normalized (trim/collapse/upper-case), so
-        // whitespace-only input fails the required-field check like any other missing field.
-        String address = AddressNormalizer.normalize(request.getAddress());
-        if (address.isEmpty()) {
+        // The address may be supplied in structured form (a non-blank addressLine1 plus an optional
+        // addressLine2) or as the flat 'address' input (kept for backward compatibility). Normalize
+        // whichever fields are supplied (trim/collapse whitespace, upper-case, expand ST/RD/AVE) and
+        // treat a value that is blank after normalization as absent. The owner is valid when it
+        // supplies an address in EITHER form.
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flatAddress = AddressNormalizer.normalize(request.getAddress());
+        boolean hasStructured = !line1.isEmpty();
+        boolean hasFlat = !flatAddress.isEmpty();
+        if (!hasStructured && !hasFlat) {
             errors.add("address");
         }
         checkPresent("city", request.getCity(), errors);
@@ -55,8 +62,20 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new OwnerFieldsInvalidException(errors);
         }
-        // Store and return the normalized address; later steps read it back via @Val.
-        request.setAddress(address);
+        // Store and return the normalized address; later steps read it back via @Val. Prefer the
+        // structured fields when present: the composed 'address' is the normalized addressLine1, with
+        // a single space and the normalized addressLine2 appended when addressLine2 is present.
+        // Otherwise fall back to the normalized flat address.
+        if (hasStructured) {
+            request.setAddressLine1(line1);
+            request.setAddressLine2(line2.isEmpty() ? null : line2);
+            request.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
+        }
+        else {
+            request.setAddressLine1(null);
+            request.setAddressLine2(null);
+            request.setAddress(flatAddress);
+        }
         String telephone = E164Telephone.normalize(request.getTelephone());
         if (telephone == null) {
             throw new OwnerFieldsInvalidException(List.of("telephone"));
