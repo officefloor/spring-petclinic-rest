@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -653,24 +654,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *         registered on the given date
      */
     /**
+     * The fixed public holidays that the business-day roll skips. A registration date landing on
+     * any of these is rolled forward, exactly as it is for a weekend.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
+        LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"),
+        LocalDate.parse("2026-12-28"));
+
+    /**
      * Rolls a registration date forward onto a business day. A date that already falls on a
-     * weekday is returned unchanged; a Saturday or Sunday is rolled forward to the following
-     * Monday. This adjusted date is what gets stored as the {@code registrationDate} and drives
-     * everything derived from it (the membership number's year segment, the daily create-limit).
+     * weekday which is not a public holiday is returned unchanged; a Saturday, Sunday or listed
+     * public holiday is rolled forward, one day at a time, until the next non-weekend,
+     * non-holiday day is reached. This adjusted date is what gets stored as the
+     * {@code registrationDate} and drives everything derived from it (the membership number's
+     * year segment, the daily create-limit).
      *
      * @param date the effective registration date (supplied by the client or defaulted to the
      *             server's current date)
-     * @return the same date if it is a weekday, otherwise the following Monday
+     * @return the same date if it is a business day, otherwise the next business day that is
+     *         neither a weekend nor a public holiday
      */
     private static LocalDate toBusinessDay(LocalDate date) {
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (dayOfWeek == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (isNonBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
+    }
+
+    private static boolean isNonBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        return dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(date);
     }
 
     private boolean isDailyRegistrationLimitReached(LocalDate date) {
