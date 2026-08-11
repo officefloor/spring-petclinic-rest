@@ -18,10 +18,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * and later reads return.
  *
  * <p>Alongside the human-readable line, emits an immutable structured event on the same
- * {@code AUDIT} logger: a JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where
+ * {@code AUDIT} logger. The event is now schema version 2: a JSON object
+ * {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where
  * {@code seq} is a monotonically increasing integer across creates. The event carries the
- * owner's primary identifier via {@link #primaryIdentifier(Owner)} — the memberId.
+ * owner's primary identifier via {@link #primaryIdentifier(Owner)} — the version-2 memberId.
  */
 public class AuditOwnerCreated {
 
@@ -36,7 +36,7 @@ public class AuditOwnerCreated {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
 
         long seq = SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+        AUDIT.info("{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             seq, owner.getId(), jsonString(primaryIdentifier(owner)), membershipLevel);
     }
 

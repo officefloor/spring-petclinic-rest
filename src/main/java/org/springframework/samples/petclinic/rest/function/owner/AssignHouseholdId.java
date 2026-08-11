@@ -9,7 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns every owner a deterministic {@code householdId}: the first 12 hex characters of
- * {@code SHA-256(normalizedLastName + '|' + postcode)}. The identifier is a pure function of the
+ * {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}, the version-2 derivation that
+ * mixes in the fixed {@code 'V2'} tag. The identifier is a pure function of the
  * household's last name and postcode, so two owners with the same last name at the same postcode
  * share it automatically — no back-fill and no dependence on {@code sharesHousehold} or the order
  * owners were created.
@@ -27,13 +28,16 @@ public class AssignHouseholdId {
     }
 
     /**
-     * The first 12 hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)} — a stable
-     * identifier shared by every owner with the same last name and postcode.
+     * The first 12 hex characters of {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}
+     * — a stable identifier shared by every owner with the same last name and postcode. The fixed
+     * {@link OwnerRegion#VERSION_TAG 'V2'} version tag is mixed into the hashed input so every v2
+     * householdId differs from the v1 value for the same household.
      */
     private static String deriveHouseholdId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest((OwnerRegion.VERSION_TAG + "|" + lastName + "|" + postcode)
+                            .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02x", digest[i]));

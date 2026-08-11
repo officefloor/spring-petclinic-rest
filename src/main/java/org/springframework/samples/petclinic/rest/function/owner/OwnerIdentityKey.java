@@ -10,7 +10,8 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Derives an owner's {@code identityKey}: the single value all duplicate detection is expressed
  * through. It is the SHA-256, rendered as 64 lower-case hex characters, of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} — where the email segment
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} — the
+ * version-2 derivation that mixes in the fixed {@code 'V2'} tag, where the email segment
  * is empty when the owner has none. Two owners are the same identity when their whole identityKey is
  * equal; because the telephone is part of the key, two people with the same last name (same soundex)
  * and postcode but <em>different</em> telephones have different keys and are both allowed — they are
@@ -28,10 +29,15 @@ public final class OwnerIdentityKey {
     private OwnerIdentityKey() {
     }
 
-    /** The owner's identity key: the 64-hex SHA-256 of {@code telephone|email|soundex(lastName)}. */
+    /**
+     * The owner's identity key: the 64-hex SHA-256 of
+     * {@code 'V2'|telephone|email|soundex(lastName)}. The fixed {@link OwnerRegion#VERSION_TAG 'V2'}
+     * version tag is mixed into the hashed input, so every v2 identityKey differs from the v1 value
+     * for the same owner while equality (what duplicate detection keys off) is preserved.
+     */
     public static String of(Owner owner) {
-        String raw = normalizeTelephone(owner.getTelephone()) + "|" + normalizeEmail(owner.getEmail())
-                + "|" + soundex(owner.getLastName());
+        String raw = OwnerRegion.VERSION_TAG + "|" + normalizeTelephone(owner.getTelephone()) + "|"
+                + normalizeEmail(owner.getEmail()) + "|" + soundex(owner.getLastName());
         return sha256Hex(raw);
     }
 

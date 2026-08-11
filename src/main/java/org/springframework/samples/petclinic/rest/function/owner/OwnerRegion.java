@@ -14,6 +14,13 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class OwnerRegion {
 
+    /**
+     * The fixed version-2 tag mixed into the region code as it appears INSIDE the identifiers. It is
+     * intentionally NOT a plain letters-only region, so a v2 identifier's region can never coincide
+     * with a v1 (plain-region) one.
+     */
+    public static final String VERSION_TAG = "V2";
+
     /** Region -> inclusive 4-digit postcode range {low, high}. */
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099},
@@ -30,6 +37,16 @@ public final class OwnerRegion {
             return byPostcode;
         }
         return OwnerMapper.CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * The region code as it appears INSIDE the version-2 identifiers: the plain {@link #of(Owner)
+     * region} with the fixed {@link #VERSION_TAG 'V2'} tag mixed in (e.g. {@code "NSWV2"}). This is
+     * used only to build identifiers (the {@code memberId} region prefix); the user-facing
+     * {@code locality}, {@code timezone} and owner-segment region keep the plain region, never this.
+     */
+    public static String identityRegion(Owner owner) {
+        return of(owner) + VERSION_TAG;
     }
 
     /**

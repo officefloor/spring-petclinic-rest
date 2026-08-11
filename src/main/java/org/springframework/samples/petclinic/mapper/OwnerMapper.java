@@ -25,8 +25,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.E164Telephone.display(owner.getTelephone()))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
@@ -152,26 +152,31 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality from the region-and-hash identity: the REGION prefix of the
-     * {@code memberId} (its leading run of letters, up to the 2-digit fiscal year that follows).
-     * This is the same region the identity is built from
+     * Derives the owner's user-facing locality: the plain region code
      * ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion}, postcode range
-     * first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then {@code UNKNOWN}),
-     * so the locality a client reads back always matches the memberId's region prefix. Owners with no
-     * {@code memberId} (e.g. seed data) fall back to deriving the region directly.
+     * first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then {@code UNKNOWN}).
+     * This is the same base region the identity is built from, but WITHOUT the identifiers' {@code 'V2'}
+     * tag, so a Sydney owner reads back locality {@code "NSW"} even though the memberId's internal
+     * region is {@code "NSWV2"}. Deriving it directly (rather than from the memberId prefix) keeps the
+     * locality free of the identifier tag.
      */
     default String locality(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int i = 0;
-            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-                i++;
-            }
-            if (i > 0) {
-                return memberId.substring(0, i);
-            }
-        }
         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.of(owner);
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers under the response's nested {@code identity} object:
+     * the {@code memberId} and {@code householdId} assigned during create and the {@code identityKey}
+     * derived on read ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey}).
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner));
+        return identity;
     }
 
     /**
