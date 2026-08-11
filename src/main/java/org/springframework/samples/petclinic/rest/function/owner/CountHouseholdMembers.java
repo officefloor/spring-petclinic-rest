@@ -11,8 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * its existing housemates) and before the owner is persisted, so it counts the existing members
  * carrying the same {@code householdId} plus the new owner itself.
  *
- * <p>A membership tier of {@code GOLD} is derived from this count (3 or more members); an owner
- * with no household leaves it null so the standard BRONZE/SILVER rules apply.
+ * <p>An owner with no household leaves the size null.
  */
 public class CountHouseholdMembers {
 
