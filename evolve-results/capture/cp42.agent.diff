@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+index a5b9cabb..0a4ee093 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+@@ -26,6 +26,12 @@ public final class Localities {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. Anything not listed derives a {@code null} timezone. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     /** Region returned for a city that is absent from {@link #CITY_REGION}. */
+     public static final String UNKNOWN = "UNKNOWN";
+ 
+@@ -90,6 +96,34 @@ public final class Localities {
+         return forCityAndPostcode(owner.getCity(), owner.getPostcode());
+     }
+ 
++    /**
++     * Returns the IANA timezone name for {@code region} from the fixed region-to-timezone
++     * table ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++     * {@code QLD -> Australia/Brisbane}), or {@code null} when the region is {@code null}
++     * or not in the table (for example {@code "UNKNOWN"}).
++     *
++     * @param region the canonical region string
++     * @return the IANA timezone name, or {@code null} when unknown
++     */
++    public static String timezoneForRegion(String region) {
++        if (region == null) {
++            return null;
++        }
++        return REGION_TIMEZONE.get(region);
++    }
++
++    /**
++     * Returns the owner's IANA timezone name, derived from the owner's locality/region
++     * ({@link #forOwner(Owner)}) via the fixed region-to-timezone table, or {@code null}
++     * when the region is not in the table.
++     *
++     * @param owner the owner whose timezone is required
++     * @return the IANA timezone name, or {@code null} when unknown
++     */
++    public static String timezoneForOwner(Owner owner) {
++        return timezoneForRegion(forOwner(owner));
++    }
++
+     /**
+      * Returns the region whose inclusive postcode range contains {@code postcode},
+      * or {@code null} when the postcode is {@code null}, non-numeric, or in no
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f7d89dba..bf853184 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.model.Owner.membershipLevel(org.springframework.samples.petclinic.model.Owner.membershipPoints(owner)))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.mapper.Localities.forOwner(owner))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.mapper.Localities.timezoneForOwner(owner))")
+     @Mapping(target = "ageBand",
+         expression = "java(owner.getBirthDate() == null ? null : org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.fromValue(org.springframework.samples.petclinic.model.Owner.ageBandOf(owner.getBirthDate(), owner.getRegistrationDate())))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 95871e04..4435aa42 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2220,6 +2220,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality/region
++                using the fixed table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when
++                the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
