@@ -264,20 +264,48 @@ public class Owner extends Person {
     }
 
     /**
-     * Whether the owner's tenure — the whole number of days from the registration date to the
-     * current server date — exceeds one year (strictly more than 365 days). This gates the top
-     * membership level: only an owner past a full year of tenure can reach level 4. A {@code null}
-     * registration date, or one in the future, counts as zero tenure and so never exceeds the
-     * threshold, which is why a newly created owner (zero tenure) can never exceed level 3.
+     * The starting calendar year of the fiscal year that contains the given date. The fiscal year
+     * starts on 1 July, so a date in July or later belongs to the fiscal year starting that same
+     * calendar year, while a date from January to June belongs to the fiscal year that started in
+     * the previous calendar year.
+     *
+     * @param date the date to classify
+     * @return the calendar year in which the containing fiscal year starts
+     */
+    public static int fiscalYearNumber(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue()
+            ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * The fiscal year that contains the given date, formatted {@code 'FY<YY>'} where YY is the last
+     * two digits of the fiscal year's starting calendar year. For example a date on or after 1 July
+     * 2026 yields {@code 'FY26'}. The fiscal year starts on 1 July.
+     *
+     * @param date the date to classify, which for an owner is the business-day-adjusted registration date
+     * @return the fiscal year label, e.g. {@code 'FY26'}
+     */
+    public static String fiscalYearLabel(LocalDate date) {
+        return String.format("FY%02d", fiscalYearNumber(date) % 100);
+    }
+
+    /**
+     * Whether the owner's tenure — the number of elapsed fiscal years from the registration date to
+     * the current server date — exceeds one year (strictly more than one elapsed fiscal year). The
+     * elapsed count is the difference between the fiscal year of the current server date and the
+     * fiscal year of the registration date. This gates the top membership level: only an owner past
+     * a full year of tenure can reach level 4. A {@code null} registration date counts as zero
+     * tenure and so never exceeds the threshold, which is why a newly created owner (zero tenure)
+     * can never exceed level 3.
      *
      * @param registrationDate the date the owner registered, or {@code null} when absent
-     * @return {@code true} when the tenure is strictly greater than 365 days
+     * @return {@code true} when more than one fiscal year has elapsed since registration
      */
     public static boolean tenureExceedsOneYear(LocalDate registrationDate) {
         if (registrationDate == null) {
             return false;
         }
-        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+        return fiscalYearNumber(LocalDate.now()) - fiscalYearNumber(registrationDate) > 1;
     }
 
     /**
