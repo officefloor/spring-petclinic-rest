@@ -235,6 +235,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidPostcodeException} thrown when an owner is created with a postcode that
+     * is present but not 4 digits, or that falls outside the range allowed for the region of the
+     * owner's city. Returns a 400 Bad Request whose body carries an {@code errors} array naming the
+     * offending {@code postcode} field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
+        logger.debug("Invalid owner postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("postcode"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateIdentityException} thrown when an owner is created whose whole derived
      * {@code identityKey} (normalized telephone, email and householdId joined together) exactly
      * matches that of an existing owner. This single check subsumes the former separate telephone,
