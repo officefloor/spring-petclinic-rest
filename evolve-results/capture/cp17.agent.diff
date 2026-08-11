@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+new file mode 100644
+index 00000000..657cf3a9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's canonical region ('locality') from their city using a fixed
++ * city-to-region table.
++ *
++ * <p>Kept as a standalone class (not a method on {@link OwnerMapper}) so MapStruct does
++ * not mistake it for an implicit {@code String -> String} mapping method and apply it to
++ * every string property.
++ */
++public final class Locality {
++
++    /** Fixed city-to-region table. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    private Locality() {
++    }
++
++    /** The canonical region for {@code city}, or {@code "UNKNOWN"} when it is not in the table. */
++    public static String of(String city) {
++        return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4dc31247..b1d68be5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,8 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipTier",
+         expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+             + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "locality",
++        expression = "java(org.springframework.samples.petclinic.mapper.Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 21fbb07f..f8f00bf2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2132,6 +2132,14 @@ components:
+               type: string
+               example: 'SILVER'
+               readOnly: true
++            locality:
++              title: Locality
++              description: The canonical region derived from the owner's city using the
++                fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD),
++                or 'UNKNOWN' when the city is not in the table.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
