@@ -13,9 +13,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * purely from the last name and postcode, every owner sharing those two fields computes the
  * <em>same</em> identifier automatically — no cross-owner lookup and no back-fill are needed.
  *
- * <p>This is why {@code sharesHousehold} no longer <em>creates</em> the household link: the link
- * exists by construction. The flag only tells the later duplicate checks to admit a second owner
- * of the same household as a declared member (see {@link CheckOwnerIdentityUnique}).
+ * <p>The {@code householdId} is no longer part of duplicate detection (that is now the single
+ * {@code identityKey}, keyed on telephone, email and {@code soundex(lastName)}); it survives only
+ * to size the household for the later membership rules (see {@link CountHouseholdMembers}).
  *
  * <p>Runs after {@link BuildOwner} (so the entity — hence its last name and postcode — exists)
  * and before {@link CheckOwnerIdentityUnique}, mutating the built {@link Owner} in place.
