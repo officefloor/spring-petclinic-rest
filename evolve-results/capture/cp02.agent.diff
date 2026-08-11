@@ -1,0 +1,103 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 87721151..0db4ff09 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Global Exception handler for REST controllers.
+@@ -86,6 +87,25 @@ public class ExceptionControllerAdvice {
+         throw e;
+     }
+ 
++    /**
++     * Handles {@link ResponseStatusException} thrown by controllers to signal a specific HTTP status
++     * (e.g. a 400 Bad Request for a business-rule violation). Without this handler the broad
++     * {@link #handleGeneralException} would catch it first and report it as a 500.
++     *
++     * @param e The {@link ResponseStatusException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} carrying the status and reason from the exception.
++     */
++    @ExceptionHandler(ResponseStatusException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
++        String detailMessage = e.getReason() != null ? e.getReason() : ERROR_INVALID_REQUEST;
++        logger.warn("Request failed at {} {}: {}", request.getMethod(), request.getRequestURI(), detailMessage);
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), detailMessage);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e5..c6d2cdbd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -101,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -108,6 +110,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Normalizes a telephone number on create by stripping every non-digit character and
++     * requiring exactly 10 digits. The stored/returned value is the resulting 10-digit string.
++     *
++     * @param telephone the raw telephone number as submitted
++     * @return the normalized 10-digit telephone number
++     * @throws ResponseStatusException with a 400 status if the value is not exactly 10 digits
++     *         after stripping non-digit characters
++     */
++    private String normalizeTelephone(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "Telephone must contain exactly 10 digits after removing non-digit characters");
++        }
++        return digits;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2e218cdc..892c6a2e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,11 +2027,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create the value is
++            normalized by removing every non-digit character and must then
++            contain exactly 10 digits.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
