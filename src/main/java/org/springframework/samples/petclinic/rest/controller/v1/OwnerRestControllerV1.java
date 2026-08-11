@@ -111,7 +111,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(java.util.Objects::nonNull)
-            .map(telephone -> telephone.replaceAll("\\D", ""))
             .anyMatch(normalizedTelephone::equals);
         if (telephoneInUse) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -125,21 +124,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number on create by stripping every non-digit character and
-     * requiring exactly 10 digits. The stored/returned value is the resulting 10-digit string.
+     * Normalizes a telephone number to E.164 form. Spaces, dashes and brackets (indeed any
+     * non-digit character) are stripped. If the submitted value carries a leading {@code '+'}
+     * its country code is kept as-is; otherwise the default country code {@code '+61'} is
+     * assumed and a single leading {@code '0'} is dropped from the national digits. The
+     * resulting value must be a {@code '+'} followed by 8 to 15 digits. So {@code '0412 345 678'}
+     * is stored as {@code '+61412345678'}.
      *
      * @param telephone the raw telephone number as submitted
-     * @return the normalized 10-digit telephone number
-     * @throws ResponseStatusException with a 400 status if the value is not exactly 10 digits
-     *         after stripping non-digit characters
+     * @return the normalized E.164 telephone number
+     * @throws ResponseStatusException with a 400 status if the value cannot form a valid E.164
+     *         number (8 to 15 digits after the '+')
      */
     private String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Telephone must contain exactly 10 digits after removing non-digit characters");
+        String raw = telephone == null ? "" : telephone.trim();
+        String digits = raw.replaceAll("\\D", "");
+        String e164;
+        if (raw.startsWith("+")) {
+            e164 = "+" + digits;
+        } else {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            e164 = "+61" + digits;
         }
-        return digits;
+        int digitCount = e164.length() - 1;
+        if (digitCount < 8 || digitCount > 15) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Telephone must form a valid E.164 number with 8 to 15 digits after the '+'");
+        }
+        return e164;
     }
 
     /**
@@ -165,7 +179,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
