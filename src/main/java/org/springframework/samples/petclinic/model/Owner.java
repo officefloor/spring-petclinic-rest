@@ -76,6 +76,12 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     /**
      * The number of owners in this owner's household (owners sharing the same
      * {@code householdId}), including this owner. Derived and stamped at response time from the
@@ -181,6 +187,22 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public Integer getHouseholdMemberCount() {
