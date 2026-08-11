@@ -27,6 +27,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -74,6 +76,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Dedicated audit logger. On a successful owner create an audit line is emitted carrying the
+     * new owner's id, customerCode and registrationDate.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
      * Common street-type abbreviations expanded during address normalization, keyed by the
@@ -159,6 +167,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
