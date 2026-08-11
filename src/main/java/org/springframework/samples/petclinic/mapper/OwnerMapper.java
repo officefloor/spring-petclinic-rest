@@ -47,49 +47,22 @@ public interface OwnerMapper {
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * Derives the owner's locality: the postcode range decides the region first
-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); when the postcode is absent or in no
-     * known range, fall back to the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
-     * Brisbane->QLD), or {@code UNKNOWN} when the city is not in the table. Preferring the
-     * postcode returns the same region for known cities but disambiguates cities that share
-     * a name.
+     * Derives the owner's locality from the region-and-hash identity: the REGION prefix of the
+     * {@code customerCode} (everything before the first {@code '-'}). This is the same region the
+     * identity is built from ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion},
+     * postcode range first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then
+     * {@code UNKNOWN}), so the locality a client reads back always matches the code's region prefix.
+     * Owners with no {@code customerCode} (e.g. seed data) fall back to deriving the region directly.
      */
     default String locality(Owner owner) {
-        String byPostcode = regionFromPostcode(owner.getPostcode());
-        if (byPostcode != null) {
-            return byPostcode;
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
         }
-        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /**
-     * Maps a postcode to its region by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
-     * or {@code null} when the postcode is absent, non-numeric or in no known range.
-     *
-     * <p>Deliberately {@code private}: a {@code String -> String} method visible to MapStruct
-     * would be treated as an implicit conversion and applied to every String property.
-     */
-    private String regionFromPostcode(String postcode) {
-        if (postcode == null || postcode.isBlank()) {
-            return null;
-        }
-        int code;
-        try {
-            code = Integer.parseInt(postcode.trim());
-        }
-        catch (NumberFormatException ex) {
-            return null;
-        }
-        if (code >= 2000 && code <= 2099) {
-            return "NSW";
-        }
-        if (code >= 3000 && code <= 3099) {
-            return "VIC";
-        }
-        if (code >= 4000 && code <= 4099) {
-            return "QLD";
-        }
-        return null;
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.of(owner);
     }
 
     /**
