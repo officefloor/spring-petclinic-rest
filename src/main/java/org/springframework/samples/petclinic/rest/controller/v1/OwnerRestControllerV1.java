@@ -667,8 +667,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * weekday which is not a public holiday is returned unchanged; a Saturday, Sunday or listed
      * public holiday is rolled forward, one day at a time, until the next non-weekend,
      * non-holiday day is reached. This adjusted date is what gets stored as the
-     * {@code registrationDate} and drives everything derived from it (the membership number's
-     * year segment, the daily create-limit).
+     * {@code registrationDate} and drives everything derived from it (the fiscal year, the
+     * membership number's fiscal-year segment, the daily create-limit).
      *
      * @param date the effective registration date (supplied by the client or defaulted to the
      *             server's current date)

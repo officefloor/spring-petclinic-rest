@@ -286,25 +286,54 @@ public class Owner extends Person {
         return (10 - (sum % 10)) % 10;
     }
 
+    /** The month on which the fiscal year starts: 1 July. */
+    private static final java.time.Month FISCAL_YEAR_START_MONTH = java.time.Month.JULY;
+
+    /**
+     * The calendar year in which the fiscal year containing {@code date} began. The fiscal year
+     * starts on 1 July, so a date in July through December belongs to a fiscal year that began in
+     * its own calendar year, while a date in January through June belongs to one that began in the
+     * previous calendar year.
+     */
+    private static int fiscalYearStart(LocalDate date) {
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH.getValue() ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code FY<YY>} where {@code YY} is the last two digits of
+     * the calendar year in which the fiscal year containing the {@code registrationDate} began (the
+     * fiscal year starts on 1 July; e.g. a registration on 2026-08-11 yields {@code FY26}). Derived
+     * from the (business-day-adjusted) {@code registrationDate}; {@code null} until it is assigned.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearStart(this.registrationDate) % 100);
+    }
+
     /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where {@code YY} is
-     * the last two digits of the {@code registrationDate} year (e.g. {@code NSW-1A2B3C4D-M26}).
-     * Derived from the owner's own fields; {@code null} until both are assigned.
+     * the last two digits of the fiscal year of the {@code registrationDate} (the fiscal year
+     * starts on 1 July; e.g. {@code NSW-1A2B3C4D-M26}). Derived from the owner's own fields;
+     * {@code null} until both are assigned.
      */
     @Transient
     public String getMembershipNumber() {
         if (this.customerCode == null || this.registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", this.customerCode, fiscalYearStart(this.registrationDate) % 100);
     }
 
     /**
      * The owner's membership points, derived from the owner's own fields. Points start at 0 and
      * accumulate: 2 when an email is present, 1 when the owner has no namesakes ({@code namesakeCount}
      * is 0), 2 when the owner belongs to a household of 3 or more members ({@code householdSize} is at
-     * least 3), and 3 when the owner's tenure — whole days from {@link #registrationDate} to today —
-     * exceeds 365. Because a newly created owner registers today and so has zero tenure, and joins a
+     * least 3), and 3 when the owner's tenure — the number of elapsed fiscal years from
+     * {@link #registrationDate} to today, the fiscal year starting on 1 July — exceeds one. Because
+     * a newly created owner registers in the current fiscal year and so has zero tenure, and joins a
      * household of at most itself unless others already share it, a new owner's points reflect only the
      * factors captured at creation time.
      */
@@ -324,7 +353,7 @@ public class Owner extends Person {
             points += 2;
         }
         boolean longTenure = this.registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
+            && (fiscalYearStart(LocalDate.now()) - fiscalYearStart(this.registrationDate)) > 1;
         if (longTenure) {
             points += 3;
         }
