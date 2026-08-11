@@ -81,6 +81,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; emits one line per successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; emits one welcome line per successful owner create. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /**
      * Process-wide, monotonically increasing sequence stamped onto each structured
      * {@code OWNER_CREATED} audit event so consumers can order and de-duplicate them.
@@ -336,6 +339,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerCreatedEvent.put("membershipLevel", ownerDto.getMembershipLevel());
         ownerCreatedEvent.put("event", "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(ownerCreatedEvent));
+        // Enqueue a welcome notification for the newly created owner: a NOTIFY line carrying the
+        // owner id and its assigned member id.
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         // Remember the created owner against its idempotency key (when one was supplied) so a later
