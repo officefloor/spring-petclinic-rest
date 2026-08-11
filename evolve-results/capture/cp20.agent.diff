@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3abb08c1..b54a69b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -141,19 +141,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         validateRequiredFields(ownerFieldsDto);
+-        rejectWhenDailyLimitReached();
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
++        LocalDate effectiveDate = owner.getRegistrationDate() == null
++            ? LocalDate.now()
++            : owner.getRegistrationDate();
++        owner.setRegistrationDate(toBusinessDay(effectiveDate));
++        rejectWhenDailyLimitReached(owner.getRegistrationDate());
+         rejectWhenCityAtCapacity(owner.getCity());
+         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
+         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+         rejectDuplicateTelephone(telephone);
+         owner.setTelephone(telephone);
+         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+@@ -229,23 +230,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rejects creating an owner once {@link #DAILY_OWNER_LIMIT} or more owners have already been
+-     * created today, counted by their {@code registrationDate}. The current day is taken as
+-     * {@link LocalDate#now()}, matching the default {@code registrationDate} assigned to new owners.
++     * Rejects creating an owner once {@link #DAILY_OWNER_LIMIT} or more owners already carry the
++     * given business day as their {@code registrationDate}. The day is the owner's adjusted,
++     * business-day registration date, so the limit is enforced per business day and weekend
++     * requests count against the Monday they roll forward to.
+      *
+-     * @throws DailyOwnerLimitException if {@link #DAILY_OWNER_LIMIT} owners already carry today's
++     * @param registrationDate the owner's adjusted (business-day) registration date
++     * @throws DailyOwnerLimitException if {@link #DAILY_OWNER_LIMIT} owners already carry that
+      *                                  registration date
+      */
+-    private void rejectWhenDailyLimitReached() {
+-        LocalDate today = LocalDate.now();
++    private void rejectWhenDailyLimitReached(LocalDate registrationDate) {
+         long count = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+             .count();
+         if (count >= DAILY_OWNER_LIMIT) {
+-            throw new DailyOwnerLimitException(today);
++            throw new DailyOwnerLimitException(registrationDate);
+         }
+     }
+ 
++    /**
++     * Rolls a registration date forward onto a business day: when it falls on a Saturday or Sunday
++     * it advances to the following Monday, otherwise it is returned unchanged. Applied to the
++     * effective registration date (whether supplied in the request or defaulted to the server date)
++     * so a weekend value never persists as an owner's {@code registrationDate}.
++     *
++     * @param date the effective registration date
++     * @return the same date when it is a weekday, otherwise the next Monday
++     */
++    private LocalDate toBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++
+     private boolean equalsIgnoreCase(String a, String b) {
+         return a == null ? b == null : a.equalsIgnoreCase(b);
+     }
