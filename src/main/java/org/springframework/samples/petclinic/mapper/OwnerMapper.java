@@ -33,7 +33,7 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
@@ -57,42 +57,27 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The number of owners a household must reach for its members to qualify for the
-     * {@code GOLD} tier.
+     * The highest membership level derivable on creation. Level 4 is reserved for tenure and is
+     * not assigned here.
      */
-    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+    private static final int MAX_MEMBERSHIP_LEVEL = 3;
 
     /**
-     * Derives the owner's membership tier: {@code GOLD} when the owner's household (owners
-     * sharing the same {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE} or more members;
-     * otherwise {@code SILVER} when the owner has no namesakes (namesakeCount is 0) and an email
-     * is present; otherwise {@code BRONZE}.
+     * Derives the owner's membership level, a number from 1 to {@value #MAX_MEMBERSHIP_LEVEL}:
+     * it starts at 1, gains 1 when an email is present, and gains 1 when the owner has no
+     * namesakes (namesakeCount is 0), capped at {@value #MAX_MEMBERSHIP_LEVEL}.
      */
-    protected OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
-        if (isGoldHousehold(owner)) {
-            return OwnerDto.MembershipTierEnum.GOLD;
+    protected Integer membershipLevel(Owner owner) {
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail
-            ? OwnerDto.MembershipTierEnum.SILVER
-            : OwnerDto.MembershipTierEnum.BRONZE;
-    }
-
-    /**
-     * Returns {@code true} when the owner belongs to a household (has a non-blank
-     * {@code householdId}) that has at least {@value #GOLD_HOUSEHOLD_SIZE} members, counting all
-     * owners that share the same {@code householdId}.
-     */
-    private boolean isGoldHousehold(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank()) {
-            return false;
+        if (noNamesakes) {
+            level++;
         }
-        long members = this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
-        return members >= GOLD_HOUSEHOLD_SIZE;
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
     }
 
     /**
