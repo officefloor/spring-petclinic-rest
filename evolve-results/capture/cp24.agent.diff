@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0ed3fd08..a6fe05d6 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,8 +25,8 @@ public interface OwnerMapper {
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+         expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(locality(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+@@ -46,18 +46,21 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Determine the owner's membership tier: 'GOLD' when the owner's household (owners sharing the
+-     * same householdId) had 3 or more members after the owner was created; otherwise 'SILVER' when
+-     * the owner has no namesakes (namesakeCount is 0) and an email address is present, otherwise
+-     * 'BRONZE'.
++     * Determine the owner's numeric membership level, assigned at creation. Starts at 1; add 1 when
++     * an email address is present; add 1 when the owner has no namesakes (namesakeCount is 0);
++     * capped at 3 (level 4 is reserved for tenure).
+      */
+-    default String membershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return "GOLD";
++    default Integer membershipLevel(Owner owner) {
++        int level = 1;
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
++        if (hasEmail) {
++            level++;
+         }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ae5b1f50..00cf7d6f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -217,8 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         // Record the size of this owner's household (owners sharing the same householdId) after this
+         // create: the existing members already stamped with the shared identifier plus this new
+-        // owner. An owner not admitted into any household is a household of one. A household of three
+-        // or more members promotes the owner to the GOLD membership tier.
++        // owner. An owner not admitted into any household is a household of one.
+         owner.setHouseholdSize(countHouseholdMembers(householdId) + 1);
+         // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
+         owner.setBulkSignupWarning(bulkSignupWarning);
+@@ -233,11 +232,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // owners already in that city.
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+-        // Emit an audit trail line for the successful create, carrying the owner id, the assigned
+-        // customer code and the effective registration date.
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        // Emit an audit trail line for the successful create, carrying the owner id, the assigned
++        // customer code, the effective registration date and the numeric membership level.
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 54a5a147..741a2e04 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,17 +2134,19 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007-M26'
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household
+-                (owners sharing the same householdId) has 3 or more members after
+-                the owner is created; otherwise 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address is present,
+-                otherwise 'BRONZE'.
+-              type: string
++                The owner's numeric membership level, assigned at creation.
++                Starts at 1; add 1 when an email address is present; add 1 when
++                the owner has no namesakes (namesakeCount is 0); capped at 3
++                (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
+               readOnly: true
+-              example: 'SILVER'
++              example: 3
+             locality:
+               title: Locality
+               description: >-
