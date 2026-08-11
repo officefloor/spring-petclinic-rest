@@ -36,6 +36,9 @@ public class CheckHouseholdUnique {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a new household
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new OwnerHouseholdConflictException(
                         "An owner in household " + householdId + " already exists");

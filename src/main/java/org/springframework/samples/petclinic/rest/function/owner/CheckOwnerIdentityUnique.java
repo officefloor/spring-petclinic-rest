@@ -25,6 +25,9 @@ public class CheckOwnerIdentityUnique {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a new identity
+            }
             if (identityKey.equals(OwnerIdentityKey.of(existing))) {
                 throw new OwnerIdentityConflictException(
                         "An owner with identity " + identityKey + " already exists");
