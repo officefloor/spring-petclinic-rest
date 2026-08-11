@@ -36,6 +36,9 @@ public class CheckOwnerIdentityUnique {
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         String householdId = built.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a duplicate
+            }
             if (identityKey.equals(IdentityKey.of(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }

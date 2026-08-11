@@ -29,6 +29,9 @@ public class CheckPossibleDuplicate {
     public void service(@Val Owner built, OwnerRepository ownerRepository) {
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is not a suspected duplicate
+            }
             if (sameLastName(built, existing) && samePostcode(built, existing)
                     && differentTelephone(built, existing) && differentHousehold(built, existing)) {
                 Integer id = existing.getId();
