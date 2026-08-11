@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -106,6 +109,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects an owner whose required fields are missing or blank. Collects the names of every
+     * offending field so the client learns about all of them at once.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws MissingOwnerFieldsException if firstName, lastName, address, city or telephone is
+     *                                     missing or blank
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> errors = new ArrayList<>();
+        if (isBlank(ownerFieldsDto.getFirstName())) {
+            errors.add("firstName");
+        }
+        if (isBlank(ownerFieldsDto.getLastName())) {
+            errors.add("lastName");
+        }
+        if (isBlank(ownerFieldsDto.getAddress())) {
+            errors.add("address");
+        }
+        if (isBlank(ownerFieldsDto.getCity())) {
+            errors.add("city");
+        }
+        if (isBlank(ownerFieldsDto.getTelephone())) {
+            errors.add("telephone");
+        }
+        if (!errors.isEmpty()) {
+            throw new MissingOwnerFieldsException(errors);
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
