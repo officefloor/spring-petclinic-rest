@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -177,6 +178,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(normalizedTelephone::equals);
         if (telephoneInUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
+        // Reject the request if the (lower-cased) email is already used by any other owner. Stored
+        // emails are already normalized to lower case, but compare case-insensitively defensively.
+        if (normalizedEmail != null) {
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .map(Owner::getEmail)
+                .filter(existing -> existing != null)
+                .anyMatch(normalizedEmail::equalsIgnoreCase);
+            if (emailInUse) {
+                throw new DuplicateOwnerEmailException(normalizedEmail);
+            }
         }
         // Household handling for a matching last name + address (compared case-insensitively with
         // collapsed whitespace). By default such a request is rejected as a duplicate household;
