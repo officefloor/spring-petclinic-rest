@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -62,11 +63,27 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the city using the fixed city-to-region
-     * table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), returning {@code UNKNOWN} when the
-     * city is not in the table.
+     * The inclusive 4-digit postcode range that identifies each region, keyed by region code
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099).
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Derives the owner's locality (region), preferring the postcode: when a 4-digit postcode
+     * falls in a known region's range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) that region
+     * is returned. Otherwise the city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD)
+     * is consulted, returning {@code UNKNOWN} when the city is not in the table. Preferring the
+     * postcode disambiguates cities that share a name while still returning the same region for
+     * known cities with a matching postcode.
      */
     protected String locality(Owner owner) {
+        String fromPostcode = regionFromPostcode(owner.getPostcode());
+        if (fromPostcode != null) {
+            return fromPostcode;
+        }
         String city = owner.getCity();
         if (city == null) {
             return "UNKNOWN";
@@ -77,6 +94,24 @@ public abstract class OwnerMapper {
             case "Brisbane" -> "QLD";
             default -> "UNKNOWN";
         };
+    }
+
+    /**
+     * Resolves the region whose postcode range contains the given postcode, or {@code null} when
+     * the postcode is absent, not 4 digits, or in no known range.
+     */
+    private String regionFromPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
