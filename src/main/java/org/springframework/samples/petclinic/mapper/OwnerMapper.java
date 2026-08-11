@@ -47,8 +47,18 @@ public interface OwnerMapper {
         expression = "java(fiscalYear(owner))")
     @Mapping(target = "salutation",
         expression = "java(salutation(owner))")
+    @Mapping(target = "selfLink",
+        expression = "java(selfLink(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Build the owner's canonical self link: '/api/owners/' followed by the owner's id. Returns null
+     * when the owner has no id so an unsaved owner serializes cleanly.
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * Build the owner's salutation: the honorific title followed by a single space and the last name
