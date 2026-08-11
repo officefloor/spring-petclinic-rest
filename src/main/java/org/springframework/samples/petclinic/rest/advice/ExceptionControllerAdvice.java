@@ -190,4 +190,25 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link DuplicateOwnerTelephoneException} raised when an owner is created with a
+     * telephone whose normalized form is already used by another owner. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("telephone"));
+        logger.debug("Duplicate owner telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getTelephone());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
