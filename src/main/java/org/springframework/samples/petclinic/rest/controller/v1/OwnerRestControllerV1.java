@@ -142,12 +142,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Counts the owners that already exist (before the current create) whose first and last names
+     * both match the supplied names, compared case-insensitively. The returned value is captured on
+     * the new owner at creation time and does not change as further owners are added later.
+     *
+     * @param firstName the new owner's first name
+     * @param lastName  the new owner's last name
+     * @return the number of pre-existing namesake owners
+     */
+    private int namesakeCount(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getFirstName() != null
+                && existing.getFirstName().equalsIgnoreCase(firstName)
+                && existing.getLastName() != null
+                && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
     }
 
     /**
