@@ -1,0 +1,38 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4a64842d..1504e5fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -195,14 +195,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Builds the owner's customer code, formatted {@code <REGION>-<HASH8>} where REGION is the region
+      * code derived from the owner's postcode (falling back to the city-to-region table, then
+      * {@code UNKNOWN}) and HASH8 is the first 8 upper-cased hex characters of the SHA-256 of the
+-     * owner's normalized telephone concatenated with its last name (e.g. {@code NSW-1A2B3C4D}). The
+-     * code is a pure function of the owner's region and identity, carrying no sequence number.
++     * owner's normalized telephone concatenated with its last name (e.g. {@code NSW-1A2B3C4D}).
++     *
++     * <p>Should the computed code collide with an existing owner's {@code customerCode}, it is
++     * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
++     * unique (e.g. {@code NSW-1A2B3C4D-2}), so distinct owners always receive distinct customer codes.
+      *
+      * @param owner the owner being created, with its normalized telephone already applied
+-     * @return the assigned customer code
++     * @return the assigned, de-duplicated customer code
+      */
+     private String customerCode(Owner owner) {
+-        return regionCode(owner) + "-" + identityHash8(owner.getTelephone(), owner.getLastName());
++        String base = regionCode(owner) + "-" + identityHash8(owner.getTelephone(), owner.getLastName());
++        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(code -> code != null)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existingCodes.contains(base)) {
++            return base;
++        }
++        int n = 2;
++        while (existingCodes.contains(base + "-" + n)) {
++            n++;
++        }
++        return base + "-" + n;
+     }
+ 
+     /**
