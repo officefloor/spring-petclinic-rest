@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9250607f..02afc518 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -137,20 +137,23 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier. Returns {@code GOLD} when the owner's household (owners sharing
+-     * the same {@code householdId}) has 3 or more members as captured at creation time
+-     * ({@code householdSize} is 3 or more). Otherwise it is derived from the owner's own fields:
+-     * {@code SILVER} when the owner has no namesakes ({@code namesakeCount} is 0) and an email is
+-     * present; otherwise {@code BRONZE}.
++     * The owner's membership level, a number from 1 to 3 derived from the owner's own fields as
++     * captured at creation time. It starts at 1, gains 1 when an email is present, gains a further
++     * 1 when the owner has no namesakes ({@code namesakeCount} is 0), and is capped at 3. Level 4
++     * is reserved for tenure and is never produced here.
+      */
+     @Transient
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
+-        }
++    public Integer getMembershipLevel() {
++        int level = 1;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
++        if (hasEmail) {
++            level++;
++        }
+         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /** City -> canonical region for the {@code locality} derivation. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 61b456b8..77a72f03 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -167,8 +167,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setHouseholdSize(householdSizeAfterCreate(owner.getHouseholdId()));
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+@@ -445,7 +445,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * itself, as of this create. Members are the owners sharing the given {@code householdId};
+      * the new owner is not yet persisted, so its own membership is added to the existing count.
+      * An owner not assigned to a shared household ({@code householdId} is {@code null}) is a
+-     * household of one. This snapshot drives the {@code GOLD} membership tier (3 or more members).
++     * household of one.
+      *
+      * @param householdId the shared household identifier assigned to the owner being created, or
+      *                    {@code null} if the owner does not share a household
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 79047d10..a63432c2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,15 +2126,18 @@ components:
+               type: string
+               example: A1B2C3D4E5F60718
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household (owners
+-                sharing the same householdId) has 3 or more members as of this create;
+-                otherwise 'SILVER' when the owner has no namesakes (namesakeCount is 0)
+-                and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: SILVER
++                The owner's membership level, a number from 1 to 3 derived at create time.
++                It starts at 1, gains 1 when an email is present, gains a further 1 when the
++                owner has no namesakes (namesakeCount is 0), and is capped at 3. Level 4 is
++                reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
