@@ -36,12 +36,25 @@ final class TelephoneE164 {
         return "+61" + national;
     }
 
-    /** True when {@code e164} is a {@code '+'} followed by 8 to 15 digits. */
+    /**
+     * True when {@code e164} is a {@code '+'} followed by 8 to 15 digits and, for country
+     * codes with a known fixed national-number length, the national number is exactly that
+     * length: {@code '+61'} requires 9 national digits, {@code '+1'} requires 10.
+     */
     static boolean isValid(String e164) {
         if (e164 == null || !e164.startsWith("+")) {
             return false;
         }
-        int digitCount = e164.length() - 1;
-        return digitCount >= 8 && digitCount <= 15;
+        String digits = e164.substring(1);
+        if (digits.length() < 8 || digits.length() > 15) {
+            return false;
+        }
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 }
