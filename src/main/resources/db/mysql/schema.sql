@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(10),
   registration_date DATE,
   birth_date DATE,
-  customer_code VARCHAR(30),
+  member_id VARCHAR(30),
   household_id VARCHAR(64),
   namesake_count INT,
   bulk_signup_warning BIT,

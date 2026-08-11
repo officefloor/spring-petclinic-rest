@@ -24,9 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -108,18 +106,22 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's locality from the region-and-hash identity: the REGION prefix of the
-     * {@code customerCode} (everything before the first {@code '-'}). This is the same region the
-     * identity is built from ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion},
-     * postcode range first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then
-     * {@code UNKNOWN}), so the locality a client reads back always matches the code's region prefix.
-     * Owners with no {@code customerCode} (e.g. seed data) fall back to deriving the region directly.
+     * {@code memberId} (its leading run of letters, up to the 2-digit fiscal year that follows).
+     * This is the same region the identity is built from
+     * ({@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion}, postcode range
+     * first — NSW 2000-2099, VIC 3000-3099, QLD 4000-4099 — then the city table, then {@code UNKNOWN}),
+     * so the locality a client reads back always matches the memberId's region prefix. Owners with no
+     * {@code memberId} (e.g. seed data) fall back to deriving the region directly.
      */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.of(owner);
@@ -236,50 +238,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("FY%02d", Math.floorMod(fiscalYearOf(registrationDate), 100));
-    }
-
-    /**
-     * Derives the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the {@link #fiscalYearOf(java.time.LocalDate) fiscal year} of the
-     * registrationDate (e.g. {@code LON-SMI-0007-M27}) — the same YY as {@link #fiscalYear(Owner)}.
-     * Returns {@code null} when either source field is absent, so owners without a customer code or
-     * registration date (e.g. seed data) simply have no membership number.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        int yy = Math.floorMod(fiscalYearOf(owner.getRegistrationDate()), 100);
-        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
-    }
-
-    /**
-     * Computes the owner's Luhn check digit (0-9) over the digits contained in the customerCode.
-     * Returns {@code null} when the customer code is absent (e.g. seed data).
-     */
-    default Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);

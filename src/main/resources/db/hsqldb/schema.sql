@@ -49,7 +49,7 @@ CREATE TABLE owners (
   postcode   VARCHAR(10),
   registration_date DATE,
   birth_date DATE,
-  customer_code VARCHAR(30),
+  member_id VARCHAR(30),
   household_id VARCHAR(64),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,

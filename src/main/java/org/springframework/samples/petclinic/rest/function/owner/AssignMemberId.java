@@ -3,6 +3,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.Month;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -11,37 +13,42 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
- * region code derived from the owner's postcode (the same derivation the locality shares, see
- * {@link OwnerRegion}) and HASH8 is the first 8 upper-case hex characters of SHA-256 over the owner's
- * normalized (E.164) telephone concatenated with the last name.
+ * Assigns the owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where REGION is
+ * the region code derived from the owner's postcode (the same derivation the locality shares, see
+ * {@link OwnerRegion}), FY is the 2-digit fiscal year of the owner's registrationDate (the same YY
+ * as the {@code fiscalYear} field), HASH8 is the first 8 upper-case hex characters of SHA-256 over
+ * the owner's normalized (E.164) telephone concatenated with the last name, and CHK is a single Luhn
+ * check digit computed over the digits of {@code <REGION><FY><HASH8>}.
  *
  * <p>The identity is therefore a stable function of who the owner is, not of how many owners already
- * exist — the old per-city sequence number is gone.
+ * exist — the old per-city sequence number is gone. This unifies what used to be the separate
+ * {@code customerCode}, {@code membershipNumber} and {@code checkDigit}.
  *
- * <p>Should the computed code collide with an existing owner's {@code customerCode}, it is
+ * <p>Should the computed memberId collide with an existing owner's {@code memberId}, it is
  * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
- * unique, so distinct owners always end up with distinct customer codes.
+ * unique, so distinct owners always end up with distinct member ids.
  */
-public class AssignCustomerCode {
+public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = OwnerRegion.of(owner);
+        String fy = fiscalYear2(owner.getRegistrationDate());
         String hash8 = hash8(normalizedTelephone(owner.getTelephone()) + owner.getLastName());
-        String base = region + "-" + hash8;
-        owner.setCustomerCode(deduplicate(base, existingCustomerCodes(ownerRepository)));
+        String body = region + fy + hash8;
+        String base = body + luhn(body);
+        owner.setMemberId(deduplicate(base, existingMemberIds(ownerRepository)));
     }
 
-    /** The {@code customerCode}s already assigned to other owners in the data store. */
-    private static Set<String> existingCustomerCodes(OwnerRepository ownerRepository) {
-        Set<String> codes = new HashSet<>();
+    /** The {@code memberId}s already assigned to other owners in the data store. */
+    private static Set<String> existingMemberIds(OwnerRepository ownerRepository) {
+        Set<String> ids = new HashSet<>();
         for (Owner existing : ownerRepository.findAll()) {
-            String code = existing.getCustomerCode();
-            if (code != null) {
-                codes.add(code);
+            String id = existing.getMemberId();
+            if (id != null) {
+                ids.add(id);
             }
         }
-        return codes;
+        return ids;
     }
 
     /**
@@ -58,6 +65,39 @@ public class AssignCustomerCode {
                 return candidate;
             }
         }
+    }
+
+    /**
+     * The last two digits of the fiscal year (1 July - 30 June, named by the calendar year in which
+     * it ends) of {@code date}, zero-padded. Falls back to the current date's fiscal year when no
+     * registration date is present.
+     */
+    private static String fiscalYear2(LocalDate date) {
+        LocalDate d = date != null ? date : LocalDate.now();
+        int fy = d.getMonthValue() >= Month.JULY.getValue() ? d.getYear() + 1 : d.getYear();
+        return String.format("%02d", Math.floorMod(fy, 100));
+    }
+
+    /** Luhn check digit (0-9) over the digits contained in {@code s}. */
+    private static int luhn(String s) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = s.length() - 1; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

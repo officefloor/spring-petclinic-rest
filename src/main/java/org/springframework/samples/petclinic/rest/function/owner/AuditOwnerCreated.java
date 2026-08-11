@@ -12,17 +12,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Emits an audit line on the dedicated {@code AUDIT} logger after a successful create,
- * carrying the newly-assigned owner id, its customerCode, its registrationDate, its
- * numeric membershipLevel and its membershipNumber. Runs after {@code save}, so the
- * owner's generated id is available. The logged level is the household-capped one, so it
- * matches what the response and later reads return.
+ * carrying the newly-assigned owner id, its memberId, its registrationDate and its
+ * numeric membershipLevel. Runs after {@code save}, so the owner's generated id is
+ * available. The logged level is the household-capped one, so it matches what the response
+ * and later reads return.
  *
  * <p>Alongside the human-readable line, emits an immutable structured event on the same
  * {@code AUDIT} logger: a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where
  * {@code seq} is a monotonically increasing integer across creates. The event carries the
- * owner's current primary identifier via {@link #primaryIdentifier(Owner)} — the
- * customerCode today, and whatever replaces it later.
+ * owner's primary identifier via {@link #primaryIdentifier(Owner)} — the memberId.
  */
 public class AuditOwnerCreated {
 
@@ -33,22 +32,17 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
         int membershipLevel = HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, ownerMapper.membershipNumber(owner));
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
 
         long seq = SEQ.incrementAndGet();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":{},\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             seq, owner.getId(), jsonString(primaryIdentifier(owner)), membershipLevel);
     }
 
-    /**
-     * The owner's current primary identifier carried by the structured event. Today that is the
-     * {@code customerCode}; when the customerCode is later unified into the {@code memberId},
-     * return that here instead and the event carries the memberId with no other change.
-     */
+    /** The owner's primary identifier carried by the structured event: the {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /** Renders a value as a JSON string literal (quoted, with the minimal escaping), or {@code null}. */

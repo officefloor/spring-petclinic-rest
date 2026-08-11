@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Derives an owner's REGION code — the single source of truth now shared by both the region prefix
- * of the {@code customerCode} and the owner's locality. The postcode decides first (NSW 2000-2099,
+ * of the {@code memberId} and the owner's locality. The postcode decides first (NSW 2000-2099,
  * VIC 3000-3099, QLD 4000-4099); when the postcode is absent or in no known range, the fixed
  * city-to-region table ({@link OwnerMapper#CITY_REGION}: Sydney-&gt;NSW, Melbourne-&gt;VIC,
  * Brisbane-&gt;QLD) is consulted, falling back to {@code UNKNOWN} for an unlisted city.
