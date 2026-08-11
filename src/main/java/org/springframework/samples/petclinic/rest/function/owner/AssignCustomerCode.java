@@ -3,10 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
+import java.util.Set;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.Locality;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'}: REGION is the
@@ -16,18 +19,36 @@ import org.springframework.samples.petclinic.model.Owner;
  * name (e.g. {@code 'NSW-1A2B3C4D'}). The identity is content-derived and carries no sequence
  * number, so it is stable and independent of creation order.
  *
+ * <p>When the computed {@code '<REGION>-<HASH8>'} collides with an existing owner's customerCode,
+ * {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that makes it unique, so the
+ * stored customerCode is always de-duplicated.
+ *
  * <p>Runs after {@link NormalizeOwnerTelephone} (so the telephone is already E.164) and
  * {@link BuildOwner} (so the entity, hence its city, postcode and last name, exists), and before
- * {@link SaveOwner}; it mutates the built {@link Owner} in place. Every value built from the
- * customerCode — the membership number and its Luhn check digit, the create audit record, and the
- * derived locality — therefore reflects this region-and-hash identity.
+ * {@link SaveOwner} (so the new owner is not yet among {@code findAll()}); it mutates the built
+ * {@link Owner} in place. Every value built from the customerCode — the membership number and its
+ * Luhn check digit, the create audit record, and the derived locality — therefore reflects this
+ * region-and-hash identity.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+
+        Set<String> existing = new HashSet<>();
+        for (Owner other : ownerRepository.findAll()) {
+            if (other.getCustomerCode() != null) {
+                existing.add(other.getCustomerCode());
+            }
+        }
+
+        String customerCode = base;
+        for (int n = 2; existing.contains(customerCode); n++) {
+            customerCode = base + "-" + n;
+        }
+        owner.setCustomerCode(customerCode);
     }
 
     /** First eight upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
