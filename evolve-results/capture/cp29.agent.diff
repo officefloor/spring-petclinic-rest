@@ -1,0 +1,159 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0411a25e..0853a4c4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -44,6 +44,9 @@ public class Owner extends Person {
+     @NotEmpty
+     private String city;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "telephone")
+     @NotEmpty
+     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be in E.164 format (a '+' followed by 8 to 15 digits)")
+@@ -90,6 +93,14 @@ public class Owner extends Person {
+         this.city = city;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public String getTelephone() {
+         return this.telephone;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6c1f0abe..36818462 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+         owner.setTelephone(normalizedTelephone);
+         owner.setEmail(normalizeEmail(owner.getEmail()));
++        validatePostcode(owner.getPostcode(), owner.getCity());
+         java.time.LocalDate effectiveDate = owner.getRegistrationDate() != null
+             ? owner.getRegistrationDate() : java.time.LocalDate.now();
+         java.time.LocalDate businessDate = toBusinessDay(effectiveDate);
+@@ -396,6 +397,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * The inclusive 4-digit postcode range permitted for each canonical region, keyed by the
++     * region derived from the owner's city ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
++     * {@code Brisbane -> QLD}): NSW {@code 2000-2099}, VIC {@code 3000-3099}, QLD
++     * {@code 4000-4099}. A city whose region is not listed here accepts any 4-digit postcode.
++     */
++    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validates an owner's optional postcode against their city's region. The postcode is only
++     * checked when present (a {@code null} postcode is accepted, keeping the request contract
++     * backward-compatible). Its four-digit shape is already enforced by Bean Validation on the
++     * request DTO. When the city maps to a known region (see {@link #REGION_POSTCODE_RANGES}) the
++     * postcode must fall within that region's inclusive range; a city with no known region accepts
++     * any 4-digit postcode.
++     *
++     * @param postcode the owner's postcode as submitted, or {@code null} when absent
++     * @param city     the owner's city, used to derive the region whose range applies
++     * @throws ResponseStatusException with a 400 status when a supplied postcode is out of range
++     *         for the city's region
++     */
++    private void validatePostcode(String postcode, String city) {
++        if (postcode == null) {
++            return;
++        }
++        String region = org.springframework.samples.petclinic.mapper.Localities.forCity(city);
++        int[] range = REGION_POSTCODE_RANGES.get(region);
++        if (range == null) {
++            return;
++        }
++        int value = Integer.parseInt(postcode);
++        if (value < range[0] || value > range[1]) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                "Postcode " + postcode + " is not valid for region " + region);
++        }
++    }
++
+     /**
+      * Normalizes an optional email address by lower-casing it. Syntactic validity is enforced
+      * by Bean Validation on the request DTO, so a value reaching this point is either {@code null}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 69e26c36..e9136f67 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
++  postcode VARCHAR(4),
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0ad1fcef..866cd28f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE owners (
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
+   city       VARCHAR(80),
++  postcode   VARCHAR(4),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index f6fff432..9dbbe056 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   last_name VARCHAR(30),
+   address VARCHAR(255),
+   city VARCHAR(80),
++  postcode VARCHAR(4),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1f19ab04..64bf30de 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       last_name  TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
++                                      postcode   TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 16967b32..65d52ff5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,6 +2025,18 @@ components:
+           maxLength: 80
+           pattern: '.*\S.*'
+           example: Madison
++        postcode:
++          title: Postcode
++          description: >-
++            The 4-digit postcode of the pet owner. Optional; when present it
++            must be four digits and, when the owner's city has a known region
++            (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), must fall within that
++            region's range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city
++            with no known region accepts any 4-digit postcode. Stored and
++            returned when given.
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+         telephone:
+           title: Telephone number
+           description: >-
