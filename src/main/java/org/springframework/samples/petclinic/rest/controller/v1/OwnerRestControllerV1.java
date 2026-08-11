@@ -126,39 +126,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "The maximum number of owners for today has already been reached");
         }
         owner.setBulkSignupWarning(createdToday > 80);
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(java.util.Objects::nonNull)
-            .anyMatch(normalizedTelephone::equals);
-        if (telephoneInUse) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "An owner with this telephone number already exists");
-        }
-        String normalizedEmail = owner.getEmail();
-        if (normalizedEmail != null) {
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(java.util.Objects::nonNull)
-                .map(existing -> existing.toLowerCase(java.util.Locale.ROOT))
-                .anyMatch(normalizedEmail::equals);
-            if (emailInUse) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "An owner with this email address already exists");
-            }
-        }
         String lastNameKey = normalizeForHousehold(owner.getLastName());
         String addressKey = normalizeForHousehold(owner.getAddress());
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(lastNameKey)
                 && normalizeForHousehold(existing.getAddress()).equals(addressKey))
             .toList();
-        if (!householdMembers.isEmpty()) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "An owner with this last name already exists at this address");
-            }
-            String householdId = householdId(lastNameKey, addressKey);
+        String householdId = null;
+        if (!householdMembers.isEmpty() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            householdId = householdId(lastNameKey, addressKey);
             owner.setHouseholdId(householdId);
+        }
+        // All duplicate detection is now expressed through the single derived identityKey
+        // (telephone|email|householdId); a new owner is rejected only when its whole key matches.
+        String identityKey = owner.getIdentityKey();
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+        if (identityInUse) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "An owner with this identity already exists");
+        }
+        if (householdId != null) {
             for (Owner member : householdMembers) {
                 if (!householdId.equals(member.getHouseholdId())) {
                     member.setHouseholdId(householdId);

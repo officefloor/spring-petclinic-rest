@@ -154,6 +154,22 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    /**
+     * The single derived key used for all duplicate detection, formatted
+     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Two owners are
+     * duplicates only when their whole identity keys are equal; because the telephone is part
+     * of the key, two members of the same household with different telephones have different
+     * keys and are both allowed.
+     *
+     * @return the derived identity key
+     */
+    @Transient
+    public String getIdentityKey() {
+        return (this.telephone == null ? "" : this.telephone) + "|"
+            + (this.email == null ? "" : this.email) + "|"
+            + (this.householdId == null ? "" : this.householdId);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
