@@ -49,6 +49,8 @@ public interface OwnerMapper {
         expression = "java(salutation(owner))")
     @Mapping(target = "selfLink",
         expression = "java(selfLink(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(ownerSegment(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -58,6 +60,22 @@ public interface OwnerMapper {
      */
     default String selfLink(Owner owner) {
         return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
+
+    /**
+     * The set of known regions treated as METRO when deriving an owner's segment area.
+     */
+    java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derive the owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when
+     * {@link #membershipLevel(Owner)} is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
+     * {@link #locality(Owner)} is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
+     */
+    default String ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
