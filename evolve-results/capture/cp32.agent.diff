@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 88945998..034f234b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -225,11 +225,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // the following Monday, so everything derived from it (e.g. the membership number's year
+         // segment) uses the adjusted date.
+         owner.setRegistrationDate(effectiveRegistrationDate);
+-        // Assign the customer code: '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first
+-        // three letters of the city, LAST3 the upper-cased first three letters of the last name and
+-        // NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of
+-        // owners already in that city.
+-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
++        // Assign the customer code: '<REGION>-<HASH8>' where REGION is the region derived from the
++        // owner's postcode (falling back to the city-to-region table, else 'UNKNOWN', matching the
++        // locality derivation) and HASH8 is the first 8 upper-case hex characters of
++        // SHA-256(normalizedTelephone + lastName). Sequence numbers are no longer used.
++        owner.setCustomerCode(customerCode(
++            deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         // Emit an audit trail line for the successful create, carrying the owner id, the assigned
+@@ -418,12 +419,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             + "|" + (householdId == null ? "" : householdId);
+     }
+ 
+-    /**
+-     * Build the customer code for a new owner: {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is the
+-     * upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the
+-     * last name and NNNN is a per-city 4-digit zero-padded sequence equal to one more than the
+-     * number of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+-     */
+     /**
+      * Count the existing owners that share the given first and last name, compared
+      * case-insensitively. Called before the new owner is saved, so the returned value reflects the
+@@ -508,13 +503,55 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         };
+     }
+ 
+-    private String nextCustomerCode(String city, String lastName) {
+-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        long sequence = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+-            .count() + 1L;
+-        return String.format("%s-%s-%04d", city3, last3, sequence);
++    /**
++     * Build the customer code for a new owner: {@code '<REGION>-<HASH8>'} where REGION is the region
++     * derived from the owner's postcode/city and HASH8 is the first 8 upper-case hex characters of
++     * {@code SHA-256(normalizedTelephone + lastName)} (e.g. {@code 'NSW-1A2B3C4D'}).
++     */
++    private static String customerCode(String region, String normalizedTelephone, String lastName) {
++        return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
++    }
++
++    /**
++     * First 8 upper-case hex characters of {@code SHA-256(input)}.
++     */
++    private static String hash8(String input) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(input.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.substring(0, 8).toUpperCase();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
++    }
++
++    /**
++     * Derive the owner's region, preferring the postcode: look up the region by postcode range first
++     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), then fall back to the city-to-region table
++     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD) when the postcode is absent or in no known
++     * range. Returns {@code 'UNKNOWN'} when neither source resolves a region. This mirrors the
++     * mapper's locality derivation, so the customer code's region segment and the owner's locality
++     * always agree.
++     */
++    private static String deriveRegion(String postcode, String city) {
++        if (postcode != null && postcode.matches("\\d{4}")) {
++            int value = Integer.parseInt(postcode);
++            for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++                int[] range = entry.getValue();
++                if (value >= range[0] && value <= range[1]) {
++                    return entry.getKey();
++                }
++            }
++        }
++        if (city == null) {
++            return "UNKNOWN";
++        }
++        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
+ 
+     /**
