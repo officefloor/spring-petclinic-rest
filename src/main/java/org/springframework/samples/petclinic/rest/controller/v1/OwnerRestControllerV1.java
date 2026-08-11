@@ -362,7 +362,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Normalizes a telephone into E.164 form. Spaces, dashes and brackets are stripped. A value
      * already carrying a leading {@code '+'} keeps its country code; otherwise country code
      * {@code +61} is assumed and a single leading {@code '0'} is dropped from the national digits.
-     * The result must carry a leading {@code '+'} followed by 8 to 15 digits.
+     * The result must carry a leading {@code '+'} followed by 8 to 15 digits, and the length of
+     * the national number must match the country code: {@code +61} requires 9 national digits and
+     * {@code +1} requires 10.
      *
      * @param rawTelephone the telephone value as supplied by the client
      * @return the telephone in E.164 form (e.g. {@code +61412345678})
@@ -390,6 +392,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int digitCount = e164.length() - 1;
         if (digitCount < 8 || digitCount > 15) {
             throw new InvalidTelephoneException(rawTelephone);
+        }
+        if (e164.startsWith("+61")) {
+            if (e164.length() - "+61".length() != 9) {
+                throw new InvalidTelephoneException(rawTelephone);
+            }
+        }
+        else if (e164.startsWith("+1")) {
+            if (e164.length() - "+1".length() != 10) {
+                throw new InvalidTelephoneException(rawTelephone);
+            }
         }
         return e164;
     }
