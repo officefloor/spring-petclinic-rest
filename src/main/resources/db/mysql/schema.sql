@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   first_name VARCHAR(30),
   last_name VARCHAR(30),
+  title VARCHAR(30),
   address VARCHAR(255),
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),

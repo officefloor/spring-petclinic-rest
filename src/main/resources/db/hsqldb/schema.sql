@@ -39,6 +39,7 @@ CREATE TABLE owners (
   id         INTEGER IDENTITY PRIMARY KEY,
   first_name VARCHAR(30),
   last_name  VARCHAR_IGNORECASE(30),
+  title      VARCHAR(30),
   address    VARCHAR(255),
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),

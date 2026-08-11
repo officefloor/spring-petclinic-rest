@@ -43,8 +43,24 @@ public interface OwnerMapper {
         expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand",
         expression = "java(ageBand(owner))")
+    @Mapping(target = "salutation",
+        expression = "java(salutation(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Build the owner's salutation: the honorific title followed by a single space and the last name
+     * (e.g. 'DR Who') when a title is present, or just the last name when no title was supplied. A
+     * blank title is treated as absent.
+     */
+    default String salutation(Owner owner) {
+        String lastName = owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.trim().isEmpty()) {
+            return lastName;
+        }
+        return title + " " + lastName;
+    }
 
     /**
      * Derive the owner's age band from the supplied birthDate, evaluated against the owner's
