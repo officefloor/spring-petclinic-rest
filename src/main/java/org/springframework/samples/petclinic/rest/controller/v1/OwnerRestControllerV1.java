@@ -298,15 +298,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // the following Monday, so everything derived from it (e.g. the membership number's year
         // segment) uses the adjusted date.
         owner.setRegistrationDate(effectiveRegistrationDate);
-        // Assign the customer code: '<REGION>-<HASH8>' where REGION is the region derived from the
-        // owner's postcode (falling back to the city-to-region table, else 'UNKNOWN', matching the
-        // locality derivation) and HASH8 is the first 8 upper-case hex characters of
-        // SHA-256(normalizedTelephone + lastName). Sequence numbers are no longer used.
-        // Compute the base code, then de-duplicate it: if the computed value collides with an
-        // existing owner's customerCode, append '-<n>' using the smallest n of 2 or more that
-        // yields a value no existing owner already carries.
-        owner.setCustomerCode(deduplicateCustomerCode(customerCode(
-            deriveRegion(owner.getPostcode(), owner.getCity()), normalizedTelephone, owner.getLastName())));
+        // Assign the unified member id: '<REGION><FY><HASH8><CHK>' where REGION is the region derived
+        // from the owner's postcode (falling back to the city-to-region table, else 'UNKNOWN', matching
+        // the locality derivation), FY is the 2-digit fiscal year of the (already business-day-adjusted)
+        // registration date, HASH8 is the first 8 upper-case hex characters of
+        // SHA-256(normalizedTelephone + lastName), and CHK is a single Luhn check digit over the digits
+        // of '<REGION><FY><HASH8>'. Compute the base value, then de-duplicate it: if it collides with an
+        // existing owner's memberId, append '-<n>' using the smallest n of 2 or more that yields a value
+        // no existing owner already carries.
+        owner.setMemberId(deduplicateMemberId(memberId(
+            deriveRegion(owner.getPostcode(), owner.getCity()),
+            effectiveRegistrationDate, normalizedTelephone, owner.getLastName())));
         // Soft-match detection: an owner that cleared the hard-duplicate check above may still
         // resemble an existing owner when its identity key differs but it shares that owner's
         // soundex(lastName) and postcode (a different telephone, and now a same-household-but-distinct
@@ -320,20 +322,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         // Emit an audit trail line for the successful create, carrying the owner id, the assigned
-        // customer code, the effective registration date, the numeric membership level and the
-        // assigned membership number.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
-            ownerDto.getMembershipNumber());
+        // member id, the effective registration date and the numeric membership level.
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
         // Alongside the human-readable line, publish an immutable, machine-readable event describing
         // the create: a JSON object stamped with a process-wide monotonically increasing sequence, the
-        // owner id, the owner's current primary identifier and its numeric membership level. The
-        // primary identifier is the customerCode for now; when the customerCode is later unified into
-        // the memberId, this field carries the memberId instead.
+        // owner id, the owner's current primary identifier (the unified memberId) and its numeric
+        // membership level.
         Map<String, Object> ownerCreatedEvent = new LinkedHashMap<>();
         ownerCreatedEvent.put("seq", AUDIT_EVENT_SEQ.incrementAndGet());
         ownerCreatedEvent.put("ownerId", owner.getId());
-        ownerCreatedEvent.put("customerCode", owner.getCustomerCode());
+        ownerCreatedEvent.put("memberId", owner.getMemberId());
         ownerCreatedEvent.put("membershipLevel", ownerDto.getMembershipLevel());
         ownerCreatedEvent.put("event", "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(ownerCreatedEvent));
@@ -627,9 +626,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
 
     /**
-     * Count the existing owners registered in the given city, compared case-insensitively (as in
-     * {@link #nextCustomerCode}). Called before the new owner is saved, so the returned value
-     * reflects the owners that already existed at creation time.
+     * Count the existing owners registered in the given city, compared case-insensitively. Called
+     * before the new owner is saved, so the returned value reflects the owners that already existed
+     * at creation time.
      */
     private int countOwnersInCity(String city) {
         return (int) this.clinicService.findAllOwners().stream()
@@ -688,22 +687,55 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a new owner: {@code '<REGION>-<HASH8>'} where REGION is the region
-     * derived from the owner's postcode/city and HASH8 is the first 8 upper-case hex characters of
-     * {@code SHA-256(normalizedTelephone + lastName)} (e.g. {@code 'NSW-1A2B3C4D'}).
+     * Build the unified member id for a new owner: {@code '<REGION><FY><HASH8><CHK>'} where REGION is
+     * the region derived from the owner's postcode/city, FY is the 2-digit fiscal year of the
+     * (business-day-adjusted) {@code registrationDate}, HASH8 is the first 8 upper-case hex characters
+     * of {@code SHA-256(normalizedTelephone + lastName)}, and CHK is a single Luhn check digit (0-9)
+     * computed over the digits contained in the {@code '<REGION><FY><HASH8>'} base
+     * (e.g. {@code 'NSW261A2B3C4D9'}).
      */
-    private static String customerCode(String region, String normalizedTelephone, String lastName) {
-        return region + "-" + hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+    private static String memberId(String region, LocalDate registrationDate,
+                                   String normalizedTelephone, String lastName) {
+        String fy = String.format("%02d",
+            OwnerMapper.fiscalYearStart(registrationDate) % 100);
+        String hash8 = hash8(normalizedTelephone + (lastName == null ? "" : lastName));
+        String base = region + fy + hash8;
+        return base + luhnCheckDigit(base);
     }
 
     /**
-     * Ensure the computed customer code is unique across existing owners. When {@code base} is
-     * already free it is returned unchanged; otherwise {@code '-<n>'} is appended using the smallest
-     * {@code n} of 2 or more that produces a value no existing owner already carries.
+     * Compute a single Luhn check digit (0-9) over the digit characters contained in {@code value};
+     * non-digit characters (e.g. the region's letters or the hex letters of HASH8) are skipped.
      */
-    private String deduplicateCustomerCode(String base) {
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Ensure the computed member id is unique across existing owners. When {@code base} is already
+     * free it is returned unchanged; otherwise {@code '-<n>'} is appended using the smallest {@code n}
+     * of 2 or more that produces a value no existing owner already carries.
+     */
+    private String deduplicateMemberId(String base) {
         java.util.Set<String> inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
         if (!inUse.contains(base)) {

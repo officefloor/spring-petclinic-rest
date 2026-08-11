@@ -25,8 +25,6 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
         expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints",
         expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
@@ -39,8 +37,6 @@ public interface OwnerMapper {
         expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey",
         expression = "java(identityKey(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand",
         expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear",
@@ -158,36 +154,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's check digit: a single Luhn check digit (0-9) over the digits contained in
-     * the customerCode. Returns null when no customerCode has been assigned so owners without a code
-     * serialize cleanly.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * Derive the owner's identity key, the single value into which all duplicate detection is
      * consolidated: the full lower-case hex SHA-256 over
      * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are
@@ -229,20 +195,6 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("FY%02d", fiscalYearStart(registrationDate) % 100);
-    }
-
-    /**
-     * Build the owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;' where YY is
-     * the last two digits of the fiscal year (see {@link #fiscalYear(Owner)}) derived from the
-     * business-day-adjusted registrationDate. Returns null when either source field is absent so
-     * owners without an assigned code or registration date serialize cleanly.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            fiscalYearStart(owner.getRegistrationDate()) % 100);
     }
 
     /**
