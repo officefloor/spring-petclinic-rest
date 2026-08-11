@@ -105,6 +105,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(java.util.Objects::nonNull)
