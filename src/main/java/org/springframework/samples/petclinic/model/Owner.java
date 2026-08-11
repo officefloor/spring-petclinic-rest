@@ -127,6 +127,38 @@ public class Owner extends Person {
     }
 
     /**
+     * A single Luhn check digit (0-9) computed over the digits contained in the
+     * {@link #customerCode}. Non-digit characters in the code are ignored; the standard Luhn
+     * algorithm doubles every second digit from the right (subtracting 9 when the result exceeds
+     * 9) and the check digit is {@code (10 - (sum % 10)) % 10}. {@code null} until a customer code
+     * is assigned.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where {@code YY} is
      * the last two digits of the {@code registrationDate} year (e.g. {@code LON-SMI-0007-M26}).
      * Derived from the owner's own fields; {@code null} until both are assigned.
