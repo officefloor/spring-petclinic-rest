@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1eedb57b..4b76582d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -72,6 +73,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Common street-type abbreviations expanded during address normalization, keyed by the
++     * upper-cased abbreviation.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -121,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+         applyHousehold(owner, ownerFieldsDto.getSharesHousehold());
+         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+         rejectDuplicateTelephone(telephone);
+@@ -167,7 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isBlank(ownerFieldsDto.getLastName())) {
+             errors.add("lastName");
+         }
+-        if (isBlank(ownerFieldsDto.getAddress())) {
++        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+             errors.add("address");
+         }
+         if (isBlank(ownerFieldsDto.getCity())) {
+@@ -338,6 +347,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Normalizes a submitted address into the canonical form stored and returned for an owner:
++     * leading and trailing whitespace is trimmed, internal runs of whitespace are collapsed to a
++     * single space, the value is upper-cased, and common street-type abbreviations are expanded on a
++     * whole-word basis ({@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}). A {@code null}
++     * value, or one that is blank once trimmed, normalizes to an empty string.
++     *
++     * @param address the raw address value as submitted, may be {@code null}
++     * @return the normalized address, or an empty string when none was supplied
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder normalized = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return normalized.toString();
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
