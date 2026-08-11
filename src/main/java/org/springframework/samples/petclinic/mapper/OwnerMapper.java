@@ -31,8 +31,23 @@ public interface OwnerMapper {
         expression = "java(locality(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey",
+        expression = "java(identityKey(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derive the owner's identity key, the single value into which all duplicate detection is
+     * consolidated: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two
+     * owners are duplicates only when their whole identity keys are equal. A null email or
+     * householdId contributes an empty segment.
+     */
+    default String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * Determine the owner's preferred contact channel: 'EMAIL' when an email address is present,

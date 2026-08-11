@@ -39,9 +39,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -171,36 +169,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Email is optional; when present it must be a syntactically valid address and is
         // stored lower-cased. An invalid address is rejected with a 400.
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
-        // Reject the request if the E.164 telephone is already used by any other owner.
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .anyMatch(normalizedTelephone::equals);
-        if (telephoneInUse) {
-            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
-        }
-        // Reject the request if the (lower-cased) email is already used by any other owner. Stored
-        // emails are already normalized to lower case, but compare case-insensitively defensively.
-        if (normalizedEmail != null) {
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(existing -> existing != null)
-                .anyMatch(normalizedEmail::equalsIgnoreCase);
-            if (emailInUse) {
-                throw new DuplicateOwnerEmailException(normalizedEmail);
-            }
-        }
-        // Household handling for a matching last name + address (compared case-insensitively with
-        // collapsed whitespace). By default such a request is rejected as a duplicate household;
-        // when the caller opts in via 'sharesHousehold' the owner is instead admitted into the shared
-        // household and every member (the new owner and any existing ones) is stamped with the same
-        // stable 'householdId'.
+        // Derive the household id up front (a deterministic function of the normalized last name and
+        // address) whenever the caller opts into a shared household, so it can feed the identity key
+        // below. Owners not admitted into a household have a null household id.
         String normalizedLastName = collapse(ownerFieldsDto.getLastName());
-        String householdId = null;
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            householdId = householdId(normalizedLastName, normalizedAddress);
-            // Backfill the shared identifier onto any existing member of this household so the whole
-            // household carries the same stable value.
+        String householdId = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            ? householdId(normalizedLastName, normalizedAddress)
+            : null;
+        // All duplicate detection is consolidated into a single derived identity key:
+        // 'normalizedTelephone + | + (email or empty) + | + householdId'. Because the telephone is
+        // part of the key, two members of the same household (same householdId) with different
+        // telephones have different keys and are both allowed; only an exact whole-key match is a
+        // duplicate. Reject with 409 when a new owner's whole identity key equals an existing one's.
+        String identityKey = identityKey(normalizedTelephone, normalizedEmail, householdId);
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(
+                identityKey(existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
+        if (identityInUse) {
+            throw new DuplicateOwnerIdentityException(identityKey);
+        }
+        // For a shared household, backfill the shared identifier onto any existing member of this
+        // household so the whole household carries the same stable value.
+        if (householdId != null) {
             for (Owner existing : this.clinicService.findAllOwners()) {
                 if (collapse(existing.getLastName()).equals(normalizedLastName)
                     && normalizeAddress(existing.getAddress()).equals(normalizedAddress)
@@ -208,13 +198,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     existing.setHouseholdId(householdId);
                     this.clinicService.saveOwner(existing);
                 }
-            }
-        } else {
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> collapse(existing.getLastName()).equals(normalizedLastName)
-                    && normalizeAddress(existing.getAddress()).equals(normalizedAddress));
-            if (householdInUse) {
-                throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
             }
         }
         HttpHeaders headers = new HttpHeaders();
@@ -417,6 +400,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Derive the identity key into which all duplicate detection is consolidated:
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. A null email or
+     * household id contributes an empty segment. Two owners are duplicates only when their whole
+     * identity keys are equal.
+     */
+    private static String identityKey(String telephone, String email, String householdId) {
+        return (telephone == null ? "" : telephone)
+            + "|" + (email == null ? "" : email)
+            + "|" + (householdId == null ? "" : householdId);
     }
 
     /**

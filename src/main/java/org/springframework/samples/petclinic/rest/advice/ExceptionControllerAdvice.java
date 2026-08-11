@@ -257,6 +257,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateOwnerIdentityException} raised when a request to create an owner
+     * produces an {@code identityKey} ({@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * householdId}) that exactly matches an existing owner's. This single key consolidates the
+     * former separate telephone, email and household duplicate checks. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateOwnerIdentityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateOwnerIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerIdentityException(DuplicateOwnerIdentityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setProperty("errors", List.of("identityKey"));
+        logger.debug("Duplicate owner identity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getIdentityKey());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link CityAtCapacityException} raised when an owner is created in a city that already
      * contains the maximum number of owners (50). Returns a 409 Conflict.
      *
