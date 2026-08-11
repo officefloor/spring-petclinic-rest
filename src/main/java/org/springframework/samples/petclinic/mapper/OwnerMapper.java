@@ -25,6 +25,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "membershipPoints",
+        expression = "java(org.springframework.samples.petclinic.mapper.Membership.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
     @Mapping(target = "locality",

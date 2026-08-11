@@ -6,34 +6,69 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric {@code membershipLevel} (1..4). The level starts at 1,
- * gains 1 when the owner has a non-blank email, gains 1 when {@code namesakeCount} is 0,
- * gains 1 when the owner's tenure exceeds 365 days, and is capped at 4. Because a newly
- * created owner has zero tenure, a new owner never exceeds level 3. Kept out of
- * {@link OwnerMapper} so MapStruct does not mistake the helper for an implicit mapping method.
+ * Derives an owner's loyalty standing from a points system. {@link #pointsOf(Owner)} starts at 0
+ * and adds 2 when an email is present, 1 when {@code namesakeCount} is 0, 2 for a household of 3 or
+ * more (see {@code householdSize}), and 3 for a tenure over 365 days. {@link #levelOf(Owner)} maps
+ * those points to a numeric {@code membershipLevel}: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4
+ * for 6 or more. Because a newly created owner has zero tenure, a new owner reaches at most 5
+ * points and so never exceeds level 3. Kept out of {@link OwnerMapper} so MapStruct does not
+ * mistake the helper for an implicit mapping method.
  */
 public final class Membership {
 
-    /** A tenure strictly greater than this many days is required to reach level 4. */
-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+    /** Points added when the owner has a non-blank email. */
+    private static final int POINTS_EMAIL = 2;
+
+    /** Points added when the owner's name is unique ({@code namesakeCount} is 0). */
+    private static final int POINTS_UNIQUE_NAME = 1;
+
+    /** Points added when the owner belongs to a household of this size or larger. */
+    private static final int POINTS_LARGE_HOUSEHOLD = 2;
+
+    /** The household size (members, inclusive) at which the household factor applies. */
+    private static final int LARGE_HOUSEHOLD_SIZE = 3;
+
+    /** Points added when the owner's tenure exceeds {@link #TENURE_DAYS_FOR_POINTS} days. */
+    private static final int POINTS_TENURE = 3;
+
+    /** A tenure strictly greater than this many days earns the tenure points. */
+    private static final long TENURE_DAYS_FOR_POINTS = 365;
 
     private Membership() {
     }
 
-    /** The numeric membership level (1..4) for {@code owner}. */
-    public static int levelOf(Owner owner) {
-        int level = 1;
+    /** The loyalty points for {@code owner}. */
+    public static int pointsOf(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+            points += POINTS_EMAIL;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += POINTS_UNIQUE_NAME;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
+            points += POINTS_LARGE_HOUSEHOLD;
         }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_LEVEL_4) {
-            level++;
+                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_POINTS) {
+            points += POINTS_TENURE;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /** The numeric membership level (1..4) for {@code owner}, mapped from {@link #pointsOf(Owner)}. */
+    public static int levelOf(Owner owner) {
+        int points = pointsOf(owner);
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 }
