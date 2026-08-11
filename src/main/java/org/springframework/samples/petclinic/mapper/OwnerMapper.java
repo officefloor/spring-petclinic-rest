@@ -27,6 +27,8 @@ public interface OwnerMapper {
         expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier",
         expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality",
+        expression = "java(locality(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
@@ -51,6 +53,25 @@ public interface OwnerMapper {
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
+    /**
+     * The fixed city-to-region table used to derive an owner's locality.
+     */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derive the owner's locality (canonical region) from the city using the fixed city-to-region
+     * table (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). Returns 'UNKNOWN' when the city is
+     * absent or not present in the table.
+     */
+    default String locality(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return "UNKNOWN";
+        }
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     Owner toOwner(OwnerDto ownerDto);
