@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode   VARCHAR(9),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  address_line1 VARCHAR(255),
+  address_line2 VARCHAR(255),
   INDEX(last_name)
 ) engine=InnoDB;
 
