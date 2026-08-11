@@ -72,6 +72,12 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @Transient
     private Boolean bulkSignupWarning;
 
@@ -164,6 +170,22 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public Boolean getBulkSignupWarning() {
