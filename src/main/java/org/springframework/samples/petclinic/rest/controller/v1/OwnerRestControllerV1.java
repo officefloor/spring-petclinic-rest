@@ -163,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateIdentity(owner);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -177,27 +177,85 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the next customer code, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is the
-     * upper-cased first three letters of the owner's city, LAST3 the upper-cased first three letters
-     * of the owner's last name and NNNN is a per-city 4-digit zero-padded sequence equal to one more
-     * than the number of owners already in that city (e.g. {@code MAD-SMI-0007}).
+     * Builds the owner's customer code, formatted {@code <REGION>-<HASH8>} where REGION is the region
+     * code derived from the owner's postcode (falling back to the city-to-region table, then
+     * {@code UNKNOWN}) and HASH8 is the first 8 upper-cased hex characters of the SHA-256 of the
+     * owner's normalized telephone concatenated with its last name (e.g. {@code NSW-1A2B3C4D}). The
+     * code is a pure function of the owner's region and identity, carrying no sequence number.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param owner the owner being created, with its normalized telephone already applied
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> equalsIgnoreCase(existing.getCity(), city))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String customerCode(Owner owner) {
+        return regionCode(owner) + "-" + identityHash8(owner.getTelephone(), owner.getLastName());
+    }
+
+    /**
+     * Derives the region code embedded in an owner's customer code, preferring the postcode: a
+     * 4-digit postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) yields that region. Otherwise the city-to-region table (Sydney->NSW,
+     * Melbourne->VIC, Brisbane->QLD) is consulted, returning {@code UNKNOWN} when neither the
+     * postcode nor the city identifies a region.
+     *
+     * @param owner the owner being created
+     * @return the derived region code, never {@code null}
+     */
+    private String regionCode(Owner owner) {
+        String fromPostcode = regionFromPostcode(owner.getPostcode());
+        if (fromPostcode != null) {
+            return fromPostcode;
+        }
+        String fromCity = region(owner.getCity());
+        return fromCity == null ? "UNKNOWN" : fromCity;
+    }
+
+    /**
+     * Resolves the region whose postcode range contains the given postcode, or {@code null} when the
+     * postcode is absent, not 4 digits, or in no known range.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the region code, or {@code null} when no known range contains the postcode
+     */
+    private String regionFromPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Computes the identity hash embedded in an owner's customer code: the first 8 upper-cased hex
+     * characters of the SHA-256 of the owner's normalized telephone concatenated with its last name.
+     *
+     * @param telephone the owner's normalized (E.164) telephone
+     * @param lastName  the owner's last name
+     * @return the 8-character upper-cased hex hash
+     */
+    private String identityHash8(String telephone, String lastName) {
+        String input = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 8).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**
      * Builds the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the registrationDate year, zero-padded (e.g. {@code MAD-SMI-0007-M26}).
+     * last two digits of the registrationDate year, zero-padded (e.g. {@code NSW-1A2B3C4D-M26}).
      *
      * @param customerCode     the owner's assigned customer code
      * @param registrationDate the owner's registration date
