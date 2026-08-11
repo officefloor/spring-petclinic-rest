@@ -252,31 +252,55 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4. The first three levels are derived from the
-     * owner's own fields as captured at creation time: it starts at 1, gains 1 when an email is present,
-     * gains a further 1 when the owner has no namesakes ({@code namesakeCount} is 0), and is capped at 3.
-     * Level 4 is reserved for tenure: it is granted, on top of the capped-at-3 factors, only once the
-     * owner's tenure — whole days from {@link #registrationDate} to today — exceeds 365. Because a newly
-     * created owner registers today and so has zero tenure, a new owner never exceeds level 3.
+     * The owner's membership points, derived from the owner's own fields. Points start at 0 and
+     * accumulate: 2 when an email is present, 1 when the owner has no namesakes ({@code namesakeCount}
+     * is 0), 2 when the owner belongs to a household of 3 or more members ({@code householdSize} is at
+     * least 3), and 3 when the owner's tenure — whole days from {@link #registrationDate} to today —
+     * exceeds 365. Because a newly created owner registers today and so has zero tenure, and joins a
+     * household of at most itself unless others already share it, a new owner's points reflect only the
+     * factors captured at creation time.
      */
     @Transient
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        boolean largeHousehold = this.householdSize != null && this.householdSize >= 3;
+        if (largeHousehold) {
+            points += 2;
+        }
         boolean longTenure = this.registrationDate != null
             && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365;
         if (longTenure) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4, derived from {@link #getMembershipPoints()}:
+     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more
+     * points.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /** City -> canonical region for the {@code region} derivation. */
