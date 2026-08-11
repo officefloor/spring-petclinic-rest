@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fdcb994d..a1997f80 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -54,6 +54,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.context.request.RequestAttributes;
++import org.springframework.web.context.request.RequestContextHolder;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -69,6 +71,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * The request header carrying a client-supplied idempotency token for owner creation. When a
++     * create repeats with a token already seen, the originally created owner is returned with 200
++     * instead of creating a duplicate.
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Remembers, per idempotency key, the id of the owner created by the first request that carried
++     * that key, so a repeat with the same key resolves back to the original owner instead of
++     * creating a duplicate.
++     */
++    private final java.util.Map<String, Integer> idempotentCreates = new java.util.concurrent.ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -120,6 +136,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Idempotent create: when the request carries an 'Idempotency-Key' already seen, return the
++        // owner originally created for that key with 200, instead of creating a duplicate.
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey != null) {
++            Integer existingId = idempotentCreates.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
++                    existingDto.setBulkSignupWarning(isBulkSignupWarning());
++                    return new ResponseEntity<>(existingDto, HttpStatus.OK);
++                }
++            }
++        }
+         // Prefer the structured address fields when present; the flat 'address' input remains accepted
+         // for backward compatibility. When structured, the stored/returned address is the composed
+         // normalized addressLine1 (with a single space and the normalized addressLine2 appended when
+@@ -199,6 +229,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPossibleDuplicate(possibleDuplicateOf != null);
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         this.clinicService.saveOwner(owner);
++        if (idempotencyKey != null) {
++            idempotentCreates.put(idempotencyKey, owner.getId());
++        }
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+             owner.getMembershipNumber());
+@@ -311,6 +344,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return value == null || value.isBlank();
+     }
+ 
++    /**
++     * Reads the {@code Idempotency-Key} header from the current request, or {@code null} when the
++     * header is absent, blank, or there is no bound request. A present, non-blank value is trimmed.
++     *
++     * @return the trimmed idempotency key, or {@code null} when none was supplied
++     */
++    private static String currentIdempotencyKey() {
++        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
++        if (!(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servletAttributes)) {
++            return null;
++        }
++        String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
++        return isBlank(key) ? null : key.trim();
++    }
++
+     /**
+      * The set of disposable email domains that owners may not register with. Compared
+      * case-insensitively against the domain part of the supplied email.
