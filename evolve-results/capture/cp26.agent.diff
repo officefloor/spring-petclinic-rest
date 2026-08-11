@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index 49dda7b1..e31ab3d8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -2,8 +2,10 @@ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+  * Thrown when a create-owner request's telephone cannot be normalised to E.164 form (non-digit
+- * content after stripping separators, or not 8 to 15 digits after the {@code '+'}). Handled by
+- * {@link InvalidTelephoneExceptionHandler}, which responds 400 with the offending value.
++ * content after stripping separators, not 8 to 15 digits after the {@code '+'}, or the wrong
++ * national-number length for a known country code &mdash; {@code +61} needs 9 national digits,
++ * {@code +1} needs 10). Handled by {@link InvalidTelephoneExceptionHandler}, which responds 400
++ * with the offending value.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+index 5467bbde..df8a6271 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -1,5 +1,8 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.LinkedHashMap;
++import java.util.Map;
++
+ /**
+  * Normalises telephone numbers to <a href="https://en.wikipedia.org/wiki/E.164">E.164</a> form.
+  *
+@@ -7,16 +10,32 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  * as given; otherwise country code {@code +61} is assumed and a single leading {@code '0'} is
+  * dropped from the national digits. The result is a {@code '+'} followed by 8 to 15 digits, so
+  * {@code "0412 345 678"} becomes {@code "+61412345678"}.
++ *
++ * <p>For known country codes the national-number length is checked as well: {@code +61} requires 9
++ * national digits and {@code +1} requires 10. A number whose national part is the wrong length for
++ * its country is rejected (returns {@code null}).
+  */
+ final class E164Telephone {
+ 
++    /**
++     * Country code (without the {@code '+'}) to its required national-number length. Ordered
++     * longest-prefix first so a {@code +61} number is matched by {@code "61"} before {@code "1"}.
++     */
++    private static final Map<String, Integer> NATIONAL_LENGTH = new LinkedHashMap<>();
++
++    static {
++        NATIONAL_LENGTH.put("61", 9);
++        NATIONAL_LENGTH.put("1", 10);
++    }
++
+     private E164Telephone() {
+     }
+ 
+     /**
+      * Returns the E.164 form of {@code raw}, or {@code null} when it cannot form a valid E.164
+-     * number (non-digit content after stripping separators, or not 8 to 15 digits after the
+-     * {@code '+'}).
++     * number: non-digit content after stripping separators, not 8 to 15 digits after the
++     * {@code '+'}, or the wrong national-number length for a known country code ({@code +61} needs 9
++     * national digits, {@code +1} needs 10).
+      */
+     static String normalize(String raw) {
+         if (raw == null) {
+@@ -37,6 +56,16 @@ final class E164Telephone {
+         if (!digits.matches("\\d{8,15}")) {
+             return null;
+         }
++        // Enforce the national-number length for recognised country codes.
++        for (Map.Entry<String, Integer> country : NATIONAL_LENGTH.entrySet()) {
++            String code = country.getKey();
++            if (digits.startsWith(code)) {
++                if (digits.length() - code.length() != country.getValue()) {
++                    return null;
++                }
++                break;
++            }
++        }
+         return "+" + digits;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 5055e000..c3f8e9c9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -7,9 +7,11 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+ /**
+  * Second step of {@code POST /api/owners}: normalises the telephone to E.164 form (strip spaces,
+  * dashes and brackets; keep a leading {@code '+'} and country code, else assume {@code '+61'} and
+- * drop a single leading {@code '0'}; require 8 to 15 digits after the {@code '+'}). The E.164 value
+- * is written back onto the (shared) request DTO so it is stored and returned as {@code telephone};
+- * anything that cannot form valid E.164 is rejected 400 via {@link InvalidTelephoneException}.
++ * drop a single leading {@code '0'}; require 8 to 15 digits after the {@code '+'}, and the correct
++ * national-number length for a known country code &mdash; {@code +61} needs 9 national digits,
++ * {@code +1} needs 10). The E.164 value is written back onto the (shared) request DTO so it is
++ * stored and returned as {@code telephone}; anything that cannot form valid E.164 is rejected 400
++ * via {@link InvalidTelephoneException}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
