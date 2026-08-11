@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b2d82eff..63deac2e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+     @Mapping(target = "ageBand", expression = "java(owner.getAgeBand() == null ? null : OwnerDto.AgeBandEnum.fromValue(owner.getAgeBand()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 44dcb873..5ec72fb2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -125,7 +125,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         boolean bulkSignupWarning = isBulkSignupWarning();
+         List<OwnerDto> ownerDtos = ownerMapper.toOwnerDtoCollection(owners);
+-        ownerDtos.forEach(ownerDto -> ownerDto.setBulkSignupWarning(bulkSignupWarning));
++        ownerDtos.forEach(ownerDto -> {
++            ownerDto.setBulkSignupWarning(bulkSignupWarning);
++            ownerDto.setCapacityWarning(isCityApproachingCapacity(ownerDto.getCity()));
++        });
+         return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
+     }
+ 
+@@ -138,6 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
++        ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -154,6 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 if (existing != null) {
+                     OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
+                     existingDto.setBulkSignupWarning(isBulkSignupWarning());
++                    existingDto.setCapacityWarning(isCityApproachingCapacity(existing.getCity()));
+                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
+                 }
+             }
+@@ -245,6 +250,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info(ownerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
++        ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -265,6 +271,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         this.clinicService.saveOwner(currentOwner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(currentOwner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
++        ownerDto.setCapacityWarning(isCityApproachingCapacity(currentOwner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.NO_CONTENT);
+     }
+ 
+@@ -726,6 +733,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return count >= CITY_CAPACITY;
+     }
+ 
++    /**
++     * The number of owners in a city at or above which responses flag a capacity warning. A city
++     * holding between this many and one below {@link #CITY_CAPACITY} owners is approaching its hard
++     * limit and its owners' responses carry {@code capacityWarning} true.
++     */
++    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
++
++    /**
++     * Determines whether the given city is approaching its capacity, i.e. already contains between
++     * {@value #CITY_CAPACITY_WARNING_THRESHOLD} and {@value #CITY_CAPACITY} minus one owners
++     * (inclusive). Cities are compared case-insensitively after collapsing runs of whitespace to a
++     * single space and trimming, exactly as for the hard capacity check.
++     *
++     * @param city the city of the owner whose response is being built
++     * @return {@code true} if the city holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD} and
++     *         {@value #CITY_CAPACITY} minus one owners inclusive
++     */
++    private boolean isCityApproachingCapacity(String city) {
++        String normalizedCity = normalizeIdentity(city);
++        long count = this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeIdentity(existing.getCity()).equals(normalizedCity))
++            .count();
++        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
++    }
++
+     /**
+      * The maximum number of owners that may be created on any single day. Once this many owners
+      * already carry a {@code registrationDate} of the current day, no further owners may be created
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4da62f76..c0debb1f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2302,6 +2302,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already contains between 40 and 49 owners
++                (inclusive), i.e. it is approaching the hard capacity limit of 50,
++                otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
