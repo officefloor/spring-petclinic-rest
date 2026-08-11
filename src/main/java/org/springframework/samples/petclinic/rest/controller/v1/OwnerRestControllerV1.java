@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -138,12 +141,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
         }
-        // Reject the request when another owner already shares this last name and address (compared
-        // case-insensitively with collapsed whitespace), unless the caller explicitly opts in by
-        // setting 'sharesHousehold' true.
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String normalizedLastName = collapse(ownerFieldsDto.getLastName());
-            String normalizedAddress = collapse(ownerFieldsDto.getAddress());
+        // Household handling for a matching last name + address (compared case-insensitively with
+        // collapsed whitespace). By default such a request is rejected as a duplicate household;
+        // when the caller opts in via 'sharesHousehold' the owner is instead admitted into the shared
+        // household and every member (the new owner and any existing ones) is stamped with the same
+        // stable 'householdId'.
+        String normalizedLastName = collapse(ownerFieldsDto.getLastName());
+        String normalizedAddress = collapse(ownerFieldsDto.getAddress());
+        String householdId = null;
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            householdId = householdId(normalizedLastName, normalizedAddress);
+            // Backfill the shared identifier onto any existing member of this household so the whole
+            // household carries the same stable value.
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (collapse(existing.getLastName()).equals(normalizedLastName)
+                    && collapse(existing.getAddress()).equals(normalizedAddress)
+                    && !householdId.equals(existing.getHouseholdId())) {
+                    existing.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(existing);
+                }
+            }
+        } else {
             boolean householdInUse = this.clinicService.findAllOwners().stream()
                 .anyMatch(existing -> collapse(existing.getLastName()).equals(normalizedLastName)
                     && collapse(existing.getAddress()).equals(normalizedAddress));
@@ -155,6 +173,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizedEmail);
+        owner.setHouseholdId(householdId);
         // When no registration date is supplied, default it to the server's current date.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -278,6 +297,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Derive the stable household identifier shared by owners with the same normalized last name
+     * and address. It is a deterministic function of those two values, so every member of a
+     * household independently derives the same identifier: the first 12 upper-case hex characters
+     * of {@code SHA-256(normalizedLastName + '\n' + normalizedAddress)}.
+     */
+    private static String householdId(String normalizedLastName, String normalizedAddress) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((normalizedLastName + "\n" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 12).toUpperCase();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
