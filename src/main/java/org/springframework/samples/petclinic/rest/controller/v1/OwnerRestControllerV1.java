@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -105,7 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateTelephone(telephone);
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -161,6 +164,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(telephone);
         }
         return digits;
+    }
+
+    /**
+     * Rejects a normalized telephone that is already used by any other owner, so telephones stay
+     * unique across owners. Existing telephones are normalized the same way before comparison.
+     *
+     * @param normalizedTelephone the normalized telephone of the owner being created
+     * @throws DuplicateTelephoneException if another owner already uses the same normalized telephone
+     */
+    private void rejectDuplicateTelephone(String normalizedTelephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (inUse) {
+            throw new DuplicateTelephoneException(normalizedTelephone);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
