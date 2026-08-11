@@ -6,6 +6,7 @@ import java.util.Objects;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
@@ -34,6 +35,7 @@ public class ValidationExceptionHandler {
                     .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
         }
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail));
     }
 }
