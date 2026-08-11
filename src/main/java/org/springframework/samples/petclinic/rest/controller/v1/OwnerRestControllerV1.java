@@ -222,9 +222,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean bulkSignupWarning = ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD;
         // Reject the request when the owner's city is already full: a city that already holds the
         // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
-        if (countOwnersInCity(ownerFieldsDto.getCity()) >= MAX_OWNERS_PER_CITY) {
+        int ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(ownerFieldsDto.getCity());
         }
+        // Flag a capacity warning when the owner's city is approaching the per-city limit: it already
+        // holds between 40 and 49 owners (the hard rejection at 50 above is unchanged).
+        boolean capacityWarning = ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD;
         // Postcode is optional; when present it must be a 4-digit value that is valid for the
         // owner's city per the fixed region ranges. A malformed or out-of-range postcode is
         // rejected with a 400. An absent postcode leaves the request contract unchanged.
@@ -287,6 +291,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipLevelCap(sharesHousehold ? null : householdMembershipLevelCap(householdId));
         // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
         owner.setBulkSignupWarning(bulkSignupWarning);
+        // Persist the capacity-warning flag computed above so it is returned on subsequent reads.
+        owner.setCapacityWarning(capacityWarning);
         // Store the business-day-adjusted effective registration date computed above. This defaults
         // to the server's current date when none was supplied and rolls any weekend date forward to
         // the following Monday, so everything derived from it (e.g. the membership number's year
@@ -612,6 +618,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * request to create another owner in it is rejected as a conflict.
      */
     private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /**
+     * The number of owners a city may already hold before a newly created owner in it is flagged as
+     * approaching capacity. Once a city holds this many owners (up to, but not including, the hard
+     * limit of {@link #MAX_OWNERS_PER_CITY}), a new owner is flagged with {@code capacityWarning} true.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
 
     /**
      * Count the existing owners registered in the given city, compared case-insensitively (as in
