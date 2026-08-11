@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(java.util.Objects::nonNull)
@@ -138,6 +139,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return digits;
     }
 
+    /**
+     * Normalizes an optional email address by lower-casing it. Syntactic validity is enforced
+     * by Bean Validation on the request DTO, so a value reaching this point is either {@code null}
+     * (absent) or already valid.
+     *
+     * @param email the email address as submitted, or {@code null} when absent
+     * @return the lower-cased email, or {@code null} when absent
+     */
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.toLowerCase(java.util.Locale.ROOT);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
@@ -150,6 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
