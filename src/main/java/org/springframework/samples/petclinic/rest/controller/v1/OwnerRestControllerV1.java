@@ -180,6 +180,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizedEmail);
         owner.setHouseholdId(householdId);
+        // Record how many existing owners (before this create) share this owner's first and last
+        // name, compared case-insensitively. Computed against the current owners so the new owner
+        // itself is never counted.
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         // When no registration date is supplied, default it to the server's current date.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -365,6 +369,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * upper-cased first three letters of the last name and NNNN is a global 4-digit zero-padded
      * sequence equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
      */
+    /**
+     * Count the existing owners that share the given first and last name, compared
+     * case-insensitively. Called before the new owner is saved, so the returned value reflects the
+     * namesakes that already existed at creation time (the new owner itself is not included).
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getFirstName() != null && existing.getLastName() != null)
+            .filter(existing -> existing.getFirstName().equalsIgnoreCase(firstName)
+                && existing.getLastName().equalsIgnoreCase(lastName))
+            .count();
+    }
+
     private String nextCustomerCode(String lastName) {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
         long sequence = this.clinicService.findAllOwners().size() + 1L;
