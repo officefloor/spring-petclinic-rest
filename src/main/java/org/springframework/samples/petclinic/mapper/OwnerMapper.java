@@ -57,15 +57,42 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier: {@code SILVER} when the owner has no namesakes
-     * (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
+     * The number of owners a household must reach for its members to qualify for the
+     * {@code GOLD} tier.
+     */
+    private static final int GOLD_HOUSEHOLD_SIZE = 3;
+
+    /**
+     * Derives the owner's membership tier: {@code GOLD} when the owner's household (owners
+     * sharing the same {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE} or more members;
+     * otherwise {@code SILVER} when the owner has no namesakes (namesakeCount is 0) and an email
+     * is present; otherwise {@code BRONZE}.
      */
     protected OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        if (isGoldHousehold(owner)) {
+            return OwnerDto.MembershipTierEnum.GOLD;
+        }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         return noNamesakes && hasEmail
             ? OwnerDto.MembershipTierEnum.SILVER
             : OwnerDto.MembershipTierEnum.BRONZE;
+    }
+
+    /**
+     * Returns {@code true} when the owner belongs to a household (has a non-blank
+     * {@code householdId}) that has at least {@value #GOLD_HOUSEHOLD_SIZE} members, counting all
+     * owners that share the same {@code householdId}.
+     */
+    private boolean isGoldHousehold(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return false;
+        }
+        long members = this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+        return members >= GOLD_HOUSEHOLD_SIZE;
     }
 
     /**
