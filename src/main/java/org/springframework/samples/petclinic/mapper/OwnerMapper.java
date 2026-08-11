@@ -13,6 +13,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -184,15 +185,24 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The highest membership level derivable on creation. Level 4 is reserved for tenure and is
-     * not assigned here.
+     * The highest membership level attainable. Level 4 is reserved for tenure: it is reached only
+     * once the owner has been registered for more than {@link #TENURE_LEVEL_DAYS} days.
      */
-    private static final int MAX_MEMBERSHIP_LEVEL = 3;
+    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+
+    /**
+     * An owner must have been registered for strictly more than this many days to qualify for the
+     * tenure-based membership level (level 4). A newly created owner has zero tenure and so never
+     * clears this threshold.
+     */
+    private static final int TENURE_LEVEL_DAYS = 365;
 
     /**
      * Derives the owner's membership level, a number from 1 to {@value #MAX_MEMBERSHIP_LEVEL}:
-     * it starts at 1, gains 1 when an email is present, and gains 1 when the owner has no
-     * namesakes (namesakeCount is 0), capped at {@value #MAX_MEMBERSHIP_LEVEL}.
+     * it starts at 1, gains 1 when an email is present, gains 1 when the owner has no namesakes
+     * (namesakeCount is 0), and gains a final level once the owner's tenure exceeds
+     * {@value #TENURE_LEVEL_DAYS} days. Because a newly created owner has zero tenure, a new owner
+     * never exceeds level 3. The result is capped at {@value #MAX_MEMBERSHIP_LEVEL}.
      */
     protected Integer membershipLevel(Owner owner) {
         int level = 1;
@@ -204,7 +214,23 @@ public abstract class OwnerMapper {
         if (noNamesakes) {
             level++;
         }
+        if (tenureDays(owner) > TENURE_LEVEL_DAYS) {
+            level++;
+        }
         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+    }
+
+    /**
+     * The owner's tenure in whole days: the number of days from their {@code registrationDate} up to
+     * the current date. Returns 0 when no registration date is present, so an owner without a
+     * registration date is treated as having no tenure.
+     */
+    private long tenureDays(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
     }
 
     /**
