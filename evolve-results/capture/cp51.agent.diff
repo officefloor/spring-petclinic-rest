@@ -1,0 +1,259 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+index 670c6849..7bf2ae8e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+@@ -15,6 +15,11 @@ import org.springframework.samples.petclinic.model.Owner;
+  *
+  * <p>The membership level maps the points: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
+  *
++ * <p>A membership-level cap may be recorded on the owner (see {@code membershipLevelCap}): a newly
++ * created owner joining an existing household cannot exceed one level above the highest membership
++ * level already held in that household. When such a cap is present the derived level is clamped to
++ * it; with no cap (no existing household member) the points-derived level stands.
++ *
+  * <p>Kept as a standalone class (not a method on {@link OwnerMapper}) so MapStruct does not
+  * mistake it for an implicit mapping method. Single source of truth so the response DTO and
+  * the create audit line agree on the points and level.
+@@ -43,9 +48,21 @@ public final class MembershipLevel {
+         return points;
+     }
+ 
+-    /** The membership level (1 to 4) for {@code owner}, derived from {@link #points(Owner)}. */
++    /**
++     * The membership level (1 to 4) for {@code owner}, derived from {@link #points(Owner)} and
++     * clamped to the owner's recorded {@code membershipLevelCap} when one is present.
++     */
+     public static int of(Owner owner) {
+-        int points = points(owner);
++        int level = fromPoints(points(owner));
++        Integer cap = owner.getMembershipLevelCap();
++        if (cap != null && level > cap) {
++            return cap;
++        }
++        return level;
++    }
++
++    /** The uncapped membership level for the given points total. */
++    private static int fromPoints(int points) {
+         if (points <= 1) {
+             return 1;
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 83b5789d..bc1c90f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -208,6 +211,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+new file mode 100644
+index 00000000..0eab04a0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.MembershipLevel;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Step of {@code POST /api/owners}: records the membership-level ceiling for the new owner.
++ *
++ * <p>A new owner joining an existing household cannot be granted a membership level more than one
++ * above the highest level already held by a household member. This step scans the owners already
++ * sharing the new owner's {@code householdId}, takes the maximum of their derived membership levels
++ * and stores {@code max + 1} as the new owner's {@code membershipLevelCap}. {@link MembershipLevel}
++ * then clamps the points-derived level to this cap when producing the response and audit line.
++ *
++ * <p>With no existing household member (or no household at all) there is no ceiling, so the cap is
++ * left null and the points-derived level stands. Runs after {@link AssignHouseholdId} has stamped
++ * the {@code householdId} and before the owner is persisted, so the new owner itself is not yet
++ * among the existing members counted here.
++ */
++public class CapMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return;
++        }
++        Integer maxLevel = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                int level = MembershipLevel.of(existing);
++                if (maxLevel == null || level > maxLevel) {
++                    maxLevel = level;
++                }
++            }
++        }
++        if (maxLevel != null) {
++            owner.setMembershipLevelCap(maxLevel + 1);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index cda1e3ad..8f893bcc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -13,16 +13,13 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
+  * two owners sharing a last name and postcode belong to the <em>same</em> household, and a second
+  * such owner is a household duplicate.
+  *
+- * <p>Two independent conflicts are checked against every existing owner:
+- * <ul>
+- * <li><b>Exact identity</b>: the whole {@code identityKey}
+- *   ({@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}) matches.
+- *   This always conflicts &mdash; a genuinely identical record is never allowed.</li>
+- * <li><b>Household duplicate</b>: the computed {@code householdId} matches, i.e. the same last name
+- *   and postcode. This is rejected <em>unless</em> the request opts in with
+- *   {@code sharesHousehold: true}, in which case the new owner is admitted as a declared member of
+- *   the household.</li>
+- * </ul>
++ * <p>Only an <b>exact identity</b> conflict is rejected: the whole {@code identityKey}
++ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}) matches an
++ * existing owner. Because the telephone is part of the key, two members of the same household (same
++ * {@code householdId}) with different telephones have different keys and are both admitted &mdash; a
++ * further household member is no longer rejected as a duplicate. Instead the new member's standing is
++ * bounded downstream by {@link CapMembershipLevel}, which caps their membership level to one above
++ * the highest already held in the household.
+  *
+  * <p>Runs after the normalize steps (so telephone is E.164 and email lower-cased) and before
+  * {@link BuildOwner}, so no owner is persisted on conflict. The {@code householdId} is derived
+@@ -33,7 +30,6 @@ public class RequireUniqueIdentity {
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateIdentityException {
+         String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
+-        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
+         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
+         for (Owner existing : ownerRepository.findAll()) {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+@@ -44,10 +40,6 @@ public class RequireUniqueIdentity {
+             if (identityKey.equals(existingKey)) {
+                 throw new DuplicateIdentityException(identityKey);
+             }
+-            if (!sharesHousehold && householdId != null
+-                    && householdId.equals(existing.getHouseholdId())) {
+-                throw new DuplicateIdentityException(householdId);
+-            }
+         }
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index bbbe87b0..4673fc2b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode   VARCHAR(9),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 45ee6b9f..29a4004d 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index b924f03b..41e02418 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,6 +50,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode   VARCHAR(9),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6ec053bc..b357c13b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode   VARCHAR(9),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 376712c6..ccd45c72 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       postcode   VARCHAR(9),
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a8cf7d3b..a7d38f28 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -61,6 +61,11 @@ assignHouseholdId:
+ countHouseholdMembers:
+   class: org.springframework.samples.petclinic.rest.function.owner.CountHouseholdMembers
+   govern: [ transaction ]
++  next: capMembershipLevel
++
++capMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ transaction ]
+   next: applyRegistrationDate
+ 
+ applyRegistrationDate:
