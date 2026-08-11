@@ -12,7 +12,9 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setMembershipLevel(HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository));
+        int cappedLevel = HouseholdLevelCap.cappedMembershipLevel(owner, ownerMapper, ownerRepository);
+        dto.setMembershipLevel(cappedLevel);
+        dto.setOwnerSegment(ownerMapper.ownerSegment(cappedLevel, ownerMapper.locality(owner)));
         response.send(dto);
     }
 }
