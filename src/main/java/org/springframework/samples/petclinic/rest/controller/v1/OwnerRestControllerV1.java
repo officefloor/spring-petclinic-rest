@@ -143,7 +143,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -170,19 +170,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a new owner, formatted {@code '<LAST3>-<NNNN>'} where
-     * {@code LAST3} is the upper-cased first three letters of the last name and {@code NNNN}
-     * is a global 4-digit zero-padded sequence equal to one more than the current number of
-     * owners (e.g. {@code 'SMI-0007'}).
+     * Builds the customer code for a new owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where
+     * {@code CITY3} is the upper-cased first three letters of the city, {@code LAST3} is the
+     * upper-cased first three letters of the last name, and {@code NNNN} is a per-city 4-digit
+     * zero-padded sequence equal to one more than the number of owners already in that city
+     * (e.g. {@code 'SYD-SMI-0007'}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String lastName) {
-        String prefix = (lastName == null ? "" : lastName);
-        prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(java.util.Locale.ROOT);
-        long sequence = this.clinicService.findAllOwners().size() + 1L;
-        return String.format("%s-%04d", prefix, sequence);
+    private String nextCustomerCode(String city, String lastName) {
+        String cityPrefix = first3Upper(city);
+        String lastPrefix = first3Upper(lastName);
+        String cityKey = normalizeForHousehold(city);
+        long sequence = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(cityKey))
+            .count() + 1L;
+        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+    }
+
+    /**
+     * Returns the upper-cased first three characters of {@code value}, or fewer if the value is
+     * shorter. A {@code null} value yields the empty string.
+     *
+     * @param value the source value
+     * @return the upper-cased first three characters
+     */
+    private String first3Upper(String value) {
+        String v = (value == null ? "" : value);
+        return v.substring(0, Math.min(3, v.length())).toUpperCase(java.util.Locale.ROOT);
     }
 
     /**
