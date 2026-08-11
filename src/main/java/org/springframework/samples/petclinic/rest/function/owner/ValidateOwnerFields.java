@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  * address, city or telephone is missing or blank with a 400 whose {@code errors} array
  * names each offending field. Bean validation still runs first (via {@code @Valid}) so
  * pattern/size failures keep their existing behaviour; this step additionally catches
- * whitespace-only values that slip past {@code @Size(min = 1)}. The {@code address} is
- * checked in its normalized form (see {@link AddressNormalizer}), so a value blank after
- * normalization is rejected too. Publishes the validated body for {@link BuildOwner}.
+ * whitespace-only values that slip past {@code @Size(min = 1)}. An address may be supplied
+ * in either form — a structured {@code addressLine1} or the flat {@code address} — and is
+ * required in at least one; it is checked in its normalized form (see
+ * {@link AddressNormalizer}), so a value blank after normalization is rejected too.
+ * Publishes the validated body for {@link BuildOwner}.
  */
 @Validated
 public class ValidateOwnerFields {
@@ -27,7 +29,12 @@ public class ValidateOwnerFields {
         List<String> missing = new ArrayList<>();
         requireText(missing, "firstName", request.getFirstName());
         requireText(missing, "lastName", request.getLastName());
-        requireText(missing, "address", AddressNormalizer.normalize(request.getAddress()));
+        // An address may be given in EITHER form: a non-blank structured 'addressLine1', or the
+        // flat 'address' (kept for backward compatibility). Both blank after normalization is a
+        // missing address.
+        String structured = AddressNormalizer.normalize(request.getAddressLine1());
+        String flat = AddressNormalizer.normalize(request.getAddress());
+        requireText(missing, "address", structured.isBlank() ? flat : structured);
         requireText(missing, "city", request.getCity());
         requireText(missing, "telephone", request.getTelephone());
         if (!missing.isEmpty()) {
