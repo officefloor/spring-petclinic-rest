@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -26,7 +27,24 @@ public interface OwnerMapper {
     @Mapping(target = "riskFlag", ignore = true)
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "ageBand", expression = "java(owner.getAgeBand() == null ? null : OwnerDto.AgeBandEnum.fromValue(owner.getAgeBand()))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentity(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's three version-2 identifiers (memberId, identityKey and householdId) into the
+     * nested {@code identity} object of the owner response.
+     */
+    default OwnerIdentityDto toOwnerIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

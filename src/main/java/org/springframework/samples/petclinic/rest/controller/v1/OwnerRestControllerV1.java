@@ -215,7 +215,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The household is keyed deterministically on (lastName, postcode): every owner receives the
         // same stable householdId as anyone sharing its normalized last name and postcode, without any
         // explicit link. This computed value drives duplicate detection and the household size.
-        owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
+        owner.setHouseholdId(householdIdFor(owner.getIdentityRegion(), owner.getLastName(), owner.getPostcode()));
         // A new owner may join an existing household (same computed householdId); rather than being
         // rejected, the joiner is admitted with a capped membership level (see below). The householdId
         // no longer feeds duplicate detection.
@@ -582,8 +582,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the member id assigned to a newly created owner, formatted
-     * {@code <REGION><FY><HASH8><CHK>}: {@code REGION} is the region derived from the owner's
-     * postcode (see {@link Owner#getRegion()}); {@code FY} is the two-digit fiscal year of the
+     * {@code <REGION><FY><HASH8><CHK>}: {@code REGION} is the version-2 region code (the plain region
+     * with the fixed {@code 'V2'} tag mixed in, see {@link Owner#getIdentityRegion()}); {@code FY} is
+     * the two-digit fiscal year of the
      * (business-day-adjusted) {@code registrationDate} (the fiscal year starts on 1 July);
      * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the owner's
      * normalized (E.164) telephone concatenated with its last name; and {@code CHK} is a single Luhn
@@ -596,7 +597,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String memberIdFor(Owner owner) {
         String fiscalYear = String.format("%02d", fiscalYearStart(owner.getRegistrationDate()) % 100);
-        String base = owner.getRegion() + fiscalYear
+        String base = owner.getIdentityRegion() + fiscalYear
             + telephoneNameHash(owner.getTelephone(), owner.getLastName());
         return base + luhnCheckDigit(base);
     }
@@ -642,10 +643,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Renders the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. The {@code memberId}
-     * field carries the owner's current {@link #primaryIdentifier(Owner) primary identifier}. All
-     * values are numeric or a code drawn from {@code [A-Z0-9-]}, so no JSON escaping is required.
+     * Renders the immutable structured {@code OWNER_CREATED} audit event as a compact JSON object at
+     * schema version 2:
+     * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}}. The {@code memberId} field carries the owner's current
+     * {@link #primaryIdentifier(Owner) primary identifier} (the version-2 member id) and
+     * {@code ownerSegment} is the owner segment recomputed from that version-2 identity. All values
+     * are numeric or a code drawn from {@code [A-Z0-9-_]}, so no JSON escaping is required.
      *
      * @param seq   the monotonically increasing event sequence for this create
      * @param owner the owner just created
@@ -653,8 +657,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String ownerCreatedEvent(long seq, Owner owner) {
         return String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            seq, owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
+            "{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,"
+                + "\"ownerSegment\":\"%s\",\"event\":\"OWNER_CREATED\"}",
+            seq, owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel(), owner.getOwnerSegment());
     }
 
     /**
@@ -1000,17 +1005,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the stable household identifier for a given last name and postcode. The value is the
-     * first 12 upper-case hex characters of the SHA-256 digest of {@code normalizedLastName + '|' +
-     * postcode}, so it is deterministic across calls and identical for every owner sharing the same
-     * normalized last name and postcode — they belong to the same household automatically.
+     * Derives the stable household identifier for a given version-2 region code, last name and
+     * postcode. The value is the first 12 upper-case hex characters of the SHA-256 digest of
+     * {@code identityRegion + '|' + normalizedLastName + '|' + postcode}, so it is deterministic
+     * across calls and identical for every owner sharing the same region, normalized last name and
+     * postcode — they belong to the same household automatically. The {@code identityRegion} carries
+     * the fixed {@code 'V2'} version tag, so no version-1 household id is reproduced.
      *
+     * @param identityRegion the version-2 region code (see {@link Owner#getIdentityRegion()})
      * @param lastName the last name of the household
      * @param postcode the postcode of the household (may be {@code null})
      * @return the deterministic household identifier
      */
-    private static String householdIdFor(String lastName, String postcode) {
-        String key = normalizeIdentity(lastName) + "|" + (postcode == null ? "" : postcode);
+    private static String householdIdFor(String identityRegion, String lastName, String postcode) {
+        String key = identityRegion + "|" + normalizeIdentity(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));

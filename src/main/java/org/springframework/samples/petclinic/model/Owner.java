@@ -400,19 +400,39 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the {@code REGION} segment of its {@link #memberId} (its leading region
-     * prefix). Because the member id is {@code <REGION><FY><HASH8><CHK>} with {@code REGION} derived
-     * from the postcode, and the {@code FY} (2), {@code HASH8} (8) and {@code CHK} (1) tail is a fixed
-     * 11 characters, the locality reads that region back off the identity (ignoring any {@code -<n>}
-     * collision suffix). Returns {@code UNKNOWN} until a member id is assigned.
+     * The fixed version tag mixed into the region code that feeds every version-2 identifier
+     * (the {@link #memberId}, {@link #getIdentityKey() identityKey} and {@link #householdId}),
+     * so that no value produced under version 1 is ever produced again. It appears only INSIDE
+     * the identifiers, never in the user-facing {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} or the {@link #getOwnerSegment() owner segment}'s region.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The version-2 region code used INSIDE the identifiers: the plain {@link #getRegion() region}
+     * with the fixed {@link #IDENTITY_VERSION_TAG 'V2'} version tag mixed in (e.g. {@code NSW ->
+     * NSWV2}). Because the tag is not a hex digit and the plain region never contains it, mixing it
+     * in guarantees every identifier changes and no version-1 value is reproduced. This tagged code —
+     * not the plain region — is what gets embedded in the memberId, hashed into the identity key and
+     * hashed into the household id.
+     */
+    @Transient
+    public String getIdentityRegion() {
+        return getRegion() + IDENTITY_VERSION_TAG;
+    }
+
+    /**
+     * The owner's locality: the plain {@link #getRegion() region} code (e.g. {@code NSW}), derived
+     * from the postcode falling back to the city. It is a user-facing value, NOT an identifier, so it
+     * stays the plain region and never carries the {@link #IDENTITY_VERSION_TAG 'V2'} version tag that
+     * the memberId's embedded region does. Returns {@code UNKNOWN} until a member id is assigned.
      */
     @Transient
     public String getLocality() {
-        String base = memberIdBase();
-        if (base == null) {
+        if (this.memberId == null) {
             return "UNKNOWN";
         }
-        return base.length() > 11 ? base.substring(0, base.length() - 11) : base;
+        return getRegion();
     }
 
     /**
@@ -464,10 +484,12 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key, the single derived value all duplicate detection is based on. It is
-     * the full lower-case hex SHA-256 digest of {@code normalizedTelephone + '|' + lowerEmail + '|' +
-     * soundex(lastName)}, where the telephone is the stored E.164 value, the email is the stored
-     * lower-cased value (empty when absent) and the last-name segment is the American Soundex code of
-     * the last name. Two owners are duplicates only when their whole identity keys are equal, so
+     * the full lower-case hex SHA-256 digest of {@code identityRegion + '|' + normalizedTelephone +
+     * '|' + lowerEmail + '|' + soundex(lastName)}, where {@code identityRegion} is the version-2
+     * region code (the region with the fixed {@code 'V2'} version tag mixed in), the telephone is the
+     * stored E.164 value, the email is the stored lower-cased value (empty when absent) and the
+     * last-name segment is the American Soundex code of the last name. Two owners are duplicates only
+     * when their whole identity keys are equal, so
      * owners sharing a last name (by soundex) and postcode but carrying different telephones no longer
      * collide here — they are surfaced as a soft (possible) duplicate instead.
      */
@@ -475,7 +497,7 @@ public class Owner extends Person {
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = (this.email == null || this.email.isBlank()) ? "" : this.email;
-        String key = telephonePart + "|" + emailPart + "|" + soundex(getLastName());
+        String key = getIdentityRegion() + "|" + telephonePart + "|" + emailPart + "|" + soundex(getLastName());
         return sha256Hex(key);
     }
 
