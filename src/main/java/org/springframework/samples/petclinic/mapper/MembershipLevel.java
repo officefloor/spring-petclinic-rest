@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -9,9 +8,10 @@ import org.springframework.samples.petclinic.model.Owner;
  * Derives an owner's membership points and numeric membership level from their persisted fields.
  *
  * <p>Points start at 0; add 2 when an email is present; add 1 when {@code namesakeCount} is 0; add
- * 2 for a household of 3 or more; add 3 for tenure over 365 days. Tenure is the number of days from
- * the registration date to today, so a newly created owner has zero tenure and never earns the
- * tenure points: a fresh owner tops out at 5 points.
+ * 2 for a household of 3 or more; add 3 for tenure of at least one elapsed fiscal year. Tenure is
+ * the number of whole fiscal years (starting 1 July) from the registration date to today, so a
+ * newly created owner has zero tenure and never earns the tenure points: a fresh owner tops out at
+ * 5 points.
  *
  * <p>The membership level maps the points: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
  *
@@ -37,7 +37,7 @@ public final class MembershipLevel {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+                && FiscalYear.elapsed(owner.getRegistrationDate(), LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;
