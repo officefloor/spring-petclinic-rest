@@ -52,6 +52,8 @@ public interface OwnerMapper {
             + ".of(owner.getTelephone()))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+    @Mapping(target = "riskFlag",
+        expression = "java(org.springframework.samples.petclinic.mapper.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
