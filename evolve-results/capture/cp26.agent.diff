@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ab36de8c..a3293895 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -317,15 +317,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return value == null || value.isBlank();
+     }
+ 
++    /**
++     * The number of national (subscriber) digits an E.164 number must carry for a given country
++     * calling code, keyed by that code (without the leading '+'). Australia ('+61') requires 9
++     * national digits and the North American Numbering Plan ('+1') requires 10.
++     */
++    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
++        Map.of("61", 9, "1", 10);
++
+     /**
+      * Normalizes a submitted telephone into E.164 form. Spaces, dashes and brackets are stripped.
+      * A leading '+' with its country code is kept; otherwise the country code '+61' is assumed and
+      * a single leading '0' is dropped from the national digits. The resulting value must be a '+'
+-     * followed by 8 to 15 digits.
++     * followed by 8 to 15 digits, and its national-number length must match the one required by its
++     * country calling code ('+61' requires 9 national digits, '+1' requires 10).
+      *
+      * @param telephone the raw telephone value as submitted
+      * @return the E.164 normalized telephone (e.g. {@code +61412345678})
+-     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number
++     * @throws InvalidTelephoneException if the value cannot form a valid E.164 number, or its
++     *                                   national-number length is wrong for its country code
+      */
+     private String normalizeTelephone(String telephone) {
+         String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+@@ -339,9 +349,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!nationalSignificantNumber.matches("[0-9]{8,15}")) {
+             throw new InvalidTelephoneException(telephone);
+         }
++        validateNationalNumberLength(nationalSignificantNumber, telephone);
+         return "+" + nationalSignificantNumber;
+     }
+ 
++    /**
++     * Validates the national-number length of an E.164 number against its country calling code. The
++     * significant number is a country code immediately followed by the national digits; for each
++     * known code in {@link #NATIONAL_NUMBER_LENGTHS} the remaining national digits must number
++     * exactly the required amount ('+61' requires 9, '+1' requires 10). Codes with no known rule are
++     * left unchecked.
++     *
++     * @param nationalSignificantNumber the E.164 digits following the '+' (country code + national)
++     * @param rejectedValue             the raw telephone value, reported on rejection
++     * @throws InvalidTelephoneException if the national-number length is wrong for the country code
++     */
++    private void validateNationalNumberLength(String nationalSignificantNumber, String rejectedValue) {
++        for (Map.Entry<String, Integer> rule : NATIONAL_NUMBER_LENGTHS.entrySet()) {
++            String countryCode = rule.getKey();
++            if (nationalSignificantNumber.startsWith(countryCode)) {
++                int nationalDigits = nationalSignificantNumber.length() - countryCode.length();
++                if (nationalDigits != rule.getValue()) {
++                    throw new InvalidTelephoneException(rejectedValue);
++                }
++                return;
++            }
++        }
++    }
++
+     /**
+      * Normalizes a submitted email. An owner may omit the email entirely (a {@code null} or blank
+      * value is treated as absent and returns {@code null}); when present the value must be a
