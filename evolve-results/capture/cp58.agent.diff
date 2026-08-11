@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 63deac2e..ae2e4828 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "capacityWarning", ignore = true)
++    @Mapping(target = "riskFlag", ignore = true)
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+     @Mapping(target = "ageBand", expression = "java(owner.getAgeBand() == null ? null : OwnerDto.AgeBandEnum.fromValue(owner.getAgeBand()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ee42b034..cc72592e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -130,6 +130,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         ownerDtos.forEach(ownerDto -> {
+             ownerDto.setBulkSignupWarning(bulkSignupWarning);
+             ownerDto.setCapacityWarning(isCityApproachingCapacity(ownerDto.getCity()));
++            ownerDto.setRiskFlag(computeRiskFlag(ownerDto.getPossibleDuplicate(),
++                ownerDto.getEmail(), ownerDto.getCity()));
+         });
+         return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
+     }
+@@ -144,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+         ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
++        ownerDto.setRiskFlag(computeRiskFlag(owner.getPossibleDuplicate(), owner.getEmail(), owner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+@@ -161,6 +164,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                     OwnerDto existingDto = ownerMapper.toOwnerDto(existing);
+                     existingDto.setBulkSignupWarning(isBulkSignupWarning());
+                     existingDto.setCapacityWarning(isCityApproachingCapacity(existing.getCity()));
++                    existingDto.setRiskFlag(computeRiskFlag(existing.getPossibleDuplicate(),
++                        existing.getEmail(), existing.getCity()));
+                     return new ResponseEntity<>(existingDto, HttpStatus.OK);
+                 }
+             }
+@@ -253,6 +258,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+         ownerDto.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
++        ownerDto.setRiskFlag(computeRiskFlag(owner.getPossibleDuplicate(), owner.getEmail(), owner.getCity()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -274,6 +280,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(currentOwner);
+         ownerDto.setBulkSignupWarning(isBulkSignupWarning());
+         ownerDto.setCapacityWarning(isCityApproachingCapacity(currentOwner.getCity()));
++        ownerDto.setRiskFlag(computeRiskFlag(currentOwner.getPossibleDuplicate(),
++            currentOwner.getEmail(), currentOwner.getCity()));
+         return new ResponseEntity<>(ownerDto, HttpStatus.NO_CONTENT);
+     }
+ 
+@@ -383,6 +391,80 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+         "mailinator.com", "tempmail.com", "guerrillamail.com");
+ 
++    /**
++     * The provider (second-level) labels of the disposable blocklist domains ({@code mailinator},
++     * {@code tempmail}, {@code guerrillamail}), used to recognise domains that are
++     * <em>disposable-adjacent</em>: not on the exact blocklist (so accepted at create) but clearly a
++     * variant of a known disposable provider. Derived from {@link #DISPOSABLE_EMAIL_DOMAINS} so the
++     * two stay in sync.
++     */
++    private static final java.util.Set<String> DISPOSABLE_PROVIDER_LABELS = DISPOSABLE_EMAIL_DOMAINS.stream()
++        .map(OwnerRestControllerV1::secondLevelLabel)
++        .filter(java.util.Objects::nonNull)
++        .collect(java.util.stream.Collectors.toUnmodifiableSet());
++
++    /**
++     * The second-level label of a dotted domain, i.e. the label immediately preceding the top-level
++     * label ({@code mailinator.com -> mailinator}, {@code sub.tempmail.net -> tempmail}). Returns
++     * {@code null} for a {@code null}, blank, or single-label value that has no second level.
++     *
++     * @param domain the (already lower-cased) domain
++     * @return the second-level label, or {@code null} when there is none
++     */
++    private static String secondLevelLabel(String domain) {
++        if (isBlank(domain)) {
++            return null;
++        }
++        String[] labels = domain.split("\\.");
++        return labels.length < 2 ? null : labels[labels.length - 2];
++    }
++
++    /**
++     * Determines whether an email's domain is <em>disposable-adjacent</em>: a domain that is not
++     * itself on the {@link #DISPOSABLE_EMAIL_DOMAINS disposable blocklist} (those are rejected
++     * outright at create) but is nonetheless a variant of a known disposable provider — a subdomain
++     * of a blocklisted domain, or a domain sharing a blocklisted provider's second-level label under
++     * a different top-level domain (e.g. {@code mailinator.net} or {@code sub.tempmail.com}). Email is
++     * optional; a {@code null}, blank, or {@code '@'}-less value is not adjacent. The domain is
++     * compared case-insensitively.
++     *
++     * @param email the owner's email (may be {@code null})
++     * @return {@code true} if the email's domain is disposable-adjacent
++     */
++    private static boolean isDisposableAdjacent(String email) {
++        if (isBlank(email)) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(java.util.Locale.ROOT);
++        if (domain.isEmpty() || DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            return false;
++        }
++        String providerLabel = secondLevelLabel(domain);
++        return providerLabel != null && DISPOSABLE_PROVIDER_LABELS.contains(providerLabel);
++    }
++
++    /**
++     * Determines whether an owner warrants a {@code riskFlag}: true when any of the following hold —
++     * the owner is a possible (soft) duplicate, its email domain is
++     * {@link #isDisposableAdjacent(String) disposable-adjacent}, or its city is over its soft capacity
++     * (the {@link #isCityApproachingCapacity(String) soft-capacity} threshold that raises
++     * {@code capacityWarning}); otherwise false.
++     *
++     * @param possibleDuplicate whether the owner is flagged a possible duplicate
++     * @param email the owner's email (may be {@code null})
++     * @param city the owner's city
++     * @return {@code true} if the owner should be risk-flagged
++     */
++    private boolean computeRiskFlag(Boolean possibleDuplicate, String email, String city) {
++        return Boolean.TRUE.equals(possibleDuplicate)
++            || isDisposableAdjacent(email)
++            || isCityApproachingCapacity(city);
++    }
++
+     /**
+      * Rejects an owner whose email domain is on the disposable-domain blocklist
+      * ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). Email is optional:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4314bc36..a04067e7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2324,6 +2324,20 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants manual review because any of the
++                following hold: it is a possible duplicate (possibleDuplicate is
++                true); its email domain is disposable-adjacent (not exactly on the
++                disposable blocklist, but a subdomain of a blocklisted domain or
++                sharing a blocklisted provider's second-level name under a different
++                top-level domain, e.g. 'mailinator.net' or 'sub.tempmail.com'); or
++                its city is over its soft capacity (holds 40 or more owners, the
++                same soft limit that raises capacityWarning). Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: >-
