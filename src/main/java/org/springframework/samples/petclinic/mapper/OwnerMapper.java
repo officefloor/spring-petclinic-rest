@@ -29,6 +29,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.util.Localities.localityFor(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(org.springframework.samples.petclinic.util.ContactPreferences.preferenceFor(owner))")
+    @Mapping(target = "ageBand",
+            expression = "java(org.springframework.samples.petclinic.util.AgeBands.bandFor(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.util.OwnerIdentities.identityKey(owner))")
     @Mapping(target = "checkDigit",
