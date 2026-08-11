@@ -27,6 +27,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.mapper.Membership.levelOf(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.mapper.Locality.of(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+        expression = "java(org.springframework.samples.petclinic.mapper.ContactPreference.of(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
