@@ -217,8 +217,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         // Record the size of this owner's household (owners sharing the same householdId) after this
         // create: the existing members already stamped with the shared identifier plus this new
-        // owner. An owner not admitted into any household is a household of one. A household of three
-        // or more members promotes the owner to the GOLD membership tier.
+        // owner. An owner not admitted into any household is a household of one.
         owner.setHouseholdSize(countHouseholdMembers(householdId) + 1);
         // Persist the bulk-signup flag computed above so it is returned on subsequent reads.
         owner.setBulkSignupWarning(bulkSignupWarning);
@@ -233,11 +232,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // owners already in that city.
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
-        // Emit an audit trail line for the successful create, carrying the owner id, the assigned
-        // customer code and the effective registration date.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        // Emit an audit trail line for the successful create, carrying the owner id, the assigned
+        // customer code, the effective registration date and the numeric membership level.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);

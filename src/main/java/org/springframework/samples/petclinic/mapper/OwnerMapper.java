@@ -25,8 +25,8 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber",
         expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier",
-        expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel",
+        expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(locality(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
@@ -46,18 +46,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Determine the owner's membership tier: 'GOLD' when the owner's household (owners sharing the
-     * same householdId) had 3 or more members after the owner was created; otherwise 'SILVER' when
-     * the owner has no namesakes (namesakeCount is 0) and an email address is present, otherwise
-     * 'BRONZE'.
+     * Determine the owner's numeric membership level, assigned at creation. Starts at 1; add 1 when
+     * an email address is present; add 1 when the owner has no namesakes (namesakeCount is 0);
+     * capped at 3 (level 4 is reserved for tenure).
      */
-    default String membershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return "GOLD";
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
+        if (hasEmail) {
+            level++;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isEmpty();
-        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
