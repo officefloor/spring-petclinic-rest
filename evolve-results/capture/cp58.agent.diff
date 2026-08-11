@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f9abe852..1a0dae71 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -47,9 +47,60 @@ public interface OwnerMapper {
+         expression = "java(selfLink(owner))")
+     @Mapping(target = "ownerSegment",
+         expression = "java(ownerSegment(owner))")
++    @Mapping(target = "riskFlag",
++        expression = "java(riskFlag(owner))")
+     @Mapping(target = "sharesHousehold", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Substrings that mark an email domain as "disposable-adjacent": a domain that resembles a
++     * throwaway/disposable mailbox provider without being on the hard disposable blocklist (which is
++     * rejected outright when the owner is created, so it never reaches a stored owner). The tokens are
++     * matched case-insensitively as a substring of the domain, so both a different-TLD variant of a
++     * known disposable provider (e.g. 'mailinator.net') and a domain carrying a disposable signal
++     * word (e.g. 'throwaway-inbox.io') are caught.
++     */
++    java.util.Set<String> DISPOSABLE_ADJACENT_TOKENS = java.util.Set.of(
++        "mailinator", "tempmail", "temp-mail", "guerrillamail", "guerrilla",
++        "throwaway", "throw-away", "disposable", "trashmail", "trash-mail",
++        "yopmail", "10minutemail", "getnada", "fakemail", "fake-mail");
++
++    /**
++     * Whether the owner's email domain is disposable-adjacent: its domain (the part after the last
++     * '@', compared case-insensitively) contains any known disposable-provider token. Returns false
++     * when the owner has no email or the address has no domain part.
++     */
++    default boolean emailDomainDisposableAdjacent(Owner owner) {
++        String email = owner.getEmail();
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase();
++        for (String token : DISPOSABLE_ADJACENT_TOKENS) {
++            if (domain.contains(token)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * Derive the owner's risk flag: true when any of these hold — the owner is a possible duplicate
++     * ({@code possibleDuplicate}), the owner's email domain is disposable-adjacent
++     * ({@link #emailDomainDisposableAdjacent(Owner)}), or the owner's city is over its soft capacity
++     * (the per-city capacity warning applies, i.e. {@code capacityWarning} is set because the city
++     * already held 40 or more owners when this owner was created). Otherwise false.
++     */
++    default Boolean riskFlag(Owner owner) {
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
++        return possibleDuplicate || overSoftCapacity || emailDomainDisposableAdjacent(owner);
++    }
++
+     /**
+      * Build the owner's canonical self link: '/api/owners/' followed by the owner's id. Returns null
+      * when the owner has no id so an unsaved owner serializes cleanly.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f6c2bb03..08f68a40 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2340,6 +2340,19 @@ components:
+               type: string
+               readOnly: true
+               example: 'STANDARD_METRO'
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any of these hold: the owner is a possible duplicate
++                ('possibleDuplicate'), the owner's email domain is
++                disposable-adjacent (it resembles a throwaway/disposable mailbox
++                provider without being on the hard disposable blocklist, which is
++                rejected outright), or the owner's city is over its soft capacity
++                (the per-city capacity warning applies, i.e. the city already held
++                40 or more owners). Otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: >-
