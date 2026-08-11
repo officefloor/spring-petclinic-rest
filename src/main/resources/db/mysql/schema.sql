@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(4),
   possible_duplicate BIT,
   possible_duplicate_of INTEGER,
+  deleted BIT NOT NULL DEFAULT 0,
   INDEX(last_name)
 ) engine=InnoDB;
 
