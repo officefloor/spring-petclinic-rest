@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4e09cef0..41ac083a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -135,11 +135,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new InvalidOwnerFieldsException(missingFields);
+         }
++        // Determine the effective registration date up front so every downstream use (the daily
++        // create-limit, the stored value and anything derived from it such as the membership number's
++        // year segment) works from the same business-day-adjusted date. The effective date is the
++        // supplied value when present, otherwise the server's current date; a weekend date is rolled
++        // forward to the following Monday.
++        LocalDate effectiveRegistrationDate = ownerFieldsDto.getRegistrationDate() != null
++            ? ownerFieldsDto.getRegistrationDate()
++            : LocalDate.now();
++        effectiveRegistrationDate = toBusinessDay(effectiveRegistrationDate);
+         // Reject the request once the day's owner-creation limit is reached: when 100 or more owners
+-        // already carry today's registration date, no further owners may be created today.
+-        LocalDate today = LocalDate.now();
+-        if (countOwnersRegisteredOn(today) >= MAX_OWNERS_PER_DAY) {
+-            throw new DailyOwnerLimitExceededException(today);
++        // already carry this adjusted business day's registration date, no further owners may be
++        // created for that day.
++        if (countOwnersRegisteredOn(effectiveRegistrationDate) >= MAX_OWNERS_PER_DAY) {
++            throw new DailyOwnerLimitExceededException(effectiveRegistrationDate);
+         }
+         // Reject the request when the owner's city is already full: a city that already holds the
+         // maximum of 50 owners (compared case-insensitively, as elsewhere) accepts no more.
+@@ -197,10 +206,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // name, compared case-insensitively. Computed against the current owners so the new owner
+         // itself is never counted.
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+-        // When no registration date is supplied, default it to the server's current date.
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        // Store the business-day-adjusted effective registration date computed above. This defaults
++        // to the server's current date when none was supplied and rolls any weekend date forward to
++        // the following Monday, so everything derived from it (e.g. the membership number's year
++        // segment) uses the adjusted date.
++        owner.setRegistrationDate(effectiveRegistrationDate);
+         // Assign the customer code: '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first
+         // three letters of the city, LAST3 the upper-cased first three letters of the last name and
+         // NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of
+@@ -432,6 +442,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Roll a date forward onto a business day: a Saturday or Sunday is advanced to the following
++     * Monday, while a weekday is returned unchanged. Used so the effective registration date (whether
++     * supplied or defaulted) always falls on a business day.
++     */
++    private static LocalDate toBusinessDay(LocalDate date) {
++        return switch (date.getDayOfWeek()) {
++            case SATURDAY -> date.plusDays(2);
++            case SUNDAY -> date.plusDays(1);
++            default -> date;
++        };
++    }
++
+     private String nextCustomerCode(String city, String lastName) {
+         String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
