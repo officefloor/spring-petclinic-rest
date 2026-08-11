@@ -33,8 +33,40 @@ public interface OwnerMapper {
         expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey",
         expression = "java(identityKey(owner))")
+    @Mapping(target = "checkDigit",
+        expression = "java(checkDigit(owner))")
     @Mapping(target = "sharesHousehold", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Compute the owner's check digit: a single Luhn check digit (0-9) over the digits contained in
+     * the customerCode. Returns null when no customerCode has been assigned so owners without a code
+     * serialize cleanly.
+     */
+    default Integer checkDigit(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = customerCode.length() - 1; i >= 0; i--) {
+            char c = customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
 
     /**
      * Derive the owner's identity key, the single value into which all duplicate detection is
