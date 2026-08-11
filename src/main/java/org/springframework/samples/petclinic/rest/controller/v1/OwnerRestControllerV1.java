@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -120,8 +121,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
+        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -224,5 +227,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Normalizes a telephone by removing every non-digit character and requiring exactly ten
+     * digits to remain.
+     *
+     * @param rawTelephone the telephone value as supplied by the client
+     * @return the stripped 10-digit telephone value
+     * @throws InvalidTelephoneException if the stripped value is not exactly ten digits
+     */
+    private static String normalizeTelephone(String rawTelephone) {
+        String digits = rawTelephone == null ? "" : rawTelephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidTelephoneException(rawTelephone);
+        }
+        return digits;
     }
 }

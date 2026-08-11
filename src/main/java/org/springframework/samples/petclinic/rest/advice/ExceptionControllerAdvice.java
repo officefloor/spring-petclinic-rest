@@ -169,6 +169,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidTelephoneException} raised when a request to create an owner supplies a
+     * telephone that does not normalize to exactly ten digits.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status,
+     *         whose {@code errors} array names the {@code telephone} field.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        logger.debug("Invalid telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getRejectedValue());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link MissingOwnerFieldsException} raised when a request to create an owner omits or
      * blanks out one or more required fields that Bean Validation does not otherwise reject.
      *
