@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.mapper.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -19,6 +20,8 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignHouseholdId {
 
     public void service(@Val Owner owner) {
-        owner.setHouseholdId(OwnerIdentity.householdId(owner.getLastName(), owner.getPostcode()));
+        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        owner.setHouseholdId(
+            OwnerIdentity.householdId(region, owner.getLastName(), owner.getPostcode()));
     }
 }

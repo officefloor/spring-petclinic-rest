@@ -6,6 +6,7 @@ import net.officefloor.plugin.variable.Val;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.mapper.MembershipLevel;
+import org.springframework.samples.petclinic.mapper.OwnerSegment;
 import org.springframework.samples.petclinic.mapper.PrimaryIdentifier;
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -26,8 +27,9 @@ public class LogOwnerCreatedEvent {
     private static final AtomicInteger SEQ = new AtomicInteger();
 
     public void service(@Val Owner owner) {
-        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                PrimaryIdentifier.of(owner), MembershipLevel.of(owner), OwnerCreatedEvent.OWNER_CREATED);
+        OwnerCreatedEvent event = new OwnerCreatedEvent(OwnerCreatedEvent.SCHEMA_VERSION,
+                SEQ.incrementAndGet(), owner.getId(), PrimaryIdentifier.of(owner),
+                MembershipLevel.of(owner), OwnerSegment.of(owner), OwnerCreatedEvent.OWNER_CREATED);
         AUDIT.info(event.toJson());
     }
 }

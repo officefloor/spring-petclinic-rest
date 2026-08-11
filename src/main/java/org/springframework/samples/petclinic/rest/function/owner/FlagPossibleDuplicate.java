@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.mapper.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -39,7 +40,8 @@ public class FlagPossibleDuplicate {
             return;
         }
         String soundex = OwnerIdentity.soundex(owner.getLastName());
-        String identityKey = OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+        String identityKey = OwnerIdentity.key(Locality.of(owner.getCity(), owner.getPostcode()),
+                owner.getTelephone(), owner.getEmail(), owner.getLastName());
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
@@ -52,8 +54,9 @@ public class FlagPossibleDuplicate {
                     || !soundex.equals(OwnerIdentity.soundex(existing.getLastName()))) {
                 continue;
             }
-            String existingKey = OwnerIdentity.key(existing.getTelephone(), existing.getEmail(),
-                    existing.getLastName());
+            String existingKey = OwnerIdentity.key(
+                    Locality.of(existing.getCity(), existing.getPostcode()),
+                    existing.getTelephone(), existing.getEmail(), existing.getLastName());
             if (identityKey.equals(existingKey)) {
                 continue; // an identical identity key is a hard duplicate, not a soft match
             }

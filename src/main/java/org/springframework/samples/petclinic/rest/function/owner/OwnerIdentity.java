@@ -18,19 +18,40 @@ import java.util.Locale;
  */
 public final class OwnerIdentity {
 
+    /**
+     * The fixed version tag folded into the region code used inside every version-2 identifier. It
+     * lives only inside the identifiers (member id, identity key and household id): mixing it in
+     * guarantees every identifier differs from its version-1 value and never reproduces one, while
+     * the plain region &mdash; the user-facing {@code locality}, {@code timezone} and the owner
+     * segment's derived region &mdash; is left untouched.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerIdentity() {
     }
 
     /**
-     * Builds the identity key from an owner's parts: the full lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + email + '|' + soundex(lastName)}. The telephone is expected
-     * to already be in E.164 form (as stored); the email is lower-cased and a null/blank email
-     * contributes an empty segment; the last name contributes its Soundex code.
+     * The region code mixed inside the version-2 identifiers: the plain region (e.g. {@code "NSW"})
+     * with the fixed {@link #VERSION_TAG} folded in (e.g. {@code "NSWV2"}). It is a hashed ingredient
+     * of the member id, identity key and household id only, so it never surfaces in {@code locality},
+     * {@code timezone} or the owner segment's region, which stay the plain region code.
      */
-    public static String key(String telephone, String email, String lastName) {
+    public static String regionCode(String region) {
+        return (region == null ? "" : region) + VERSION_TAG;
+    }
+
+    /**
+     * Builds the identity key from an owner's parts: the full lower-case hex SHA-256 of
+     * {@code regionCode + '|' + normalizedTelephone + '|' + email + '|' + soundex(lastName)}, where
+     * {@code regionCode} is the version-2 region code (see {@link #regionCode(String)}) that folds in
+     * the {@code 'V2'} version tag. The telephone is expected to already be in E.164 form (as stored);
+     * the email is lower-cased and a null/blank email contributes an empty segment; the last name
+     * contributes its Soundex code.
+     */
+    public static String key(String region, String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
         String em = (email == null || email.isBlank()) ? "" : email.trim().toLowerCase(Locale.ROOT);
-        String raw = tel + "|" + em + "|" + soundex(lastName);
+        String raw = regionCode(region) + "|" + tel + "|" + em + "|" + soundex(lastName);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
@@ -103,15 +124,18 @@ public final class OwnerIdentity {
 
     /**
      * The HASH8 segment of an owner's {@code '<REGION><FY><HASH8><CHK>'} member id: the first 8
-     * upper-case hex characters of SHA-256 over the normalised telephone concatenated with the
-     * last name. The telephone is expected to already be in E.164 form (as stored).
+     * upper-case hex characters of SHA-256 over {@code regionCode + normalizedTelephone + lastName},
+     * where {@code regionCode} is the version-2 region code (see {@link #regionCode(String)}) folding
+     * in the {@code 'V2'} version tag. The tag lives inside the hash only; the member id's visible
+     * REGION prefix stays the plain region, so {@code locality} and the owner segment are unaffected.
+     * The telephone is expected to already be in E.164 form (as stored).
      */
-    public static String customerHash(String normalizedTelephone, String lastName) {
+    public static String customerHash(String region, String normalizedTelephone, String lastName) {
         String tel = normalizedTelephone == null ? "" : normalizedTelephone;
         String last = lastName == null ? "" : lastName;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((tel + last).getBytes(StandardCharsets.UTF_8));
+                .digest((regionCode(region) + tel + last).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(8);
             for (int i = 0; i < 4; i++) {
                 sb.append(String.format("%02X", digest[i]));
@@ -125,17 +149,19 @@ public final class OwnerIdentity {
 
     /**
      * The household's stable, deterministic identifier: the first 12 upper-case hex characters of
-     * SHA-256 over {@code normalizedLastName + '|' + postcode}. Owners sharing a last name and
-     * postcode therefore resolve to the same value automatically, regardless of creation order or
-     * whether they opted into {@code sharesHousehold}. Returns {@code null} when no postcode is
-     * given, since a household is keyed on (last name, postcode) and cannot form without one.
+     * SHA-256 over {@code regionCode + '|' + normalizedLastName + '|' + postcode}, where
+     * {@code regionCode} is the version-2 region code (see {@link #regionCode(String)}) folding in the
+     * {@code 'V2'} version tag. Owners sharing a last name and postcode therefore resolve to the same
+     * value automatically (they share a region too), regardless of creation order or whether they
+     * opted into {@code sharesHousehold}. Returns {@code null} when no postcode is given, since a
+     * household is keyed on (last name, postcode) and cannot form without one.
      */
-    public static String householdId(String lastName, String postcode) {
+    public static String householdId(String region, String lastName, String postcode) {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
         try {
-            String key = normalizeName(lastName) + "|" + postcode;
+            String key = regionCode(region) + "|" + normalizeName(lastName) + "|" + postcode;
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
