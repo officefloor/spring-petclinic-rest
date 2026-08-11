@@ -164,7 +164,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddress(owner, ownerFieldsDto);
         rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() == null
             ? LocalDate.now()
@@ -435,9 +435,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Rejects an owner whose required fields are missing or blank. Collects the names of every
      * offending field so the client learns about all of them at once.
      *
+     * <p>An address may be supplied in either form: the structured {@code addressLine1} or the flat
+     * {@code address}. The {@code address} error is raised only when both are missing or blank, so a
+     * structured owner (with {@code addressLine1}) and an earlier flat owner (with {@code address})
+     * are both accepted.
+     *
      * @param ownerFieldsDto the submitted owner fields
-     * @throws MissingOwnerFieldsException if firstName, lastName, address, city or telephone is
-     *                                     missing or blank
+     * @throws MissingOwnerFieldsException if firstName, lastName, address (in either form), city or
+     *                                     telephone is missing or blank
      */
     private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
         List<String> errors = new ArrayList<>();
@@ -447,7 +452,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             errors.add("lastName");
         }
-        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+        if (isBlank(normalizeAddress(ownerFieldsDto.getAddressLine1()))
+            && isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
             errors.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -707,6 +713,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Applies the owner's address, preferring the structured form over the flat one. The structured
+     * {@code addressLine1}/{@code addressLine2} and the flat {@code address} are each normalized (see
+     * {@link #normalizeAddress(String)}). When a non-blank {@code addressLine1} is supplied the
+     * structured form wins: {@code addressLine1} and {@code addressLine2} are stored normalized (a
+     * blank {@code addressLine2} is stored as {@code null}), and the composed {@code address} is the
+     * normalized {@code addressLine1} with a single space and the normalized {@code addressLine2}
+     * appended when an {@code addressLine2} is present. Otherwise the flat {@code address} is used for
+     * backward compatibility: the normalized flat value becomes both {@code addressLine1} and the
+     * stored {@code address}, with no {@code addressLine2}. Everything that later reads the owner's
+     * address therefore sees the structured value when present, falling back to the flat one.
+     *
+     * @param owner the owner being created
+     * @param dto   the submitted owner fields
+     */
+    private void applyAddress(Owner owner, OwnerFieldsDto dto) {
+        String line1 = normalizeAddress(dto.getAddressLine1());
+        String line2 = normalizeAddress(dto.getAddressLine2());
+        String flat = normalizeAddress(dto.getAddress());
+        String effectiveLine1 = line1.isEmpty() ? flat : line1;
+        String effectiveLine2 = line1.isEmpty() ? "" : line2;
+        String composed = effectiveLine2.isEmpty()
+            ? effectiveLine1
+            : effectiveLine1 + " " + effectiveLine2;
+        owner.setAddressLine1(effectiveLine1.isEmpty() ? null : effectiveLine1);
+        owner.setAddressLine2(effectiveLine2.isEmpty() ? null : effectiveLine2);
+        owner.setAddress(composed);
     }
 
     /**
