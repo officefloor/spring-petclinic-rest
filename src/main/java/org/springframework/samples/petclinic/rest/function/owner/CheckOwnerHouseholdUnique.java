@@ -8,9 +8,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Rejects a create-owner request whose last name and address both match an existing owner's,
- * because they would form a duplicate household. Comparison is case-insensitive with runs of
- * whitespace collapsed to a single space (and leading/trailing whitespace trimmed), so
- * "110  W. Liberty St." and "110 w. liberty st." collide. A request may opt out of the rule
+ * because they would form a duplicate household. Addresses are compared in their normalized
+ * form (see {@link AddressNormalizer}: trimmed, whitespace-collapsed, upper-cased, with common
+ * abbreviations expanded), so "12 Main St" and "12  main  street" collide; the last name is
+ * compared case-insensitively with whitespace collapsed. A request may opt out of the rule
  * by setting {@code sharesHousehold=true}, which lets genuine housemates share an address.
  * On a match raises {@link DuplicateHouseholdException} (409).
  */
@@ -22,10 +23,10 @@ public class CheckOwnerHouseholdUnique {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
