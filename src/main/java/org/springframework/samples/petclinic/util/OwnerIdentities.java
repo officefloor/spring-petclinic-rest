@@ -104,6 +104,16 @@ public final class OwnerIdentities {
      * {@code normalizedTelephone + lastName}. The telephone is normalized to E.164 the same way as in
      * {@link #identityKey(Owner)}, so owners differing only in telephone formatting share a code.
      */
+    /**
+     * The owner's <em>current primary identifier</em>: the single value that owner-scoped business
+     * events publish to identify the owner. Today that is the {@link Owner#getCustomerCode()
+     * customerCode}; when the customer code is later unified into the {@code memberId}, changing this
+     * one method makes every event carry the {@code memberId} instead — the callers need not change.
+     */
+    public static String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
     public static String customerCode(Owner owner) {
         String region = Localities.localityFor(owner.getCity(), owner.getPostcode());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
