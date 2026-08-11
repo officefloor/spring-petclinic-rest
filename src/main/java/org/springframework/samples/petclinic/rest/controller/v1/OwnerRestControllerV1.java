@@ -142,6 +142,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        String cityKey = normalizeForHousehold(owner.getCity());
+        long cityCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(cityKey))
+            .count();
+        if (cityCount >= 50) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "This city already has the maximum number of owners");
+        }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
