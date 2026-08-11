@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_id TEXT,
                                       namesake_count INTEGER,
                                       household_size INTEGER,
+                                      membership_level_cap INTEGER,
                                       bulk_signup_warning BOOLEAN,
                                       postcode   VARCHAR(9),
                                       possible_duplicate BOOLEAN,

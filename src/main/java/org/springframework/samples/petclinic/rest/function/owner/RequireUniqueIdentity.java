@@ -13,16 +13,13 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * two owners sharing a last name and postcode belong to the <em>same</em> household, and a second
  * such owner is a household duplicate.
  *
- * <p>Two independent conflicts are checked against every existing owner:
- * <ul>
- * <li><b>Exact identity</b>: the whole {@code identityKey}
- *   ({@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}) matches.
- *   This always conflicts &mdash; a genuinely identical record is never allowed.</li>
- * <li><b>Household duplicate</b>: the computed {@code householdId} matches, i.e. the same last name
- *   and postcode. This is rejected <em>unless</em> the request opts in with
- *   {@code sharesHousehold: true}, in which case the new owner is admitted as a declared member of
- *   the household.</li>
- * </ul>
+ * <p>Only an <b>exact identity</b> conflict is rejected: the whole {@code identityKey}
+ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}) matches an
+ * existing owner. Because the telephone is part of the key, two members of the same household (same
+ * {@code householdId}) with different telephones have different keys and are both admitted &mdash; a
+ * further household member is no longer rejected as a duplicate. Instead the new member's standing is
+ * bounded downstream by {@link CapMembershipLevel}, which caps their membership level to one above
+ * the highest already held in the household.
  *
  * <p>Runs after the normalize steps (so telephone is E.164 and email lower-cased) and before
  * {@link BuildOwner}, so no owner is persisted on conflict. The {@code householdId} is derived
@@ -33,7 +30,6 @@ public class RequireUniqueIdentity {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
         String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
-        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
@@ -43,10 +39,6 @@ public class RequireUniqueIdentity {
                     existing.getHouseholdId());
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
-            }
-            if (!sharesHousehold && householdId != null
-                    && householdId.equals(existing.getHouseholdId())) {
-                throw new DuplicateIdentityException(householdId);
             }
         }
     }
