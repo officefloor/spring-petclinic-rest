@@ -50,7 +50,7 @@ public interface OwnerMapper {
             + ".of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity"
-            + ".key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")
+            + ".key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplay"
             + ".of(owner.getTelephone()))")
