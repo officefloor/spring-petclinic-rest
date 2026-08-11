@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -64,6 +65,41 @@ public abstract class OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * The country calling codes (without the leading {@code '+'}) the display formatter recognises,
+     * longest first so the correct code is matched before a shorter prefix of it. Australia
+     * ({@code +61}) and the North American Numbering Plan ({@code +1}) mirror the codes the create
+     * endpoint normalizes against.
+     */
+    private static final List<String> KNOWN_COUNTRY_CODES = List.of("61", "1");
+
+    /**
+     * Derives the owner's {@code telephoneDisplay}: the stored E.164 {@code telephone} formatted for
+     * humans as the country code, a space, then the national digits grouped in threes (e.g.
+     * {@code +61412345678} becomes {@code +61 412 345 678}). Returns the raw value unchanged when it
+     * is {@code null} or not an E.164 number ({@code '+'} followed by digits).
+     */
+    protected String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.matches("\\+[0-9]+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        String countryCode = KNOWN_COUNTRY_CODES.stream()
+            .filter(digits::startsWith)
+            .findFirst()
+            .orElse("");
+        String national = digits.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     /**
