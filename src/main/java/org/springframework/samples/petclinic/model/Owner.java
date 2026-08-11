@@ -294,8 +294,9 @@ public class Owner extends Person {
      * The owner's identity key, the single derived value all duplicate detection is based on. It is
      * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the telephone
      * is the stored E.164 value, the email is the stored lower-cased value (empty when absent) and
-     * the household segment is the {@code householdId} (empty when the owner does not share a
-     * household). Two owners are duplicates only when their whole identity keys are equal.
+     * the household segment is the deterministic {@code householdId} derived from the last name and
+     * postcode (empty only when no household id has been assigned). Two owners are duplicates only
+     * when their whole identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
