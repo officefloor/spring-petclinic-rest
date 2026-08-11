@@ -28,6 +28,7 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.E164Telephone.display(owner.getTelephone()))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -91,27 +92,50 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's numeric membership level. Starts at 1; adds 1 when an email address is
-     * present; adds 1 when the owner has no namesakes ({@code namesakeCount} is 0); adds 1 when the
-     * owner's tenure exceeds 365 days. Capped at 4. Level 4 therefore requires tenure of more than
-     * 365 days: a newly created owner has zero tenure, so a new owner never exceeds level 3.
+     * Derives the owner's membership points. Starts at 0; adds 2 when an email address is present;
+     * adds 1 when the owner has no namesakes ({@code namesakeCount} is 0); adds 2 for a household of
+     * 3 or more members ({@code householdMemberCount} is 3 or greater); adds 3 when the owner's
+     * tenure exceeds 365 days. A newly created owner has zero tenure, so a new owner never earns the
+     * tenure points.
      */
-    default int membershipLevel(Owner owner) {
-        int level = 1;
+    default int membershipPoints(Owner owner) {
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
+        }
+        boolean largeHousehold = owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3;
+        if (largeHousehold) {
+            points += 2;
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate != null
                 && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Maps the owner's {@link #membershipPoints(Owner) membershipPoints} to a numeric level: 1 for
+     * 0-1 points, 2 for 2-3 points, 3 for 4-5 points, 4 for 6 or more points.
+     */
+    default int membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
