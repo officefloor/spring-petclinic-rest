@@ -36,7 +36,17 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's preferred contact channel: {@code EMAIL} when an email address is
+     * present, otherwise {@code PHONE}.
+     */
+    protected OwnerDto.ContactPreferenceEnum contactPreference(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return hasEmail ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE;
+    }
 
     /**
      * Derives the owner's locality (region) from the city using the fixed city-to-region
