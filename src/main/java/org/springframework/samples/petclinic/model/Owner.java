@@ -65,12 +65,51 @@ public class Owner extends Person {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
+    /** Common street-type abbreviations expanded during address normalization. */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
     public String getAddress() {
         return this.address;
     }
 
+    /**
+     * Set the owner's address, normalizing it to a canonical form so it is both
+     * stored and returned consistently. Leading/trailing whitespace is trimmed,
+     * internal runs of whitespace are collapsed to a single space, the value is
+     * upper-cased, and common street-type abbreviations are expanded ({@code ST ->
+     * STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). A {@code null} value is
+     * left as-is.
+     */
     public void setAddress(String address) {
-        this.address = address;
+        this.address = normalizeAddress(address);
+    }
+
+    /**
+     * Normalize an address string to its canonical form: trimmed, whitespace
+     * collapsed, upper-cased, with common street-type abbreviations expanded.
+     * Returns {@code null} for a {@code null} input; a value that is blank once
+     * trimmed normalizes to the empty string.
+     */
+    public static String normalizeAddress(String address) {
+        if (address == null) {
+            return null;
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
     }
 
     public String getCity() {

@@ -108,12 +108,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String normalizedAddress = Owner.normalizeAddress(ownerFieldsDto.getAddress());
+        if (normalizedAddress == null || normalizedAddress.isBlank()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers =
-            findHouseholdMembers(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
         if (!sharesHousehold && !householdMembers.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -125,7 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         if (sharesHousehold && !householdMembers.isEmpty()) {
-            String householdId = householdId(owner.getLastName(), owner.getAddress());
+            String householdId = householdId(owner.getLastName(), normalizedAddress);
             owner.setHouseholdId(householdId);
             for (Owner member : householdMembers) {
                 if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
