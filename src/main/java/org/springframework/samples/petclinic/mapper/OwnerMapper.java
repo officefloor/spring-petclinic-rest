@@ -27,6 +27,8 @@ public abstract class OwnerMapper {
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "salutation",
+            expression = "java(salutation(owner))")
     @Mapping(target = "membershipPoints",
             expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
@@ -66,6 +68,18 @@ public abstract class OwnerMapper {
         ownerPageDto.setTotalElements(ownerPage.getTotalElements());
         ownerPageDto.setTotalPages(ownerPage.getTotalPages());
         return ownerPageDto;
+    }
+
+    /**
+     * Compose the owner's salutation: the stored title, a single space and the last name when a
+     * title was supplied, or just the last name when no title is given.
+     */
+    protected String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /**
