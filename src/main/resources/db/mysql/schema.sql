@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(4),
   registration_date DATE,
   birth_date DATE,
+  deleted BOOLEAN DEFAULT FALSE NOT NULL,
   INDEX(last_name)
 ) engine=InnoDB;
 

@@ -31,6 +31,9 @@ public class AssignOwnerPossibleDuplicate {
             return; // no postcode to share, so never a soft-match
         }
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is not a duplicate match
+            }
             if (equalsIgnoreCase(lastName, existing.getLastName())
                     && postcode.equals(existing.getPostcode())
                     && !equals(telephone, existing.getTelephone())) {

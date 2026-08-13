@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -200,6 +203,14 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 
     public LocalDate getRegistrationDate() {

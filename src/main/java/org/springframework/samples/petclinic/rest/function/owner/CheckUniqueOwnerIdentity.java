@@ -29,6 +29,9 @@ public class CheckUniqueOwnerIdentity {
         String identityKey = OwnerIdentityKey.of(request.getTelephone(), request.getEmail(), householdId);
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner does not block a new registration
+            }
             if (identityKey.equals(OwnerIdentityKey.of(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }
