@@ -170,6 +170,42 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's canonical region, preferring the postcode over the city.
+     *
+     * <p>The 4-digit postcode range is consulted first (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099); only when the postcode is absent or in no known range does this
+     * fall back to the fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
+     * Brisbane-&gt;QLD). Anything unresolved is {@code "UNKNOWN"}. This single derivation
+     * backs both the {@code locality} field and the {@code REGION} segment of the
+     * {@code customerCode}, so the two always agree.
+     */
+    @Transient
+    public String getRegion() {
+        if (this.postcode != null && this.postcode.matches("[0-9]{4}")) {
+            int value = Integer.parseInt(this.postcode);
+            if (value >= 2000 && value <= 2099) {
+                return "NSW";
+            }
+            if (value >= 3000 && value <= 3099) {
+                return "VIC";
+            }
+            if (value >= 4000 && value <= 4099) {
+                return "QLD";
+            }
+        }
+        if ("Sydney".equals(this.city)) {
+            return "NSW";
+        }
+        if ("Melbourne".equals(this.city)) {
+            return "VIC";
+        }
+        if ("Brisbane".equals(this.city)) {
+            return "QLD";
+        }
+        return "UNKNOWN";
+    }
+
+    /**
      * The owner's preferred contact channel: {@code EMAIL} when an email address is
      * present, otherwise {@code PHONE}.
      */

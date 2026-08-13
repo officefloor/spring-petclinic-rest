@@ -1,37 +1,47 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
- * where {@code CITY3} is the upper-cased first three letters of {@code city},
- * {@code LAST3} the upper-cased first three letters of {@code lastName} and
- * {@code NNNN} a per-city 4-digit zero-padded sequence equal to one more than the
- * number of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+ * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where
+ * {@code REGION} is the region derived from the owner (postcode first, then city; see
+ * {@link Owner#getRegion()}) and {@code HASH8} is the first 8 upper-case hex characters
+ * of {@code SHA-256(normalizedTelephone + lastName)} — the telephone in the E.164 form
+ * already normalized by {@link ValidateOwnerFields}. There are no sequence numbers: the
+ * code is a pure function of the owner's region and identity, so it is stable and needs
+ * no per-city count.
  *
  * <p>Runs after {@link BuildOwner} and before {@link SaveOwner} in the
- * {@code POST /api/owners} pipeline, so the count it reads excludes the owner being
- * created; the code is then persisted with the new owner and returned by later reads.
- * It mutates the built {@link Owner} in place (see {@code @Val} semantics).
+ * {@code POST /api/owners} pipeline; the code is persisted with the new owner and
+ * returned by later reads. Because it shares {@link Owner#getRegion()} with the
+ * {@code locality} field, the two always agree. It mutates the built {@link Owner} in
+ * place (see {@code @Val} semantics).
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city = owner.getCity();
-        long inCity = ownerRepository.findAll().stream()
-            .filter(existing -> city == null
-                ? existing.getCity() == null
-                : city.equalsIgnoreCase(existing.getCity()))
-            .count();
-        long sequence = inCity + 1;
-        owner.setCustomerCode(
-            String.format("%s-%s-%04d", first3(city), first3(owner.getLastName()), sequence));
+    public void service(@Val Owner owner) {
+        String hash8 = shaHex8(owner.getTelephone() + owner.getLastName());
+        owner.setCustomerCode(owner.getRegion() + "-" + hash8);
     }
 
-    private static String first3(String value) {
-        String prefix = value == null ? "" : value;
-        return prefix.substring(0, Math.min(3, prefix.length())).toUpperCase();
+    /** First 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String shaHex8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }

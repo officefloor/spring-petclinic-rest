@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "locality",
-        expression = "java(deriveLocality(owner))")
+        expression = "java(owner.getRegion())")
     @Mapping(target = "checkDigit",
         expression = "java(luhn(owner.getCustomerCode()))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -35,7 +35,7 @@ public interface OwnerMapper {
      * The single Luhn check digit (0-9) computed over the decimal digits contained in
      * {@code value}, right to left, doubling every second digit (starting with the
      * rightmost). Non-digit characters are ignored, so it works directly on a formatted
-     * {@code customerCode} such as {@code 'SYD-SMI-0007'}.
+     * {@code customerCode} such as {@code 'NSW-A1B2C3D4'}.
      */
     default int luhn(String value) {
         int sum = 0;
@@ -56,42 +56,6 @@ public interface OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * Derives the canonical region for an owner, preferring the postcode.
-     *
-     * <p>The postcode range is consulted first (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099); only when the postcode is absent or in no known range does this
-     * fall back to the fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
-     * Brisbane-&gt;QLD). Anything unresolved is {@code "UNKNOWN"}. Preferring the postcode
-     * returns the same region for known cities while disambiguating shared city names.
-     */
-    default String deriveLocality(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("[0-9]{4}")) {
-            int value = Integer.parseInt(postcode);
-            if (value >= 2000 && value <= 2099) {
-                return "NSW";
-            }
-            if (value >= 3000 && value <= 3099) {
-                return "VIC";
-            }
-            if (value >= 4000 && value <= 4099) {
-                return "QLD";
-            }
-        }
-        String city = owner.getCity();
-        if ("Sydney".equals(city)) {
-            return "NSW";
-        }
-        if ("Melbourne".equals(city)) {
-            return "VIC";
-        }
-        if ("Brisbane".equals(city)) {
-            return "QLD";
-        }
-        return "UNKNOWN";
     }
 
     Owner toOwner(OwnerDto ownerDto);
