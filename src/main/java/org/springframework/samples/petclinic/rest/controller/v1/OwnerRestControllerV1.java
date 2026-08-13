@@ -127,11 +127,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        if (normalizedTelephone == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(normalizedTelephone);
         currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
@@ -202,16 +206,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
 
     /**
-     * Normalize a telephone number for owner creation by removing every non-digit
-     * character. Returns the resulting value only when it is exactly 10 digits;
-     * otherwise returns {@code null} to signal a bad request.
+     * Normalize a telephone number to E.164 form. Spaces, dashes and brackets are
+     * stripped. When a leading {@code '+'} and country code are present they are kept;
+     * otherwise country code {@code '+61'} is assumed and a single leading {@code '0'}
+     * is dropped from the national digits. The result must be a {@code '+'} followed
+     * by 8 to 15 digits, and is returned as {@code +<digits>}; otherwise {@code null}
+     * is returned to signal a bad request.
      */
     private String normalizeTelephone(String telephone) {
         if (telephone == null) {
             return null;
         }
-        String digits = telephone.replaceAll("\\D", "");
-        return digits.length() == 10 ? digits : null;
+        String cleaned = telephone.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
