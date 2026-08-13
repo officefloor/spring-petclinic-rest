@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8da435d5..d3ab9025 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
+             expression = "java(ageBand(owner))")
+     @Mapping(target = "fiscalYear",
+             expression = "java(fiscalYear(owner))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(ownerSegment(owner))")
+     @Mapping(target = "selfLink",
+             expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+@@ -225,6 +227,23 @@ public abstract class OwnerMapper {
+                         .label(owner.getRegistrationDate());
+     }
+ 
++    /** Known regions whose owners fall in the {@code METRO} area; anything else is {@code REGIONAL}. */
++    private static final java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
++
++    /**
++     * The owner's segment, formatted {@code <TIER>_<AREA>}: TIER is {@code PREMIUM} when
++     * {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}; AREA is {@code METRO}
++     * when the owner's locality is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    protected String ownerSegment(Owner owner) {
++        Integer level = membershipLevel(owner);
++        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
++        String region = org.springframework.samples.petclinic.rest.function.common.Localities
++                .regionOf(owner.getCustomerCode());
++        String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Known country codes (digits after the {@code '+'}), longest first so {@code '61'} is
+      * matched before {@code '1'}, mirroring {@code NormalizeOwnerTelephone}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f6d66866..723602dc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2248,6 +2248,12 @@ components:
+               type: string
+               example: 'FY26'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: The owner's segment, formatted '<TIER>_<AREA>', one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or 'STANDARD_REGIONAL'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
