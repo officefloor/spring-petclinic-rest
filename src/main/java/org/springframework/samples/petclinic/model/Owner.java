@@ -472,6 +472,58 @@ public class Owner extends Person {
     }
 
     /**
+     * The registrable labels of the known disposable-mailbox providers. Exact provider domains
+     * (e.g. {@code mailinator.com}) are already rejected at creation, so this set exists to catch
+     * <em>disposable-adjacent</em> hosts that slip past that hard blocklist — subdomains
+     * ({@code inbox.mailinator.com}) and alternate TLDs ({@code tempmail.io}) — by matching on the
+     * provider label rather than the whole domain.
+     */
+    private static final Set<String> DISPOSABLE_PROVIDER_LABELS =
+        Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Whether an email address's domain is <em>disposable-adjacent</em>: any dot-separated label of
+     * the domain (the part after the last {@code '@'}) matches a known disposable-mailbox provider
+     * label (see {@link #DISPOSABLE_PROVIDER_LABELS}), compared case-insensitively. This catches
+     * throwaway hosts that are not on the hard blocklist because they are subdomains or use a
+     * different TLD. A {@code null} email, or one without an {@code '@'}, is not adjacent.
+     *
+     * @param email the owner's (already normalized) email address, or {@code null} when absent
+     * @return {@code true} when the email domain is disposable-adjacent
+     */
+    public static boolean emailDomainDisposableAdjacent(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_PROVIDER_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The owner's risk flag: {@code true} when any of these hold — the owner is a possible duplicate
+     * ({@link #getPossibleDuplicate()} is true), the owner's email domain is disposable-adjacent
+     * (see {@link #emailDomainDisposableAdjacent(String)}), or the owner's city is over its soft
+     * capacity ({@link #getCapacityWarning()} is true) — otherwise {@code false}.
+     *
+     * @param owner the owner to assess
+     * @return {@code true} when the owner trips any risk condition
+     */
+    public static boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || Boolean.TRUE.equals(owner.getCapacityWarning())
+            || emailDomainDisposableAdjacent(owner.getEmail());
+    }
+
+    /**
      * The full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}.
      *
      * @param value the source value to hash
