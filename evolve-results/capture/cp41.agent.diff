@@ -1,0 +1,48 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 29a3bd98..0e2dc8a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -3,9 +3,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.util.HashSet;
++import java.util.Set;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the owner's {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where
+@@ -21,12 +24,28 @@ import org.springframework.samples.petclinic.model.Owner;
+  * returned by later reads. Because it shares {@link Owner#getRegion()} with the
+  * {@code locality} field, the two always agree. It mutates the built {@link Owner} in
+  * place (see {@code @Val} semantics).
++ *
++ * <p>Should the computed {@code '<REGION>-<HASH8>'} collide with an existing owner's
++ * {@code customerCode}, {@code '-<n>'} is appended with the smallest {@code n} of 2 or
++ * more that makes it unique; the de-duplicated code is what gets stored. The new owner
++ * is not yet persisted here, so it is never compared against itself.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String hash8 = shaHex8(owner.getTelephone() + owner.getLastName());
+-        owner.setCustomerCode(owner.getRegion() + "-" + hash8);
++        String base = owner.getRegion() + "-" + hash8;
++
++        Set<String> existingCodes = new HashSet<>();
++        for (Owner existing : ownerRepository.findAll()) {
++            existingCodes.add(existing.getCustomerCode());
++        }
++
++        String code = base;
++        for (int n = 2; existingCodes.contains(code); n++) {
++            code = base + "-" + n;
++        }
++        owner.setCustomerCode(code);
+     }
+ 
+     /** First 8 upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
