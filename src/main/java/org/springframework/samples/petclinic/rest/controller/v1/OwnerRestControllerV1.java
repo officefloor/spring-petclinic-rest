@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -118,7 +119,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (countOwnersRegisteredOn(LocalDate.now()) >= 100) {
+        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        LocalDate effectiveDate =
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        LocalDate registrationDate = toBusinessDay(effectiveDate);
+        if (countOwnersRegisteredOn(registrationDate) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -128,11 +133,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         HttpHeaders headers = new HttpHeaders();
-        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold && !householdMembers.isEmpty()) {
@@ -283,6 +285,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> day.equals(existing.getRegistrationDate()))
             .count();
+    }
+
+    /**
+     * Roll a registration date forward to the next business day: a date falling on a
+     * Saturday or Sunday is advanced to the following Monday, while a weekday is
+     * returned unchanged.
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(8 - dayOfWeek.getValue());
+        }
+        return date;
     }
 
     /** Upper-cased first three letters of {@code value} (fewer if shorter, empty if null). */
