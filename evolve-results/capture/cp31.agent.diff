@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 65feeb46..23efdbdb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,8 @@ public abstract class OwnerMapper {
+             expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
++    @Mapping(target = "checkDigit",
++            expression = "java(checkDigit(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -76,4 +78,33 @@ public abstract class OwnerMapper {
+     protected String contactPreference(Owner owner) {
+         return (owner.getEmail() != null && !owner.getEmail().isEmpty()) ? "EMAIL" : "PHONE";
+     }
++
++    /**
++     * Compute a single Luhn check digit (0-9) over the digits contained in the owner's
++     * {@code customerCode}. Non-digit characters (such as the hyphen separators) are ignored.
++     */
++    protected Integer checkDigit(Owner owner) {
++        String code = owner.getCustomerCode();
++        if (code == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 90edd0bd..abff44a6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,15 @@ components:
+               type: string
+               example: 'SYD-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: A single Luhn check digit (0-9) computed over the digits contained in the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable identifier shared by owners who live in the same household (same last name and address). Assigned when an owner is created with sharesHousehold true and another owner already shares that household.
