@@ -1,0 +1,174 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f868572a..8da435d5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -52,6 +52,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "selfLink",
+             expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "capacityWarning", ignore = true)
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     public abstract Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+index b91b9360..e85f0daf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+@@ -1,9 +1,6 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+-import java.util.Locale;
+-
+ import net.officefloor.plugin.variable.Val;
+-import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityException;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -11,30 +8,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ /**
+  * Runs on {@code POST /api/owners} before {@link BuildOwner} (so no owner is created on conflict):
+  * rejects the request with 409 via {@link CityAtCapacityException} when the request's city already
+- * contains {@link #MAX_OWNERS_PER_CITY} or more owners, compared case-insensitively with collapsed
+- * whitespace.
++ * contains {@link OwnerCityCounts#MAX_OWNERS_PER_CITY} or more owners, compared case-insensitively
++ * with collapsed whitespace.
+  */
+ public class CheckOwnerCityCapacity {
+ 
+-    /** Maximum owners allowed per city; the next create in a full city is rejected. */
+-    static final int MAX_OWNERS_PER_CITY = 50;
+-
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws CityAtCapacityException {
+-        String city = normalize(request.getCity());
+-        int count = 0;
+-        for (Owner existing : ownerRepository.findAll()) {
+-            if (city.equals(normalize(existing.getCity())) && ++count >= MAX_OWNERS_PER_CITY) {
+-                throw new CityAtCapacityException(request.getCity());
+-            }
+-        }
+-    }
+-
+-    /** Lower-case and collapse runs of whitespace so comparison is case- and whitespace-insensitive. */
+-    private static String normalize(String value) {
+-        if (value == null) {
+-            return "";
++        if (OwnerCityCounts.countInCity(ownerRepository, request.getCity())
++                >= OwnerCityCounts.MAX_OWNERS_PER_CITY) {
++            throw new CityAtCapacityException(request.getCity());
+         }
+-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCounts.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCounts.java
+new file mode 100644
+index 00000000..cb725e3a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCityCounts.java
+@@ -0,0 +1,53 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Shared accumulation path for the per-city owner rules. Counts the owners whose city matches a
++ * given city case-insensitively with collapsed whitespace, the same bucket used by both the hard
++ * per-city capacity limit ({@link CheckOwnerCityCapacity}) and the approaching-capacity warning
++ * surfaced on {@link org.springframework.samples.petclinic.rest.dto.OwnerDto}.
++ */
++final class OwnerCityCounts {
++
++    /** Maximum owners allowed per city; the next create in a full city is rejected. */
++    static final int MAX_OWNERS_PER_CITY = 50;
++
++    /** At this many owners (up to but excluding {@link #MAX_OWNERS_PER_CITY}) a city warns. */
++    static final int WARNING_THRESHOLD = 40;
++
++    private OwnerCityCounts() {
++    }
++
++    /** Number of owners in {@code city}, matched case- and whitespace-insensitively. */
++    static int countInCity(OwnerRepository ownerRepository, String city) {
++        String normalized = normalize(city);
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (normalized.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        return count;
++    }
++
++    /**
++     * True when the owner's city already holds between {@link #WARNING_THRESHOLD} and one below
++     * {@link #MAX_OWNERS_PER_CITY} owners (inclusive), i.e. it is approaching but not at the limit.
++     */
++    static boolean capacityWarning(OwnerRepository ownerRepository, Owner owner) {
++        int count = countInCity(ownerRepository, owner.getCity());
++        return count >= WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
++    }
++
++    /** Lower-case and collapse runs of whitespace so comparison is case- and whitespace-insensitive. */
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 4429672b..60b2c02b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,6 +13,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(DailyOwnerRegistrations.bulkSignupWarning(ownerRepository));
++        dto.setCapacityWarning(OwnerCityCounts.capacityWarning(ownerRepository, owner));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index bee69008..b2b65ae4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,6 +16,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(DailyOwnerRegistrations.bulkSignupWarning(ownerRepository));
++        dto.setCapacityWarning(OwnerCityCounts.capacityWarning(ownerRepository, owner));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+index b77a9dbb..a065563e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerUpdated.java
+@@ -15,6 +15,7 @@ public class RespondWithOwnerUpdated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(DailyOwnerRegistrations.bulkSignupWarning(ownerRepository));
++        dto.setCapacityWarning(OwnerCityCounts.capacityWarning(ownerRepository, owner));
+         response.send(ResponseEntity.status(HttpStatus.NO_CONTENT).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d344599a..f6d66866 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2216,6 +2216,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already holds between 40 and 49 owners (compared case-insensitively with collapsed whitespace), approaching the per-city capacity limit of 50, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: True when, at creation, this owner was not a hard duplicate but shared an existing owner's lastName and postcode with a different telephone, otherwise false. Always false for a declared household member (created with sharesHousehold true).
