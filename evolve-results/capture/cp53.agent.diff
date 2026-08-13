@@ -1,0 +1,129 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 26502b98..794adada 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -29,6 +29,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -95,10 +96,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Dedicated audit logger. On a successful owner create an audit line is emitted carrying the
+-     * new owner's id, customerCode, registrationDate, membershipLevel and membershipNumber.
++     * new owner's id, customerCode, registrationDate, membershipLevel and membershipNumber, followed
++     * by an immutable structured {@link OwnerCreatedEvent} serialized as JSON.
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Source of the {@code seq} carried by each {@link OwnerCreatedEvent}: a monotonically increasing
++     * integer allocated once per successful owner create, so the structured events form an ordered,
++     * gap-free sequence within the running application.
++     */
++    private static final AtomicLong AUDIT_EVENT_SEQUENCE = new AtomicLong();
++
+     /**
+      * Common street-type abbreviations expanded during address normalization, keyed by the
+      * upper-cased abbreviation.
+@@ -218,6 +227,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
++        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
++            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
++        AUDIT.info("{}", event.toJson());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -251,6 +263,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param owner the owner being created, with its normalized telephone already applied
+      * @return the assigned, de-duplicated customer code
+      */
++    /**
++     * Returns the owner's current primary identifier, the value carried by the {@link OwnerCreatedEvent}
++     * so downstream consumers can key the create off the owner's canonical identity. Today an owner's
++     * primary identifier is its {@code customerCode}; when the customer code is later unified into the
++     * member id this method returns the member id instead, and the emitted event follows automatically.
++     *
++     * @param owner the freshly created owner, with its identifiers already assigned
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
+     private String customerCode(Owner owner) {
+         String base = regionCode(owner) + "-" + identityHash8(owner.getTelephone(), owner.getLastName());
+         Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+@@ -940,4 +965,66 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
++
++    /**
++     * Immutable structured audit event emitted alongside the human-readable audit line on a successful
++     * owner create. It records the create's monotonic {@code seq}, the new owner's id, the owner's
++     * current primary identifier and its membership level, plus a fixed {@code OWNER_CREATED} marker.
++     *
++     * <p>The primary identifier is serialized under the {@code customerCode} key, matching the owner's
++     * present-day primary identifier. When the customer code is later unified into the member id the
++     * event simply carries the member id value in its place.
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++                                     Integer membershipLevel) {
++
++        private static final String EVENT = "OWNER_CREATED";
++
++        /**
++         * Renders the event as a compact JSON object
++         * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
++         */
++        String toJson() {
++            StringBuilder json = new StringBuilder(96);
++            json.append('{')
++                .append("\"seq\":").append(this.seq)
++                .append(",\"ownerId\":").append(this.ownerId)
++                .append(",\"customerCode\":").append(jsonString(this.customerCode))
++                .append(",\"membershipLevel\":").append(this.membershipLevel)
++                .append(",\"event\":").append(jsonString(EVENT))
++                .append('}');
++            return json.toString();
++        }
++
++        /**
++         * Renders a nullable string as a JSON literal: {@code null} when absent, otherwise a
++         * double-quoted, minimally-escaped string.
++         */
++        private static String jsonString(String value) {
++            if (value == null) {
++                return "null";
++            }
++            StringBuilder out = new StringBuilder(value.length() + 2);
++            out.append('"');
++            for (int i = 0; i < value.length(); i++) {
++                char c = value.charAt(i);
++                switch (c) {
++                    case '"' -> out.append("\\\"");
++                    case '\\' -> out.append("\\\\");
++                    case '\n' -> out.append("\\n");
++                    case '\r' -> out.append("\\r");
++                    case '\t' -> out.append("\\t");
++                    default -> {
++                        if (c < 0x20) {
++                            out.append(String.format("\\u%04x", (int) c));
++                        } else {
++                            out.append(c);
++                        }
++                    }
++                }
++            }
++            out.append('"');
++            return out.toString();
++        }
++    }
+ }
