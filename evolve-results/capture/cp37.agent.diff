@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f9f51901..e9934099 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,8 @@ public interface OwnerMapper {
+         expression = "java(owner.getRegion())")
+     @Mapping(target = "checkDigit",
+         expression = "java(luhn(owner.getCustomerCode()))")
++    @Mapping(target = "telephoneDisplay",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.display(owner.getTelephone()))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java
+index ec1845d0..d1002a88 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneE164.java
+@@ -65,4 +65,36 @@ public final class TelephoneE164 {
+         }
+         return true;
+     }
++
++    /**
++     * Formats an E.164 number for humans: the {@code '+'} country code, a space, and the national
++     * digits grouped in threes from the left, each group space-separated. So
++     * {@code "+61412345678"} becomes {@code "+61 412 345 678"}.
++     *
++     * <p>Returns {@code e164} unchanged when it is {@code null} or not in {@code '+'}-prefixed
++     * E.164 form.
++     */
++    public static String display(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        int countryCodeLength = countryCodeLength(digits);
++        String countryCode = digits.substring(0, countryCodeLength);
++        String national = digits.substring(countryCodeLength);
++        StringBuilder grouped = new StringBuilder("+").append(countryCode);
++        for (int i = 0; i < national.length(); i += 3) {
++            grouped.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return grouped.toString();
++    }
++
++    /**
++     * The length of the country-code prefix of {@code digits} (the E.164 digits without the
++     * leading {@code '+'}). {@code '+1'} (North American Numbering Plan) is a single digit;
++     * every other country code is treated as two digits, matching this application's scope.
++     */
++    private static int countryCodeLength(String digits) {
++        return digits.startsWith("1") ? 1 : 2;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b2b9b35d..02c4490b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2109,6 +2109,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 'telephone' formatted for humans: the '+' country
++                code, a space, then the national digits grouped in threes from the
++                left. The raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
