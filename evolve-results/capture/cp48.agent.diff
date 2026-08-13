@@ -1,0 +1,143 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5f2f598f..5e74649d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -47,6 +47,8 @@ public abstract class OwnerMapper {
+             expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "ageBand",
+             expression = "java(ageBand(owner))")
++    @Mapping(target = "fiscalYear",
++            expression = "java(fiscalYear(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -85,7 +87,8 @@ public abstract class OwnerMapper {
+     /**
+      * Score the owner's membership points. Starts at 0, plus 2 when an email is present, plus 1
+      * when {@code namesakeCount} is 0, plus 2 for a household of 3 or more owners, plus 3 when
+-     * tenure exceeds 365 days. Because a newly created owner has zero tenure, the tenure points
++     * tenure spans at least one elapsed fiscal year (fiscal years start 1 July). Because a newly
++     * created owner registers within the current fiscal year it has zero tenure, so the tenure points
+      * are only earned on later reads.
+      */
+     protected Integer membershipPoints(Owner owner) {
+@@ -100,8 +103,9 @@ public abstract class OwnerMapper {
+             points += 2;
+         }
+         if (owner.getRegistrationDate() != null
+-                && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
+-                        java.time.LocalDate.now()) > 365) {
++                && org.springframework.samples.petclinic.rest.function.owner.FiscalYear.of(java.time.LocalDate.now())
++                        - org.springframework.samples.petclinic.rest.function.owner.FiscalYear
++                                .of(owner.getRegistrationDate()) >= 1) {
+             points += 3;
+         }
+         return points;
+@@ -170,6 +174,17 @@ public abstract class OwnerMapper {
+         return "SENIOR";
+     }
+ 
++    /**
++     * The owner's fiscal year, formatted {@code FY<YY>} (last two digits) and derived from the
++     * business-day-adjusted {@code registrationDate}; the fiscal year starts on 1 July. Returns
++     * {@code null} when no registration date is set.
++     */
++    protected String fiscalYear(Owner owner) {
++        return owner.getRegistrationDate() == null ? null
++                : org.springframework.samples.petclinic.rest.function.owner.FiscalYear
++                        .label(owner.getRegistrationDate());
++    }
++
+     /**
+      * Known country codes (digits after the {@code '+'}), longest first so {@code '61'} is
+      * matched before {@code '1'}, mirroring {@code NormalizeOwnerTelephone}.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipNumber.java
+index 2ff9915a..d32a0c76 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerMembershipNumber.java
+@@ -5,7 +5,8 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Assigns a new owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>} where YY is
+- * the last two digits of the registration date year (e.g. {@code NSW-3F9A0C71-M26}). Runs after
++ * the last two digits of the fiscal year (starting 1 July) of the business-day-adjusted registration
++ * date (e.g. {@code NSW-3F9A0C71-M26}). Runs after
+  * {@link AssignOwnerCustomerCode} sets the region-and-hash customer code and
+  * {@link DefaultOwnerRegistrationDate}
+  * ensures a registration date, and before {@link SaveOwner} persists it, so the value is stored and
+@@ -14,7 +15,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ public class AssignOwnerMembershipNumber {
+ 
+     public void service(@Val Owner owner) {
+-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++        String yy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
+         owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+new file mode 100644
+index 00000000..75cfae4e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++import java.time.Month;
++
++/**
++ * Fiscal-year rules for date-derived owner values. The fiscal year starts on 1 July, so a date in
++ * July or later belongs to the fiscal year ending the following calendar year (the Australian
++ * convention): e.g. 1 July 2026 is fiscal year 2027, while 30 June 2026 is fiscal year 2026. Shared
++ * by {@link AssignOwnerMembershipNumber} (the membership number's year segment) and the owner mapper
++ * (the {@code fiscalYear} field and tenure-based membership points) so every date-derived value uses
++ * one definition.
++ */
++public final class FiscalYear {
++
++    private FiscalYear() {
++    }
++
++    /** The fiscal year (the calendar year in which it ends) that {@code date} falls in. */
++    public static int of(LocalDate date) {
++        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
++    }
++
++    /** The fiscal-year label {@code FY<YY>} (last two digits of the fiscal year) for {@code date}. */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", of(date) % 100);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e710b68b..8dc4520b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2165,13 +2165,13 @@ components:
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+-              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registration date year.
++              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the fiscal year (starting 1 July) of the business-day-adjusted registration date.
+               type: string
+               example: 'SYD-SMI-0007-M26'
+               readOnly: true
+             membershipPoints:
+               title: Membership points
+-              description: The owner's membership points. Starts at 0, plus 2 when an email is present, plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more owners, plus 3 when tenure exceeds 365 days.
++              description: The owner's membership points. Starts at 0, plus 2 when an email is present, plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more owners, plus 3 when tenure spans at least one elapsed fiscal year (fiscal years start 1 July).
+               type: integer
+               format: int32
+               minimum: 0
+@@ -2230,6 +2230,12 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: The fiscal year of the business-day-adjusted registrationDate, formatted 'FY<YY>' (last two digits of the fiscal year), where the fiscal year starts on 1 July.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
