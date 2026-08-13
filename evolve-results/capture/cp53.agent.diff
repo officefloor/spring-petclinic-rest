@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 54fdcacf..196e641a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -221,6 +221,18 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * The owner's current primary identifier. Today this is the
++     * {@link #getCustomerCode() customerCode}; when the customer code is unified into
++     * the memberId, this single accessor returns the memberId instead, and every
++     * consumer that carries the primary identifier — notably the {@code OWNER_CREATED}
++     * audit event — follows without further change.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return getCustomerCode();
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 3f2d7ad7..123090cb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -7,10 +7,11 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Emits an audit line to the dedicated {@code AUDIT} logger on a successful
+- * create, carrying the new owner's id, {@code customerCode},
+- * {@code registrationDate}, numeric {@code membershipLevel} and the derived
+- * {@code membershipNumber}.
++ * Emits audit output to the dedicated {@code AUDIT} logger on a successful create:
++ * first the human-readable audit line — carrying the new owner's id,
++ * {@code customerCode}, {@code registrationDate}, numeric {@code membershipLevel} and
++ * the derived {@code membershipNumber} — then an immutable structured
++ * {@link OwnerCreatedEvent} rendered as JSON.
+  *
+  * <p>Runs after {@link SaveOwner} (so the id is assigned) and before
+  * {@link RespondWithOwnerCreated} in the {@code POST /api/owners} pipeline.
+@@ -25,5 +26,8 @@ public class AuditOwnerCreated {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), membershipNumber);
++        // Structured, machine-readable companion to the line above. Passed as a single
++        // argument so the JSON braces are never treated as SLF4J placeholders.
++        AUDIT.info("{}", OwnerCreatedEvent.next(owner).toJson());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 00000000..ab3f37d5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,51 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Immutable structured audit event for a successful owner create, emitted to the
++ * {@code AUDIT} logger by {@link AuditOwnerCreated} alongside the human-readable audit
++ * line. Serialized as the JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
++ *
++ * <p>The {@code customerCode} slot carries the owner's <em>current primary
++ * identifier</em> — sourced from {@link Owner#getPrimaryIdentifier()}, which is the
++ * {@code customerCode} today and becomes the memberId once the two are unified. The
++ * event therefore follows that change without edits here.
++ *
++ * <p>{@link #seq()} is a process-wide, monotonically increasing sequence stamped when
++ * the event is built (see {@link #next(Owner)}); the record itself is immutable.
++ */
++public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel) {
++
++    /** The {@code event} marker carried by every instance. */
++    public static final String EVENT = "OWNER_CREATED";
++
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
++    /**
++     * Builds the next event for {@code owner}, stamping the next sequence number and
++     * capturing the owner's current primary identifier and derived membership level.
++     */
++    public static OwnerCreatedEvent next(Owner owner) {
++        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++            owner.getPrimaryIdentifier(), owner.getMembershipLevel());
++    }
++
++    /** Compact JSON rendering with the fields in specification order. */
++    public String toJson() {
++        return String.format(
++            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":%s,\"membershipLevel\":%d,\"event\":\"%s\"}",
++            this.seq, this.ownerId, jsonString(this.customerCode), this.membershipLevel, EVENT);
++    }
++
++    /** JSON string literal (with escaping) for {@code value}, or {@code null} when absent. */
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        return '"' + value.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
++    }
++}
