@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Rejects a create-owner request that shares a household with an existing owner — the
- * same {@code lastName} and the same {@code address}, compared case-insensitively with
- * collapsed whitespace — responding 409 via {@link DuplicateHouseholdException}.
+ * same {@code lastName} (compared case-insensitively with collapsed whitespace) and the
+ * same {@code address} in its normalized form (see {@link AddressNormalizer}) —
+ * responding 409 via {@link DuplicateHouseholdException}.
  *
  * <p>The check is skipped when the request opts in with {@code sharesHousehold: true},
  * allowing multiple owners to live at the same household.
@@ -25,10 +26,10 @@ public class EnsureUniqueHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = normalizeAddress(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(normalizeAddress(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
@@ -37,5 +38,11 @@ public class EnsureUniqueHousehold {
     /** Lower-cases and collapses runs of whitespace to a single space, trimming the ends. */
     private static String normalize(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /** The canonical address form (see {@link AddressNormalizer}); never {@code null}. */
+    private static String normalizeAddress(String value) {
+        String normalized = AddressNormalizer.normalize(value);
+        return normalized == null ? "" : normalized;
     }
 }

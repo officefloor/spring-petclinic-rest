@@ -17,22 +17,26 @@ import org.springframework.web.bind.annotation.RequestBody;
  * <p>Runs first in the {@code POST /api/owners} pipeline and binds the body without
  * {@code @Valid}, so a missing field surfaces as a {@link MissingOwnerFieldsException}
  * (400 with an {@code errors} array) rather than the generic schema-validation response.
- * It then normalizes the telephone to E.164 form (see {@link TelephoneE164}), rejecting
- * with an {@link InvalidTelephoneException} (400) when it cannot form a valid E.164 number.
- * On success it stores the E.164 telephone and republishes the body for {@link BuildOwner}.
+ * The {@code address} is normalized first (see {@link AddressNormalizer}) so the blank
+ * check rejects an address that is empty after normalization. It then normalizes the
+ * telephone to E.164 form (see {@link TelephoneE164}), rejecting with an
+ * {@link InvalidTelephoneException} (400) when it cannot form a valid E.164 number.
+ * On success it stores the normalized address and E.164 telephone and republishes the
+ * body for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> errors = new ArrayList<>();
+        String address = AddressNormalizer.normalize(request.getAddress());
         if (isBlank(request.getFirstName())) {
             errors.add("firstName");
         }
         if (isBlank(request.getLastName())) {
             errors.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        if (isBlank(address)) {
             errors.add("address");
         }
         if (isBlank(request.getCity())) {
@@ -44,6 +48,7 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new MissingOwnerFieldsException(errors);
         }
+        request.setAddress(address);
         String telephone = TelephoneE164.normalize(request.getTelephone());
         if (telephone == null) {
             throw new InvalidTelephoneException(
