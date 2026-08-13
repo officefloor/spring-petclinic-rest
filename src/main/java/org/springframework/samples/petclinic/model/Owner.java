@@ -51,6 +51,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -87,6 +90,14 @@ public class Owner extends Person {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
     }
 
     public LocalDate getRegistrationDate() {
