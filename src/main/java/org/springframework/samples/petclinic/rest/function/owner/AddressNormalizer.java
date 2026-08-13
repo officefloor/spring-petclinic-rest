@@ -48,4 +48,17 @@ public final class AddressNormalizer {
         }
         return result.toString();
     }
+
+    /**
+     * Composes the address string returned to the client from already-normalized address
+     * lines: {@code line1}, with a single space and {@code line2} appended when
+     * {@code line2} is present (non-null and non-blank). Returns {@code line1} unchanged
+     * when {@code line2} is absent.
+     */
+    public static String compose(String line1, String line2) {
+        if (line2 == null || line2.isBlank()) {
+            return line1;
+        }
+        return line1 + " " + line2;
+    }
 }
