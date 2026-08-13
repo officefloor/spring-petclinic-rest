@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -447,17 +450,36 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived duplicate-detection key: the normalized (E.164) telephone,
-     * the email (or empty when absent) and the {@code householdId} (or empty when
-     * absent), joined by {@code '|'}. Two owners are duplicates only when their whole
-     * identity keys are equal.
+     * The owner's derived duplicate-detection key: the SHA-256 hex digest over the
+     * normalized (E.164) telephone, the lower-cased email (or empty when absent) and the
+     * Soundex code of the last name, joined by {@code '|'} before hashing. The result is a
+     * 64-character lower-case hex string. Two owners are duplicates only when their whole
+     * identity keys are equal; because the telephone is part of the key, two owners with
+     * the same last name and postcode but different telephones have different keys (and are
+     * a soft match, not a hard duplicate).
      */
     @Transient
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
-        String mail = this.email == null ? "" : this.email;
-        String household = this.householdId == null ? "" : this.householdId;
-        return tel + "|" + mail + "|" + household;
+        String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
+        String lastNameCode = Soundex.encode(getLastName());
+        return sha256hex(tel + "|" + mail + "|" + lastNameCode);
+    }
+
+    /** Lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}. */
+    private static String sha256hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

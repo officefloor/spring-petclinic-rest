@@ -3,7 +3,8 @@ package org.springframework.samples.petclinic.rest.escalation;
 /**
  * Thrown by {@link org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueIdentity}
  * when a create-owner request's whole derived {@code identityKey}
- * ({@code normalizedTelephone|email|householdId}) already belongs to an existing owner.
+ * (SHA-256 over {@code normalizedTelephone|lowerEmail|soundex(lastName)}) already belongs to an
+ * existing owner.
  * Handled by {@link DuplicateIdentityExceptionHandler}, which responds 409.
  */
 public class DuplicateIdentityException extends Exception {

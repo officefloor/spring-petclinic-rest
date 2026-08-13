@@ -17,13 +17,12 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>The last name is normalized (compared case-insensitively with collapsed whitespace)
  * before hashing; the postcode is used verbatim, treated as empty when absent. So two
  * owners with the same last name and postcode always share a household, regardless of
- * creation order or the {@code sharesHousehold} flag (which now only bypasses the
- * household-duplicate block — see {@link EnsureUniqueHousehold}).
+ * creation order or the {@code sharesHousehold} flag.
  *
  * <p>Runs after {@link BuildOwner} (which produces the {@link Owner}) and before
- * {@link EnsureUniqueHousehold}/{@link SaveOwner}; it mutates the built owner in place
- * (see {@code @Val} semantics). The computed id feeds duplicate detection (via the
- * {@code identityKey}) and the household-size count.
+ * {@link EnsureUniqueIdentity}/{@link SaveOwner}; it mutates the built owner in place
+ * (see {@code @Val} semantics). The computed id feeds the household-size count and
+ * membership derivations; it is no longer part of the {@code identityKey}.
  */
 public class AssignHousehold {
 
