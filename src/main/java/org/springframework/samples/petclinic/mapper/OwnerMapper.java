@@ -33,6 +33,18 @@ public abstract class OwnerMapper {
      */
     private static final int BULK_SIGNUP_THRESHOLD = 80;
 
+    /**
+     * A create is flagged with {@code capacityWarning=true} when its city already holds at least
+     * this many owners (excluding the owner itself), approaching the hard capacity limit.
+     */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * The hard per-city capacity limit; at or above it a create is rejected rather than warned, so
+     * the warning window is {@code [CAPACITY_WARNING_THRESHOLD, CITY_CAPACITY)}.
+     */
+    private static final int CITY_CAPACITY = 50;
+
     @Autowired
     protected ClinicService clinicService;
 
@@ -47,6 +59,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -371,6 +384,26 @@ public abstract class OwnerMapper {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         return othersOnDay > BULK_SIGNUP_THRESHOLD;
+    }
+
+    /**
+     * Flags a city approaching its hard capacity limit: {@code true} when this owner's city already
+     * holds between {@link #CAPACITY_WARNING_THRESHOLD} and {@link #CITY_CAPACITY} minus one owners,
+     * inclusive (excluding the owner itself), so on a create the flag reflects the owners that
+     * pre-existed it in that city, matching the count the per-city capacity limit is enforced
+     * against. Cities are compared case-insensitively, as they are for the capacity limit. Returns
+     * {@code false} when the owner has no city.
+     */
+    protected Boolean capacityWarning(Owner owner) {
+        String city = owner.getCity();
+        if (city == null) {
+            return false;
+        }
+        long othersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        return othersInCity >= CAPACITY_WARNING_THRESHOLD && othersInCity < CITY_CAPACITY;
     }
 
     /**
