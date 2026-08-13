@@ -70,13 +70,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         tools.jackson.databind.json.JsonMapper.builder().build();
 
     /**
-     * Immutable structured audit event emitted alongside the human-readable audit line when an owner
-     * is created. Its component order is also its JSON field order: {@code seq}, {@code ownerId},
-     * {@code memberId}, {@code membershipLevel}, {@code event}. The {@code memberId} component carries
-     * the owner's unified primary identifier.
+     * The schema version of the structured {@code OWNER_CREATED} audit event. Version 2 accompanies
+     * the version-2 owner identity: the event carries the version-2 {@code memberId} as its primary
+     * identifier and adds the {@code schemaVersion} field.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-        Integer membershipLevel, String event) {
+    private static final int AUDIT_EVENT_SCHEMA_VERSION = 2;
+
+    /**
+     * Immutable structured audit event emitted alongside the human-readable audit line when an owner
+     * is created. Its component order is also its JSON field order: {@code schemaVersion}, {@code seq},
+     * {@code ownerId}, {@code memberId}, {@code membershipLevel}, {@code ownerSegment}, {@code event}.
+     * This is schema version 2: {@code schemaVersion} is {@code 2}, the {@code memberId} component
+     * carries the owner's version-2 unified primary identifier, and {@code ownerSegment} is the owner
+     * segment recomputed from the version-2 identity.
+     */
+    private record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+        Integer membershipLevel, String ownerSegment, String event) {
     }
 
     /**
@@ -261,10 +270,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
-        // The event's primary identifier is the owner's unified memberId.
+        // The event's primary identifier is the owner's version-2 unified memberId, and its
+        // ownerSegment is recomputed from the version-2 identity.
         String primaryIdentifier = owner.getMemberId();
-        OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_EVENT_SEQ.incrementAndGet(),
-            owner.getId(), primaryIdentifier, ownerDto.getMembershipLevel(), "OWNER_CREATED");
+        String ownerSegment = org.springframework.samples.petclinic.mapper.Localities
+            .segmentForOwner(owner);
+        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SCHEMA_VERSION,
+            OWNER_EVENT_SEQ.incrementAndGet(), owner.getId(), primaryIdentifier,
+            ownerDto.getMembershipLevel(), ownerSegment, "OWNER_CREATED");
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
         // Enqueue a welcome notification for the newly created owner, carrying the owner id and the
         // unified memberId so downstream notification handling can address the new member.
@@ -343,14 +356,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the unified member id for a new owner, formatted {@code '<REGION><FY><HASH8><CHK>'}.
-     * {@code REGION} is the canonical region derived from the owner's postcode (falling back to
-     * the city when the postcode is absent or in no known range, see
-     * {@link org.springframework.samples.petclinic.mapper.Localities#forCityAndPostcode}).
+     * {@code REGION} is the version-2 region code — the canonical region derived from the owner's
+     * postcode (falling back to the city when the postcode is absent or in no known range) with the
+     * fixed {@code 'V2'} version tag mixed in, see
+     * {@link org.springframework.samples.petclinic.mapper.Localities#regionCodeV2}.
      * {@code FY} is the 2-digit fiscal year of the (business-day-adjusted) registration date.
      * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
      * normalized telephone concatenated with the last name (the same HASH8 the region-and-hash
      * identity used). {@code CHK} is a single Luhn check digit computed over the digits of the
-     * {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'NSW261A2B3C4D7'}). It is a pure function of
+     * {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'V2NSW261A2B3C4D7'}). It is a pure function of
      * the owner's region, fiscal year, telephone and last name.
      *
      * @param city                the owner's city
@@ -363,7 +377,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String memberId(String city, String postcode, String normalizedTelephone, String lastName,
             java.time.LocalDate registrationDate) {
         String region = org.springframework.samples.petclinic.mapper.Localities
-            .forCityAndPostcode(city, postcode);
+            .regionCodeV2(city, postcode);
         String fy = Owner.fiscalYearLabel(registrationDate).substring(2);
         String hash8 = sha256UpperHex((normalizedTelephone == null ? "" : normalizedTelephone)
             + (lastName == null ? "" : lastName), 8);
@@ -503,17 +517,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives the stable shared household identifier for a household, keyed on the normalized last
-     * name and address. Because it is a pure function of those normalized keys, every owner in the
+     * name and postcode. Because it is a pure function of those normalized keys, every owner in the
      * same household deterministically computes the same value. The identifier is the first 12
-     * upper-case hex characters of the SHA-256 digest of the two keys joined with a NUL separator
-     * (the separator prevents distinct name/address pairs from colliding).
+     * upper-case hex characters of the SHA-256 digest of the fixed {@code 'V2'} version tag and the
+     * two keys joined with {@code '|'} separators (the separators prevent distinct pairs from
+     * colliding, and mixing in the version tag rederives the value under version 2).
      *
      * @param lastNameKey the normalized last-name comparison key
      * @param addressKey  the normalized address comparison key
      * @return the stable household identifier
      */
     private String householdId(String lastNameKey, String postcode) {
-        String seed = lastNameKey + "|" + (postcode == null ? "" : postcode);
+        String seed = Owner.IDENTITY_VERSION_TAG + "|" + lastNameKey + "|"
+            + (postcode == null ? "" : postcode);
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8));

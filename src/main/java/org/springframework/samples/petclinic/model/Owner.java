@@ -465,11 +465,20 @@ public class Owner extends Person {
      */
     @Transient
     public String getIdentityKey() {
-        String seed = (this.telephone == null ? "" : this.telephone) + "|"
+        String seed = IDENTITY_VERSION_TAG + "|"
+            + (this.telephone == null ? "" : this.telephone) + "|"
             + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT)) + "|"
             + soundex(this.getLastName());
         return sha256Hex(seed);
     }
+
+    /**
+     * The fixed version tag mixed into every derived owner identifier (identityKey, householdId and
+     * the region code inside the memberId) under version 2 of the owner identity. Mixing it in
+     * guarantees every version-2 identifier differs from the value the same owner would have produced
+     * under version 1.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
 
     /**
      * The registrable labels of the known disposable-mailbox providers. Exact provider domains

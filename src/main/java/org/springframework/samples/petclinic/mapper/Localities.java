@@ -74,29 +74,32 @@ public final class Localities {
     }
 
     /**
-     * Returns the owner's canonical region ("locality"), sourced from the unified
-     * {@code memberId} identity: the {@code <REGION>} prefix of the {@code memberId} (its leading
-     * run of letters, before the 2-digit fiscal year) when one has been assigned, so the locality
-     * is exactly the region the identity was built on. When the owner has no member id yet
-     * (for example seed data created before the identity was assigned) derivation falls back to
-     * {@link #forCityAndPostcode(String, String)} over the owner's city and postcode, which
-     * computes the same region the identity would have used.
+     * Returns the owner's canonical region ("locality"), the plain region derived from the owner's
+     * city and postcode via {@link #forCityAndPostcode(String, String)}. This is the same base
+     * region the version-2 identity is built on, but without the {@code 'V2'} version tag: the tag
+     * appears only inside the identifiers (see {@link #regionCodeV2(String, String)}), never in the
+     * user-facing locality, timezone or owner segment.
      *
      * @param owner the owner whose locality is required
      * @return the canonical region string, or {@code "UNKNOWN"} when unknown
      */
     public static String forOwner(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int i = 0;
-            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-                i++;
-            }
-            if (i > 0) {
-                return memberId.substring(0, i);
-            }
-        }
         return forCityAndPostcode(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Returns the version-2 region code used <em>inside</em> the owner's identifiers, formed by
+     * mixing the fixed {@code 'V2'} version tag ({@link Owner#IDENTITY_VERSION_TAG}) into the plain
+     * canonical region ({@link #forCityAndPostcode(String, String)}). For example a Sydney owner
+     * (region {@code NSW}) yields {@code 'V2NSW'}. This appears only in identifiers (the memberId's
+     * region segment); the user-facing {@link #forOwner(Owner) locality} stays the plain region.
+     *
+     * @param city     the owner's city
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the version-2 region code
+     */
+    public static String regionCodeV2(String city, String postcode) {
+        return Owner.IDENTITY_VERSION_TAG + forCityAndPostcode(city, postcode);
     }
 
     /**

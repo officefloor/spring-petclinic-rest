@@ -42,6 +42,12 @@ public interface OwnerMapper {
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "riskFlag",
         expression = "java(org.springframework.samples.petclinic.model.Owner.riskFlag(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity",
+        expression = "java(new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto()"
+            + ".memberId(owner.getMemberId())"
+            + ".identityKey(owner.getIdentityKey())"
+            + ".householdId(owner.getHouseholdId()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
