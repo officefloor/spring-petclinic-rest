@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -113,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -213,6 +215,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * by 8 to 15 digits, and is returned as {@code +<digits>}; otherwise {@code null}
      * is returned to signal a bad request.
      */
+    /**
+     * Build the customer code for a newly created owner, formatted
+     * {@code '<LAST3>-<NNNN>'} where {@code LAST3} is the upper-cased first three
+     * letters of the last name and {@code NNNN} is a global 4-digit zero-padded
+     * sequence equal to one more than the current number of owners.
+     */
+    private String nextCustomerCode(String lastName) {
+        String prefix = lastName == null ? "" : lastName;
+        prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", prefix, sequence);
+    }
+
     private String normalizeTelephone(String telephone) {
         if (telephone == null) {
             return null;
