@@ -294,14 +294,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the
-     * last two digits of the registrationDate year, zero-padded (e.g. {@code NSW-1A2B3C4D-M26}).
+     * last two digits of the fiscal year of the owner's business-day-adjusted registration date,
+     * zero-padded (e.g. {@code NSW-1A2B3C4D-M26}). The fiscal year starts on 1 July.
      *
      * @param customerCode     the owner's assigned customer code
-     * @param registrationDate the owner's registration date
+     * @param registrationDate the owner's business-day-adjusted registration date
      * @return the assigned membership number
      */
     private String membershipNumber(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, fiscalYear(registrationDate) % 100);
+    }
+
+    /**
+     * The month the fiscal year starts on (1 July).
+     */
+    private static final int FISCAL_YEAR_START_MONTH = 7;
+
+    /**
+     * Derives the fiscal year of the given date. The fiscal year starts on 1 July, so a date on or
+     * after 1 July belongs to the following calendar year's fiscal year (e.g. 2026-07-01 is fiscal
+     * year 2027) while an earlier date takes the calendar year unchanged.
+     *
+     * @param date the date to derive the fiscal year of
+     * @return the fiscal year
+     */
+    private int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? date.getYear() + 1 : date.getYear();
     }
 
     /**

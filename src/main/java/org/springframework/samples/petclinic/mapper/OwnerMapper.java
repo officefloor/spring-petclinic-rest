@@ -13,7 +13,6 @@ import org.springframework.samples.petclinic.service.ClinicService;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,35 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The month the fiscal year starts on (1 July).
+     */
+    private static final int FISCAL_YEAR_START_MONTH = 7;
+
+    /**
+     * Derives the fiscal year (as an integer) of the given date. The fiscal year starts on 1 July,
+     * so a date on or after 1 July belongs to the following calendar year's fiscal year (e.g.
+     * 2026-07-01 is fiscal year 2027) while an earlier date takes the calendar year unchanged.
+     */
+    private int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Derives the owner's {@code fiscalYear}, formatted {@code FY<YY>} where YY is the last two
+     * digits of the fiscal year (starting 1 July) of the owner's business-day-adjusted
+     * {@code registrationDate}. Returns {@code null} when no registration date is present.
+     */
+    protected String fiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(registrationDate) % 100);
+    }
 
     /**
      * Derives the owner's {@code ageBand} from their {@code birthDate} relative to their
@@ -213,17 +240,17 @@ public abstract class OwnerMapper {
     private static final int HOUSEHOLD_POINTS_SIZE = 3;
 
     /**
-     * An owner must have been registered for strictly more than this many days to earn the
-     * tenure membership points. A newly created owner has zero tenure and so never clears this
-     * threshold.
+     * An owner's tenure must span strictly more than this many elapsed fiscal years to earn the
+     * tenure membership points. A newly created owner has zero elapsed fiscal years and so never
+     * clears this threshold.
      */
-    private static final int TENURE_POINTS_DAYS = 365;
+    private static final int TENURE_POINTS_FISCAL_YEARS = 1;
 
     /**
      * Derives the owner's membership points: it starts at 0, gains 2 when an email is present,
      * gains 1 when the owner has no namesakes (namesakeCount is 0), gains 2 when the owner's
      * household has {@value #HOUSEHOLD_POINTS_SIZE} or more members, and gains 3 once the owner's
-     * tenure exceeds {@value #TENURE_POINTS_DAYS} days.
+     * tenure exceeds {@value #TENURE_POINTS_FISCAL_YEARS} elapsed fiscal year(s).
      */
     protected Integer membershipPoints(Owner owner) {
         int points = 0;
@@ -238,7 +265,7 @@ public abstract class OwnerMapper {
         if (householdSize(owner) >= HOUSEHOLD_POINTS_SIZE) {
             points += 2;
         }
-        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
+        if (tenureFiscalYears(owner) > TENURE_POINTS_FISCAL_YEARS) {
             points += 3;
         }
         return points;
@@ -277,16 +304,17 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's tenure in whole days: the number of days from their {@code registrationDate} up to
-     * the current date. Returns 0 when no registration date is present, so an owner without a
-     * registration date is treated as having no tenure.
+     * The owner's tenure in elapsed fiscal years: the number of fiscal years (each starting 1 July)
+     * between their {@code registrationDate} and the current date, i.e. the current fiscal year less
+     * the registration date's fiscal year. Returns 0 when no registration date is present, so an
+     * owner without a registration date is treated as having no tenure.
      */
-    private long tenureDays(Owner owner) {
+    private long tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return (long) fiscalYearOf(LocalDate.now()) - fiscalYearOf(registrationDate);
     }
 
     /**
