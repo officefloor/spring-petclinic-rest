@@ -8,10 +8,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured audit event for a successful owner create, emitted to the
  * {@code AUDIT} logger by {@link AuditOwnerCreated} alongside the human-readable audit
  * line. Serialized as the JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
  *
- * <p>The {@code memberId} slot carries the owner's <em>primary identifier</em> —
- * sourced from {@link Owner#getPrimaryIdentifier()}, which is the unified memberId.
+ * <p>The event is at schema version 2: it carries an explicit {@code schemaVersion} of 2,
+ * and the {@code memberId} slot holds the owner's <em>primary identifier</em> — sourced
+ * from {@link Owner#getPrimaryIdentifier()}, which is the version-2 memberId.
  *
  * <p>{@link #seq()} is a process-wide, monotonically increasing sequence stamped when
  * the event is built (see {@link #next(Owner)}); the record itself is immutable.
@@ -20,6 +21,9 @@ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int memb
 
     /** The {@code event} marker carried by every instance. */
     public static final String EVENT = "OWNER_CREATED";
+
+    /** The audit event schema version carried by every instance. */
+    public static final int SCHEMA_VERSION = 2;
 
     private static final AtomicLong SEQUENCE = new AtomicLong();
 
@@ -35,8 +39,8 @@ public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int memb
     /** Compact JSON rendering with the fields in specification order. */
     public String toJson() {
         return String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":%s,\"membershipLevel\":%d,\"event\":\"%s\"}",
-            this.seq, this.ownerId, jsonString(this.memberId), this.membershipLevel, EVENT);
+            "{\"schemaVersion\":%d,\"seq\":%d,\"ownerId\":%d,\"memberId\":%s,\"membershipLevel\":%d,\"event\":\"%s\"}",
+            SCHEMA_VERSION, this.seq, this.ownerId, jsonString(this.memberId), this.membershipLevel, EVENT);
     }
 
     /** JSON string literal (with escaping) for {@code value}, or {@code null} when absent. */

@@ -13,8 +13,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Assigns the owner's {@code memberId}, formatted {@code '<REGION><FY><HASH8><CHK>'}:
  * <ul>
- *   <li>{@code REGION} — the region derived from the owner (postcode first, then city;
- *       see {@link Owner#getRegion()}),</li>
+ *   <li>{@code REGION} — the version-2 identity region derived from the owner (the plain
+ *       region with the fixed {@code "V2"} tag mixed in; see
+ *       {@link Owner#getIdentityRegion()}),</li>
  *   <li>{@code FY} — the 2-digit fiscal year of the business-day-adjusted
  *       registrationDate (the last two digits of {@link Owner#getFiscalYear()}),</li>
  *   <li>{@code HASH8} — the first 8 upper-case hex characters of
@@ -43,7 +44,7 @@ public class AssignMemberId {
         String hash8 = shaHex8(owner.getTelephone() + owner.getLastName());
         // getFiscalYear() is 'FY<YY>'; the memberId carries just the 2-digit <YY>.
         String fy = owner.getFiscalYear().substring(2);
-        String prefix = owner.getRegion() + fy + hash8;
+        String prefix = owner.getIdentityRegion() + fy + hash8;
         String base = prefix + luhn(prefix);
 
         Set<String> existingIds = new HashSet<>();

@@ -29,12 +29,17 @@ public class AssignHousehold {
     public void service(@Val Owner owner) {
         String lastName = normalize(owner.getLastName());
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        owner.setHouseholdId(householdId(lastName, postcode));
+        owner.setHouseholdId(householdId(lastName, postcode, owner.getIdentityRegion()));
     }
 
-    /** Deterministic 12-char hex id over the normalized last name and postcode. */
-    private static String householdId(String lastName, String postcode) {
-        return sha256hex(lastName + "|" + postcode).substring(0, 12);
+    /**
+     * Deterministic 12-char hex id over the normalized last name, postcode and the
+     * version-2 identity region. Two owners sharing a (last name, postcode) pair share a
+     * region too, so they still compute the same household; the version tag mixed into
+     * the region makes the id differ from every version-1 household id.
+     */
+    private static String householdId(String lastName, String postcode, String identityRegion) {
+        return sha256hex(lastName + "|" + postcode + "|" + identityRegion).substring(0, 12);
     }
 
     private static String sha256hex(String value) {

@@ -439,6 +439,20 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's version-2 identity region: the plain {@link #getRegion() region} code
+     * with a fixed {@code "V2"} version tag mixed in. This is the region code used
+     * <em>inside the identifiers</em> — the {@code memberId}, {@code householdId} and
+     * {@code identityKey} all derive from it, so every identifier changes at the version-2
+     * release and no value produced under version 1 recurs. The {@code "V2"} tag appears
+     * only inside those identifiers: the user-facing {@code locality}, {@code timezone}
+     * and {@code ownerSegment} keep using the plain region.
+     */
+    @Transient
+    public String getIdentityRegion() {
+        return getRegion() + "V2";
+    }
+
+    /**
      * The owner's segment, formatted {@code '<TIER>_<AREA>'} — one of
      * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
      * {@code STANDARD_REGIONAL}. The {@code TIER} is {@code PREMIUM} when
@@ -483,19 +497,21 @@ public class Owner extends Person {
 
     /**
      * The owner's derived duplicate-detection key: the SHA-256 hex digest over the
-     * normalized (E.164) telephone, the lower-cased email (or empty when absent) and the
-     * Soundex code of the last name, joined by {@code '|'} before hashing. The result is a
-     * 64-character lower-case hex string. Two owners are duplicates only when their whole
-     * identity keys are equal; because the telephone is part of the key, two owners with
-     * the same last name and postcode but different telephones have different keys (and are
-     * a soft match, not a hard duplicate).
+     * normalized (E.164) telephone, the lower-cased email (or empty when absent), the
+     * Soundex code of the last name and the version-2 {@link #getIdentityRegion() identity
+     * region}, joined by {@code '|'} before hashing. The result is a 64-character
+     * lower-case hex string. The identity region mixes the fixed {@code "V2"} tag in, so
+     * the key differs from every version-1 key. Two owners are duplicates only when their
+     * whole identity keys are equal; because the telephone is part of the key, two owners
+     * with the same last name and postcode but different telephones have different keys
+     * (and are a soft match, not a hard duplicate).
      */
     @Transient
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
         String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
         String lastNameCode = Soundex.encode(getLastName());
-        return sha256hex(tel + "|" + mail + "|" + lastNameCode);
+        return sha256hex(tel + "|" + mail + "|" + lastNameCode + "|" + getIdentityRegion());
     }
 
     /** Lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}. */
