@@ -43,6 +43,16 @@ final class OwnerCityCounts {
         return count >= WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY;
     }
 
+    /**
+     * True when the owner's city is over its soft capacity, i.e. it already holds at least
+     * {@link #WARNING_THRESHOLD} owners (the soft, per-city warning threshold), matched case- and
+     * whitespace-insensitively. Unlike {@link #capacityWarning}, this stays true once the city
+     * reaches the hard {@link #MAX_OWNERS_PER_CITY} limit.
+     */
+    static boolean overSoftCapacity(OwnerRepository ownerRepository, Owner owner) {
+        return countInCity(ownerRepository, owner.getCity()) >= WARNING_THRESHOLD;
+    }
+
     /** Lower-case and collapse runs of whitespace so comparison is case- and whitespace-insensitive. */
     private static String normalize(String value) {
         if (value == null) {
