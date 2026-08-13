@@ -7,7 +7,7 @@ import java.time.Month;
  * Fiscal-year rules for date-derived owner values. The fiscal year starts on 1 July, so a date in
  * July or later belongs to the fiscal year ending the following calendar year (the Australian
  * convention): e.g. 1 July 2026 is fiscal year 2027, while 30 June 2026 is fiscal year 2026. Shared
- * by {@link AssignOwnerMembershipNumber} (the membership number's year segment) and the owner mapper
+ * by {@link AssignOwnerMemberId} (the {@code memberId}'s FY segment) and the owner mapper
  * (the {@code fiscalYear} field and tenure-based membership points) so every date-derived value uses
  * one definition.
  */

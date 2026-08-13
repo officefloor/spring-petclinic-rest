@@ -11,9 +11,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits, on successful create, both a human-readable audit line and an immutable structured
- * {@link OwnerCreatedEvent} — recording the newly-persisted owner's id, {@code customerCode},
- * {@code registrationDate}, {@code membershipLevel} and {@code membershipNumber} — to the dedicated
- * {@code AUDIT} logger. Runs after {@link SaveOwner} (so the owner has its generated id) and before
+ * {@link OwnerCreatedEvent} — recording the newly-persisted owner's id, {@code memberId},
+ * {@code registrationDate} and {@code membershipLevel} — to the dedicated {@code AUDIT} logger. Runs
+ * after {@link SaveOwner} (so the owner has its generated id) and before
  * {@link RespondWithOwnerCreated}.
  */
 public class AuditOwnerCreated {
@@ -25,9 +25,8 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         Integer membershipLevel = ownerMapper.toOwnerDto(owner).getMembershipLevel();
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                membershipLevel, owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
                 primaryIdentifier(owner), membershipLevel);
@@ -35,11 +34,10 @@ public class AuditOwnerCreated {
     }
 
     /**
-     * The owner's current primary identifier carried by the event. Today the {@code customerCode};
-     * once the customerCode is unified into the memberId, return the memberId here so the event
-     * carries it instead — this is the one place that resolution changes.
+     * The owner's primary identifier carried by the event — the unified {@code memberId}. This is the
+     * one place that resolution is expressed.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

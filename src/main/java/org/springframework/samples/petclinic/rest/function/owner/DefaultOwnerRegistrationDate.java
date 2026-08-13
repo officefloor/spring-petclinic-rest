@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * server's current date when the request omits it. The effective date must fall on a business day,
  * so a Saturday or Sunday — whether supplied or defaulted — rolls forward to the next Monday (see
  * {@link BusinessDay}). Runs after {@link BuildOwner} maps the request and before
- * {@link AssignOwnerMembershipNumber} (which derives its year segment from this value) and
+ * {@link AssignOwnerMemberId} (which derives the {@code memberId}'s FY segment from this value) and
  * {@link SaveOwner} persists it.
  */
 public class DefaultOwnerRegistrationDate {

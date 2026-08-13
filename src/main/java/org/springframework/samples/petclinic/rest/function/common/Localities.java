@@ -9,8 +9,8 @@ import java.util.Map;
  * table. Anything unresolved maps to {@link #UNKNOWN}.
  *
  * <p>{@link #ofPostcode(String)} resolves the region from the postcode alone — the {@code REGION}
- * segment of an owner's {@code customerCode} — and {@link #regionOf(String)} reads that segment
- * back out of a stored {@code customerCode}.
+ * segment of an owner's {@code memberId} — and {@link #regionOf(String)} reads that segment
+ * back out of a stored {@code memberId}.
  */
 public final class Localities {
 
@@ -59,7 +59,7 @@ public final class Localities {
     /**
      * The canonical region derived from the postcode ALONE (no city fallback): the region whose
      * range contains {@code postcode}, or {@code UNKNOWN} when the postcode is absent or in no known
-     * range. This is the {@code REGION} segment of an owner's {@code customerCode}.
+     * range. This is the {@code REGION} segment of an owner's {@code memberId}.
      */
     public static String ofPostcode(String postcode) {
         String byPostcode = byPostcode(postcode);
@@ -67,27 +67,31 @@ public final class Localities {
     }
 
     /**
-     * The region an owner belongs to, read back from the {@code REGION} segment of its
-     * {@code customerCode} ({@code <REGION>-<HASH8>}) — the single region-and-hash identity all
-     * region-derived values now flow from. Returns {@code UNKNOWN} when the code is absent or
-     * unsegmented.
+     * The region an owner belongs to, read back from the leading {@code REGION} segment of its
+     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}) — the single region-and-hash identity all
+     * region-derived values now flow from. The region is the leading run of letters (the FY digits
+     * that follow it terminate the segment). Returns {@code UNKNOWN} when the id is absent or has no
+     * leading letters.
      */
-    public static String regionOf(String customerCode) {
-        if (customerCode == null) {
+    public static String regionOf(String memberId) {
+        if (memberId == null) {
             return UNKNOWN;
         }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? UNKNOWN : customerCode.substring(0, dash);
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? UNKNOWN : memberId.substring(0, i);
     }
 
     /**
      * The IANA timezone name for an owner, derived from the {@code REGION} segment of its
-     * {@code customerCode} via the fixed region-to-timezone table (NSW -> Australia/Sydney,
+     * {@code memberId} via the fixed region-to-timezone table (NSW -> Australia/Sydney,
      * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). Returns {@code UNKNOWN} when the
      * region is absent or not in the table.
      */
-    public static String timezoneOf(String customerCode) {
-        return REGION_TIMEZONE.getOrDefault(regionOf(customerCode), UNKNOWN);
+    public static String timezoneOf(String memberId) {
+        return REGION_TIMEZONE.getOrDefault(regionOf(memberId), UNKNOWN);
     }
 
     /** The region whose range contains {@code postcode}, or {@code null} when none does. */
