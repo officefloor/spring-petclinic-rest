@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cf7271e4..e1ffaa04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -63,6 +64,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.context.request.RequestContextHolder;
++import org.springframework.web.context.request.ServletRequestAttributes;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -131,6 +134,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private final VisitMapper visitMapper;
+ 
++    /**
++     * Remembers the id of the owner created under each seen {@code Idempotency-Key}, so a create that
++     * repeats with an already-seen key returns the originally created owner instead of creating a
++     * duplicate.
++     */
++    private final Map<String, Integer> ownersByIdempotencyKey = new ConcurrentHashMap<>();
++
+     public OwnerRestControllerV1(ClinicService clinicService,
+                                  OwnerMapper ownerMapper,
+                                  PetMapper petMapper,
+@@ -169,6 +179,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey != null) {
++            Integer existingId = ownersByIdempotencyKey.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
++                }
++            }
++        }
+         validateRequiredFields(ownerFieldsDto);
+         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+         HttpHeaders headers = new HttpHeaders();
+@@ -191,6 +211,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         flagPossibleDuplicate(owner, sharesHousehold);
+         this.clinicService.saveOwner(owner);
++        if (idempotencyKey != null) {
++            ownersByIdempotencyKey.put(idempotencyKey, owner.getId());
++        }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+@@ -200,6 +223,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Reads the {@code Idempotency-Key} header of the request currently being handled, returning
++     * {@code null} when the header is absent or blank (or there is no bound request). A non-blank
++     * value opts the create into idempotent replay via {@link #ownersByIdempotencyKey}.
++     *
++     * @return the trimmed idempotency key, or {@code null} when none was supplied
++     */
++    private String currentIdempotencyKey() {
++        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
++            return null;
++        }
++        String key = attrs.getRequest().getHeader("Idempotency-Key");
++        return isBlank(key) ? null : key.trim();
++    }
++
+     /**
+      * Builds the owner's customer code, formatted {@code <REGION>-<HASH8>} where REGION is the region
+      * code derived from the owner's postcode (falling back to the city-to-region table, then
