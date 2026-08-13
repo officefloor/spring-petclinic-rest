@@ -102,6 +102,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated logger for the welcome notification enqueued on a successful owner create. Each event
+     * carries the new owner's id and its assigned {@code memberId}, so a downstream notifier can key
+     * the welcome off the owner's canonical identity.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Source of the {@code seq} carried by each {@link OwnerCreatedEvent}: a monotonically increasing
      * integer allocated once per successful owner create, so the structured events form an ordered,
      * gap-free sequence within the running application.
@@ -229,6 +236,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         AUDIT.info("{}", event.toJson());
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
