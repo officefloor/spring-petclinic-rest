@@ -57,6 +57,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Monotonically increasing sequence assigned to each {@code OWNER_CREATED} structured event, in
+     * the order owners are created across this application instance. Shared across all requests.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong OWNER_EVENT_SEQ =
+        new java.util.concurrent.atomic.AtomicLong();
+
+    /** Serializes the immutable {@link OwnerCreatedEvent} to its canonical JSON form. */
+    private static final tools.jackson.databind.ObjectMapper AUDIT_EVENT_MAPPER =
+        tools.jackson.databind.json.JsonMapper.builder().build();
+
+    /**
+     * Immutable structured audit event emitted alongside the human-readable audit line when an owner
+     * is created. Its component order is also its JSON field order: {@code seq}, {@code ownerId},
+     * {@code customerCode}, {@code membershipLevel}, {@code event}. The {@code customerCode} component
+     * carries the owner's <em>current primary identifier</em>; today that is the customer code, and it
+     * is the single field a later checkpoint repoints when the identity is unified into the memberId.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+        Integer membershipLevel, String event) {
+    }
+
+    /**
      * Remembers, per seen {@code Idempotency-Key} header, the id of the owner originally created for
      * that key, so a repeated create carrying the same key returns that owner instead of creating a
      * duplicate. Kept in memory and keyed on the opaque client-supplied value.
@@ -235,6 +257,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
             ownerDto.getMembershipNumber());
+        // The event's primary identifier is the owner's customerCode today; a later checkpoint unifies
+        // it into the memberId and repoints this single expression, and the event carries that instead.
+        String primaryIdentifier = owner.getCustomerCode();
+        OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_EVENT_SEQ.incrementAndGet(),
+            owner.getId(), primaryIdentifier, ownerDto.getMembershipLevel(), "OWNER_CREATED");
+        AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
