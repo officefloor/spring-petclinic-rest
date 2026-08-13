@@ -127,7 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold && !householdMembers.isEmpty()) {
             String householdId = householdId(owner.getLastName(), normalizedAddress);
@@ -241,15 +241,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     /**
      * Build the customer code for a newly created owner, formatted
-     * {@code '<LAST3>-<NNNN>'} where {@code LAST3} is the upper-cased first three
-     * letters of the last name and {@code NNNN} is a global 4-digit zero-padded
-     * sequence equal to one more than the current number of owners.
+     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
+     * three letters of the city, {@code LAST3} the upper-cased first three letters of
+     * the last name, and {@code NNNN} a per-city 4-digit zero-padded sequence equal to
+     * one more than the number of owners already in that city.
      */
-    private String nextCustomerCode(String lastName) {
-        String prefix = lastName == null ? "" : lastName;
-        prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", prefix, sequence);
+    private String nextCustomerCode(String city, String lastName) {
+        String cityPrefix = prefixThree(city);
+        String lastNamePrefix = prefixThree(lastName);
+        String normalizedCity = normalizeForHousehold(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(normalizedCity))
+            .count() + 1;
+        return String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence);
+    }
+
+    /** Upper-cased first three letters of {@code value} (fewer if shorter, empty if null). */
+    private String prefixThree(String value) {
+        String v = value == null ? "" : value;
+        return v.substring(0, Math.min(3, v.length())).toUpperCase(Locale.ROOT);
     }
 
     /**
