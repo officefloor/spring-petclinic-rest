@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
 import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -18,10 +20,15 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public abstract class OwnerMapper {
 
+    @Autowired
+    protected OwnerRepository ownerRepository;
+
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "membershipPoints",
+            expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
@@ -60,25 +67,64 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derive the owner's membership level, a number from 1 to 4. Starts at 1, plus 1 when an
-     * email is present, plus 1 when {@code namesakeCount} is 0, plus 1 when tenure exceeds
-     * 365 days, capped at 4. Because a newly created owner has zero tenure, a new owner never
-     * exceeds level 3.
+     * Score the owner's membership points. Starts at 0, plus 2 when an email is present, plus 1
+     * when {@code namesakeCount} is 0, plus 2 for a household of 3 or more owners, plus 3 when
+     * tenure exceeds 365 days. Because a newly created owner has zero tenure, the tenure points
+     * are only earned on later reads.
      */
-    protected Integer membershipLevel(Owner owner) {
-        int level = 1;
+    protected Integer membershipPoints(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount().intValue() == 0) {
-            level++;
+            points += 1;
+        }
+        if (householdSize(owner) >= 3) {
+            points += 2;
         }
         if (owner.getRegistrationDate() != null
                 && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
                         java.time.LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Map {@link #membershipPoints(Owner)} to a membership level from 1 to 4: level 1 for 0-1
+     * points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
+     */
+    protected Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
+    }
+
+    /**
+     * The number of owners in this owner's household, identified by the shared {@code householdId}
+     * assigned at creation. An owner with no householdId counts only as itself.
+     */
+    protected long householdSize(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 1;
+        }
+        long count = 0;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
