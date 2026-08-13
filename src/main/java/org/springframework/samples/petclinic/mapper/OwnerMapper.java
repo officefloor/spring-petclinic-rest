@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
             expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(fiscalYear(owner))")
+    @Mapping(target = "ownerSegment",
+            expression = "java(ownerSegment(owner))")
     @Mapping(target = "selfLink",
             expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -223,6 +225,23 @@ public abstract class OwnerMapper {
         return owner.getRegistrationDate() == null ? null
                 : org.springframework.samples.petclinic.rest.function.owner.FiscalYear
                         .label(owner.getRegistrationDate());
+    }
+
+    /** Known regions whose owners fall in the {@code METRO} area; anything else is {@code REGIONAL}. */
+    private static final java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * The owner's segment, formatted {@code <TIER>_<AREA>}: TIER is {@code PREMIUM} when
+     * {@link #membershipLevel(Owner)} is 3 or more, otherwise {@code STANDARD}; AREA is {@code METRO}
+     * when the owner's locality is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    protected String ownerSegment(Owner owner) {
+        Integer level = membershipLevel(owner);
+        String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
+        String region = org.springframework.samples.petclinic.rest.function.common.Localities
+                .regionOf(owner.getCustomerCode());
+        String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
