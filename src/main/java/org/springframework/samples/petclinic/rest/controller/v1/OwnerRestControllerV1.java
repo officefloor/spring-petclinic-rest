@@ -118,6 +118,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (countOwnersRegisteredOn(LocalDate.now()) >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers =
             findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
@@ -268,6 +271,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedCity = normalizeForHousehold(city);
         return this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForHousehold(existing.getCity()).equals(normalizedCity))
+            .count();
+    }
+
+    /**
+     * Count the existing owners whose registration date falls on the given day. Used to
+     * enforce the per-day create limit: once this many owners have been registered today,
+     * the day is at capacity and further creates are rejected.
+     */
+    private long countOwnersRegisteredOn(LocalDate day) {
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> day.equals(existing.getRegistrationDate()))
             .count();
     }
 
