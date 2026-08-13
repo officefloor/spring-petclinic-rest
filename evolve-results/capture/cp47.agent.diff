@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d4470770..f9baca29 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -114,6 +115,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int DAILY_OWNER_LIMIT = 100;
+ 
++    /**
++     * Fixed public holidays that the business-day roll skips: when an adjusted registration date lands
++     * on one of these it advances to the next non-holiday business day.
++     */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"),
++        LocalDate.parse("2026-04-25"), LocalDate.parse("2026-12-25"), LocalDate.parse("2026-12-28"));
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -411,20 +420,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rolls a registration date forward onto a business day: when it falls on a Saturday or Sunday
+-     * it advances to the following Monday, otherwise it is returned unchanged. Applied to the
+-     * effective registration date (whether supplied in the request or defaulted to the server date)
+-     * so a weekend value never persists as an owner's {@code registrationDate}.
++     * Rolls a registration date forward onto a business day: while it falls on a Saturday, a Sunday or
++     * a listed {@link #PUBLIC_HOLIDAYS public holiday} it advances one day at a time until it lands on
++     * a non-holiday weekday, otherwise it is returned unchanged. Applied to the effective registration
++     * date (whether supplied in the request or defaulted to the server date) so a weekend or holiday
++     * value never persists as an owner's {@code registrationDate}.
+      *
+      * @param date the effective registration date
+-     * @return the same date when it is a weekday, otherwise the next Monday
++     * @return the same date when it is a non-holiday weekday, otherwise the next non-holiday business day
+      */
+     private LocalDate toBusinessDay(LocalDate date) {
+-        return switch (date.getDayOfWeek()) {
+-            case SATURDAY -> date.plusDays(2);
+-            case SUNDAY -> date.plusDays(1);
+-            default -> date;
+-        };
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY
++            || date.getDayOfWeek() == DayOfWeek.SUNDAY
++            || PUBLIC_HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
++        }
++        return date;
+     }
+ 
+     private boolean equalsIgnoreCase(String a, String b) {
