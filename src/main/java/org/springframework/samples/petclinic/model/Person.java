@@ -52,5 +52,20 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    /**
+     * Return the person's initials as the upper-cased first letters of the first
+     * and last name, dot-separated with a trailing dot, e.g. {@code "J.S."}.
+     */
+    public String getInitials() {
+        StringBuilder initials = new StringBuilder();
+        if (this.firstName != null && !this.firstName.isEmpty()) {
+            initials.append(Character.toUpperCase(this.firstName.charAt(0))).append('.');
+        }
+        if (this.lastName != null && !this.lastName.isEmpty()) {
+            initials.append(Character.toUpperCase(this.lastName.charAt(0))).append('.');
+        }
+        return initials.toString();
+    }
+
 
 }
