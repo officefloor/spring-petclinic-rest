@@ -108,6 +108,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && isHouseholdDuplicate(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);
@@ -226,6 +230,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         prefix = prefix.substring(0, Math.min(3, prefix.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", prefix, sequence);
+    }
+
+    /**
+     * Determine whether another owner already belongs to the same household, i.e. shares
+     * both the given last name and address. Both fields are compared case-insensitively
+     * after collapsing runs of whitespace to a single space and trimming the ends.
+     */
+    private boolean isHouseholdDuplicate(String lastName, String address) {
+        String normalizedLastName = normalizeForHousehold(lastName);
+        String normalizedAddress = normalizeForHousehold(address);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
+    }
+
+    private String normalizeForHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private String normalizeTelephone(String telephone) {
