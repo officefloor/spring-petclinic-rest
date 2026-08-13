@@ -26,6 +26,7 @@ public interface OwnerMapper {
             expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount().intValue() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"SILVER\" : \"BRONZE\")")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.of(owner.getCity()))")
+    @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
