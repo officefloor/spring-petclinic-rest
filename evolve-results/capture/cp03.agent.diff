@@ -1,0 +1,184 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+index b4348ab4..254dca74 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+@@ -47,6 +47,14 @@ public interface OwnerRepository {
+ 
+     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
+ 
++    /**
++     * Retrieve <code>Owner</code>s from the data store by exact telephone.
++     *
++     * @param telephone the (normalized) telephone to search for
++     * @return a <code>Collection</code> of owners with that telephone (empty if none)
++     */
++    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
++
+     /**
+      * Retrieve an <code>Owner</code> from the data store by id.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index a3faf618..da6088bc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -111,6 +111,19 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total == null ? 0 : total);
+     }
+ 
++    @Override
++    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
++        Map<String, Object> params = new HashMap<>();
++        params.put("telephone", telephone);
++        List<Owner> owners = this.namedParameterJdbcTemplate.query(
++            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE telephone = :telephone",
++            params,
++            BeanPropertyRowMapper.newInstance(Owner.class)
++        );
++        loadOwnersPetsAndVisits(owners);
++        return owners;
++    }
++
+     /**
+      * Loads the {@link Owner} with the supplied <code>id</code>; also loads the {@link Pet Pets} and {@link Visit Visits}
+      * for the corresponding owner, if not already loaded.
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+index db275765..cbf94ffb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+@@ -79,6 +79,14 @@ public class JpaOwnerRepositoryImpl implements OwnerRepository {
+         return new PageImpl<>(owners, pageable, total);
+     }
+ 
++    @Override
++    @SuppressWarnings("unchecked")
++    public Collection<Owner> findByTelephone(String telephone) throws DataAccessException {
++        Query query = this.em.createQuery("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone");
++        query.setParameter("telephone", telephone);
++        return query.getResultList();
++    }
++
+     @Override
+     public Owner findById(int id) {
+         // using 'join fetch' because a single query should load both owners and pets
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+index ef05a53c..2937c35c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java
+@@ -55,4 +55,8 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
+     @Override
+     @Query("SELECT owner FROM Owner owner left join fetch owner.pets WHERE owner.id =:id")
+     Owner findById(@Param("id") int id);
++
++    @Override
++    @Query("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone")
++    Collection<Owner> findByTelephone(@Param("telephone") String telephone);
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+new file mode 100644
+index 00000000..7831321a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneException.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown on create when the normalized telephone is already used by another owner. Handled by
++ * {@link DuplicateTelephoneExceptionHandler}, which responds 409.
++ */
++public class DuplicateTelephoneException extends Exception {
++
++    private final String telephone;
++
++    public DuplicateTelephoneException(String telephone) {
++        super("Telephone already in use: " + telephone);
++        this.telephone = telephone;
++    }
++
++    public String getTelephone() {
++        return telephone;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+new file mode 100644
+index 00000000..15a5dfb7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateTelephoneExceptionHandler.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 409 with a JSON body whose {@code errors} array names the offending
++ * {@code telephone} field when a create request supplies a telephone already used by
++ * another owner.
++ */
++public class DuplicateTelephoneExceptionHandler {
++
++    public void handle(@Parameter DuplicateTelephoneException ex,
++            ObjectResponse<ResponseEntity<Map<String, List<String>>>> response) {
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT)
++                .body(Map.of("errors", List.of("telephone"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueOwnerTelephone.java
+new file mode 100644
+index 00000000..00788a2c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueOwnerTelephone.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Runs after {@link NormalizeOwnerTelephone} on {@code POST /api/owners}: rejects the request
++ * with 409 via {@link DuplicateTelephoneException} when the normalized telephone is already used
++ * by any existing owner. Runs before {@link BuildOwner} so no owner is created on conflict.
++ */
++public class CheckUniqueOwnerTelephone {
++
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++            throws DuplicateTelephoneException {
++        String telephone = request.getTelephone();
++        for (Owner existing : ownerRepository.findByTelephone(telephone)) {
++            if (telephone.equals(existing.getTelephone())) {
++                throw new DuplicateTelephoneException(telephone);
++            }
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+new file mode 100644
+index 00000000..08d58bf2
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index aaac53aa..567ab4af 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -9,6 +9,11 @@ require:
+ normalize:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerTelephone
+   govern: [ transaction ]
++  next: checkUnique
++
++checkUnique:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueOwnerTelephone
++  govern: [ transaction ]
+   next: build
+ 
+ build:
