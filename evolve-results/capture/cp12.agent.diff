@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3bc62e2d..edd7a70e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,12 +65,51 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    /** Common street-type abbreviations expanded during address normalization. */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
+     public String getAddress() {
+         return this.address;
+     }
+ 
++    /**
++     * Set the owner's address, normalizing it to a canonical form so it is both
++     * stored and returned consistently. Leading/trailing whitespace is trimmed,
++     * internal runs of whitespace are collapsed to a single space, the value is
++     * upper-cased, and common street-type abbreviations are expanded ({@code ST ->
++     * STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). A {@code null} value is
++     * left as-is.
++     */
+     public void setAddress(String address) {
+-        this.address = address;
++        this.address = normalizeAddress(address);
++    }
++
++    /**
++     * Normalize an address string to its canonical form: trimmed, whitespace
++     * collapsed, upper-cased, with common street-type abbreviations expanded.
++     * Returns {@code null} for a {@code null} input; a value that is blank once
++     * trimmed normalizes to the empty string.
++     */
++    public static String normalizeAddress(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder();
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
+     }
+ 
+     public String getCity() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ddc48b1d..5b833ae9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,12 +108,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (normalizedTelephone == null) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
++        String normalizedAddress = Owner.normalizeAddress(ownerFieldsDto.getAddress());
++        if (normalizedAddress == null || normalizedAddress.isBlank()) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         List<Owner> householdMembers =
+-            findHouseholdMembers(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
++            findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
+         if (!sharesHousehold && !householdMembers.isEmpty()) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -125,7 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+         if (sharesHousehold && !householdMembers.isEmpty()) {
+-            String householdId = householdId(owner.getLastName(), owner.getAddress());
++            String householdId = householdId(owner.getLastName(), normalizedAddress);
+             owner.setHouseholdId(householdId);
+             for (Owner member : householdMembers) {
+                 if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
