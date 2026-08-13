@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -157,9 +158,30 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            List<String> missingFields = bindingResult.getFieldErrors().stream()
+                .filter(ExceptionControllerAdvice::isMissingOrBlank)
+                .map(FieldError::getField)
+                .distinct()
+                .toList();
+            detail.setProperty("errors", missingFields);
             return ResponseEntity.status(status).body(detail);
         }
+        detail.setProperty("errors", List.<String>of());
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Determines whether a field validation error was caused by the field being missing (null) or
+     * blank (empty or whitespace-only). Used to build the {@code errors} array that lists the name
+     * of each required owner field the client failed to supply.
+     *
+     * @param fieldError the rejected field error to inspect
+     * @return {@code true} if the rejected value is {@code null} or a blank string
+     */
+    private static boolean isMissingOrBlank(FieldError fieldError) {
+        Object rejectedValue = fieldError.getRejectedValue();
+        return rejectedValue == null
+            || (rejectedValue instanceof String value && value.isBlank());
     }
 
 }
