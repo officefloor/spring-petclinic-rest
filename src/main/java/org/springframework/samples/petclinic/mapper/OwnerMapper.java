@@ -3,10 +3,8 @@ package org.springframework.samples.petclinic.mapper;
 import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -20,15 +18,12 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public abstract class OwnerMapper {
 
-    @Autowired
-    protected OwnerRepository ownerRepository;
-
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipTier",
-            expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.of(owner.getCity()))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -55,27 +50,18 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derive the owner's membership tier. An owner whose household (owners sharing the same
-     * {@code householdId}) has three or more members is {@code GOLD}; otherwise the existing
-     * {@code SILVER} (no namesakes and an email on file) and {@code BRONZE} rules apply.
+     * Derive the owner's membership level, a number from 1 to 3 fixed at creation. Starts at 1,
+     * plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3
+     * (level 4 is reserved for tenure).
      */
-    protected String membershipTier(Owner owner) {
-        if (owner.getHouseholdId() != null && householdSize(owner.getHouseholdId()) >= 3) {
-            return "GOLD";
+    protected Integer membershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            level++;
         }
-        boolean silver = owner.getNamesakeCount() != null && owner.getNamesakeCount().intValue() == 0
-                && owner.getEmail() != null && !owner.getEmail().isEmpty();
-        return silver ? "SILVER" : "BRONZE";
-    }
-
-    /** Count the owners currently stored that share the given household id. */
-    private long householdSize(String householdId) {
-        long count = 0;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(existing.getHouseholdId())) {
-                count++;
-            }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount().intValue() == 0) {
+            level++;
         }
-        return count;
+        return Math.min(level, 3);
     }
 }
