@@ -114,10 +114,47 @@ public abstract class OwnerMapper {
     }
 
     /**
+     * The owner's membership level: its raw {@link #uncappedLevel(Owner) level from points}, subject
+     * to the household level ceiling. A new owner's level cannot exceed one above the current maximum
+     * level among its household members — the members (sharing its {@code householdId}) that already
+     * existed when it was created, i.e. those with a smaller id. With no existing household member no
+     * cap applies. The household is replayed in creation (id) order so each member is capped at one
+     * above the running maximum of the earlier members' already-capped levels.
+     */
+    protected Integer membershipLevel(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        Integer id = owner.getId();
+        if (householdId == null || id == null) {
+            return uncappedLevel(owner);
+        }
+        java.util.List<Owner> members = new java.util.ArrayList<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.getId() != null && existing.getId() <= id
+                    && householdId.equals(existing.getHouseholdId())) {
+                members.add(existing);
+            }
+        }
+        members.sort(java.util.Comparator.comparingInt(Owner::getId));
+        Integer runningMax = null;
+        int result = uncappedLevel(owner);
+        for (Owner member : members) {
+            int level = uncappedLevel(member);
+            if (runningMax != null) {
+                level = Math.min(level, runningMax + 1);
+            }
+            runningMax = (runningMax == null) ? level : Math.max(runningMax, level);
+            if (member.getId().equals(id)) {
+                result = level;
+            }
+        }
+        return result;
+    }
+
+    /**
      * Map {@link #membershipPoints(Owner)} to a membership level from 1 to 4: level 1 for 0-1
      * points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
      */
-    protected Integer membershipLevel(Owner owner) {
+    private int uncappedLevel(Owner owner) {
         int points = membershipPoints(owner);
         if (points <= 1) {
             return 1;
