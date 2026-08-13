@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0bde61ef..ac52bfe2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -281,15 +281,42 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Return the owner's locality, derived from the city using the fixed
++     * Return the owner's locality (region), preferring the postcode: when the
++     * postcode is present and falls within a known region's inclusive range
++     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), that
++     * region is returned. Otherwise the value falls back to the fixed
+      * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+-     * {@code Brisbane -> QLD}). Returns the canonical region string, or
+-     * {@code 'UNKNOWN'} when the city is not in the table.
++     * {@code Brisbane -> QLD}), or {@code 'UNKNOWN'} when the city is not in the
++     * table. This yields the same region for known cities but disambiguates
++     * cities that share a name.
+      */
+     public String getLocality() {
++        String regionFromPostcode = regionForPostcode();
++        if (regionFromPostcode != null) {
++            return regionFromPostcode;
++        }
+         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+     }
+ 
++    /**
++     * Look up the region whose inclusive postcode range contains this owner's
++     * postcode, or {@code null} when the postcode is absent, malformed, or in no
++     * known range.
++     */
++    private String regionForPostcode() {
++        if (this.postcode == null || !this.postcode.matches("^[0-9]{4}$")) {
++            return null;
++        }
++        int value = Integer.parseInt(this.postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Return the owner's preferred contact channel, derived from the stored
+      * contact details: {@code 'EMAIL'} when an email address is present,
