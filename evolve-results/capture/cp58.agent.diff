@@ -1,0 +1,168 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7b72cfa0..66d1bc21 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,6 +33,7 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.display(owner.getTelephone()))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
++    @Mapping(target = "riskFlag", ignore = true)
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index bd11845c..841ca67c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -25,9 +25,57 @@ final class OwnerEmail {
+     private static final Set<String> DISPOSABLE_DOMAINS =
+             Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+ 
++    /**
++     * The second-level labels of the blocked {@link #DISPOSABLE_DOMAINS} (e.g.
++     * {@code mailinator} for {@code mailinator.com}). A domain is "disposable-adjacent"
++     * when it shares one of these labels without being an outright-blocked domain.
++     */
++    private static final Set<String> DISPOSABLE_LABELS = DISPOSABLE_DOMAINS.stream()
++            .map(OwnerEmail::secondLevelLabel).collect(java.util.stream.Collectors.toUnmodifiableSet());
++
+     private OwnerEmail() {
+     }
+ 
++    /**
++     * Whether {@code email}'s domain is <em>disposable-adjacent</em>: a near neighbour of
++     * a blocked disposable domain that is not itself blocked (blocked domains are rejected
++     * by {@link #normalize} before an owner is ever created). A domain qualifies when its
++     * second-level label matches a disposable domain's label (see {@link #DISPOSABLE_LABELS})
++     * under a different top-level domain (e.g. {@code mailinator.net}) or as a subdomain
++     * (e.g. {@code x.mailinator.com}). A {@code null} or blank email is not adjacent.
++     */
++    static boolean isDisposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        String trimmed = email.strip();
++        if (trimmed.isEmpty()) {
++            return false;
++        }
++        int at = trimmed.indexOf('@');
++        if (at < 0 || at == trimmed.length() - 1) {
++            return false;
++        }
++        String domain = trimmed.substring(at + 1).toLowerCase(Locale.ROOT);
++        if (DISPOSABLE_DOMAINS.contains(domain)) {
++            return false; // an outright-blocked domain is rejected, not merely adjacent
++        }
++        return DISPOSABLE_LABELS.contains(secondLevelLabel(domain));
++    }
++
++    /**
++     * The second-level label of a dotted domain — the label immediately before the final
++     * (top-level) label, e.g. {@code mailinator} for both {@code mailinator.com} and
++     * {@code x.mailinator.com}. A domain with fewer than two labels yields the whole domain.
++     */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return domain;
++        }
++        return labels[labels.length - 2];
++    }
++
+     /**
+      * Normalize a supplied email. A {@code null} or blank value is treated as absent and
+      * returns {@code null}. A present value must match {@link #EMAIL} and must not use a
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+index 050f627b..3e43845c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+@@ -20,6 +20,7 @@ public class RespondWithExistingOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.forToday(ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.forCity(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.forOwner(owner, ownerRepository));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 6c4291bd..b0221f2f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.forToday(ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.forCity(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.forOwner(owner, ownerRepository));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 6678d9f4..885bbfdc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.forToday(ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.forCity(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.forOwner(owner, ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 00000000..e8fee562
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Computes the {@code riskFlag} response flag: true when any of these hold at the time of
++ * the response, otherwise false —
++ *
++ * <ul>
++ * <li>the owner is a possible duplicate ({@link Owner#isPossibleDuplicate()}, set at
++ * creation by {@link AssignPossibleDuplicate});</li>
++ * <li>the email domain is <em>disposable-adjacent</em> (see
++ * {@link OwnerEmail#isDisposableAdjacent(String)});</li>
++ * <li>the owner's city is over its soft capacity — the same "approaching the hard cap"
++ * threshold surfaced as {@code capacityWarning} (see {@link CapacityWarning#forCity}).</li>
++ * </ul>
++ */
++final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    static boolean forOwner(Owner owner, OwnerRepository ownerRepository) {
++        return owner.isPossibleDuplicate()
++            || OwnerEmail.isDisposableAdjacent(owner.getEmail())
++            || CapacityWarning.forCity(owner, ownerRepository);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c9ed7593..3c00e06c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2288,6 +2288,18 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any of these hold at the time of this response: the owner
++                is a possible duplicate (possibleDuplicate), the email domain is
++                disposable-adjacent (shares a blocked disposable domain's
++                second-level label but is not itself blocked, e.g. a different TLD
++                or a subdomain), or the owner's city is over its soft capacity (the
++                capacityWarning threshold); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
