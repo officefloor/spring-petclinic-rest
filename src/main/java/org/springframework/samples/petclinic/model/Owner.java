@@ -444,19 +444,103 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived key used for all duplicate detection, formatted
-     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}. Two owners are
-     * duplicates only when their whole identity keys are equal; because the telephone is part
-     * of the key, two members of the same household with different telephones have different
-     * keys and are both allowed.
+     * The single derived key used for all duplicate detection: the lower-case hex SHA-256 digest of
+     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. Two owners are duplicates
+     * only when their whole identity keys are equal; because the telephone is part of the key, two
+     * members of the same household with different telephones have different keys and are both
+     * allowed.
      *
-     * @return the derived identity key
+     * @return the derived identity key as 64 lower-case hex characters
      */
     @Transient
     public String getIdentityKey() {
-        return (this.telephone == null ? "" : this.telephone) + "|"
-            + (this.email == null ? "" : this.email) + "|"
-            + (this.householdId == null ? "" : this.householdId);
+        String seed = (this.telephone == null ? "" : this.telephone) + "|"
+            + (this.email == null ? "" : this.email.toLowerCase(Locale.ROOT)) + "|"
+            + soundex(this.getLastName());
+        return sha256Hex(seed);
+    }
+
+    /**
+     * The full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}.
+     *
+     * @param value the source value to hash
+     * @return the 64-character lower-case hex digest
+     */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
+     * The American Soundex code of a name: its first letter followed by three digits derived from
+     * the remaining consonants ({@code b,f,p,v -> 1}; {@code c,g,j,k,q,s,x,z -> 2}; {@code d,t -> 3};
+     * {@code l -> 4}; {@code m,n -> 5}; {@code r -> 6}; vowels and {@code h,w} are not coded).
+     * Adjacent letters mapping to the same digit (including when separated only by {@code h} or
+     * {@code w}) are coded once, while a vowel between them resets the run so the digit is coded
+     * again. The code is right-padded with zeros and truncated to length four. A {@code null} or
+     * letter-free name yields {@code '0000'}.
+     *
+     * @param name the name to encode
+     * @return the four-character Soundex code
+     */
+    public static String soundex(String name) {
+        String s = (name == null ? "" : name).toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (s.isEmpty()) {
+            return "0000";
+        }
+        char first = s.charAt(0);
+        StringBuilder code = new StringBuilder().append(first);
+        char prevDigit = soundexDigit(first);
+        for (int i = 1; i < s.length() && code.length() < 4; i++) {
+            char c = s.charAt(i);
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != prevDigit) {
+                code.append(digit);
+            }
+            if (c != 'H' && c != 'W') {
+                prevDigit = digit;
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * Maps a single upper-case letter to its Soundex digit, or {@code '0'} for vowels and the
+     * uncoded letters {@code h} and {@code w}.
+     *
+     * @param c the upper-case letter to map
+     * @return the Soundex digit character, or {@code '0'} when the letter is not coded
+     */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     /**
