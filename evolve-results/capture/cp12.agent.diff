@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7e0bbda3..da58ae43 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -69,6 +70,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Common street-type abbreviations expanded during address normalization. Keys and values are
++     * upper-cased, matching the state of the address after whitespace and case normalization.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -121,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
+         owner.setTelephone(normalizedTelephone);
+         owner.setEmail(normalizeEmail(owner.getEmail()));
++        owner.setAddress(normalizeAddress(owner.getAddress()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
+@@ -266,7 +275,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (isBlank(ownerFieldsDto.getLastName())) {
+             invalidFields.add("lastName");
+         }
+-        if (isBlank(ownerFieldsDto.getAddress())) {
++        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+             invalidFields.add("address");
+         }
+         if (isBlank(ownerFieldsDto.getCity())) {
+@@ -379,10 +388,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private void rejectDuplicateHousehold(String lastName, String address) {
+         String normalizedLastName = normalizeForComparison(lastName);
+-        String normalizedAddress = normalizeForComparison(address);
++        String normalizedAddress = normalizeAddress(address);
+         boolean duplicate = this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+-                && normalizedAddress.equals(normalizeForComparison(existing.getAddress())));
++                && normalizedAddress.equals(normalizeAddress(existing.getAddress())));
+         if (duplicate) {
+             throw new DuplicateOwnerHouseholdException(lastName, address);
+         }
+@@ -400,11 +409,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private void assignHousehold(Owner owner) {
+         String householdId = householdId(owner.getLastName(), owner.getAddress());
+         String normalizedLastName = normalizeForComparison(owner.getLastName());
+-        String normalizedAddress = normalizeForComparison(owner.getAddress());
++        String normalizedAddress = normalizeAddress(owner.getAddress());
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (existing.getHouseholdId() == null
+                 && normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+-                && normalizedAddress.equals(normalizeForComparison(existing.getAddress()))) {
++                && normalizedAddress.equals(normalizeAddress(existing.getAddress()))) {
+                 existing.setHouseholdId(householdId);
+                 this.clinicService.saveOwner(existing);
+             }
+@@ -423,7 +432,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return the stable household identifier
+      */
+     private String householdId(String lastName, String address) {
+-        String key = normalizeForComparison(lastName) + "\n" + normalizeForComparison(address);
++        String key = normalizeForComparison(lastName) + "\n" + normalizeAddress(address);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                 .digest(key.getBytes(StandardCharsets.UTF_8));
+@@ -451,4 +460,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+     }
++
++    /**
++     * Normalizes an owner address for storage and comparison: leading and trailing whitespace is
++     * stripped, every run of internal whitespace is collapsed to a single space, the value is
++     * upper-cased, and common street-type abbreviations are expanded ({@code ST -> STREET},
++     * {@code RD -> ROAD}, {@code AVE -> AVENUE}). For example {@code "  12  main  st "} normalizes to
++     * {@code "12 MAIN STREET"}. A {@code null} value normalizes to the empty string. This is the form
++     * that is stored, returned, and used for every address comparison (household duplicate detection
++     * and the shared household id).
++     *
++     * @param address the raw address value from the submitted owner payload, may be {@code null}
++     * @return the normalized address
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return "";
++        }
++        String collapsed = address.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder normalized = new StringBuilder();
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return normalized.toString();
++    }
+ }
