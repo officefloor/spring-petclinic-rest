@@ -54,8 +54,19 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
+    }
 
     public String getEmail() {
         return this.email;
