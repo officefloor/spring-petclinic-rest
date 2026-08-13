@@ -28,6 +28,8 @@ public interface OwnerMapper {
         expression = "java(owner.getRegion())")
     @Mapping(target = "checkDigit",
         expression = "java(luhn(owner.getCustomerCode()))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.display(owner.getTelephone()))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
