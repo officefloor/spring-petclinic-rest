@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -108,8 +111,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && isHouseholdDuplicate(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress())) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        List<Owner> householdMembers =
+            findHouseholdMembers(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        if (!sharesHousehold && !householdMembers.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         HttpHeaders headers = new HttpHeaders();
@@ -119,6 +124,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        if (sharesHousehold && !householdMembers.isEmpty()) {
+            String householdId = householdId(owner.getLastName(), owner.getAddress());
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
+            }
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -233,16 +248,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determine whether another owner already belongs to the same household, i.e. shares
-     * both the given last name and address. Both fields are compared case-insensitively
-     * after collapsing runs of whitespace to a single space and trimming the ends.
+     * Find the existing owners that already belong to the same household as the given
+     * last name and address, i.e. those sharing both fields. Both are compared
+     * case-insensitively after collapsing runs of whitespace to a single space and
+     * trimming the ends.
      */
-    private boolean isHouseholdDuplicate(String lastName, String address) {
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeForHousehold(lastName);
         String normalizedAddress = normalizeForHousehold(address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
+            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress))
+            .toList();
+    }
+
+    /**
+     * Build a stable identifier shared by all owners of one household. It is derived
+     * deterministically from the normalized last name and address, so every owner at
+     * the same household resolves to the same value regardless of creation order.
+     */
+    private String householdId(String lastName, String address) {
+        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return "HH-" + sb;
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private String normalizeForHousehold(String value) {
