@@ -215,6 +215,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "This city already has the maximum number of owners");
         }
+        // Approaching the per-city capacity limit (50): warn once the city already holds 40-49
+        // owners. Fixed at creation time, mirroring bulkSignupWarning. The >= 50 case is rejected
+        // above, so cityCount is guaranteed below 50 here.
+        owner.setCapacityWarning(cityCount >= 40);
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdMembers.size() + 1);
         // A new owner joining an existing household cannot rank more than one level above the current
