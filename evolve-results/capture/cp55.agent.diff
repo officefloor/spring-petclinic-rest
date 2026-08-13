@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5617af14..28c77e99 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -64,6 +64,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /**
+@@ -247,6 +248,34 @@ public abstract class OwnerMapper {
+         return null;
+     }
+ 
++    /**
++     * The minimum {@link #membershipLevel(Owner) membership level} at which an owner is a
++     * {@code PREMIUM} tier for {@link #ownerSegment(Owner) segmentation}; below it the owner is
++     * {@code STANDARD}.
++     */
++    private static final int PREMIUM_TIER_MIN_LEVEL = 3;
++
++    /**
++     * The regions treated as {@code METRO} for {@link #ownerSegment(Owner) segmentation}; any other
++     * locality (e.g. {@code UNKNOWN}) is {@code REGIONAL}.
++     */
++    private static final java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
++
++    /**
++     * Derives the owner's {@code ownerSegment}, formatted {@code <TIER>_<AREA>} (one of
++     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
++     * {@code STANDARD_REGIONAL}). TIER is {@code PREMIUM} when the owner's
++     * {@link #membershipLevel(Owner) membership level} is {@value #PREMIUM_TIER_MIN_LEVEL} or more,
++     * otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's
++     * {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
++     * {@code REGIONAL}.
++     */
++    protected OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        String tier = membershipLevel(owner) >= PREMIUM_TIER_MIN_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
++    }
++
+     /**
+      * The minimum household size (counting the owner itself) that earns household membership
+      * points.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b1658d63..dffa3dc5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2321,6 +2321,20 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is 'PREMIUM' when
++                membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the
++                locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
