@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e5c8ade3..34f9efeb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -197,21 +197,22 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * Return the owner's membership tier: {@code 'GOLD'} when the owner's household
+-     * (owners sharing the same household id) had 3 or more members after this owner
+-     * was created; otherwise {@code 'SILVER'} when the owner has no namesakes
+-     * (namesake count is {@code 0}) and an email address is present; otherwise
+-     * {@code 'BRONZE'}.
++     * Return the owner's membership level, a number from {@code 1} to {@code 3}
++     * assigned at creation: starting at {@code 1}, plus {@code 1} when an email
++     * address is present, plus {@code 1} when the owner has no namesakes (namesake
++     * count is {@code 0}), capped at {@code 3}. (Level {@code 4} is reserved for
++     * tenure.)
+      */
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
+-        }
++    public Integer getMembershipLevel() {
++        int level = 1;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+-        if (this.namesakeCount != null && this.namesakeCount == 0 && hasEmail) {
+-            return "SILVER";
++        if (hasEmail) {
++            level += 1;
++        }
++        if (this.namesakeCount != null && this.namesakeCount == 0) {
++            level += 1;
+         }
+-        return "BRONZE";
++        return Math.min(level, 3);
+     }
+ 
+     public void setNamesakeCount(Integer namesakeCount) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bdc1ff1b..abf71a21 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -157,8 +157,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+         }
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c6692e4d..abc8919c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2140,14 +2140,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'SILVER' when the owner has no
+-                namesakes (namesakeCount is 0) and an email address is present,
+-                otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 assigned at
++                creation: starting at 1, plus 1 when an email address is present,
++                plus 1 when the owner has no namesakes (namesakeCount is 0),
++                capped at 3.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
