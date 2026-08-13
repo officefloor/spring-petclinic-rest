@@ -60,6 +60,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "membership_number")
+    private String membershipNumber;
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
@@ -120,6 +123,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public String getMembershipNumber() {
+        return this.membershipNumber;
+    }
+
+    public void setMembershipNumber(String membershipNumber) {
+        this.membershipNumber = membershipNumber;
     }
 
     public LocalDate getRegistrationDate() {
