@@ -7,6 +7,10 @@ import java.util.Map;
  * up by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the
  * postcode is absent or falls in no known range does it fall back to the fixed city-to-region
  * table. Anything unresolved maps to {@link #UNKNOWN}.
+ *
+ * <p>{@link #ofPostcode(String)} resolves the region from the postcode alone — the {@code REGION}
+ * segment of an owner's {@code customerCode} — and {@link #regionOf(String)} reads that segment
+ * back out of a stored {@code customerCode}.
  */
 public final class Localities {
 
@@ -44,6 +48,30 @@ public final class Localities {
     public static String of(String city, String postcode) {
         String byPostcode = byPostcode(postcode);
         return byPostcode != null ? byPostcode : of(city);
+    }
+
+    /**
+     * The canonical region derived from the postcode ALONE (no city fallback): the region whose
+     * range contains {@code postcode}, or {@code UNKNOWN} when the postcode is absent or in no known
+     * range. This is the {@code REGION} segment of an owner's {@code customerCode}.
+     */
+    public static String ofPostcode(String postcode) {
+        String byPostcode = byPostcode(postcode);
+        return byPostcode != null ? byPostcode : UNKNOWN;
+    }
+
+    /**
+     * The region an owner belongs to, read back from the {@code REGION} segment of its
+     * {@code customerCode} ({@code <REGION>-<HASH8>}) — the single region-and-hash identity all
+     * region-derived values now flow from. Returns {@code UNKNOWN} when the code is absent or
+     * unsegmented.
+     */
+    public static String regionOf(String customerCode) {
+        if (customerCode == null) {
+            return UNKNOWN;
+        }
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? UNKNOWN : customerCode.substring(0, dash);
     }
 
     /** The region whose range contains {@code postcode}, or {@code null} when none does. */
