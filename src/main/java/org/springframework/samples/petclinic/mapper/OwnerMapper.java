@@ -59,6 +59,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -478,6 +479,61 @@ public abstract class OwnerMapper {
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
         return othersInCity >= CAPACITY_WARNING_THRESHOLD && othersInCity < CITY_CAPACITY;
+    }
+
+    /**
+     * The known disposable/throwaway email providers, mirroring the create endpoint's blocklist.
+     * An email whose domain exactly matches one of these is rejected on create; the risk flag
+     * instead catches domains that are merely <em>adjacent</em> to one of them (see
+     * {@link #disposableAdjacentEmail(Owner)}).
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * The second-level labels of the known disposable providers (e.g. {@code mailinator} from
+     * {@code mailinator.com}), used to recognise disposable-adjacent domains regardless of their
+     * top-level domain or any subdomain in front.
+     */
+    private static final java.util.Set<String> DISPOSABLE_DOMAIN_LABELS = DISPOSABLE_EMAIL_DOMAINS.stream()
+        .map(domain -> domain.substring(0, domain.lastIndexOf('.')))
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /**
+     * Derives the owner's {@code riskFlag}: {@code true} when any of these hold, otherwise
+     * {@code false}. The owner is a possible duplicate ({@code possibleDuplicate} is true), the
+     * email domain is {@link #disposableAdjacentEmail(Owner) disposable-adjacent}, or the city is
+     * over its soft capacity (the {@link #capacityWarning(Owner) capacity warning} is raised).
+     */
+    protected Boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || disposableAdjacentEmail(owner)
+            || Boolean.TRUE.equals(capacityWarning(owner));
+    }
+
+    /**
+     * Whether the owner's email domain is <em>disposable-adjacent</em>: it shares a second-level
+     * label with a known disposable provider (mailinator, tempmail, guerrillamail), so a subdomain
+     * ({@code promo.mailinator.com}) or an alternate top-level domain ({@code tempmail.co}) that
+     * slips past the create endpoint's exact-match blocklist is still recognised. Returns
+     * {@code false} when the owner has no email or the domain shares no such label.
+     */
+    protected boolean disposableAdjacentEmail(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(java.util.Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_DOMAIN_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
