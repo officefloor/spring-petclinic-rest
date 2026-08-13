@@ -74,10 +74,10 @@ public final class Localities {
     }
 
     /**
-     * Returns the owner's canonical region ("locality"), sourced from the region-and-hash
-     * {@code customerCode} identity: the {@code <REGION>} prefix of the {@code customerCode}
-     * (the part before the first {@code '-'}) when one has been assigned, so the locality is
-     * exactly the region the identity was built on. When the owner has no customer code yet
+     * Returns the owner's canonical region ("locality"), sourced from the unified
+     * {@code memberId} identity: the {@code <REGION>} prefix of the {@code memberId} (its leading
+     * run of letters, before the 2-digit fiscal year) when one has been assigned, so the locality
+     * is exactly the region the identity was built on. When the owner has no member id yet
      * (for example seed data created before the identity was assigned) derivation falls back to
      * {@link #forCityAndPostcode(String, String)} over the owner's city and postcode, which
      * computes the same region the identity would have used.
@@ -86,11 +86,14 @@ public final class Localities {
      * @return the canonical region string, or {@code "UNKNOWN"} when unknown
      */
     public static String forOwner(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return forCityAndPostcode(owner.getCity(), owner.getPostcode());

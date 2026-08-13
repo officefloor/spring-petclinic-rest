@@ -71,8 +71,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -374,12 +374,12 @@ public class Owner extends Person {
         return membershipLevel(membershipPoints(owner));
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -555,15 +555,18 @@ public class Owner extends Person {
     }
 
     /**
-     * A single Luhn check digit (0-9) computed over the digits contained in the
-     * {@code customerCode}. Non-digit characters (such as the letter prefixes and the
-     * separators) are ignored; a {@code null} customer code is treated as having no digits.
+     * A single Luhn check digit (0-9) computed over the digits contained in {@code source}.
+     * Non-digit characters (such as letter prefixes and separators) are ignored; a {@code null}
+     * source is treated as having no digits. This is the CHK segment of the owner's
+     * {@code memberId}, computed over the digits of its {@code <REGION><FY><HASH8>} prefix.
      *
-     * @return the Luhn check digit for the customer code
+     * @param source the string whose digits the check digit is computed over
+     * @return the Luhn check digit (0-9)
      */
-    @Transient
-    public int getCheckDigit() {
-        String source = this.customerCode == null ? "" : this.customerCode;
+    public static int luhnCheckDigit(String source) {
+        if (source == null) {
+            source = "";
+        }
         int sum = 0;
         boolean dbl = true;
         for (int i = source.length() - 1; i >= 0; i--) {

@@ -70,11 +70,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Immutable structured audit event emitted alongside the human-readable audit line when an owner
      * is created. Its component order is also its JSON field order: {@code seq}, {@code ownerId},
-     * {@code customerCode}, {@code membershipLevel}, {@code event}. The {@code customerCode} component
-     * carries the owner's <em>current primary identifier</em>; today that is the customer code, and it
-     * is the single field a later checkpoint repoints when the identity is unified into the memberId.
+     * {@code memberId}, {@code membershipLevel}, {@code event}. The {@code memberId} component carries
+     * the owner's unified primary identifier.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
@@ -251,19 +250,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setPossibleDuplicate(false);
             owner.setPossibleDuplicateOf(null);
         }
-        owner.setCustomerCode(deduplicateCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
-            owner.getTelephone(), owner.getLastName())));
+        owner.setMemberId(deduplicateMemberId(memberId(owner.getCity(), owner.getPostcode(),
+            owner.getTelephone(), owner.getLastName(), owner.getRegistrationDate())));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             IDEMPOTENCY_KEYS.put(idempotencyKey, owner.getId());
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
-            ownerDto.getMembershipNumber());
-        // The event's primary identifier is the owner's customerCode today; a later checkpoint unifies
-        // it into the memberId and repoints this single expression, and the event carries that instead.
-        String primaryIdentifier = owner.getCustomerCode();
+        AUDIT.info("Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
+        // The event's primary identifier is the owner's unified memberId.
+        String primaryIdentifier = owner.getMemberId();
         OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_EVENT_SEQ.incrementAndGet(),
             owner.getId(), primaryIdentifier, ownerDto.getMembershipLevel(), "OWNER_CREATED");
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
@@ -339,51 +336,57 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a new owner, formatted {@code '<REGION>-<HASH8>'} where
+     * Builds the unified member id for a new owner, formatted {@code '<REGION><FY><HASH8><CHK>'}.
      * {@code REGION} is the canonical region derived from the owner's postcode (falling back to
      * the city when the postcode is absent or in no known range, see
-     * {@link org.springframework.samples.petclinic.mapper.Localities#forCityAndPostcode}), and
+     * {@link org.springframework.samples.petclinic.mapper.Localities#forCityAndPostcode}).
+     * {@code FY} is the 2-digit fiscal year of the (business-day-adjusted) registration date.
      * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the
-     * normalized telephone concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). Unlike
-     * the previous city-prefixed scheme it carries no per-city sequence number, so the identity is
-     * a pure function of the owner's region, telephone and last name.
+     * normalized telephone concatenated with the last name (the same HASH8 the region-and-hash
+     * identity used). {@code CHK} is a single Luhn check digit computed over the digits of the
+     * {@code <REGION><FY><HASH8>} prefix (e.g. {@code 'NSW261A2B3C4D7'}). It is a pure function of
+     * the owner's region, fiscal year, telephone and last name.
      *
      * @param city                the owner's city
      * @param postcode            the owner's postcode, may be {@code null}
      * @param normalizedTelephone the owner's telephone, already normalized to E.164
      * @param lastName            the owner's last name
-     * @return the assigned customer code
+     * @param registrationDate    the owner's business-day-adjusted registration date
+     * @return the assigned member id
      */
-    private String customerCode(String city, String postcode, String normalizedTelephone, String lastName) {
+    private String memberId(String city, String postcode, String normalizedTelephone, String lastName,
+            java.time.LocalDate registrationDate) {
         String region = org.springframework.samples.petclinic.mapper.Localities
             .forCityAndPostcode(city, postcode);
+        String fy = Owner.fiscalYearLabel(registrationDate).substring(2);
         String hash8 = sha256UpperHex((normalizedTelephone == null ? "" : normalizedTelephone)
             + (lastName == null ? "" : lastName), 8);
-        return region + "-" + hash8;
+        String prefix = region + fy + hash8;
+        return prefix + Owner.luhnCheckDigit(prefix);
     }
 
     /**
-     * Ensures the computed {@code customerCode} is unique across existing owners. When {@code baseCode}
-     * does not collide with any existing owner's {@code customerCode} it is returned unchanged.
+     * Ensures the computed {@code memberId} is unique across existing owners. When {@code baseId}
+     * does not collide with any existing owner's {@code memberId} it is returned unchanged.
      * Otherwise {@code '-<n>'} is appended, using the smallest {@code n} of 2 or more that yields a
-     * value not already in use, and that de-duplicated code is returned.
+     * value not already in use, and that de-duplicated id is returned.
      *
-     * @param baseCode the freshly computed customer code
-     * @return {@code baseCode} if unused, otherwise {@code baseCode + "-" + n} for the smallest free n
+     * @param baseId the freshly computed member id
+     * @return {@code baseId} if unused, otherwise {@code baseId + "-" + n} for the smallest free n
      */
-    private String deduplicateCustomerCode(String baseCode) {
+    private String deduplicateMemberId(String baseId) {
         java.util.Set<String> inUse = this.clinicService.findAllOwners().stream()
-            .map(org.springframework.samples.petclinic.model.Owner::getCustomerCode)
+            .map(org.springframework.samples.petclinic.model.Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
-        if (!inUse.contains(baseCode)) {
-            return baseCode;
+        if (!inUse.contains(baseId)) {
+            return baseId;
         }
         int n = 2;
-        while (inUse.contains(baseCode + "-" + n)) {
+        while (inUse.contains(baseId + "-" + n)) {
             n++;
         }
-        return baseCode + "-" + n;
+        return baseId + "-" + n;
     }
 
     /**
