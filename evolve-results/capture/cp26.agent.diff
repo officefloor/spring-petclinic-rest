@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 6c90097c..3fb7aff0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -1,5 +1,8 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.LinkedHashMap;
++import java.util.Map;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+@@ -11,11 +14,26 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * Spaces, dashes and brackets are stripped. When the number carries a leading {@code '+'} the
+  * country code is kept as given; otherwise country code {@code '+61'} is assumed and a single
+  * leading {@code '0'} is dropped from the national digits. The result must have 8 to 15 digits
+- * after the {@code '+'}. A number that cannot form a valid E.164 string is rejected with 400 via
+- * {@link InvalidTelephoneException}.
++ * after the {@code '+'}.
++ * <p>
++ * The national-number length is then validated against the country code: {@code '+61'} requires
++ * exactly 9 national digits and {@code '+1'} requires exactly 10. A number that cannot form a valid
++ * E.164 string, or whose national number is the wrong length for its country code, is rejected with
++ * 400 via {@link InvalidTelephoneException}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
++    /**
++     * Country code (digits after the {@code '+'}) to the exact national-number length it requires.
++     * Longest prefixes first so {@code '61'} is matched before {@code '1'}.
++     */
++    private static final Map<String, Integer> NATIONAL_LENGTHS = new LinkedHashMap<>();
++
++    static {
++        NATIONAL_LENGTHS.put("61", 9);
++        NATIONAL_LENGTHS.put("1", 10);
++    }
++
+     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
+         String raw = request.getTelephone();
+         String stripped = raw == null ? "" : raw.replaceAll("[\\s\\-()]", "");
+@@ -32,6 +50,17 @@ public class NormalizeOwnerTelephone {
+         if (!digits.matches("\\d{8,15}")) {
+             throw new InvalidTelephoneException(raw);
+         }
++
++        for (Map.Entry<String, Integer> country : NATIONAL_LENGTHS.entrySet()) {
++            String code = country.getKey();
++            if (digits.startsWith(code)) {
++                if (digits.length() - code.length() != country.getValue()) {
++                    throw new InvalidTelephoneException(raw);
++                }
++                break;
++            }
++        }
++
+         request.setTelephone("+" + digits);
+     }
+ }
