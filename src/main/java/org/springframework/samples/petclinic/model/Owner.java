@@ -184,6 +184,19 @@ public class Owner extends Person {
         return this.namesakeCount;
     }
 
+    /**
+     * Return the owner's membership tier: {@code 'SILVER'} when the owner has no
+     * namesakes (namesake count is {@code 0}) and an email address is present,
+     * otherwise {@code 'BRONZE'}.
+     */
+    public String getMembershipTier() {
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        if (this.namesakeCount != null && this.namesakeCount == 0 && hasEmail) {
+            return "SILVER";
+        }
+        return "BRONZE";
+    }
+
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
     }
