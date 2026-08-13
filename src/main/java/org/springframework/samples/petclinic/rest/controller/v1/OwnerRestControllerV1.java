@@ -410,7 +410,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
             digits = "61" + national;
         }
-        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        if (!hasValidNationalLength(digits)) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Validate the national-number length of an E.164 number (the digits, without the
+     * leading {@code '+'}) against its country code. Australia ({@code '+61'}) requires
+     * exactly 9 national digits and North America ({@code '+1'}) exactly 10; country
+     * codes without a known rule are accepted as-is.
+     */
+    private boolean hasValidNationalLength(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
