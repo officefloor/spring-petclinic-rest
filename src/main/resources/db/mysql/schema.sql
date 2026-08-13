@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   possible_duplicate BIT,
   possible_duplicate_of INT,
+  deleted BOOLEAN DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;
 

@@ -432,6 +432,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Whether an existing owner has been soft-deleted. A soft-deleted owner retains its row but is
+     * ignored by the create endpoint's duplicate and identity checks, so a normally-blocking match
+     * against a deleted owner is allowed.
+     *
+     * @param owner an existing owner
+     * @return {@code true} when the owner is flagged deleted
+     */
+    private boolean isDeleted(Owner owner) {
+        return Boolean.TRUE.equals(owner.getDeleted());
+    }
+
+    /**
      * Rejects an owner whose required fields are missing or blank. Collects the names of every
      * offending field so the client learns about all of them at once.
      *
@@ -627,6 +639,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(Owner owner) {
         String identityKey = identityKey(owner);
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .map(this::identityKey)
             .anyMatch(identityKey::equals);
         if (inUse) {
@@ -670,6 +683,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = householdId(owner);
         owner.setHouseholdId(householdId);
         boolean householdExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .anyMatch(existing -> householdId.equals(householdId(existing)));
         if (householdExists && !sharesHousehold) {
             throw new HouseholdDuplicateException(householdId);
@@ -798,7 +812,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
