@@ -48,6 +48,14 @@ public interface OwnerRepository {
     Page<Owner> findByLastName(String lastName, Pageable pageable) throws DataAccessException;
 
     /**
+     * Retrieve <code>Owner</code>s from the data store by exact telephone.
+     *
+     * @param telephone the (normalized) telephone to search for
+     * @return a <code>Collection</code> of owners with that telephone (empty if none)
+     */
+    Collection<Owner> findByTelephone(String telephone) throws DataAccessException;
+
+    /**
      * Retrieve an <code>Owner</code> from the data store by id.
      *
      * @param id the id to search for
