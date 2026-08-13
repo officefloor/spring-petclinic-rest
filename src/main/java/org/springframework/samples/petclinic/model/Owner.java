@@ -72,6 +72,12 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "possible_duplicate")
+    private boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -182,6 +188,22 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
+    }
+
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**
