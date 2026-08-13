@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   household_member_count INTEGER,
   possible_duplicate BOOLEAN DEFAULT FALSE,
-  possible_duplicate_of INTEGER
+  possible_duplicate_of INTEGER,
+  deleted BOOLEAN DEFAULT FALSE
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

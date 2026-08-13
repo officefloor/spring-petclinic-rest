@@ -26,6 +26,9 @@ public class EnsureUniqueIdentity {
             throws DuplicateIdentityException {
         String identityKey = owner.getIdentityKey();
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a duplicate
+            }
             if (identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
             }

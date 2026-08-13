@@ -31,6 +31,9 @@ public class EnsureUniqueHousehold {
         }
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a household duplicate
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new HouseholdDuplicateException(householdId);
             }
