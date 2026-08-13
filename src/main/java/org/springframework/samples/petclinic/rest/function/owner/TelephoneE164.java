@@ -11,7 +11,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
  *       and the remaining digits are used verbatim;</li>
  *   <li>otherwise country code {@code '+61'} is assumed and a single leading {@code '0'} is
  *       dropped from the national digits;</li>
- *   <li>the result must have 8 to 15 digits after the {@code '+'}, else it is not valid E.164.</li>
+ *   <li>the result must have 8 to 15 digits after the {@code '+'}, else it is not valid E.164;</li>
+ *   <li>the national-number length must match the country code — {@code '+61'} requires exactly 9
+ *       national digits and {@code '+1'} requires exactly 10; a wrong length is not valid.</li>
  * </ul>
  *
  * <p>So {@code "0412 345 678"} becomes {@code "+61412345678"} and {@code "+64 21 123 456"}
@@ -43,6 +45,24 @@ public final class TelephoneE164 {
         if (e164Digits.length() < 8 || e164Digits.length() > 15) {
             return null;
         }
+        if (!hasValidNationalLength(e164Digits)) {
+            return null;
+        }
         return "+" + e164Digits;
+    }
+
+    /**
+     * Checks the national-number length against the country code. {@code '+61'} requires exactly 9
+     * national digits and {@code '+1'} requires exactly 10; other country codes are not constrained
+     * here beyond the overall 8-to-15 E.164 length.
+     */
+    private static boolean hasValidNationalLength(String e164Digits) {
+        if (e164Digits.startsWith("61")) {
+            return e164Digits.length() - 2 == 9;
+        }
+        if (e164Digits.startsWith("1")) {
+            return e164Digits.length() - 1 == 10;
+        }
+        return true;
     }
 }
