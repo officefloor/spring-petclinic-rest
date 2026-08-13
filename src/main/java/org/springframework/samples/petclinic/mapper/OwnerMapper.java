@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.IdentityKeys;
 
 import java.time.LocalDate;
 import java.time.Period;
@@ -137,15 +138,12 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code identityKey}, the single consolidated duplicate-detection key:
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. A {@code null}
-     * email or householdId contributes an empty segment.
+     * Derives the owner's {@code identityKey}, the single consolidated duplicate-detection key: the
+     * lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}. A {@code null} telephone or email contributes an empty segment.
      */
     protected String identityKey(Owner owner) {
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        return IdentityKeys.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**

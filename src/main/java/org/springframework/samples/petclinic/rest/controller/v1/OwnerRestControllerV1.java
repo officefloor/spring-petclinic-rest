@@ -59,6 +59,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.IdentityKeys;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -378,11 +379,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Flags an owner as a possible (soft) duplicate. Although it is not a hard duplicate (its whole
      * {@link #identityKey(Owner) identityKey} is unique, so the create was not rejected), it may
-     * still resemble an existing owner: when it shares an existing owner's lastName (compared
-     * case-insensitively) and postcode while carrying a different telephone, the owner is flagged
-     * with {@code possibleDuplicate=true} and {@code possibleDuplicateOf} set to that existing
-     * owner's id. When no such owner exists the flag is set to {@code false} and no match id is
-     * recorded. An owner with no postcode can never soft-match and is always {@code false}.
+     * still resemble an existing owner: when it shares an existing owner's {@code soundex(lastName)}
+     * and postcode while deriving a different identityKey, the owner is flagged with
+     * {@code possibleDuplicate=true} and {@code possibleDuplicateOf} set to that existing owner's id.
+     * When no such owner exists the flag is set to {@code false} and no match id is recorded. An
+     * owner with no postcode can never soft-match and is always {@code false}.
      *
      * <p>A declared household member (created with {@code sharesHousehold=true}) is never a suspected
      * duplicate: its match with an existing household member is a deliberate, declared one, so it is
@@ -404,10 +405,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Finds the existing owner this owner soft-matches: same lastName (case-insensitive) and same
-     * postcode, but a different telephone. When several existing owners match, the one with the
-     * lowest id is chosen so the result is deterministic. Returns {@code null} when the owner has no
-     * postcode or no such existing owner exists.
+     * Finds the existing owner this owner soft-matches: a different {@link #identityKey(Owner)
+     * identityKey} but the same {@code soundex(lastName)} and the same postcode. Because the
+     * telephone now feeds the identityKey, two owners sharing a lastName and postcode with different
+     * telephones have different keys and so soft-match here rather than being rejected as a hard
+     * duplicate. When several existing owners match, the one with the lowest id is chosen so the
+     * result is deterministic. Returns {@code null} when the owner has no postcode or no such
+     * existing owner exists.
      *
      * @param owner the owner being created
      * @return the matching existing owner, or {@code null} when there is no soft-match
@@ -416,10 +420,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(owner.getPostcode())) {
             return null;
         }
+        String identityKey = identityKey(owner);
+        String soundex = IdentityKeys.soundex(owner.getLastName());
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> equalsIgnoreCase(existing.getLastName(), owner.getLastName())
-                && owner.getPostcode().equals(existing.getPostcode())
-                && !equalsIgnoreCase(existing.getTelephone(), owner.getTelephone()))
+            .filter(existing -> !identityKey.equals(identityKey(existing))
+                && soundex.equals(IdentityKeys.soundex(existing.getLastName()))
+                && owner.getPostcode().equals(existing.getPostcode()))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
     }
@@ -692,14 +698,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The single, consolidated duplicate check. Rejects the owner being created when its whole
-     * {@link #identityKey(Owner) identityKey} exactly equals that of an existing owner. Because the
-     * key is the normalized telephone, email and householdId joined together, this one check
-     * subsumes the former separate telephone, email and household duplicate rules: only an exact
-     * full-key match counts as a duplicate, so two members of the same household (same householdId)
-     * with different telephones have different keys and are both allowed.
+     * {@link #identityKey(Owner) identityKey} exactly equals that of an existing, non-deleted owner.
+     * Because the key is the SHA-256 of the normalized telephone, lower-cased email and
+     * {@code soundex(lastName)} joined together, this one check is the sole duplicate rule: only an
+     * exact full-key match counts as a duplicate, so two owners sharing a lastName and postcode but
+     * carrying different telephones have different keys and are both allowed (the second is instead
+     * flagged a soft match).
      *
-     * @param owner the owner being created, with its normalized telephone, email and householdId
-     *              already applied
+     * @param owner the owner being created, with its normalized telephone and email already applied
      * @throws DuplicateIdentityException if another owner already has the same identityKey
      */
     private void rejectDuplicateIdentity(Owner owner) {
@@ -714,18 +720,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives an owner's {@code identityKey}: {@code normalizedTelephone + '|' + (email or empty) +
-     * '|' + householdId}. A {@code null} email or householdId contributes an empty segment. Every
-     * duplicate decision is made by comparing whole identityKeys.
+     * Derives an owner's {@code identityKey}: the lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A {@code null}
+     * telephone or email contributes an empty segment. Every duplicate decision is made by comparing
+     * whole identityKeys.
      *
      * @param owner the owner whose identityKey to derive
      * @return the derived identityKey
      */
     private String identityKey(Owner owner) {
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
-        String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        return IdentityKeys.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
     /**
