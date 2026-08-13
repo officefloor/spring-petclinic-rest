@@ -30,6 +30,8 @@ public abstract class OwnerMapper {
             expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+    @Mapping(target = "checkDigit",
+            expression = "java(checkDigit(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -75,5 +77,34 @@ public abstract class OwnerMapper {
      */
     protected String contactPreference(Owner owner) {
         return (owner.getEmail() != null && !owner.getEmail().isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Compute a single Luhn check digit (0-9) over the digits contained in the owner's
+     * {@code customerCode}. Non-digit characters (such as the hyphen separators) are ignored.
+     */
+    protected Integer checkDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 }
