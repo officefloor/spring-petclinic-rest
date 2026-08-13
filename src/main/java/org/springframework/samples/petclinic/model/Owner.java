@@ -167,6 +167,20 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's derived duplicate-detection key: the normalized (E.164) telephone,
+     * the email (or empty when absent) and the {@code householdId} (or empty when
+     * absent), joined by {@code '|'}. Two owners are duplicates only when their whole
+     * identity keys are equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String mail = this.email == null ? "" : this.email;
+        String household = this.householdId == null ? "" : this.householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

@@ -13,8 +13,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Assigns a shared {@code householdId} when a create request opts in with
  * {@code sharesHousehold: true}, joining an existing owner at the same household — the
  * same {@code lastName} (compared case-insensitively with collapsed whitespace) and the
- * same {@code address} in its normalized form (see {@link AddressNormalizer}), matching
- * {@link EnsureUniqueHousehold}.
+ * same {@code address} in its normalized form (see {@link AddressNormalizer}).
  *
  * <p>The identifier is derived deterministically from the normalized last name and
  * address, so every owner of a household computes the same value regardless of creation
