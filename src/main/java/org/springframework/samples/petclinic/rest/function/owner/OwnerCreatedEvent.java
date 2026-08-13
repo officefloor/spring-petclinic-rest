@@ -8,17 +8,15 @@ import org.springframework.samples.petclinic.model.Owner;
  * Immutable structured audit event for a successful owner create, emitted to the
  * {@code AUDIT} logger by {@link AuditOwnerCreated} alongside the human-readable audit
  * line. Serialized as the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
  *
- * <p>The {@code customerCode} slot carries the owner's <em>current primary
- * identifier</em> — sourced from {@link Owner#getPrimaryIdentifier()}, which is the
- * {@code customerCode} today and becomes the memberId once the two are unified. The
- * event therefore follows that change without edits here.
+ * <p>The {@code memberId} slot carries the owner's <em>primary identifier</em> —
+ * sourced from {@link Owner#getPrimaryIdentifier()}, which is the unified memberId.
  *
  * <p>{@link #seq()} is a process-wide, monotonically increasing sequence stamped when
  * the event is built (see {@link #next(Owner)}); the record itself is immutable.
  */
-public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int membershipLevel) {
+public record OwnerCreatedEvent(long seq, int ownerId, String memberId, int membershipLevel) {
 
     /** The {@code event} marker carried by every instance. */
     public static final String EVENT = "OWNER_CREATED";
@@ -37,8 +35,8 @@ public record OwnerCreatedEvent(long seq, int ownerId, String customerCode, int 
     /** Compact JSON rendering with the fields in specification order. */
     public String toJson() {
         return String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":%s,\"membershipLevel\":%d,\"event\":\"%s\"}",
-            this.seq, this.ownerId, jsonString(this.customerCode), this.membershipLevel, EVENT);
+            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":%s,\"membershipLevel\":%d,\"event\":\"%s\"}",
+            this.seq, this.ownerId, jsonString(this.memberId), this.membershipLevel, EVENT);
     }
 
     /** JSON string literal (with escaping) for {@code value}, or {@code null} when absent. */

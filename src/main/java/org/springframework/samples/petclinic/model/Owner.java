@@ -72,8 +72,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -213,24 +213,29 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, formatted {@code '<REGION><FY><HASH8><CHK>'} — the region
+     * code, the 2-digit fiscal year, the 8 upper-hex HASH8 and a single Luhn check
+     * digit. Assigned at creation time (see {@code AssignMemberId}); it unifies what
+     * were previously the separate {@code customerCode}, {@code membershipNumber} and
+     * {@code checkDigit} fields.
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
-     * The owner's current primary identifier. Today this is the
-     * {@link #getCustomerCode() customerCode}; when the customer code is unified into
-     * the memberId, this single accessor returns the memberId instead, and every
-     * consumer that carries the primary identifier — notably the {@code OWNER_CREATED}
-     * audit event — follows without further change.
+     * The owner's current primary identifier — the {@link #getMemberId() memberId}.
+     * Consumers that carry the primary identifier — notably the {@code OWNER_CREATED}
+     * audit event — read it through this single accessor.
      */
     @Transient
     public String getPrimaryIdentifier() {
-        return getCustomerCode();
+        return getMemberId();
     }
 
     public String getHouseholdId() {
@@ -405,7 +410,7 @@ public class Owner extends Person {
      * fall back to the fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
      * Brisbane-&gt;QLD). Anything unresolved is {@code "UNKNOWN"}. This single derivation
      * backs both the {@code locality} field and the {@code REGION} segment of the
-     * {@code customerCode}, so the two always agree.
+     * {@code memberId}, so the two always agree.
      */
     @Transient
     public String getRegion() {

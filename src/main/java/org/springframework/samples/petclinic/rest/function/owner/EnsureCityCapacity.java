@@ -9,7 +9,7 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 /**
  * Rejects a create-owner request whose {@code city} already contains 50 or more owners,
  * responding 409 via {@link CityAtCapacityException}. Cities are compared
- * case-insensitively, matching {@link AssignCustomerCode}'s per-city grouping.
+ * case-insensitively.
  *
  * <p>Runs after {@link ValidateOwnerFields} (which publishes the request body) and
  * before {@link BuildOwner} saves anything, so the count it reads excludes the owner
