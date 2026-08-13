@@ -33,6 +33,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected ClinicService clinicService;
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
@@ -378,6 +379,14 @@ public abstract class OwnerMapper {
             return lastName;
         }
         return title + " " + lastName;
+    }
+
+    /**
+     * Derives the owner's {@code selfLink}: the canonical link to this owner resource, formatted
+     * {@code /api/owners/<id>} using the owner's id. Returns {@code null} when the owner has no id.
+     */
+    protected String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
     }
 
     public abstract Owner toOwner(OwnerDto ownerDto);
