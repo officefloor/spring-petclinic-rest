@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -122,7 +125,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         rejectDuplicateTelephone(normalizedTelephone);
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            assignHousehold(owner);
+        } else {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
@@ -380,6 +385,55 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && normalizedAddress.equals(normalizeForComparison(existing.getAddress())));
         if (duplicate) {
             throw new DuplicateOwnerHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Assigns the owner being created a household identifier when the request opts into sharing a
+     * household. The identifier is a stable value derived from the owner's normalized last name and
+     * address (see {@link #householdId}), so every owner in the same household is given the exact same
+     * value regardless of creation order. Any already-existing owner in the same household that has no
+     * identifier yet is back-filled with the same value so the whole household stays consistent.
+     *
+     * @param owner the owner being created, whose household id is set in place
+     */
+    private void assignHousehold(Owner owner) {
+        String householdId = householdId(owner.getLastName(), owner.getAddress());
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String normalizedAddress = normalizeForComparison(owner.getAddress());
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.getHouseholdId() == null
+                && normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+                && normalizedAddress.equals(normalizeForComparison(existing.getAddress()))) {
+                existing.setHouseholdId(householdId);
+                this.clinicService.saveOwner(existing);
+            }
+        }
+        owner.setHouseholdId(householdId);
+    }
+
+    /**
+     * Derives the stable household identifier for a given last name and address. The value is
+     * {@code 'HH-' + <12 upper-case hex chars>} of the SHA-256 digest of the normalized last name and
+     * address (see {@link #normalizeForComparison}), joined by a delimiter. Two owners that resolve to
+     * the same household therefore always produce the same identifier.
+     *
+     * @param lastName the owner's last name
+     * @param address the owner's address
+     * @return the stable household identifier
+     */
+    private String householdId(String lastName, String address) {
+        String key = normalizeForComparison(lastName) + "\n" + normalizeForComparison(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                hex.append(String.format("%02X", digest[i]));
+            }
+            return "HH-" + hex;
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
         }
     }
 
