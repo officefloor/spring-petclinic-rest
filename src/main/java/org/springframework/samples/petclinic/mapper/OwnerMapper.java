@@ -17,6 +17,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
+import java.util.stream.Stream;
 
 /**
  * Maps Owner &amp; OwnerDto using Mapstruct
@@ -273,10 +275,31 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership level from their {@link #membershipPoints(Owner) membership
-     * points}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or more.
+     * Derives the owner's membership level, capped by their household. The level starts from the
+     * owner's own {@link #uncappedMembershipLevel(Owner) points-based level} but may not exceed one
+     * above the current maximum level among the owner's existing household members (other owners
+     * sharing its {@code householdId}). When the owner has no existing household member no cap
+     * applies and the points-based level is returned unchanged.
      */
     protected Integer membershipLevel(Owner owner) {
+        int level = uncappedMembershipLevel(owner);
+        OptionalInt maxHouseholdLevel = otherHouseholdMembers(owner)
+            .mapToInt(this::uncappedMembershipLevel)
+            .max();
+        if (maxHouseholdLevel.isEmpty()) {
+            return level;
+        }
+        return Math.min(level, maxHouseholdLevel.getAsInt() + 1);
+    }
+
+    /**
+     * The owner's points-based membership level, before the household ceiling is applied: level 1
+     * for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or more (see
+     * {@link #membershipPoints(Owner) membership points}). The household members' maximum against
+     * which {@link #membershipLevel(Owner)} caps is measured with this uncapped value, so mutual
+     * household members do not recurse into each other's caps.
+     */
+    private int uncappedMembershipLevel(Owner owner) {
         int points = membershipPoints(owner);
         if (points <= 1) {
             return 1;
@@ -288,6 +311,21 @@ public abstract class OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * The owner's existing household members: every other owner (excluding the owner itself) sharing
+     * its {@code householdId}. Empty when the owner has no household identifier or is the sole member
+     * of its household.
+     */
+    private Stream<Owner> otherHouseholdMembers(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return Stream.empty();
+        }
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .filter(existing -> !Objects.equals(existing.getId(), owner.getId()));
     }
 
     /**

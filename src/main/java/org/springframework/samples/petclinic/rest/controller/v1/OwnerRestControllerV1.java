@@ -47,7 +47,6 @@ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceptio
 import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
-import org.springframework.samples.petclinic.rest.advice.HouseholdDuplicateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -202,7 +201,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectWhenDailyLimitReached(owner.getRegistrationDate());
         rejectWhenCityAtCapacity(owner.getCity());
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        applyHousehold(owner, sharesHousehold);
+        applyHousehold(owner);
         owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         rejectDuplicateIdentity(owner);
@@ -736,25 +735,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * and postcode automatically share the identifier — the link is computed, not created by a flag.
      *
      * <p>Because the household is keyed on (lastName, postcode), any existing owner that derives the
-     * same householdId is a member of the same household, and a second owner joining it is a
-     * household duplicate. Such a create is rejected with 409 unless the request declares
-     * {@code sharesHousehold=true}, in which case it is allowed through as a declared household
-     * member. The {@code sharesHousehold} directive only bypasses this duplicate block.
+     * same householdId is a member of the same household. A new owner sharing an existing household
+     * is admitted as a further member of it — its membership level is then capped by the household
+     * (see {@code OwnerMapper#membershipLevel}) rather than the create being rejected.
      *
-     * @param owner           the owner being created
-     * @param sharesHousehold whether the request declared it shares a household, bypassing the block
-     * @throws HouseholdDuplicateException if an existing owner already shares the household and the
-     *                                     request did not declare {@code sharesHousehold=true}
+     * @param owner the owner being created
      */
-    private void applyHousehold(Owner owner, boolean sharesHousehold) {
-        String householdId = householdId(owner);
-        owner.setHouseholdId(householdId);
-        boolean householdExists = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !isDeleted(existing))
-            .anyMatch(existing -> householdId.equals(householdId(existing)));
-        if (householdExists && !sharesHousehold) {
-            throw new HouseholdDuplicateException(householdId);
-        }
+    private void applyHousehold(Owner owner) {
+        owner.setHouseholdId(householdId(owner));
     }
 
     /**
