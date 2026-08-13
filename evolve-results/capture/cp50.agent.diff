@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6d89c0f7..a75b1d43 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -56,6 +56,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Remembers, per seen {@code Idempotency-Key} header, the id of the owner originally created for
++     * that key, so a repeated create carrying the same key returns that owner instead of creating a
++     * duplicate. Kept in memory and keyed on the opaque client-supplied value.
++     */
++    private static final java.util.Map<String, Integer> IDEMPOTENCY_KEYS =
++        new java.util.concurrent.ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -102,6 +110,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Idempotent create: if this request carries an 'Idempotency-Key' we have already seen, return
++        // the owner originally created for that key with 200 OK, rather than creating a duplicate (which
++        // the identity/household duplicate rules would otherwise reject with 409).
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey != null) {
++            Integer existingId = IDEMPOTENCY_KEYS.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
++                }
++            }
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         applyAddress(owner);
+@@ -179,6 +200,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(deduplicateCustomerCode(customerCode(owner.getCity(), owner.getPostcode(),
+             owner.getTelephone(), owner.getLastName())));
+         this.clinicService.saveOwner(owner);
++        if (idempotencyKey != null) {
++            IDEMPOTENCY_KEYS.put(idempotencyKey, owner.getId());
++        }
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
+@@ -188,6 +212,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Reads the current request's {@code Idempotency-Key} header, if any. Returns the trimmed header
++     * value, or {@code null} when the header is absent, blank, or there is no active request (so a
++     * request without the header behaves exactly as before).
++     *
++     * @return the non-blank idempotency key for the current request, or {@code null}
++     */
++    private String currentIdempotencyKey() {
++        org.springframework.web.context.request.RequestAttributes attrs =
++            org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
++        if (!(attrs instanceof org.springframework.web.context.request.ServletRequestAttributes servletAttrs)) {
++            return null;
++        }
++        String key = servletAttrs.getRequest().getHeader("Idempotency-Key");
++        if (key == null || key.isBlank()) {
++            return null;
++        }
++        return key.trim();
++    }
++
+     /**
+      * The fixed public-holiday calendar the business-day roll skips. When an adjusted registration
+      * date lands on one of these dates it is rolled forward to the next non-holiday business day.
