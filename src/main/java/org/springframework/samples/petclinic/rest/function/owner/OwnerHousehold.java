@@ -7,12 +7,13 @@ import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
  * The deterministic householdId shared by {@link CheckUniqueOwnerIdentity} (which needs the id a
  * request would receive to detect household duplicates and build its identity key) and
  * {@link AssignOwnerHousehold} (which assigns it). The id is the first 12 hex characters of
- * SHA-256 over {@code <normalizedLastName>|<postcode>}, so owners with the same last name and
+ * SHA-256 over {@code <V2>|<normalizedLastName>|<postcode>} (the fixed version-2 tag mixed in), so owners with the same last name and
  * postcode share it automatically without any owner having to opt in: the household is keyed on
  * {@code (lastName, postcode)}, not on an existing member's id. {@code sharesHousehold} no longer
  * creates the link; it only bypasses the duplicate block for a declared household member.
@@ -32,9 +33,9 @@ final class OwnerHousehold {
         return compute(owner.getLastName(), owner.getPostcode());
     }
 
-    /** First 12 hex characters of SHA-256 over {@code <normalizedLastName>|<postcode>}. */
+    /** First 12 hex characters of SHA-256 over {@code <V2>|<normalizedLastName>|<postcode>}. */
     private static String compute(String lastName, String postcode) {
-        String key = normalizeName(lastName) + "|" + safe(postcode);
+        String key = Localities.IDENTITY_VERSION + "|" + normalizeName(lastName) + "|" + safe(postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

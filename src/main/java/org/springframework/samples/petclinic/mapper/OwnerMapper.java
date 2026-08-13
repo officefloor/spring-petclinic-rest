@@ -34,13 +34,13 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipLevel",
             expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.regionOf(owner.getMemberId()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.ofPostcode(owner.getPostcode()))")
     @Mapping(target = "timezone",
-            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.timezoneOf(owner.getMemberId()))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.timezoneOfPostcode(owner.getPostcode()))")
     @Mapping(target = "contactPreference",
             expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "ageBand",
@@ -238,9 +238,26 @@ public abstract class OwnerMapper {
         Integer level = membershipLevel(owner);
         String tier = (level != null && level >= 3) ? "PREMIUM" : "STANDARD";
         String region = org.springframework.samples.petclinic.rest.function.common.Localities
-                .regionOf(owner.getMemberId());
+                .ofPostcode(owner.getPostcode());
         String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
+    }
+
+    /**
+     * Build the nested version-2 {@code identity} object carried by the response: the owner's
+     * {@code memberId} and {@code householdId} together with its recomputed {@code identityKey} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey}). Every value
+     * is rederived with the version-2 algorithm; the plain {@code locality}, {@code timezone} and the
+     * owner segment's region stay free of the {@code V2} tag.
+     */
+    protected org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+                org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner));
+        return identity;
     }
 
     /**

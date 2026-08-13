@@ -16,27 +16,28 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Assigns a new owner's {@code memberId}, the single unified owner identity, formatted
  * {@code <REGION><FY><HASH8><CHK>}:
  * <ul>
- * <li>REGION — the region derived from the postcode alone ({@link Localities#ofPostcode}: NSW
- * 2000-2099, VIC 3000-3099, QLD 4000-4099, else {@code UNKNOWN}).</li>
+ * <li>REGION — the version-2 region derived from the postcode alone
+ * ({@link Localities#identityRegion}: the fixed {@code V2} tag prefixed to the postcode region, e.g.
+ * {@code V2NSW} for 2000-2099, {@code V2VIC}, {@code V2QLD}, else {@code V2UNKNOWN}).</li>
  * <li>FY — the 2-digit fiscal year (last two digits, starting 1 July) of the
  * business-day-adjusted registration date.</li>
  * <li>HASH8 — the first 8 UPPER-case hex characters of the SHA-256 digest over
  * {@code normalizedTelephone + lastName} (the same region-and-hash identity as before).</li>
  * <li>CHK — a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * (e.g. {@code NSW263F9A0C714}). The identity is stable for a given telephone, surname, region and
+ * (e.g. {@code V2NSW263F9A0C714}). The identity is stable for a given telephone, surname, region and
  * fiscal year. When the computed {@code memberId} collides with an existing owner's, {@code -<n>} is
  * appended with the smallest {@code n} of 2 or more that makes it unique, so distinct owners always
  * receive distinct ids.
  * Runs after {@link BuildOwner} maps the request (so the telephone is already the normalized E.164
  * value) and {@link DefaultOwnerRegistrationDate} ensures a registration date, and before
- * {@link SaveOwner} persists it; every downstream region-and-hash value (the locality and the create
- * audit record) flows from this id.
+ * {@link SaveOwner} persists it; the create audit record's primary identifier flows from this id,
+ * while the user-facing locality and timezone stay the plain postcode region (no {@code V2} tag).
  */
 public class AssignOwnerMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Localities.ofPostcode(owner.getPostcode());
+        String region = Localities.identityRegion(owner.getPostcode());
         String fy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
         String core = region + fy + hash8;

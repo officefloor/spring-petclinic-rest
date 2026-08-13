@@ -6,10 +6,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
  * The single derived key that all owner duplicate detection is expressed through: the lower-case
- * SHA-256 hex digest (64 characters) of {@code <normalizedTelephone>|<lowerEmail>|<soundex(lastName)>}.
+ * SHA-256 hex digest (64 characters) of
+ * {@code <V2>|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>} (the fixed version-2 tag mixed in).
  * The telephone is the normalized E.164 form, the email is the lower-cased address (empty when
  * absent) and the last-name component is its {@link OwnerSoundex} code, so the key groups
  * phonetically-equal surnames. Two owners are duplicates only when their whole identityKey is equal —
@@ -28,7 +30,8 @@ public final class OwnerIdentityKey {
 
     /** The identity key for the given normalized telephone, email and last name. */
     public static String of(String telephone, String email, String lastName) {
-        String material = safe(telephone) + "|" + lowerEmail(email) + "|" + OwnerSoundex.of(lastName);
+        String material = Localities.IDENTITY_VERSION + "|" + safe(telephone) + "|" + lowerEmail(email)
+                + "|" + OwnerSoundex.of(lastName);
         return sha256hex(material);
     }
 
