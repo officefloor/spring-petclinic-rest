@@ -86,6 +86,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -353,6 +356,21 @@ public class Owner extends Person {
         return 4;
     }
 
+    /**
+     * The owner's effective membership level: the explicitly stored {@link #membershipLevel} when one
+     * was fixed at creation (for example, an owner whose level was capped to one above their
+     * household), otherwise the level derived live from {@link #membershipPoints(Owner)}.
+     *
+     * @param owner the owner to score
+     * @return the effective membership level
+     */
+    public static int effectiveMembershipLevel(Owner owner) {
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return membershipLevel(membershipPoints(owner));
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
@@ -391,6 +409,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getPossibleDuplicate() {

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INTEGER,
   bulk_signup_warning BIT(1),
   household_size INTEGER,
+  membership_level INTEGER,
   possible_duplicate BIT(1),
   possible_duplicate_of INTEGER,
   deleted BIT(1) DEFAULT 0 NOT NULL,

@@ -177,7 +177,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // duplicate (409). Declaring 'sharesHousehold' only bypasses this block, creating the owner as
         // a declared household member.
         boolean declaredHouseholdMember = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!householdMembers.isEmpty() && !declaredHouseholdMember) {
+        // A new owner sharing a household is normally rejected as a duplicate. It is admitted either
+        // when it declares the shared household, or when it is distinguishable from every existing
+        // member by carrying its own email address (a distinct contact); in the latter case it joins
+        // the household as an (undeclared) member whose membership level is capped below.
+        boolean distinguishableByEmail = owner.getEmail() != null && !owner.getEmail().isBlank()
+            && householdMembers.stream()
+                .noneMatch(existing -> owner.getEmail().equalsIgnoreCase(existing.getEmail()));
+        boolean joinsExistingHousehold = !householdMembers.isEmpty()
+            && !declaredHouseholdMember && distinguishableByEmail;
+        if (!householdMembers.isEmpty() && !declaredHouseholdMember && !distinguishableByEmail) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "An owner in this household already exists");
         }
@@ -191,6 +200,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(householdMembers.size() + 1);
+        // A new owner joining an existing household cannot rank more than one level above the current
+        // maximum membership level among their household members: its level is capped there. With no
+        // existing household member (the usual case) no cap applies and the level stays as derived.
+        if (joinsExistingHousehold) {
+            int naturalLevel = Owner.membershipLevel(Owner.membershipPoints(owner));
+            int maxMemberLevel = householdMembers.stream()
+                .mapToInt(Owner::effectiveMembershipLevel)
+                .max().orElse(0);
+            owner.setMembershipLevel(Math.min(naturalLevel, maxMemberLevel + 1));
+        }
         // The former soft-match (same last name and postcode, different telephone) now coincides
         // exactly with the household key: such an owner is either rejected as a household duplicate
         // above, or, when it declares 'sharesHousehold', created as a declared household member. A
