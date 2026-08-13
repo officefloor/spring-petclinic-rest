@@ -15,8 +15,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@code POST /api/owners} pipeline, so the count it reads over the repository excludes
  * the owner being created; adding one for that owner yields the size of the household
  * after this create. It mutates the built {@link Owner} in place (see {@code @Val}
- * semantics), and the value is persisted with the new owner and used to derive the
- * {@code GOLD} membership tier.
+ * semantics), and the value is persisted with the new owner.
  */
 public class AssignHouseholdMemberCount {
 
