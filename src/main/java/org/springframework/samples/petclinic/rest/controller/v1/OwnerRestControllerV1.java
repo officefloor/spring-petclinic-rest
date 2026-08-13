@@ -120,6 +120,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);
+        if (!owner.isPostcodeValidForCity()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         // Consolidated duplicate detection: all of the former separate telephone, email
         // and household checks are now expressed through the single derived identityKey
         // (telephone|email|householdId). Reject only when the new owner's WHOLE

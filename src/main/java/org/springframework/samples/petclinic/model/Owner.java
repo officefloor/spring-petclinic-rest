@@ -56,6 +56,10 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "postcode")
+    @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
+    private String postcode;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -85,6 +89,12 @@ public class Owner extends Person {
         "Sydney", "NSW",
         "Melbourne", "VIC",
         "Brisbane", "QLD");
+
+    /** Fixed region-to-postcode-range table (inclusive) used to validate a postcode. */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     public String getAddress() {
         return this.address;
@@ -161,6 +171,37 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
+    }
+
+    /**
+     * Whether this owner's postcode is valid for its city. A {@code null} postcode
+     * is always valid (postcode is optional). When present, a postcode is valid if
+     * the city has no known region, or if it is four digits falling within the
+     * inclusive range for the city's region ({@code Sydney -> NSW 2000-2099},
+     * {@code Melbourne -> VIC 3000-3099}, {@code Brisbane -> QLD 4000-4099}).
+     */
+    public boolean isPostcodeValidForCity() {
+        if (this.postcode == null) {
+            return true;
+        }
+        String region = CITY_REGION.get(this.city);
+        int[] range = region == null ? null : REGION_POSTCODE_RANGES.get(region);
+        if (range == null) {
+            return true;
+        }
+        if (!this.postcode.matches("^[0-9]{4}$")) {
+            return false;
+        }
+        int value = Integer.parseInt(this.postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     public String getCustomerCode() {
