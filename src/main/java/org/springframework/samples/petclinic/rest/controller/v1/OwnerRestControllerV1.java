@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredOwnerFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -199,5 +202,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Rejects an owner payload that is missing or blank in any of the required fields
+     * (firstName, lastName, address, city, telephone). The bean-validation constraints on
+     * {@link OwnerFieldsDto} already reject {@code null} values and most malformed input, but
+     * a present-yet-blank {@code address} or {@code city} would otherwise slip through, so this
+     * guard enforces the rule uniformly for every required field.
+     *
+     * @param ownerFieldsDto the submitted owner payload
+     * @throws InvalidOwnerFieldsException if one or more required fields are missing or blank
+     */
+    private void validateRequiredOwnerFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> invalidFields = new ArrayList<>();
+        if (isBlank(ownerFieldsDto.getFirstName())) {
+            invalidFields.add("firstName");
+        }
+        if (isBlank(ownerFieldsDto.getLastName())) {
+            invalidFields.add("lastName");
+        }
+        if (isBlank(ownerFieldsDto.getAddress())) {
+            invalidFields.add("address");
+        }
+        if (isBlank(ownerFieldsDto.getCity())) {
+            invalidFields.add("city");
+        }
+        if (isBlank(ownerFieldsDto.getTelephone())) {
+            invalidFields.add("telephone");
+        }
+        if (!invalidFields.isEmpty()) {
+            throw new InvalidOwnerFieldsException(invalidFields);
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
