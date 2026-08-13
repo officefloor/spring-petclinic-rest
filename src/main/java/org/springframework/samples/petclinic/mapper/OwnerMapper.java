@@ -47,6 +47,8 @@ public abstract class OwnerMapper {
             expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "ageBand",
             expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear",
+            expression = "java(fiscalYear(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -85,7 +87,8 @@ public abstract class OwnerMapper {
     /**
      * Score the owner's membership points. Starts at 0, plus 2 when an email is present, plus 1
      * when {@code namesakeCount} is 0, plus 2 for a household of 3 or more owners, plus 3 when
-     * tenure exceeds 365 days. Because a newly created owner has zero tenure, the tenure points
+     * tenure spans at least one elapsed fiscal year (fiscal years start 1 July). Because a newly
+     * created owner registers within the current fiscal year it has zero tenure, so the tenure points
      * are only earned on later reads.
      */
     protected Integer membershipPoints(Owner owner) {
@@ -100,8 +103,9 @@ public abstract class OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
-                        java.time.LocalDate.now()) > 365) {
+                && org.springframework.samples.petclinic.rest.function.owner.FiscalYear.of(java.time.LocalDate.now())
+                        - org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+                                .of(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
@@ -168,6 +172,17 @@ public abstract class OwnerMapper {
             return "ADULT";
         }
         return "SENIOR";
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code FY<YY>} (last two digits) and derived from the
+     * business-day-adjusted {@code registrationDate}; the fiscal year starts on 1 July. Returns
+     * {@code null} when no registration date is set.
+     */
+    protected String fiscalYear(Owner owner) {
+        return owner.getRegistrationDate() == null ? null
+                : org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+                        .label(owner.getRegistrationDate());
     }
 
     /**

@@ -5,7 +5,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns a new owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>} where YY is
- * the last two digits of the registration date year (e.g. {@code NSW-3F9A0C71-M26}). Runs after
+ * the last two digits of the fiscal year (starting 1 July) of the business-day-adjusted registration
+ * date (e.g. {@code NSW-3F9A0C71-M26}). Runs after
  * {@link AssignOwnerCustomerCode} sets the region-and-hash customer code and
  * {@link DefaultOwnerRegistrationDate}
  * ensures a registration date, and before {@link SaveOwner} persists it, so the value is stored and
@@ -14,7 +15,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignOwnerMembershipNumber {
 
     public void service(@Val Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String yy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
     }
 }
