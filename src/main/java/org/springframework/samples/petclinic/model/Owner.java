@@ -74,6 +74,12 @@ public class Owner extends Person {
         "RD", "ROAD",
         "AVE", "AVENUE");
 
+    /** Fixed city-to-region table used to derive an owner's locality. */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
     public String getAddress() {
         return this.address;
     }
@@ -199,6 +205,16 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * Return the owner's locality, derived from the city using the fixed
+     * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+     * {@code Brisbane -> QLD}). Returns the canonical region string, or
+     * {@code 'UNKNOWN'} when the city is not in the table.
+     */
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
     protected Set<Pet> getPetsInternal() {
