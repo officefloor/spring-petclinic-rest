@@ -52,6 +52,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "selfLink",
             expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
