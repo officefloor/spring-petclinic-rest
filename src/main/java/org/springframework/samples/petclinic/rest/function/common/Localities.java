@@ -29,6 +29,12 @@ public final class Localities {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     private Localities() {
     }
 
@@ -72,6 +78,16 @@ public final class Localities {
         }
         int dash = customerCode.indexOf('-');
         return dash < 0 ? UNKNOWN : customerCode.substring(0, dash);
+    }
+
+    /**
+     * The IANA timezone name for an owner, derived from the {@code REGION} segment of its
+     * {@code customerCode} via the fixed region-to-timezone table (NSW -> Australia/Sydney,
+     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). Returns {@code UNKNOWN} when the
+     * region is absent or not in the table.
+     */
+    public static String timezoneOf(String customerCode) {
+        return REGION_TIMEZONE.getOrDefault(regionOf(customerCode), UNKNOWN);
     }
 
     /** The region whose range contains {@code postcode}, or {@code null} when none does. */
