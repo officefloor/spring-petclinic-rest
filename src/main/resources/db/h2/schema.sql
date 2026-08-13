@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
   birth_date DATE,
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER,
   membership_number VARCHAR(30)
 );
 

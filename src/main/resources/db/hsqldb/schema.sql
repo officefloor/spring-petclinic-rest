@@ -49,6 +49,8 @@ CREATE TABLE owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER,
   membership_number VARCHAR(30)
 );
 CREATE INDEX owners_last_name ON owners (last_name);
