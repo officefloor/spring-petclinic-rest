@@ -118,16 +118,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedAddress == null || normalizedAddress.isBlank()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (isEmailAlreadyUsed(ownerFieldsDto.getEmail())) {
+        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizedTelephone);
+        // Consolidated duplicate detection: all of the former separate telephone, email
+        // and household checks are now expressed through the single derived identityKey
+        // (telephone|email|householdId). Reject only when the new owner's WHOLE
+        // identityKey equals an existing owner's. The household id is assigned later in
+        // this method, so at this point the new owner's key carries an empty household
+        // segment; two members of the same household with different telephones therefore
+        // have different keys and are both allowed.
+        String identityKey = owner.getIdentityKey();
+        if (this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         LocalDate effectiveDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
@@ -139,11 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers =
             findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
-        if (!sharesHousehold && !householdMembers.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         HttpHeaders headers = new HttpHeaders();
-        owner.setTelephone(normalizedTelephone);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -352,22 +355,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private String normalizeName(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Whether the given email, compared case-insensitively (lower-cased), is already
-     * used by any existing owner. A blank or missing email never collides, since email
-     * is optional.
-     */
-    private boolean isEmailAlreadyUsed(String email) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String normalizedEmail = email.toLowerCase(Locale.ROOT);
-        return this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .anyMatch(existing -> existing.toLowerCase(Locale.ROOT).equals(normalizedEmail));
     }
 
     /**

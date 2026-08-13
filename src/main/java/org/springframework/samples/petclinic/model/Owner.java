@@ -259,6 +259,22 @@ public class Owner extends Person {
         return hasEmail ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * Return the owner's derived identity key, which consolidates all duplicate
+     * detection into a single value formed as
+     * {@code '<normalizedTelephone>|<email or empty>|<householdId or empty>'}.
+     * The telephone and email are already stored in their normalized (E.164 /
+     * lower-cased) forms; a missing email or household id contributes an empty
+     * segment. A create is rejected only when a new owner's whole identity key
+     * equals an existing owner's.
+     */
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = (this.email == null) ? "" : this.email;
+        String householdPart = (this.householdId == null) ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
