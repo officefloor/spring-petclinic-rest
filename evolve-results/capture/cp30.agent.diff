@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 655b6455..65feeb46 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,7 +25,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "membershipLevel",
+             expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+-            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.of(owner.getCity()))")
++            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference",
+             expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+index f3b5cd25..a05edc77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+@@ -3,12 +3,14 @@ package org.springframework.samples.petclinic.rest.function.common;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's locality (canonical region) from the city using a fixed
+- * city-to-region table. Any city not in the table maps to {@link #UNKNOWN}.
++ * Derives an owner's locality (canonical region). The postcode is preferred: the region is looked
++ * up by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), and only when the
++ * postcode is absent or falls in no known range does it fall back to the fixed city-to-region
++ * table. Anything unresolved maps to {@link #UNKNOWN}.
+  */
+ public final class Localities {
+ 
+-    /** Value returned when the city is not in the fixed table. */
++    /** Value returned when neither the postcode nor the city resolves a region. */
+     public static final String UNKNOWN = "UNKNOWN";
+ 
+     /** City -> canonical region. */
+@@ -17,11 +19,45 @@ public final class Localities {
+             "Melbourne", "VIC",
+             "Brisbane", "QLD");
+ 
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++            "NSW", new int[] {2000, 2099},
++            "VIC", new int[] {3000, 3099},
++            "QLD", new int[] {4000, 4099});
++
+     private Localities() {
+     }
+ 
+-    /** The canonical region for {@code city}, or {@code UNKNOWN} when not in the table. */
++    /**
++     * The canonical region for {@code city} using only the city-to-region table, or
++     * {@code UNKNOWN} when not in the table.
++     */
+     public static String of(String city) {
+         return city == null ? UNKNOWN : CITY_REGION.getOrDefault(city, UNKNOWN);
+     }
++
++    /**
++     * The canonical region, preferring the postcode: resolves by postcode range first and only
++     * falls back to the city-to-region table when the postcode is absent or in no known range.
++     * Returns {@code UNKNOWN} when neither resolves.
++     */
++    public static String of(String city, String postcode) {
++        String byPostcode = byPostcode(postcode);
++        return byPostcode != null ? byPostcode : of(city);
++    }
++
++    /** The region whose range contains {@code postcode}, or {@code null} when none does. */
++    private static String byPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
+ }
