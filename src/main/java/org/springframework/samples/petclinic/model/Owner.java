@@ -207,26 +207,50 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level. Starts at 1, adds 1 when an email is
-     * present, adds 1 when {@code namesakeCount} is 0, and adds 1 when the owner's
-     * tenure exceeds 365 days. The tenure point is the only route to level 4: because a
-     * newly created owner has zero tenure, a new owner never exceeds level 3 (a new
-     * owner with an email, a {@code namesakeCount} of 0 and a 3-member household is
-     * level 3, not 4).
+     * The owner's membership points, accumulated from four factors: start at 0, add 2
+     * when an email is present, add 1 when {@code namesakeCount} is 0, add 2 for a
+     * household of 3 or more members, and add 3 when the owner's tenure exceeds 365
+     * days. The tenure points are the only route to 6 or more: because a newly created
+     * owner has zero tenure, a new owner scores at most 5 points (2 email + 1 namesake
+     * + 2 household).
+     */
+    @Transient
+    public int getMembershipPoints() {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            points += 1;
+        }
+        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
+            points += 2;
+        }
+        if (getTenureDays() > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, derived from {@link #getMembershipPoints()}:
+     * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a newly
+     * created owner scores at most 5 points (tenure being the only route to 6), a new
+     * owner never exceeds level 3.
      */
     @Transient
     public int getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (getTenureDays() > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
