@@ -32,6 +32,8 @@ public abstract class OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "checkDigit",
             expression = "java(checkDigit(owner))")
+    @Mapping(target = "telephoneDisplay",
+            expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "ageBand",
             expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
@@ -98,6 +100,41 @@ public abstract class OwnerMapper {
             return "ADULT";
         }
         return "SENIOR";
+    }
+
+    /**
+     * Known country codes (digits after the {@code '+'}), longest first so {@code '61'} is
+     * matched before {@code '1'}, mirroring {@code NormalizeOwnerTelephone}.
+     */
+    private static final String[] COUNTRY_CODES = {"61", "1"};
+
+    /**
+     * Format the stored E.164 telephone for humans: the country code, a space, then the national
+     * digits grouped in threes from the left (e.g. {@code +61412345678} -> {@code +61 412 345 678}).
+     * Returns the raw value unchanged when it is not a recognised E.164 number.
+     */
+    protected String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        String code = null;
+        for (String candidate : COUNTRY_CODES) {
+            if (digits.startsWith(candidate)) {
+                code = candidate;
+                break;
+            }
+        }
+        if (code == null) {
+            return telephone;
+        }
+        String national = digits.substring(code.length());
+        StringBuilder grouped = new StringBuilder("+").append(code);
+        for (int i = 0; i < national.length(); i += 3) {
+            grouped.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return grouped.toString();
     }
 
     /**
