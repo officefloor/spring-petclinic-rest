@@ -148,6 +148,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold && !householdMembers.isEmpty()) {
             String householdId = householdId(owner.getLastName(), normalizedAddress);
             owner.setHouseholdId(householdId);
+            owner.setHouseholdSize(householdMembers.size() + 1);
             for (Owner member : householdMembers) {
                 if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
                     member.setHouseholdId(householdId);
