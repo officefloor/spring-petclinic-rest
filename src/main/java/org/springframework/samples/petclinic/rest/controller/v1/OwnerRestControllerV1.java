@@ -121,6 +121,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (isEmailAlreadyUsed(ownerFieldsDto.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -349,6 +352,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private String normalizeName(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether the given email, compared case-insensitively (lower-cased), is already
+     * used by any existing owner. A blank or missing email never collides, since email
+     * is optional.
+     */
+    private boolean isEmailAlreadyUsed(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        String normalizedEmail = email.toLowerCase(Locale.ROOT);
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .anyMatch(existing -> existing.toLowerCase(Locale.ROOT).equals(normalizedEmail));
     }
 
     /**
