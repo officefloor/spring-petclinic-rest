@@ -26,6 +26,8 @@ public abstract class OwnerMapper {
             expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.of(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+            expression = "java(contactPreference(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -63,5 +65,13 @@ public abstract class OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Derive the owner's preferred contact channel: {@code EMAIL} when an email is present,
+     * otherwise {@code PHONE}.
+     */
+    protected String contactPreference(Owner owner) {
+        return (owner.getEmail() != null && !owner.getEmail().isEmpty()) ? "EMAIL" : "PHONE";
     }
 }
