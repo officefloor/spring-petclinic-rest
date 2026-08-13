@@ -158,6 +158,15 @@ public class Owner extends Person {
         return Math.min(level, 3);
     }
 
+    /**
+     * The owner's preferred contact channel: {@code EMAIL} when an email address is
+     * present, otherwise {@code PHONE}.
+     */
+    @Transient
+    public String getContactPreference() {
+        return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
