@@ -3,18 +3,24 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Flags a soft (non-hard) duplicate on the owner being created.
  *
  * <p>A hard duplicate — an existing owner with the same whole {@code identityKey} — has
- * already been rejected with 409 by {@link EnsureUniqueIdentity}. This step handles the
- * softer case: the new owner is <em>not</em> a hard duplicate but still shares an
- * existing owner's {@code lastName} (compared case-insensitively) and {@code postcode}
- * while carrying a <em>different</em> telephone. When such a match exists the owner is
- * still created, but with {@code possibleDuplicate} true and {@code possibleDuplicateOf}
- * set to the matching owner's id (the lowest id when several match, for determinism);
- * otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} is absent.
+ * already been rejected with 409 by {@link EnsureUniqueIdentity}. The soft-match key
+ * (same {@code lastName}, compared case-insensitively, and same {@code postcode}, with a
+ * <em>different</em> telephone) is now exactly the household key: a non-declared owner
+ * sharing it has already been rejected as a household duplicate by
+ * {@link EnsureUniqueHousehold}, so the only owner that reaches this step with such a
+ * match is a <em>declared</em> household member ({@code sharesHousehold: true}). A
+ * declared member is not a suspected duplicate, so it is never flagged.
+ *
+ * <p>For any other owner the soft match, when present, still sets {@code possibleDuplicate}
+ * true and {@code possibleDuplicateOf} to the matching owner's id (the lowest id when
+ * several match, for determinism); otherwise {@code possibleDuplicate} is false and
+ * {@code possibleDuplicateOf} is absent.
  *
  * <p>Runs after {@link EnsureUniqueIdentity} and before {@link SaveOwner} in the
  * {@code POST /api/owners} pipeline, so the new owner is not yet persisted and is never
@@ -23,7 +29,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
+            OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();

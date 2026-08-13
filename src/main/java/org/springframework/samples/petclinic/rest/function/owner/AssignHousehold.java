@@ -6,47 +6,36 @@ import java.security.NoSuchAlgorithmException;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns a shared {@code householdId} when a create request opts in with
- * {@code sharesHousehold: true}, joining an existing owner at the same household — the
- * same {@code lastName} (compared case-insensitively with collapsed whitespace) and the
- * same {@code address} in its normalized form (see {@link AddressNormalizer}).
+ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of
+ * SHA-256 over {@code normalizedLastName + '|' + postcode}. Because the value is derived
+ * purely from the (last name, postcode) pair, every owner sharing that pair computes the
+ * same identifier automatically — the household is keyed on the pair, not created by an
+ * explicit opt-in.
  *
- * <p>The identifier is derived deterministically from the normalized last name and
- * address, so every owner of a household computes the same value regardless of creation
- * order — a stable shared identifier. Existing same-household owners that do not yet
- * carry one are back-filled so both sides share it.
+ * <p>The last name is normalized (compared case-insensitively with collapsed whitespace)
+ * before hashing; the postcode is used verbatim, treated as empty when absent. So two
+ * owners with the same last name and postcode always share a household, regardless of
+ * creation order or the {@code sharesHousehold} flag (which now only bypasses the
+ * household-duplicate block — see {@link EnsureUniqueHousehold}).
  *
  * <p>Runs after {@link BuildOwner} (which produces the {@link Owner}) and before
- * {@link SaveOwner}; it mutates the built owner in place (see {@code @Val} semantics).
+ * {@link EnsureUniqueHousehold}/{@link SaveOwner}; it mutates the built owner in place
+ * (see {@code @Val} semantics). The computed id feeds duplicate detection (via the
+ * {@code identityKey}) and the household-size count.
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
-            OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
+    public void service(@Val Owner owner) {
         String lastName = normalize(owner.getLastName());
-        String address = normalizeAddress(owner.getAddress());
-        String householdId = householdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalizeAddress(existing.getAddress()))
-                    && existing.getHouseholdId() == null) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
-            }
-        }
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        owner.setHouseholdId(householdId(lastName, postcode));
     }
 
-    /** Stable 16-char upper-case hex identifier over the normalized last name and address. */
-    private static String householdId(String lastName, String address) {
-        return sha256hex(lastName + "|" + address).substring(0, 16).toUpperCase();
+    /** Deterministic 12-char hex id over the normalized last name and postcode. */
+    private static String householdId(String lastName, String postcode) {
+        return sha256hex(lastName + "|" + postcode).substring(0, 12);
     }
 
     private static String sha256hex(String value) {
@@ -67,11 +56,5 @@ public class AssignHousehold {
     /** Lower-cases and collapses runs of whitespace to a single space, trimming the ends. */
     private static String normalize(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    /** The canonical address form (see {@link AddressNormalizer}); never {@code null}. */
-    private static String normalizeAddress(String value) {
-        String normalized = AddressNormalizer.normalize(value);
-        return normalized == null ? "" : normalized;
     }
 }
