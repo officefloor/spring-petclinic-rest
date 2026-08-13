@@ -26,6 +26,8 @@ public interface OwnerMapper {
         expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "locality",
         expression = "java(owner.getRegion())")
+    @Mapping(target = "timezone",
+        expression = "java(owner.getTimezone())")
     @Mapping(target = "checkDigit",
         expression = "java(luhn(owner.getCustomerCode()))")
     @Mapping(target = "telephoneDisplay",

@@ -303,6 +303,25 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's IANA timezone, derived from {@link #getRegion()} via the fixed
+     * region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane). {@code null} when the region is not in the table.
+     */
+    @Transient
+    public String getTimezone() {
+        switch (getRegion()) {
+            case "NSW":
+                return "Australia/Sydney";
+            case "VIC":
+                return "Australia/Melbourne";
+            case "QLD":
+                return "Australia/Brisbane";
+            default:
+                return null;
+        }
+    }
+
+    /**
      * The owner's preferred contact channel: {@code EMAIL} when an email address is
      * present, otherwise {@code PHONE}.
      */
