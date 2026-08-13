@@ -7,9 +7,8 @@ import java.util.Map;
  * Canonical address normalization applied whenever an owner is created. The rules are: trim the
  * ends, collapse every run of whitespace to a single space, upper-case, and expand a small set of
  * common street-type abbreviations to their full word ({@code ST -> STREET}, {@code RD -> ROAD},
- * {@code AVE -> AVENUE}). The result is what gets stored and returned, and it is the form every
- * address comparison (household duplicate detection and the shared household id) uses, so equal
- * addresses written differently collapse to the same value.
+ * {@code AVE -> AVENUE}). The result is what gets stored and returned, so equal addresses written
+ * differently collapse to the same value.
  */
 final class OwnerAddressNormalizer {
 
