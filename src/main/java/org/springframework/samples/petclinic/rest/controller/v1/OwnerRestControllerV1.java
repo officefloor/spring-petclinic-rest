@@ -115,6 +115,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers =
             findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
@@ -254,6 +257,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeForHousehold(existing.getCity()).equals(normalizedCity))
             .count() + 1;
         return String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence);
+    }
+
+    /**
+     * Count the existing owners whose city matches the given one, compared after
+     * collapsing whitespace and lower-casing. Used to enforce the per-city capacity
+     * cap: a city that already holds this many owners is at capacity.
+     */
+    private long countOwnersInCity(String city) {
+        String normalizedCity = normalizeForHousehold(city);
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(normalizedCity))
+            .count();
     }
 
     /** Upper-cased first three letters of {@code value} (fewer if shorter, empty if null). */
