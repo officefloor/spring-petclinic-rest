@@ -159,6 +159,19 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * Return the owner's membership number, formatted {@code '<customerCode>-M<YY>'}
+     * where {@code YY} is the last two digits of the registration date's year (for
+     * example {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer
+     * code or the registration date is not set.
+     */
+    public String getMembershipNumber() {
+        if (this.customerCode == null || this.registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
