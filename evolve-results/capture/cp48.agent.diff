@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c58804f7..1cdaed38 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,7 +23,9 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber",
+-        expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
++        expression = "java(String.format(\"%s-M%s\", owner.getCustomerCode(), owner.getFiscalYear().substring(2)))")
++    @Mapping(target = "fiscalYear",
++        expression = "java(owner.getFiscalYear())")
+     @Mapping(target = "locality",
+         expression = "java(owner.getRegion())")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 17cf162d..bde07f48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -271,10 +271,10 @@ public class Owner extends Person {
+     /**
+      * The owner's membership points, accumulated from four factors: start at 0, add 2
+      * when an email is present, add 1 when {@code namesakeCount} is 0, add 2 for a
+-     * household of 3 or more members, and add 3 when the owner's tenure exceeds 365
+-     * days. The tenure points are the only route to 6 or more: because a newly created
+-     * owner has zero tenure, a new owner scores at most 5 points (2 email + 1 namesake
+-     * + 2 household).
++     * household of 3 or more members, and add 3 when the owner's tenure spans at least
++     * one elapsed fiscal year. The tenure points are the only route to 6 or more:
++     * because a newly created owner has zero elapsed fiscal years of tenure, a new owner
++     * scores at most 5 points (2 email + 1 namesake + 2 household).
+      */
+     @Transient
+     public int getMembershipPoints() {
+@@ -288,7 +288,7 @@ public class Owner extends Person {
+         if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
+             points += 2;
+         }
+-        if (getTenureDays() > 365) {
++        if (getTenureFiscalYears() >= 1) {
+             points += 3;
+         }
+         return points;
+@@ -316,16 +316,45 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's tenure in whole days: the span from {@code registrationDate} to today.
+-     * Zero when no registration date is set, and zero for an owner registered today, so
+-     * the tenure point of {@link #getMembershipLevel()} is never earned at creation.
++     * The owner's tenure counted in elapsed fiscal years: the number of fiscal-year
++     * boundaries (each 1 July) crossed between {@code registrationDate} and today, i.e.
++     * {@code fiscalYearOf(today) - fiscalYearOf(registrationDate)}. Zero when no
++     * registration date is set, and zero for an owner registered in the current fiscal
++     * year, so the tenure point of {@link #getMembershipLevel()} is never earned at
++     * creation.
+      */
+     @Transient
+-    public long getTenureDays() {
++    public long getTenureFiscalYears() {
+         if (this.registrationDate == null) {
+             return 0;
+         }
+-        return java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
++        return (long) fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate);
++    }
++
++    /**
++     * The owner's fiscal year, formatted {@code 'FY<YY>'}, derived from the
++     * business-day-adjusted {@code registrationDate}. The fiscal year starts on 1 July,
++     * so a date in July or later belongs to the fiscal year named by its own calendar
++     * year, and a date in January to June belongs to the fiscal year that started the
++     * previous 1 July. {@code YY} is the last two digits of that fiscal year. Returns
++     * {@code null} when no registration date is set.
++     */
++    @Transient
++    public String getFiscalYear() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
++    }
++
++    /**
++     * The fiscal year (named by the calendar year in which its 1 July start falls) that
++     * {@code date} belongs to. July onward is the current calendar year; January to June
++     * belongs to the fiscal year that began the previous 1 July.
++     */
++    private static int fiscalYearOf(LocalDate date) {
++        return date.getMonthValue() >= java.time.Month.JULY.getValue()
++                ? date.getYear() : date.getYear() - 1;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 66014f42..3f2d7ad7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -20,8 +20,8 @@ public class AuditOwnerCreated {
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        String membershipNumber = String.format("%s-M%02d",
+-            owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++        String membershipNumber = String.format("%s-M%s",
++            owner.getCustomerCode(), owner.getFiscalYear().substring(2));
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), membershipNumber);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 340255c4..50c4f43b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2192,18 +2192,30 @@ components:
+               title: Membership number
+               description: >-
+                 The owner's membership number, formatted '<customerCode>-M<YY>' where
+-                YY is the last two digits of the registrationDate year.
++                YY is the last two digits of the fiscal year (see fiscalYear) of the
++                business-day-adjusted registrationDate.
+               type: string
+               example: 'FRA-0007-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the business-day-adjusted registrationDate,
++                formatted 'FY<YY>'. The fiscal year starts on 1 July, so a July-or-later
++                registration date belongs to the fiscal year named by its own calendar
++                year and a January-to-June date belongs to the fiscal year that started
++                the previous 1 July. YY is the last two digits of that year.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             membershipPoints:
+               title: Membership points
+               description: >-
+                 The owner's membership points, assigned at creation time. Starts at 0,
+                 adds 2 when an email is present, adds 1 when namesakeCount is 0, adds 2
+-                for a household of 3 or more members, and adds 3 when tenure exceeds 365
+-                days. A newly created owner scores at most 5 points (tenure being the
+-                only route to 6 or more).
++                for a household of 3 or more members, and adds 3 when tenure spans at
++                least one elapsed fiscal year. A newly created owner scores at most 5
++                points (tenure being the only route to 6 or more).
+               type: integer
+               format: int32
+               minimum: 0
