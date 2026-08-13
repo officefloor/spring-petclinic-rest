@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3f5915dc..05658bfc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+@@ -47,8 +46,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form (a '+' followed by 8 to 15 digits)")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fdb37ad6..66886e05 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -127,11 +127,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (currentOwner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
++        if (normalizedTelephone == null) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         currentOwner.setAddress(ownerFieldsDto.getAddress());
+         currentOwner.setCity(ownerFieldsDto.getCity());
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setTelephone(normalizedTelephone);
+         currentOwner.setEmail(ownerFieldsDto.getEmail());
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+@@ -202,16 +206,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+ 
+     /**
+-     * Normalize a telephone number for owner creation by removing every non-digit
+-     * character. Returns the resulting value only when it is exactly 10 digits;
+-     * otherwise returns {@code null} to signal a bad request.
++     * Normalize a telephone number to E.164 form. Spaces, dashes and brackets are
++     * stripped. When a leading {@code '+'} and country code are present they are kept;
++     * otherwise country code {@code '+61'} is assumed and a single leading {@code '0'}
++     * is dropped from the national digits. The result must be a {@code '+'} followed
++     * by 8 to 15 digits, and is returned as {@code +<digits>}; otherwise {@code null}
++     * is returned to signal a bad request.
+      */
+     private String normalizeTelephone(String telephone) {
+         if (telephone == null) {
+             return null;
+         }
+-        String digits = telephone.replaceAll("\\D", "");
+-        return digits.length() == 10 ? digits : null;
++        String cleaned = telephone.replaceAll("[\\s\\-()]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        } else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        return digits.matches("[0-9]{8,15}") ? "+" + digits : null;
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 365a3e13..6c79aac4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2026,13 +2026,15 @@ components:
+         telephone:
+           title: Telephone number
+           description: >-
+-            The telephone number of the pet owner. On create it is normalized by
+-            removing every non-digit character and must contain exactly 10 digits
+-            afterwards; the stored value is the resulting 10-digit string.
++            The telephone number of the pet owner. It is normalized to E.164 form:
++            spaces, dashes and brackets are stripped; a leading '+' and country code
++            are kept when present, otherwise country code '+61' is assumed and a
++            single leading '0' is dropped from the national digits. The result must
++            be a '+' followed by 8 to 15 digits, and is the value stored and returned.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: >-
