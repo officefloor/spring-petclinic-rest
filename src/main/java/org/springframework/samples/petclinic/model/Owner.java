@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private boolean possibleDuplicate;
 
@@ -239,6 +242,14 @@ public class Owner extends Person {
         this.householdMemberCount = householdMemberCount;
     }
 
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public boolean isPossibleDuplicate() {
         return this.possibleDuplicate;
     }
@@ -299,9 +310,23 @@ public class Owner extends Person {
      * level 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a newly
      * created owner scores at most 5 points (tenure being the only route to 6), a new
      * owner never exceeds level 3.
+     *
+     * <p>The result is then bounded by {@code membershipLevelCap} when one is set: a new
+     * owner's level cannot exceed one above the highest level among the existing members
+     * of their household, so the reported level is the lesser of the points-derived level
+     * and that cap.
      */
     @Transient
     public int getMembershipLevel() {
+        int level = pointsLevel();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    /** The uncapped, points-derived membership level (see {@link #getMembershipLevel()}). */
+    private int pointsLevel() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;

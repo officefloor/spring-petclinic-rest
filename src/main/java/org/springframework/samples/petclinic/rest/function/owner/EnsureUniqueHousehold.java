@@ -12,11 +12,14 @@ import org.springframework.samples.petclinic.rest.escalation.HouseholdDuplicateE
  * {@link AssignHousehold}) — responding 409 via {@link HouseholdDuplicateException}.
  *
  * <p>The household is keyed on {@code (lastName, postcode)}, so a second owner sharing
- * that pair is the same household. Setting {@code sharesHousehold: true} bypasses this
- * block: such an owner is created as a <em>declared</em> household member (and is not
- * flagged as a possible duplicate — see {@link AssignPossibleDuplicate}). A full-identity
- * duplicate is still caught afterwards by {@link EnsureUniqueIdentity}, so even a declared
- * member that duplicates an existing owner's whole {@code identityKey} is rejected.
+ * that pair is the same household. Two things bypass this block: setting
+ * {@code sharesHousehold: true} (a <em>declared</em> household member, which is also not
+ * flagged as a possible duplicate — see {@link AssignPossibleDuplicate}), and supplying a
+ * distinct {@code email}. An email is part of the owner's {@code identityKey}, so an owner
+ * that provides one is a distinguishable individual rather than an accidental re-registration
+ * and may join the household. Either way a full-identity duplicate is still caught afterwards
+ * by {@link EnsureUniqueIdentity}, so an owner that duplicates an existing owner's whole
+ * {@code identityKey} — email and all — is still rejected.
  *
  * <p>Runs after {@link AssignHousehold} (so the built owner already carries its computed
  * {@code householdId}) and before {@link EnsureUniqueIdentity}/{@link SaveOwner}. The new
@@ -28,6 +31,9 @@ public class EnsureUniqueHousehold {
             OwnerRepository ownerRepository) throws HouseholdDuplicateException {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared member bypasses the household-duplicate block
+        }
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            return; // a distinct email identifies the owner; not a household duplicate
         }
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
