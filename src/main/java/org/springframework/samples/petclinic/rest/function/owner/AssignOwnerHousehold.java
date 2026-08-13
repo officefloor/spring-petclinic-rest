@@ -29,12 +29,12 @@ public class AssignOwnerHousehold {
         if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String lastName = normalizeName(request.getLastName());
+        String address = OwnerAddressNormalizer.normalize(request.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (lastName.equals(normalizeName(existing.getLastName()))
+                    && address.equals(OwnerAddressNormalizer.normalize(existing.getAddress()))) {
                 household.add(existing);
             }
         }
@@ -81,7 +81,7 @@ public class AssignOwnerHousehold {
     }
 
     /** Lower-case and collapse runs of whitespace so comparison is case- and whitespace-insensitive. */
-    private static String normalize(String value) {
+    private static String normalizeName(String value) {
         if (value == null) {
             return "";
         }
