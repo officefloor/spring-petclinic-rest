@@ -99,8 +99,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        if (normalizedTelephone == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizedTelephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -187,6 +192,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(visitDto, headers, HttpStatus.CREATED);
     }
 
+
+    /**
+     * Normalize a telephone number for owner creation by removing every non-digit
+     * character. Returns the resulting value only when it is exactly 10 digits;
+     * otherwise returns {@code null} to signal a bad request.
+     */
+    private String normalizeTelephone(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        String digits = telephone.replaceAll("\\D", "");
+        return digits.length() == 10 ? digits : null;
+    }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
