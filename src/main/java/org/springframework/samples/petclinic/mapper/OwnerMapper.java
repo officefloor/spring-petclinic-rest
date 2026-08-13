@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.display(owner.getTelephone()))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "riskFlag", ignore = true)
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
