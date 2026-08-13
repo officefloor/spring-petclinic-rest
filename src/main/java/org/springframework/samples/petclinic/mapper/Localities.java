@@ -97,6 +97,23 @@ public final class Localities {
     }
 
     /**
+     * Returns the owner's segment, formatted {@code "<TIER>_<AREA>"}. TIER is {@code "PREMIUM"}
+     * when the owner's {@link Owner#effectiveMembershipLevel(Owner) effective membership level} is
+     * 3 or more, otherwise {@code "STANDARD"}. AREA is {@code "METRO"} when the owner's
+     * {@link #forOwner(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code "REGIONAL"}.
+     *
+     * @param owner the owner whose segment is required
+     * @return the segment string, one of {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
+     * {@code STANDARD_METRO} or {@code STANDARD_REGIONAL}
+     */
+    public static String segmentForOwner(Owner owner) {
+        String tier = Owner.effectiveMembershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_POSTCODES.containsKey(forOwner(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Returns the IANA timezone name for {@code region} from the fixed region-to-timezone
      * table ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
      * {@code QLD -> Australia/Brisbane}), or {@code null} when the region is {@code null}
