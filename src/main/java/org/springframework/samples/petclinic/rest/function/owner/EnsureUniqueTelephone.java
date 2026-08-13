@@ -11,10 +11,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
  * owner, responding 409 via {@link DuplicateTelephoneException}.
  *
  * <p>Runs after {@link ValidateOwnerFields} (which has already normalized the request's
- * telephone to exactly 10 digits) and before {@link BuildOwner} saves anything. Each
- * stored owner's telephone is normalized the same way — stripping every non-digit
- * character — before comparison, so equivalent numbers written in different formats still
- * collide.
+ * telephone to E.164 form) and before {@link BuildOwner} saves anything. Each stored
+ * owner's telephone is normalized to E.164 the same way before comparison, so equivalent
+ * numbers written in different formats still collide.
  */
 public class EnsureUniqueTelephone {
 
@@ -29,6 +28,7 @@ public class EnsureUniqueTelephone {
     }
 
     private static String normalize(String value) {
-        return value == null ? "" : value.replaceAll("\\D", "");
+        String e164 = TelephoneE164.normalize(value);
+        return e164 != null ? e164 : (value == null ? "" : value);
     }
 }

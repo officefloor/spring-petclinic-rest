@@ -17,10 +17,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * <p>Runs first in the {@code POST /api/owners} pipeline and binds the body without
  * {@code @Valid}, so a missing field surfaces as a {@link MissingOwnerFieldsException}
  * (400 with an {@code errors} array) rather than the generic schema-validation response.
- * It then normalizes the telephone by stripping every non-digit character and requires
- * exactly 10 digits, rejecting with an {@link InvalidTelephoneException} (400) otherwise.
- * On success it stores the normalized 10-digit telephone and republishes the body for
- * {@link BuildOwner}.
+ * It then normalizes the telephone to E.164 form (see {@link TelephoneE164}), rejecting
+ * with an {@link InvalidTelephoneException} (400) when it cannot form a valid E.164 number.
+ * On success it stores the E.164 telephone and republishes the body for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
 
@@ -45,10 +44,10 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new MissingOwnerFieldsException(errors);
         }
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = TelephoneE164.normalize(request.getTelephone());
+        if (telephone == null) {
             throw new InvalidTelephoneException(
-                    "Telephone must be exactly 10 digits after removing non-digit characters");
+                    "Telephone cannot be normalized to a valid E.164 number");
         }
         request.setTelephone(telephone);
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
