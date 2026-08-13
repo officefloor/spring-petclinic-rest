@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e74e2359..da97ef81 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,8 @@ public abstract class OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
+     @Mapping(target = "checkDigit",
+             expression = "java(checkDigit(owner))")
++    @Mapping(target = "telephoneDisplay",
++            expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "ageBand",
+             expression = "java(ageBand(owner))")
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+@@ -100,6 +102,41 @@ public abstract class OwnerMapper {
+         return "SENIOR";
+     }
+ 
++    /**
++     * Known country codes (digits after the {@code '+'}), longest first so {@code '61'} is
++     * matched before {@code '1'}, mirroring {@code NormalizeOwnerTelephone}.
++     */
++    private static final String[] COUNTRY_CODES = {"61", "1"};
++
++    /**
++     * Format the stored E.164 telephone for humans: the country code, a space, then the national
++     * digits grouped in threes from the left (e.g. {@code +61412345678} -> {@code +61 412 345 678}).
++     * Returns the raw value unchanged when it is not a recognised E.164 number.
++     */
++    protected String telephoneDisplay(Owner owner) {
++        String telephone = owner.getTelephone();
++        if (telephone == null || !telephone.startsWith("+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        String code = null;
++        for (String candidate : COUNTRY_CODES) {
++            if (digits.startsWith(candidate)) {
++                code = candidate;
++                break;
++            }
++        }
++        if (code == null) {
++            return telephone;
++        }
++        String national = digits.substring(code.length());
++        StringBuilder grouped = new StringBuilder("+").append(code);
++        for (int i = 0; i < national.length(); i += 3) {
++            grouped.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return grouped.toString();
++    }
++
+     /**
+      * Compute a single Luhn check digit (0-9) over the digits contained in the owner's
+      * {@code customerCode}. Non-digit characters (such as the hyphen separators) are ignored.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ec9ccc16..4a8e307d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans as the country code, a space, then the national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' field stays E.164.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first three letters of the last name and NNNN a per-city 4-digit zero-padded sequence.
