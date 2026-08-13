@@ -32,6 +32,8 @@ public abstract class OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "checkDigit",
             expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand",
+            expression = "java(ageBand(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -77,6 +79,25 @@ public abstract class OwnerMapper {
      */
     protected String contactPreference(Owner owner) {
         return (owner.getEmail() != null && !owner.getEmail().isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derive the owner's age band from {@code birthDate} as at {@code registrationDate}:
+     * {@code MINOR} when under 18, {@code ADULT} from 18 to 64, {@code SENIOR} at 65 or over.
+     * Returns {@code null} when no birth date was supplied.
+     */
+    protected String ageBand(Owner owner) {
+        if (owner.getBirthDate() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int age = java.time.Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     /**
