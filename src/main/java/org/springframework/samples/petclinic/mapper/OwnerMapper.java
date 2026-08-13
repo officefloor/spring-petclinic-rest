@@ -60,9 +60,10 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derive the owner's membership level, a number from 1 to 3 fixed at creation. Starts at 1,
-     * plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3
-     * (level 4 is reserved for tenure).
+     * Derive the owner's membership level, a number from 1 to 4. Starts at 1, plus 1 when an
+     * email is present, plus 1 when {@code namesakeCount} is 0, plus 1 when tenure exceeds
+     * 365 days, capped at 4. Because a newly created owner has zero tenure, a new owner never
+     * exceeds level 3.
      */
     protected Integer membershipLevel(Owner owner) {
         int level = 1;
@@ -72,7 +73,12 @@ public abstract class OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount().intValue() == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        if (owner.getRegistrationDate() != null
+                && java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(),
+                        java.time.LocalDate.now()) > 365) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
