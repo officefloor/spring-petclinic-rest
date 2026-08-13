@@ -233,8 +233,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
+        String ownerSegment = ownerDto.getOwnerSegment() == null
+            ? null
+            : ownerDto.getOwnerSegment().getValue();
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_EVENT_SEQUENCE.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(), ownerSegment);
         AUDIT.info("{}", event.toJson());
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -271,22 +274,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the owner's unified member id, formatted {@code <REGION><FY><HASH8><CHK>}: REGION is the
-     * region code derived from the owner's postcode (falling back to the city-to-region table, then
-     * {@code UNKNOWN}); FY is the 2-digit fiscal year of the owner's business-day-adjusted registration
-     * date; HASH8 is the first 8 upper-cased hex characters of the SHA-256 of the owner's normalized
-     * telephone concatenated with its last name; and CHK is a single Luhn check digit computed over the
-     * digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D3}).
+     * version-2 {@link #identityRegionCode(Owner) identity region code} (the plain region code with
+     * the fixed {@code 'V2'} version tag mixed in); FY is the 2-digit fiscal year of the owner's
+     * business-day-adjusted registration date; HASH8 is the first 8 upper-cased hex characters of the
+     * SHA-256 of the {@code 'V2'} version tag, the owner's normalized telephone and its last name; and
+     * CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>} (e.g.
+     * {@code V2NSW261A2B3C4D3}).
      *
      * <p>Should the computed member id collide with an existing owner's {@code memberId}, it is
      * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
-     * unique (e.g. {@code NSW261A2B3C4D3-2}), so distinct owners always receive distinct member ids.
+     * unique (e.g. {@code V2NSW261A2B3C4D3-2}), so distinct owners always receive distinct member ids.
      *
      * @param owner the owner being created, with its normalized telephone and business-day-adjusted
      *              registration date already applied
      * @return the assigned, de-duplicated member id
      */
     private String memberId(Owner owner) {
-        String core = regionCode(owner)
+        String core = identityRegionCode(owner)
             + String.format("%02d", fiscalYear(owner.getRegistrationDate()) % 100)
             + identityHash8(owner.getTelephone(), owner.getLastName());
         String base = core + luhnCheckDigit(core);
@@ -352,6 +356,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Derives the version-2 region code embedded inside an owner's {@code memberId}: the plain
+     * {@link #regionCode(Owner) region code} with the fixed {@code 'V2'} version tag mixed in
+     * (e.g. {@code NSW} becomes {@code V2NSW}). This is the region code used <em>inside</em> the
+     * identifier only; the user-facing {@code locality}, {@code timezone} and owner-segment region
+     * keep the plain region code, so the {@code 'V2'} tag never leaks into them.
+     *
+     * @param owner the owner being created
+     * @return the version-2 identity region code, never {@code null}
+     */
+    private String identityRegionCode(Owner owner) {
+        return IdentityKeys.VERSION_TAG + regionCode(owner);
+    }
+
+    /**
      * Resolves the region whose postcode range contains the given postcode, or {@code null} when the
      * postcode is absent, not 4 digits, or in no known range.
      *
@@ -374,14 +392,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Computes the identity hash embedded in an owner's customer code: the first 8 upper-cased hex
-     * characters of the SHA-256 of the owner's normalized telephone concatenated with its last name.
+     * characters of the SHA-256 of the fixed {@code 'V2'} version tag, the owner's normalized
+     * telephone and its last name. Mixing in the version tag is what moves the hash to version 2, so
+     * no value produced under version 1 is produced again.
      *
      * @param telephone the owner's normalized (E.164) telephone
      * @param lastName  the owner's last name
      * @return the 8-character upper-cased hex hash
      */
     private String identityHash8(String telephone, String lastName) {
-        String input = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
+        String input = IdentityKeys.VERSION_TAG + "|"
+            + (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(input.getBytes(StandardCharsets.UTF_8));
@@ -803,10 +824,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives the stable, shared household identifier for an owner, formatted {@code HH-<HEX12>}
-     * where HEX12 is the first 12 upper-cased hex characters of the SHA-256 of the owner's normalized
-     * lastName, a {@code '|'} separator, and its postcode. Being a pure function of (lastName,
-     * postcode), every owner sharing a lastName and postcode derives the same value regardless of
-     * creation order. A {@code null} postcode contributes an empty segment.
+     * where HEX12 is the first 12 upper-cased hex characters of the SHA-256 of the fixed {@code 'V2'}
+     * version tag, the owner's normalized lastName and its postcode, joined with {@code '|'}
+     * separators. Being a pure function of (lastName, postcode), every owner sharing a lastName and
+     * postcode derives the same value regardless of creation order. A {@code null} postcode
+     * contributes an empty segment. Mixing in the version tag moves the identifier to version 2, so
+     * no value produced under version 1 is produced again.
      *
      * @param owner the owner whose household identifier to derive
      * @return the household identifier
@@ -816,7 +839,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((lastNameKey + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                .digest((IdentityKeys.VERSION_TAG + "|" + lastNameKey + "|" + postcode)
+                    .getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 hex.append(String.format("%02x", b));
@@ -995,28 +1019,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Immutable structured audit event emitted alongside the human-readable audit line on a successful
-     * owner create. It records the create's monotonic {@code seq}, the new owner's id, the owner's
-     * current primary identifier and its membership level, plus a fixed {@code OWNER_CREATED} marker.
+     * owner create. It is a schema-version-2 event: it records its {@code schemaVersion}, the create's
+     * monotonic {@code seq}, the new owner's id, the owner's current primary identifier, its membership
+     * level and its owner segment recomputed from the version-2 identity, plus a fixed
+     * {@code OWNER_CREATED} marker.
      *
      * <p>The primary identifier is serialized under the {@code memberId} key, matching the owner's
      * unified primary identifier.
      */
     private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-                                     Integer membershipLevel) {
+                                     Integer membershipLevel, String ownerSegment) {
 
         private static final String EVENT = "OWNER_CREATED";
 
         /**
-         * Renders the event as a compact JSON object
-         * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+         * The audit event schema version. Version 2 adds the {@code schemaVersion} field itself and
+         * the {@code ownerSegment} recomputed from the version-2 identity.
+         */
+        private static final int SCHEMA_VERSION = 2;
+
+        /**
+         * Renders the event as a compact JSON object {@code {"schemaVersion":2,"seq":..,"ownerId":..,
+         * "memberId":..,"membershipLevel":..,"ownerSegment":..,"event":"OWNER_CREATED"}}.
          */
         String toJson() {
-            StringBuilder json = new StringBuilder(96);
+            StringBuilder json = new StringBuilder(128);
             json.append('{')
-                .append("\"seq\":").append(this.seq)
+                .append("\"schemaVersion\":").append(SCHEMA_VERSION)
+                .append(",\"seq\":").append(this.seq)
                 .append(",\"ownerId\":").append(this.ownerId)
                 .append(",\"memberId\":").append(jsonString(this.memberId))
                 .append(",\"membershipLevel\":").append(this.membershipLevel)
+                .append(",\"ownerSegment\":").append(jsonString(this.ownerSegment))
                 .append(",\"event\":").append(jsonString(EVENT))
                 .append('}');
             return json.toString();

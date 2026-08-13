@@ -24,21 +24,28 @@ import java.security.NoSuchAlgorithmException;
  * Derives an owner's consolidated identity key and the phonetic (Soundex) encoding it is built on.
  *
  * <p>The {@link #identityKey(String, String, String) identityKey} is the SHA-256, rendered as
- * lower-case hex, of the owner's normalized telephone, lower-cased email and the {@link
- * #soundex(String) Soundex} of its last name, joined with {@code '|'} separators. It is the single
- * key both the duplicate-detection check and the exposed {@code identityKey} field are computed
- * from, so the two never diverge.
+ * lower-case hex, of the fixed {@value #VERSION_TAG} version tag, the owner's normalized telephone,
+ * lower-cased email and the {@link #soundex(String) Soundex} of its last name, joined with {@code
+ * '|'} separators. It is the single key both the duplicate-detection check and the exposed {@code
+ * identityKey} field are computed from, so the two never diverge.
  */
 public final class IdentityKeys {
+
+    /**
+     * The fixed version tag mixed into every version-2 identifier so no value produced under
+     * version 1 is produced again.
+     */
+    public static final String VERSION_TAG = "V2";
 
     private IdentityKeys() {
     }
 
     /**
      * Derives an owner's {@code identityKey}: the lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A {@code null}
-     * telephone or email contributes an empty segment; the last name is always contributed via its
-     * {@link #soundex(String) Soundex} encoding (empty when the last name is absent).
+     * {@code "V2" + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A
+     * {@code null} telephone or email contributes an empty segment; the last name is always
+     * contributed via its {@link #soundex(String) Soundex} encoding (empty when the last name is
+     * absent). The leading {@value #VERSION_TAG} version tag is the version-2 identity marker.
      *
      * @param telephone the owner's normalized (E.164) telephone, may be {@code null}
      * @param email     the owner's lower-cased email, may be {@code null}
@@ -46,7 +53,8 @@ public final class IdentityKeys {
      * @return the 64-character lower-case hex identity key
      */
     public static String identityKey(String telephone, String email, String lastName) {
-        String input = (telephone == null ? "" : telephone)
+        String input = VERSION_TAG
+            + "|" + (telephone == null ? "" : telephone)
             + "|" + (email == null ? "" : email)
             + "|" + soundex(lastName);
         try {

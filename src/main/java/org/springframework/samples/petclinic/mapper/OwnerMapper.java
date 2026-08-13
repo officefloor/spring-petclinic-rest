@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.IdentityKeys;
@@ -61,11 +62,42 @@ public abstract class OwnerMapper {
     @Mapping(target = "capacityWarning", expression = "java(capacityWarning(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner identity API version carried by every owner response. Version 2 groups the owner's
+     * identifiers under the {@code identity} object and derives them with the version-2 identity
+     * algorithm.
+     */
+    private static final int API_VERSION = 2;
+
+    /**
+     * Derives the response's top-level {@code apiVersion}: the fixed owner-identity API version
+     * ({@value #API_VERSION}).
+     */
+    protected Integer apiVersion() {
+        return API_VERSION;
+    }
+
+    /**
+     * Builds the owner's nested {@code identity} object grouping the owner's version-2 identifiers:
+     * its {@code memberId} and {@code householdId} (assigned on create) and its derived
+     * {@code identityKey}. Under version 2 these are the only place the {@code 'V2'} version tag
+     * appears; the user-facing {@code locality}, {@code timezone} and {@code ownerSegment} keep the
+     * plain region code.
+     */
+    protected OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
 
     /**
      * The month the fiscal year starts on (1 July).
@@ -119,15 +151,6 @@ public abstract class OwnerMapper {
         int dash = memberId.indexOf('-');
         String core = dash >= 0 ? memberId.substring(0, dash) : memberId;
         return core.length() > MEMBER_ID_SUFFIX_LENGTH ? core : null;
-    }
-
-    /**
-     * Derives the REGION component of an owner's {@code memberId} — the prefix ahead of its
-     * fixed-width FY, HASH8 and CHK segments — or {@code null} when no member id has been assigned.
-     */
-    private String regionFromMemberId(String memberId) {
-        String core = memberIdCore(memberId);
-        return core == null ? null : core.substring(0, core.length() - MEMBER_ID_SUFFIX_LENGTH);
     }
 
     /**
@@ -202,8 +225,9 @@ public abstract class OwnerMapper {
 
     /**
      * Derives the owner's {@code identityKey}, the single consolidated duplicate-detection key: the
-     * lower-case hex SHA-256 of {@code normalizedTelephone + '|' + lowerEmail + '|' +
-     * soundex(lastName)}. A {@code null} telephone or email contributes an empty segment.
+     * lower-case hex SHA-256 of {@code "V2" + '|' + normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)}. A {@code null} telephone or email contributes an empty segment; the leading
+     * {@code 'V2'} version tag is the version-2 identity marker.
      */
     protected String identityKey(Owner owner) {
         return IdentityKeys.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
@@ -228,19 +252,16 @@ public abstract class OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's locality (region) from the unified {@code memberId}: it is the REGION
-     * component of the owner's {@code memberId} ({@code <REGION><FY><HASH8><CHK>}), so the locality
-     * now moves in lockstep with the identity assigned on create. When no member id has been
-     * assigned (e.g. seed data) the region is derived directly, preferring the postcode: a 4-digit
+     * Derives the owner's plain locality (region) directly, preferring the postcode: a 4-digit
      * postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099)
      * yields that region, otherwise the city-to-region table (Sydney->NSW, Melbourne->VIC,
      * Brisbane->QLD) is consulted, returning {@code UNKNOWN} when neither identifies a region.
+     *
+     * <p>The locality is a user-facing field, not an identifier, so it stays the plain region code
+     * (e.g. {@code NSW}); the version-2 {@code 'V2'} tag mixed into the {@code identity} identifiers
+     * (memberId, householdId, identityKey) never appears here.
      */
     protected String locality(Owner owner) {
-        String region = regionFromMemberId(owner.getMemberId());
-        if (region != null) {
-            return region;
-        }
         String fromPostcode = regionFromPostcode(owner.getPostcode());
         if (fromPostcode != null) {
             return fromPostcode;
