@@ -103,6 +103,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizedTelephone);

@@ -47,6 +47,10 @@ public interface SpringDataOwnerRepository extends OwnerRepository, Repository<O
     Page<Owner> findByLastName(@Param("lastName") String lastName, Pageable pageable);
 
     @Override
+    @Query("SELECT owner FROM Owner owner WHERE owner.telephone = :telephone")
+    Collection<Owner> findByTelephone(@Param("telephone") String telephone);
+
+    @Override
     @Query(
         value = "SELECT owner FROM Owner owner",
         countQuery = "SELECT COUNT(owner) FROM Owner owner")
