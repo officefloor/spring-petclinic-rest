@@ -4,9 +4,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.common.Localities;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns a new owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
@@ -14,17 +18,33 @@ import org.springframework.samples.petclinic.rest.function.common.Localities;
  * 3000-3099, QLD 4000-4099, else {@code UNKNOWN}) and HASH8 is the first 8 UPPER-case hex characters
  * of the SHA-256 digest over {@code normalizedTelephone + lastName} (e.g. {@code NSW-3F9A0C71}).
  * There are no per-city sequence numbers: the identity is stable for a given telephone, surname and
- * region. Runs after {@link BuildOwner} maps the request (so the telephone is already the normalized
+ * region. When the computed {@code <REGION>-<HASH8>} collides with an existing owner's
+ * {@code customerCode}, {@code -<n>} is appended with the smallest {@code n} of 2 or more that makes
+ * it unique, so distinct owners always receive distinct codes.
+ * Runs after {@link BuildOwner} maps the request (so the telephone is already the normalized
  * E.164 value) and before {@link SaveOwner} persists it; every downstream region-and-hash value (the
  * membership number and its check digit, the locality and the create audit record) flows from this
  * code.
  */
 public class AssignOwnerCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = Localities.ofPostcode(owner.getPostcode());
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+
+        Set<String> taken = new HashSet<>();
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.getCustomerCode() != null) {
+                taken.add(existing.getCustomerCode());
+            }
+        }
+
+        String customerCode = base;
+        for (int n = 2; taken.contains(customerCode); n++) {
+            customerCode = base + "-" + n;
+        }
+        owner.setCustomerCode(customerCode);
     }
 
     /** First 8 UPPER-case hex characters of SHA-256 over the UTF-8 bytes of {@code input}. */
