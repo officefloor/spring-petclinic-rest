@@ -23,7 +23,9 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber",
-        expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
+        expression = "java(String.format(\"%s-M%s\", owner.getCustomerCode(), owner.getFiscalYear().substring(2)))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(owner.getFiscalYear())")
     @Mapping(target = "locality",
         expression = "java(owner.getRegion())")
     @Mapping(target = "timezone",

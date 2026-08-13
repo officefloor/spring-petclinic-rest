@@ -20,8 +20,8 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        String membershipNumber = String.format("%s-M%02d",
-            owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        String membershipNumber = String.format("%s-M%s",
+            owner.getCustomerCode(), owner.getFiscalYear().substring(2));
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), membershipNumber);

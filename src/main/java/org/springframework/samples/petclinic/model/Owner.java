@@ -271,10 +271,10 @@ public class Owner extends Person {
     /**
      * The owner's membership points, accumulated from four factors: start at 0, add 2
      * when an email is present, add 1 when {@code namesakeCount} is 0, add 2 for a
-     * household of 3 or more members, and add 3 when the owner's tenure exceeds 365
-     * days. The tenure points are the only route to 6 or more: because a newly created
-     * owner has zero tenure, a new owner scores at most 5 points (2 email + 1 namesake
-     * + 2 household).
+     * household of 3 or more members, and add 3 when the owner's tenure spans at least
+     * one elapsed fiscal year. The tenure points are the only route to 6 or more:
+     * because a newly created owner has zero elapsed fiscal years of tenure, a new owner
+     * scores at most 5 points (2 email + 1 namesake + 2 household).
      */
     @Transient
     public int getMembershipPoints() {
@@ -288,7 +288,7 @@ public class Owner extends Person {
         if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
             points += 2;
         }
-        if (getTenureDays() > 365) {
+        if (getTenureFiscalYears() >= 1) {
             points += 3;
         }
         return points;
@@ -316,16 +316,45 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's tenure in whole days: the span from {@code registrationDate} to today.
-     * Zero when no registration date is set, and zero for an owner registered today, so
-     * the tenure point of {@link #getMembershipLevel()} is never earned at creation.
+     * The owner's tenure counted in elapsed fiscal years: the number of fiscal-year
+     * boundaries (each 1 July) crossed between {@code registrationDate} and today, i.e.
+     * {@code fiscalYearOf(today) - fiscalYearOf(registrationDate)}. Zero when no
+     * registration date is set, and zero for an owner registered in the current fiscal
+     * year, so the tenure point of {@link #getMembershipLevel()} is never earned at
+     * creation.
      */
     @Transient
-    public long getTenureDays() {
+    public long getTenureFiscalYears() {
         if (this.registrationDate == null) {
             return 0;
         }
-        return java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now());
+        return (long) fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate);
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'}, derived from the
+     * business-day-adjusted {@code registrationDate}. The fiscal year starts on 1 July,
+     * so a date in July or later belongs to the fiscal year named by its own calendar
+     * year, and a date in January to June belongs to the fiscal year that started the
+     * previous 1 July. {@code YY} is the last two digits of that fiscal year. Returns
+     * {@code null} when no registration date is set.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+    }
+
+    /**
+     * The fiscal year (named by the calendar year in which its 1 July start falls) that
+     * {@code date} belongs to. July onward is the current calendar year; January to June
+     * belongs to the fiscal year that began the previous 1 July.
+     */
+    private static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue()
+                ? date.getYear() : date.getYear() - 1;
     }
 
     /**
