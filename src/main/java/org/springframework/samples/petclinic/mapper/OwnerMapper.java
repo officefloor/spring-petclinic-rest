@@ -55,7 +55,6 @@ public abstract class OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(bulkSignupWarning(owner))")
@@ -82,16 +81,65 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code fiscalYear}, formatted {@code FY<YY>} where YY is the last two
-     * digits of the fiscal year (starting 1 July) of the owner's business-day-adjusted
-     * {@code registrationDate}. Returns {@code null} when no registration date is present.
+     * Derives the owner's {@code fiscalYear}, formatted {@code FY<YY>}. When a {@code memberId} has
+     * been assigned the YY is the FY component embedded in it ({@code <REGION><FY><HASH8><CHK>}), so
+     * the fiscal year moves in lockstep with the identity assigned on create. When no member id has
+     * been assigned (e.g. seed data) it falls back to the last two digits of the fiscal year
+     * (starting 1 July) of the owner's business-day-adjusted {@code registrationDate}, or
+     * {@code null} when no registration date is present either.
      */
     protected String fiscalYear(Owner owner) {
+        String fromMemberId = fiscalYearFromMemberId(owner.getMemberId());
+        if (fromMemberId != null) {
+            return "FY" + fromMemberId;
+        }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return null;
         }
         return String.format("FY%02d", fiscalYearOf(registrationDate) % 100);
+    }
+
+    /**
+     * The number of fixed-width trailing characters of a member id's core (before any collision
+     * suffix): the 2-digit FY, the 8-character HASH8 and the single CHK digit.
+     */
+    private static final int MEMBER_ID_SUFFIX_LENGTH = 11;
+
+    /**
+     * Extracts the core of a {@code memberId} — the {@code <REGION><FY><HASH8><CHK>} value before any
+     * {@code -<n>} collision suffix — or {@code null} when the member id is absent or too short to
+     * carry a region ahead of its fixed-width FY, HASH8 and CHK segments.
+     */
+    private String memberIdCore(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int dash = memberId.indexOf('-');
+        String core = dash >= 0 ? memberId.substring(0, dash) : memberId;
+        return core.length() > MEMBER_ID_SUFFIX_LENGTH ? core : null;
+    }
+
+    /**
+     * Derives the REGION component of an owner's {@code memberId} — the prefix ahead of its
+     * fixed-width FY, HASH8 and CHK segments — or {@code null} when no member id has been assigned.
+     */
+    private String regionFromMemberId(String memberId) {
+        String core = memberIdCore(memberId);
+        return core == null ? null : core.substring(0, core.length() - MEMBER_ID_SUFFIX_LENGTH);
+    }
+
+    /**
+     * Derives the 2-digit FY component of an owner's {@code memberId} — the two digits following the
+     * REGION prefix — or {@code null} when no member id has been assigned.
+     */
+    private String fiscalYearFromMemberId(String memberId) {
+        String core = memberIdCore(memberId);
+        if (core == null) {
+            return null;
+        }
+        int fyStart = core.length() - MEMBER_ID_SUFFIX_LENGTH;
+        return core.substring(fyStart, fyStart + 2);
     }
 
     /**
@@ -179,21 +227,18 @@ public abstract class OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's locality (region) from the region-and-hash identity: it is the REGION
-     * component of the owner's {@code customerCode} ({@code <REGION>-<HASH8>}), so the locality now
-     * moves in lockstep with the identity assigned on create. When no customer code has been
+     * Derives the owner's locality (region) from the unified {@code memberId}: it is the REGION
+     * component of the owner's {@code memberId} ({@code <REGION><FY><HASH8><CHK>}), so the locality
+     * now moves in lockstep with the identity assigned on create. When no member id has been
      * assigned (e.g. seed data) the region is derived directly, preferring the postcode: a 4-digit
      * postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099)
      * yields that region, otherwise the city-to-region table (Sydney->NSW, Melbourne->VIC,
      * Brisbane->QLD) is consulted, returning {@code UNKNOWN} when neither identifies a region.
      */
     protected String locality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
+        String region = regionFromMemberId(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         String fromPostcode = regionFromPostcode(owner.getPostcode());
         if (fromPostcode != null) {
@@ -433,36 +478,6 @@ public abstract class OwnerMapper {
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
         return othersInCity >= CAPACITY_WARNING_THRESHOLD && othersInCity < CITY_CAPACITY;
-    }
-
-    /**
-     * Derives the owner's {@code checkDigit}: the Luhn check digit (0-9) computed over the digits
-     * contained in the owner's {@code customerCode}. Non-digit characters are ignored. Returns
-     * {@code null} when no customer code has been assigned.
-     */
-    protected Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
