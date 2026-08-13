@@ -128,6 +128,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold && !householdMembers.isEmpty()) {
             String householdId = householdId(owner.getLastName(), normalizedAddress);
             owner.setHouseholdId(householdId);
@@ -264,6 +265,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
                 && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress))
             .toList();
+    }
+
+    /**
+     * Count the existing owners that already share both the given first and last
+     * name, compared case-insensitively. Used to populate an owner's namesake count
+     * at creation time, reflecting how many owners with the same name existed before
+     * this one was created.
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        String normalizedFirstName = normalizeName(firstName);
+        String normalizedLastName = normalizeName(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeName(existing.getFirstName()).equals(normalizedFirstName)
+                && normalizeName(existing.getLastName()).equals(normalizedLastName))
+            .count();
+    }
+
+    private String normalizeName(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
     }
 
     /**
