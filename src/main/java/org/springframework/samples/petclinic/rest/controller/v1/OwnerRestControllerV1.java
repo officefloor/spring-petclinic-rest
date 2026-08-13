@@ -128,9 +128,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
-        if (countOwnersRegisteredOn(registrationDate) >= 100) {
+        long ownersRegisteredToday = countOwnersRegisteredOn(registrationDate);
+        if (ownersRegisteredToday >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        boolean bulkSignupWarning = ownersRegisteredToday > 80;
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         List<Owner> householdMembers =
             findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
@@ -142,6 +144,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(bulkSignupWarning);
         if (sharesHousehold && !householdMembers.isEmpty()) {
             String householdId = householdId(owner.getLastName(), normalizedAddress);
             owner.setHouseholdId(householdId);
