@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
             expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(fiscalYear(owner))")
+    @Mapping(target = "selfLink",
+            expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
