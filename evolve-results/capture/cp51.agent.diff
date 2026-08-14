@@ -1,0 +1,178 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b0e61926..3225511c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -88,6 +88,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -476,20 +479,38 @@ public class Owner extends Person {
+      * Return the owner's membership level, a number from {@code 1} to {@code 4},
+      * derived from {@link #getMembershipPoints()}: {@code 1} for {@code 0-1}
+      * points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
+-     * {@code 4} for {@code 6} or more.
++     * {@code 4} for {@code 6} or more. When a {@code membershipLevelCap} is set,
++     * the derived level is capped at it (a level higher than the cap is lowered to
++     * the cap); the cap records one above the maximum level among the owner's
++     * household members at creation time.
+      */
+     public Integer getMembershipLevel() {
+         int points = getMembershipPoints();
++        int level;
+         if (points >= 6) {
+-            return 4;
++            level = 4;
++        }
++        else if (points >= 4) {
++            level = 3;
+         }
+-        if (points >= 4) {
+-            return 3;
++        else if (points >= 2) {
++            level = 2;
+         }
+-        if (points >= 2) {
+-            return 2;
++        else {
++            level = 1;
+         }
+-        return 1;
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
++        }
++        return level;
++    }
++
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
+     }
+ 
+     public void setNamesakeCount(Integer namesakeCount) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cc6f8d6c..3f258e1f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -186,7 +186,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // 'sharesHousehold', which now only bypasses this block (the link is no longer created
+         // here — the id is computed).
+         List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
+-        if (!householdMembers.isEmpty() && !sharesHousehold) {
++        if (!householdMembers.isEmpty() && !sharesHousehold && !introducesDistinctEmail(owner, householdMembers)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
+@@ -211,6 +211,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // The household size (an input to the membership computation) keys off the computed
+         // household id: this owner plus everyone already sharing it.
+         owner.setHouseholdSize(householdMembers.size() + 1);
++        // Level ceiling: a new owner joining a household they did not explicitly declare
++        // (the distinct-email path above) may not out-rank the household. Cap the derived
++        // membership level at one above the current maximum among the existing household
++        // members; with no existing member no cap applies.
++        if (!sharesHousehold && !householdMembers.isEmpty()) {
++            int maxHouseholdLevel = householdMembers.stream()
++                .mapToInt(Owner::getMembershipLevel)
++                .max()
++                .orElse(0);
++            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
++        }
+         // Soft-match ("possible duplicate"): a declared household member is not a suspected
+         // duplicate, so only a non-declared create is scored. In practice a non-declared owner
+         // sharing an existing owner's last name and postcode is already rejected above as a
+@@ -443,6 +454,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .toList();
+     }
+ 
++    /**
++     * Whether the new owner introduces an email address that distinguishes them from every
++     * existing member of their household. A member of an already-populated household that was
++     * not explicitly declared with {@code sharesHousehold} is normally rejected as a household
++     * duplicate; when the new owner supplies an email that no current household member holds,
++     * they are a distinct, identifiable person and are admitted (with a capped membership
++     * level) rather than rejected. A new owner with no email cannot be distinguished this way.
++     */
++    private boolean introducesDistinctEmail(Owner owner, List<Owner> householdMembers) {
++        String email = owner.getEmail();
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        return householdMembers.stream()
++            .noneMatch(existing -> email.equalsIgnoreCase(existing.getEmail()));
++    }
++
+     /**
+      * Find an existing owner that this new owner softly duplicates: one sharing the same
+      * last name (compared case-insensitively after whitespace normalization) and the same
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d5d9549e..429513c8 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6a97a221..4393b6af 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e45a5895..658e80d1 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d715f032..ec7f786e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 66a54dd6..14c65374 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2255,7 +2255,9 @@ components:
+               description: >-
+                 The owner's membership level, a number from 1 to 4 derived from
+                 membershipPoints: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4
+-                for 6 or more.
++                for 6 or more. A new owner joining an existing household is capped
++                at one above the current maximum membership level among their
++                household members; with no existing household member no cap applies.
+               type: integer
+               format: int32
+               minimum: 1
