@@ -10,7 +10,10 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        int membershipLevel = Math.min(3, 1
+                + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0)
+                + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0));
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
     }
 }

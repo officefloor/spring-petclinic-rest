@@ -24,8 +24,8 @@ public interface OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber",
             expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipTier",
-            expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.locality(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);

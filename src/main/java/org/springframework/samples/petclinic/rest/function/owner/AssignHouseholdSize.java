@@ -12,8 +12,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * onto every existing member, and before {@link SaveOwner}. Because the new owner is not yet
  * persisted, it is counted explicitly (the {@code + 1}); existing members are counted from the
  * repository. When the owner has no {@code householdId} (it is not part of a shared household) the
- * size is 1. A household of three or more members drives the {@code GOLD} membership tier (see
- * {@code OwnerMapper}).
+ * size is 1.
  */
 public class AssignHouseholdSize {
 
