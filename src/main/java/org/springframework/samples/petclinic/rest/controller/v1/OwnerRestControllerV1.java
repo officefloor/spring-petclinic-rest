@@ -248,14 +248,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .toList();
         owner.setHouseholdSize(householdMembers.size() + 1);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        // Household-duplicate block: a second owner in an existing household (same computed
-        // householdId) is rejected as a duplicate unless it is a member we can tell apart. A member is
-        // admitted when it either declares 'sharesHousehold' or supplies its own email (a distinct
-        // contact identifying a distinct person); an undistinguished second owner is still a 409.
-        if (!householdMembers.isEmpty() && !sharesHousehold && !hasEmail) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
+        // Duplicate detection is now the single identityKey (below): the separate household-duplicate
+        // 409 block from the computed householdId no longer applies. Two owners sharing a last name and
+        // postcode but with different telephones therefore have different identity keys and are admitted
+        // as a soft match rather than rejected. The householdId and householdSize computed above still
+        // drive household sizing and the level ceiling below.
         // Level ceiling: an owner admitted into an already-populated household without declaring
         // membership has its membership level capped at one above the household's current maximum, so
         // an undeclared newcomer can never outrank the household it joined. Declared members and
@@ -280,21 +277,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // Soft-duplicate detection. A declared household member (sharesHousehold) is never a suspected
-        // duplicate. Any other owner sharing an existing owner's last name and postcode with a
-        // different telephone is now, by definition, a household duplicate already rejected above, so
-        // it never reaches this point; the check is retained for owners that are not household matches.
+        // duplicate. Any other owner whose identityKey differs from an existing owner's but that shares
+        // that owner's Soundex(last name) and postcode is flagged as a possible duplicate of the
+        // earliest such owner. A full identity match would already have been rejected as a 409 above,
+        // so every existing owner reaching here necessarily has a different identityKey.
         if (sharesHousehold) {
             owner.setPossibleDuplicate(false);
         } else {
-            String softDuplicateLastNameKey = householdKey(owner.getLastName());
+            String softDuplicateLastNameSoundex = Owner.soundex(owner.getLastName());
             String softDuplicatePostcode = owner.getPostcode();
-            String softDuplicateTelephone = owner.getTelephone();
             Owner possibleDuplicate = softDuplicatePostcode == null ? null
                 : this.clinicService.findAllOwners().stream()
                     .filter(existing -> !existing.getDeleted())
-                    .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
+                    .filter(existing -> softDuplicateLastNameSoundex.equals(Owner.soundex(existing.getLastName())))
                     .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
-                    .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
+                    .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
                     .min(Comparator.comparing(Owner::getId))
                     .orElse(null);
             if (possibleDuplicate != null) {
