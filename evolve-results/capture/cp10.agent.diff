@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6dec930d..5f153109 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -131,6 +131,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (telephoneInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++            String lastNameKey = householdKey(owner.getLastName());
++            String addressKey = householdKey(owner.getAddress());
++            boolean householdInUse = this.clinicService.findAllOwners().stream()
++                .anyMatch(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
++                    && addressKey.equals(householdKey(existing.getAddress())));
++            if (householdInUse) {
++                return new ResponseEntity<>(HttpStatus.CONFLICT);
++            }
++        }
+         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -186,6 +196,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email.trim().toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Normalizes a value for household-duplicate comparison: surrounding whitespace is trimmed,
++     * internal runs of whitespace are collapsed to a single space and the result is lower-cased,
++     * so that owners are compared case-insensitively with collapsed whitespace.
++     *
++     * @param value the raw value (must not be {@code null})
++     * @return the normalized comparison key
++     */
++    private String householdKey(String value) {
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++
+     /**
+      * Builds the customer code for a newly registered owner in the form
+      * {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the upper-cased first three letters
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c0251008..82c03126 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2052,6 +2052,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: When true, permits creating this owner even though another owner
++            shares the same last name and address (i.e. they live in the same household).
++            Write-only; used only when creating an owner and never returned.
++          type: boolean
++          writeOnly: true
++          example: false
+       required:
+         - firstName
+         - lastName
