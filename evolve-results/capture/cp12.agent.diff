@@ -1,0 +1,145 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..99f394c5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * Canonical address normalization applied whenever an owner is created. The create pipeline rewrites
++ * the request's address to this form before it is stored and returned, and both household duplicate
++ * detection ({@link CheckHouseholdUnique}) and the shared {@code householdId}
++ * ({@link AssignHouseholdId}) compare addresses in this form.
++ *
++ * <p>Trims and collapses runs of whitespace to a single space, upper-cases, and expands common
++ * abbreviations token by token: {@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}. So
++ * {@code "  12  main  st "} becomes {@code "12 MAIN STREET"}. The transformation is idempotent, so
++ * re-normalizing an already-normalized address leaves it unchanged.
++ */
++final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET",
++            "RD", "ROAD",
++            "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    /** Returns the normalized address, or {@code ""} when {@code value} is null or blank. */
++    static String normalize(String value) {
++        if (value == null || value.isBlank()) {
++            return "";
++        }
++        String[] tokens = value.trim().toUpperCase().split("\\s+");
++        StringBuilder sb = new StringBuilder(value.length());
++        for (String token : tokens) {
++            if (sb.length() > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(token, token));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
+index 457aa2f6..d2e5263f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdId.java
+@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Assigns the owner's {@code householdId}: a stable identifier shared by all owners who live in the
+  * same household, i.e. share a last name and address. It is the first 12 upper-cased hex characters
+- * of the SHA-256 of {@code '<lastName>|<address>'}, with last name and address normalized exactly as
+- * {@link CheckHouseholdUnique} normalizes them (lower-cased, runs of whitespace collapsed, trimmed).
++ * of the SHA-256 of {@code '<lastName>|<address>'}, with the last name normalized exactly as
++ * {@link CheckHouseholdUnique} normalizes it (lower-cased, runs of whitespace collapsed, trimmed) and
++ * the address normalized to its canonical form (see {@link AddressNormalizer}).
+  *
+  * <p>Because the id derives only from that normalized pair, two owners who intentionally share a
+  * household (accepted via {@code sharesHousehold}) deterministically receive the same value without
+@@ -21,7 +22,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ public class AssignHouseholdId {
+ 
+     public void service(@Val Owner owner) {
+-        String key = normalize(owner.getLastName()) + "|" + normalize(owner.getAddress());
++        String key = normalize(owner.getLastName()) + "|" + AddressNormalizer.normalize(owner.getAddress());
+         owner.setHouseholdId(shaHex(key, 12));
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+index 9427b27b..81c15d97 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+@@ -8,9 +8,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
+ 
+ /**
+  * Rejects a create-owner request whose last name and address are already used together by another
+- * owner, so the escalation handler can respond 409. Last name and address are compared
+- * case-insensitively with runs of whitespace collapsed to a single space, so {@code "Smith"} at
+- * {@code "1  Main  St"} collides with {@code "smith"} at {@code "1 Main St"}.
++ * owner, so the escalation handler can respond 409. Last name is compared case-insensitively with
++ * runs of whitespace collapsed to a single space; the address is compared in its normalized form
++ * (see {@link AddressNormalizer}), so {@code "Smith"} at {@code "1  Main  St"} collides with
++ * {@code "smith"} at {@code "1 Main Street"}.
+  *
+  * <p>Skipped when the request sets {@code sharesHousehold} true: the caller has confirmed the two
+  * owners intentionally share a household, so the duplicate is allowed. Runs within the same write
+@@ -24,16 +25,16 @@ public class CheckHouseholdUnique {
+             return;
+         }
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+             }
+         }
+     }
+ 
+-    /** Lower-cases and collapses runs of whitespace to a single space, trimmed. */
++    /** Lower-cases and collapses runs of whitespace to a single space, trimmed. Used for last name. */
+     private static String normalize(String value) {
+         if (value == null) {
+             return "";
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index c645ed12..f4ba97d5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -24,7 +24,7 @@ public class ValidateOwnerFields {
+         List<String> errors = new ArrayList<>();
+         requireText("firstName", request.getFirstName(), errors);
+         requireText("lastName", request.getLastName(), errors);
+-        requireText("address", request.getAddress(), errors);
++        normalizeAddress(request, errors);
+         requireText("city", request.getCity(), errors);
+         requireText("telephone", request.getTelephone(), errors);
+         normalizeTelephone(request, errors);
+@@ -35,6 +35,21 @@ public class ValidateOwnerFields {
+         validated.set(request);
+     }
+ 
++    /**
++     * Normalizes the address to its canonical form (see {@link AddressNormalizer}) and stores it back
++     * on the request so later steps persist and return it, and so household comparisons use it. The
++     * required-field check happens here on the normalized value: an address that is blank after
++     * normalization adds an {@code address} error (400).
++     */
++    private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
++        String normalized = AddressNormalizer.normalize(request.getAddress());
++        if (normalized.isEmpty()) {
++            errors.add("address");
++            return;
++        }
++        request.setAddress(normalized);
++    }
++
+     /**
+      * Normalizes the telephone to E.164 and stores it back on the request so later steps persist
+      * and return it. A leading {@code +} and its country code are kept; otherwise country code
