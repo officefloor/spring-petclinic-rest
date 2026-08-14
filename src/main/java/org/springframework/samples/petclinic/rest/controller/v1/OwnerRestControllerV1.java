@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -82,6 +83,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Disposable email domains that an owner's email may not use. An email whose domain (the part
+     * after the {@code @}, compared case-insensitively) is on this list is rejected with a 400
+     * response naming {@code email}.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Common street-type abbreviations expanded during address normalization. Keys are the
@@ -561,7 +570,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
-        ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        ownerFieldsDto.setEmail(normalized);
     }
 
     /**
