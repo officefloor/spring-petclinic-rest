@@ -150,6 +150,21 @@ public class Owner extends Person {
             + Character.toUpperCase(this.getLastName().charAt(0)) + ".";
     }
 
+    /**
+     * The owner's membership number formatted as {@code "<customerCode>-M<YY>"}, where
+     * {@code YY} is the last two digits of the registration date's year (e.g.
+     * {@code "SMI-0007-M26"}).
+     *
+     * @return the formatted membership number, or {@code null} if the customer code or
+     *         registration date has not been assigned
+     */
+    public String getMembershipNumber() {
+        if (this.customerCode == null || this.registrationDate == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
