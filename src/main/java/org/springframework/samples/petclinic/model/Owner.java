@@ -266,11 +266,35 @@ public class Owner extends Person {
     }
 
     /**
+     * The fiscal year (starting 1 July) containing {@code date}, named by the calendar year it ends
+     * in: a date on or after 1 July belongs to the next calendar year's fiscal year (e.g. 14 Aug
+     * 2026 is fiscal year 2027), a date before 1 July to the current calendar year's.
+     */
+    public static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, derived at read time from the business-day-adjusted
+     * {@link #getRegistrationDate() registrationDate} and formatted {@code 'FY<YY>'} where YY is the
+     * last two digits of the fiscal year (which starts on 1 July; e.g. a registration date of
+     * 14 Aug 2026 yields {@code 'FY27'}). {@code null} when the owner has no registrationDate.
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+    }
+
+    /**
      * The owner's membership points, derived at read time from stored fields. Starts at 0; add 2 when
      * an email is present; add 1 when {@link #getNamesakeCount() namesakeCount} is 0; add 2 for a
-     * household of 3 or more ({@link #getHouseholdSize() householdSize}); add 3 when tenure (days since
-     * {@link #getRegistrationDate() registrationDate}) exceeds 365. A newly created owner has zero
-     * tenure, so a new owner can score at most 5 points.
+     * household of 3 or more ({@link #getHouseholdSize() householdSize}); add 3 when tenure — the
+     * number of elapsed fiscal years since {@link #getRegistrationDate() registrationDate}
+     * ({@link #getFiscalYear() fiscal year} basis, 1 July start) — is one or more. A newly created
+     * owner has zero elapsed fiscal years of tenure, so a new owner can score at most 5 points.
      */
     @Transient
     public Integer getMembershipPoints() {
@@ -286,7 +310,7 @@ public class Owner extends Person {
             points += 2;
         }
         if (this.registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+                && fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate) >= 1) {
             points += 3;
         }
         return points;
