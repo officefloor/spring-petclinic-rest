@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a4062627..05a1e3a2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -93,6 +93,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence number stamped on each {@code OWNER_CREATED} audit event, so
++     * the immutable event stream has a strict total order across creates. Shared across all instances
++     * and requests; incremented once per successful owner creation.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong OWNER_EVENT_SEQ =
++        new java.util.concurrent.atomic.AtomicLong(0);
++
+     /**
+      * Common street-type abbreviations expanded during address normalization. Keys and values are
+      * upper-cased, matching the state of the address after whitespace and case normalization.
+@@ -226,6 +234,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        emitOwnerCreatedEvent(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -360,6 +369,87 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Emits the immutable, structured {@code OWNER_CREATED} audit event for a freshly persisted owner.
++     * The event is a JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}} published
++     * to the {@code AUDIT} logger alongside the human-readable audit line. {@code seq} is a strictly
++     * increasing sequence across all creates (see {@link #OWNER_EVENT_SEQ}), giving the event stream a
++     * total order.
++     *
++     * <p>The identifier field carries the owner's <em>current primary identifier</em>, obtained from
++     * {@link #primaryIdentifier(Owner)}. Today that is the customer code; when a later checkpoint unifies
++     * the customer code into the member id, {@code primaryIdentifier} switches to the member id and the
++     * event carries the member id instead — without any change here.
++     *
++     * @param owner the owner that was just created and persisted
++     */
++    private void emitOwnerCreatedEvent(Owner owner) {
++        OwnerCreatedEvent event = new OwnerCreatedEvent(
++            OWNER_EVENT_SEQ.incrementAndGet(),
++            owner.getId(),
++            primaryIdentifier(owner),
++            ownerMapper.membershipLevel(owner));
++        AUDIT.info(event.toJson());
++    }
++
++    /**
++     * Returns the owner's current primary identifier, the single value the {@code OWNER_CREATED} audit
++     * event carries to identify the owner. This is currently the {@link Owner#getCustomerCode() customer
++     * code}; it is intentionally the only place that decides which field is "primary", so that when the
++     * customer code is later unified into the member id, only this method changes and the event
++     * automatically carries the member id.
++     *
++     * @param owner the owner being created
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Immutable, structured {@code OWNER_CREATED} audit event. Serialized to a compact JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} for the {@code AUDIT}
++     * log. Being a record, once constructed its fields cannot change, so the emitted event is a faithful
++     * snapshot of the owner at creation time.
++     *
++     * @param seq strictly increasing sequence number across all creates
++     * @param ownerId the created owner's id
++     * @param customerCode the owner's current primary identifier at creation time
++     * @param membershipLevel the owner's effective membership level at creation time
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++
++        private String toJson() {
++            return "{\"seq\":" + seq
++                + ",\"ownerId\":" + ownerId
++                + ",\"customerCode\":" + jsonValue(customerCode)
++                + ",\"membershipLevel\":" + membershipLevel
++                + ",\"event\":\"OWNER_CREATED\"}";
++        }
++
++        /** Renders a nullable string as a JSON string literal (with escaping) or {@code null}. */
++        private static String jsonValue(String value) {
++            if (value == null) {
++                return "null";
++            }
++            StringBuilder sb = new StringBuilder(value.length() + 2);
++            sb.append('"');
++            for (int i = 0; i < value.length(); i++) {
++                char c = value.charAt(i);
++                switch (c) {
++                    case '"' -> sb.append("\\\"");
++                    case '\\' -> sb.append("\\\\");
++                    case '\n' -> sb.append("\\n");
++                    case '\r' -> sb.append("\\r");
++                    case '\t' -> sb.append("\\t");
++                    default -> sb.append(c);
++                }
++            }
++            sb.append('"');
++            return sb.toString();
++        }
++    }
++
+     /**
+      * Builds the customer code for a newly created owner, formatted {@code '<REGION>-<HASH8>'} where
+      * {@code REGION} is the region code derived from the owner's postcode (see {@link #deriveRegion})
