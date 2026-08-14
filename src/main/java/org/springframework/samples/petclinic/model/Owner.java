@@ -193,13 +193,35 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's region, derived at read time from the {@link #getCity() city} using a fixed
-     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}).
-     * Any city not in the table yields {@code 'UNKNOWN'}.
+     * The owner's region, derived at read time. The {@link #getPostcode() postcode} is preferred:
+     * a 4-digit postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) yields that region, which disambiguates cities that share a name. Only when the
+     * postcode is absent (or in no known range) does it fall back to the fixed city-to-region table
+     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}). Any unresolved value
+     * yields {@code 'UNKNOWN'}.
      */
     @Transient
     public String getLocality() {
+        String byPostcode = regionForPostcode(this.postcode);
+        if (byPostcode != null) {
+            return byPostcode;
+        }
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
+    /** The region whose range contains {@code postcode}, or {@code null} when absent/out of range. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
@@ -231,6 +253,12 @@ public class Owner extends Person {
     /** City -> canonical region for {@link #getLocality()}. Any other city is 'UNKNOWN'. */
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** Region -> inclusive 4-digit postcode range {low, high}, preferred by {@link #getLocality()}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
