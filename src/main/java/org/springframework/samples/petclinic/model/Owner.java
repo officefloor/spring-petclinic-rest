@@ -213,6 +213,36 @@ public class Owner extends Person {
     }
 
     /**
+     * Return a single Luhn check digit (0-9) computed over the digits contained in
+     * the owner's customer code, or {@code null} when the customer code is not set.
+     * Non-digit characters in the code are ignored; the rightmost digit is doubled
+     * first, following the standard Luhn algorithm.
+     */
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean doubleDigit = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubleDigit) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubleDigit = !doubleDigit;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * Return the owner's membership number, formatted {@code '<customerCode>-M<YY>'}
      * where {@code YY} is the last two digits of the registration date's year (for
      * example {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer
