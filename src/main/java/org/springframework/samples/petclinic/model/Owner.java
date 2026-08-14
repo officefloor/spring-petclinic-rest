@@ -35,6 +35,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -92,6 +95,14 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
     public String getAddress() {
         return this.address;
@@ -227,6 +238,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * The owner's salutation, derived at read time as the {@link #getTitle() title}, a single space
+     * and the {@link #getLastName() lastName} (e.g. {@code 'DR Franklin'}); just the lastName when no
+     * title is present.
+     */
+    @Transient
+    public String getSalutation() {
+        if (this.title == null || this.title.isBlank()) {
+            return this.getLastName();
+        }
+        return this.title + " " + this.getLastName();
     }
 
     /**
