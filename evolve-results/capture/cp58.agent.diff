@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d1d3d3bd..8bdadebf 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,9 +32,61 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Second-level labels of the known disposable email providers (the label immediately before the
++     * top-level domain of each entry in the create endpoint's disposable-domain blocklist:
++     * {@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). An email whose domain
++     * shares one of these labels is considered <em>disposable-adjacent</em> (see
++     * {@link #isDisposableAdjacentEmail(String)}).
++     */
++    java.util.Set<String> DISPOSABLE_EMAIL_LABELS =
++        java.util.Set.of("mailinator", "tempmail", "guerrillamail");
++
++    /**
++     * Whether the owner is flagged for review. Returns {@code true} when any of the following hold:
++     * the owner is a possible duplicate ({@link Owner#getPossibleDuplicate()} is {@code true}), the
++     * owner's email domain is disposable-adjacent (see {@link #isDisposableAdjacentEmail(String)}), or
++     * the owner's city is over its soft capacity ({@link Owner#getCapacityWarning()} is {@code true},
++     * i.e. the city had already reached the capacity-warning threshold when the owner was created).
++     * Otherwise returns {@code false}.
++     */
++    default Boolean riskFlag(Owner owner) {
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
++        boolean disposableAdjacent = isDisposableAdjacentEmail(owner.getEmail());
++        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
++    }
++
++    /**
++     * Whether an email address is <em>disposable-adjacent</em>: its domain's second-level label (the
++     * label immediately before the top-level domain) matches one of the known disposable providers'
++     * labels ({@link #DISPOSABLE_EMAIL_LABELS}). This catches domains related to a disposable provider
++     * without being an exact blocklist entry, such as the same provider under a different top-level
++     * domain ({@code mailinator.net}) or a subdomain of it ({@code inbox.mailinator.com}). A
++     * {@code null}, blank, or structurally invalid domain (fewer than two dot-separated labels) is not
++     * disposable-adjacent.
++     */
++    default boolean isDisposableAdjacentEmail(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(java.util.Locale.ROOT);
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return false;
++        }
++        String secondLevel = labels[labels.length - 2];
++        return DISPOSABLE_EMAIL_LABELS.contains(secondLevel);
++    }
++
+     /**
+      * Builds the owner's self link, formatted {@code '/api/owners/<id>'} where {@code id} is the
+      * owner's id. Returns {@code null} when the owner has no id.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9cf6edfc..4408338e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2356,6 +2356,20 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether the owner is flagged for review. True when any of the
++                following hold: the owner is a possible duplicate
++                ('possibleDuplicate' is true), the email domain is
++                disposable-adjacent (its second-level label matches a known
++                disposable email provider - mailinator, tempmail or guerrillamail
++                - such as a different top-level domain or a subdomain of one),
++                or the owner's city is over its soft capacity ('capacityWarning'
++                is true). Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             selfLink:
+               title: Self link
+               description: >-
