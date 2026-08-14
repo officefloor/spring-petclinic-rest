@@ -1,0 +1,141 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 55004bb8..25f55125 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -25,7 +25,6 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+-import java.util.Objects;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -191,61 +190,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (cityCount >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        String lastNameKey = householdKey(owner.getLastName());
+-        String addressKey = householdKey(owner.getAddress());
++        // The household is keyed on (normalized last name, postcode): every owner derives the same
++        // deterministic householdId from those two fields, so owners sharing them are the same
++        // household. This computed id is what duplicate detection and the household size below key off.
++        String householdId = householdId(owner);
++        owner.setHouseholdId(householdId);
+         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
+-                && addressKey.equals(householdKey(existing.getAddress())))
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+             .toList();
++        owner.setHouseholdSize(householdMembers.size() + 1);
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (sharesHousehold) {
+-            String householdId = householdMembers.stream()
+-                .map(Owner::getHouseholdId)
+-                .filter(Objects::nonNull)
+-                .findFirst()
+-                .orElseGet(() -> householdId(owner));
+-            owner.setHouseholdId(householdId);
+-            owner.setHouseholdSize(householdMembers.size() + 1);
+-        } else {
+-            owner.setHouseholdSize(1);
++        // Household-duplicate block: a second owner in an existing household (same computed
++        // householdId) is rejected as a duplicate. 'sharesHousehold' now only BYPASSES this block —
++        // declaring the new owner a member — rather than creating the household link itself.
++        if (!householdMembers.isEmpty() && !sharesHousehold) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         // Single consolidated duplicate check: the telephone, email and household duplicate rules are
+         // all expressed through the one derived identityKey (telephone|email|householdId). A create is
+         // rejected only when a new owner's WHOLE identityKey equals an existing owner's; because the
+         // telephone is part of the key, two household members with different telephones are allowed.
++        // This still catches a full identity repeat even when it declares sharesHousehold.
+         String identityKey = owner.getIdentityKey();
+         boolean identityInUse = this.clinicService.findAllOwners().stream()
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+         if (identityInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Soft-duplicate detection. A declared household member (sharesHousehold) is never a suspected
++        // duplicate. Any other owner sharing an existing owner's last name and postcode with a
++        // different telephone is now, by definition, a household duplicate already rejected above, so
++        // it never reaches this point; the check is retained for owners that are not household matches.
+         if (sharesHousehold) {
+-            for (Owner member : householdMembers) {
+-                if (member.getHouseholdId() == null) {
+-                    member.setHouseholdId(owner.getHouseholdId());
+-                    this.clinicService.saveOwner(member);
+-                }
+-            }
+-        }
+-        // Soft-duplicate detection: the create has already passed the hard-duplicate (identity) check
+-        // above, so it is not an exact duplicate. It is nonetheless flagged as a possible duplicate when
+-        // it shares an existing owner's last name (compared case-insensitively) and postcode while
+-        // carrying a different telephone. The lowest-id match is recorded as 'possibleDuplicateOf'.
+-        String softDuplicateLastNameKey = householdKey(owner.getLastName());
+-        String softDuplicatePostcode = owner.getPostcode();
+-        String softDuplicateTelephone = owner.getTelephone();
+-        Owner possibleDuplicate = softDuplicatePostcode == null ? null
+-            : this.clinicService.findAllOwners().stream()
+-                .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
+-                .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
+-                .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
+-                .min(Comparator.comparing(Owner::getId))
+-                .orElse(null);
+-        if (possibleDuplicate != null) {
+-            owner.setPossibleDuplicate(true);
+-            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
+-        } else {
+             owner.setPossibleDuplicate(false);
++        } else {
++            String softDuplicateLastNameKey = householdKey(owner.getLastName());
++            String softDuplicatePostcode = owner.getPostcode();
++            String softDuplicateTelephone = owner.getTelephone();
++            Owner possibleDuplicate = softDuplicatePostcode == null ? null
++                : this.clinicService.findAllOwners().stream()
++                    .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
++                    .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
++                    .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
++                    .min(Comparator.comparing(Owner::getId))
++                    .orElse(null);
++            if (possibleDuplicate != null) {
++                owner.setPossibleDuplicate(true);
++                owner.setPossibleDuplicateOf(possibleDuplicate.getId());
++            } else {
++                owner.setPossibleDuplicate(false);
++            }
+         }
+         owner.setCustomerCode(customerCode(owner));
+         String firstNameKey = householdKey(owner.getFirstName());
+@@ -403,16 +397,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Derives a stable, shared household identifier for the owner's household. The value is a
+-     * deterministic function of the normalized last name and address ({@link #householdKey}), so
+-     * every owner in the same household derives the identical identifier of the form
+-     * {@code 'HH-<12 upper-case hex>'}.
++     * Derives a stable, shared household identifier for the owner's household: the first 12 hex
++     * characters of the SHA-256 digest of {@code normalizedLastName + '|' + postcode}, where the
++     * last name is normalized with {@link #householdKey} and an absent postcode is rendered as the
++     * empty string. Because it is a pure function of the last name and postcode, every owner sharing
++     * those two fields derives the identical identifier and therefore belongs to the same household.
+      *
+      * @param owner the owner whose household identifier is derived
+      * @return the stable household identifier
+      */
+     private String householdId(Owner owner) {
+-        String key = householdKey(owner.getLastName()) + "|" + householdKey(owner.getAddress());
++        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
++        String key = householdKey(owner.getLastName()) + "|" + postcode;
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+                 .digest(key.getBytes(StandardCharsets.UTF_8));
+@@ -420,7 +416,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             for (byte b : digest) {
+                 sb.append(String.format("%02x", b));
+             }
+-            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
++            return sb.substring(0, 12);
+         }
+         catch (java.security.NoSuchAlgorithmException e) {
+             throw new IllegalStateException("SHA-256 not available", e);
