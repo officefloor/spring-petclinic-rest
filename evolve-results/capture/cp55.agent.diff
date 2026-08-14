@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0d3a66c8..22753b4d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+@@ -289,6 +290,25 @@ public interface OwnerMapper {
+         return level;
+     }
+ 
++    /**
++     * Known regions considered {@code METRO} for the owner's segment: NSW, VIC and QLD.
++     */
++    java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
++
++    /**
++     * Derives the owner's segment, formatted {@code '<TIER>_<AREA>'}. {@code TIER} is {@code PREMIUM}
++     * when the owner's {@link #membershipLevel(Owner) membership level} is {@code 3} or more, otherwise
++     * {@code STANDARD}. {@code AREA} is {@code METRO} when the owner's {@link #locality(Owner) locality}
++     * is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    default org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        Integer level = membershipLevel(owner);
++        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
++        return org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum
++            .fromValue(tier + "_" + area);
++    }
++
+     /**
+      * Builds the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where
+      * {@code YY} is the last two digits of the registration date's fiscal year (e.g.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 18a2e9ce..1977adc6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2253,6 +2253,21 @@ components:
+               maximum: 4
+               example: 2
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's segment, formatted '<TIER>_<AREA>'. TIER is
++                'PREMIUM' when the owner's membershipLevel is 3 or more,
++                otherwise 'STANDARD'. AREA is 'METRO' when the owner's locality
++                is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
