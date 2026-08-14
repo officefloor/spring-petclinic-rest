@@ -1,0 +1,154 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b7b1f5da..19a158ad 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,8 +27,31 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
++    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives the owner's age band from the birth date, computed as the owner's age on the
++     * registration date: {@code MINOR} when under 18, {@code ADULT} from 18 to 64, and
++     * {@code SENIOR} at 65 or older. Returns {@code null} when the birth date or registration
++     * date is absent, so an owner created without a birth date carries no age band.
++     */
++    default org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum ageBand(Owner owner) {
++        java.time.LocalDate birthDate = owner.getBirthDate();
++        java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        if (birthDate == null || registrationDate == null) {
++            return null;
++        }
++        int age = java.time.Period.between(birthDate, registrationDate).getYears();
++        if (age < 18) {
++            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.MINOR;
++        }
++        if (age < 65) {
++            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.ADULT;
++        }
++        return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.SENIOR;
++    }
++
+     /**
+      * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits contained
+      * in the owner's customer code. Returns {@code null} when the customer code is absent.
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 861db743..1f5a211a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -139,6 +142,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c7d325e3..161702b6 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d8791167..dc804d6b 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6f8d0874..a4eb82df 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index b71b1dac..412c663e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   VARCHAR(4),
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6df7fc18..a9768a3d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2055,6 +2055,15 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: >-
++            The optional birth date of the pet owner, in ISO 'YYYY-MM-DD'
++            format. When present it is used to derive the owner's 'ageBand'
++            (computed as the owner's age on the registration date).
++          type: string
++          format: date
++          example: '1990-01-01'
+         postcode:
+           title: Postcode
+           description: >-
+@@ -2203,6 +2212,20 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band, derived from the birth date when present:
++                'MINOR' when under 18, 'ADULT' from 18 to 64, and 'SENIOR' at 65
++                or older, computed as the owner's age on the registration date.
++                Absent when no birth date was supplied.
++              type: string
++              enum:
++                - MINOR
++                - ADULT
++                - SENIOR
++              example: 'ADULT'
++              readOnly: true
+             checkDigit:
+               title: Check digit
+               description: >-
