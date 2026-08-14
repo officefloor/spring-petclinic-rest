@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 631b8d71..6536f72f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -527,25 +527,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rejects creating an owner that duplicates an existing one, either as a household duplicate or
+-     * as an exact identity duplicate. The household is now keyed on the computed {@code householdId}
+-     * (a deterministic function of the normalized last name and postcode, see
+-     * {@link #computeHouseholdId}), so any existing owner already carrying the same {@code householdId}
+-     * belongs to the same household and makes the new owner a household duplicate. Independently, an
+-     * exact match on the derived {@code identityKey} - {@code normalizedTelephone + '|' + (email or
+-     * empty) + '|' + (householdId or empty)} - is also a duplicate; this still catches owners with no
+-     * postcode (and therefore no household) that share a telephone and email. Both checks are a 409.
++     * Rejects creating an owner that duplicates an existing one on the derived {@code identityKey} -
++     * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}. Because the
++     * key includes the computed {@code householdId} (a deterministic function of the normalized last
++     * name and postcode, see {@link #computeHouseholdId}), an exact key match means the same person
++     * re-registering in the same household; it also catches owners with no postcode (and therefore no
++     * household) that share a telephone and email. A match is a 409.
++     *
++     * <p>Sharing a household is <em>not</em> on its own a duplicate: two distinct people in one
++     * household (same last name and postcode, but different telephone/email) are legitimate household
++     * members and are allowed through, so a household can accumulate several owner records.
+      *
+      * <p>Owners flagged {@code deleted} (soft-deleted via {@code DELETE /api/owners/{id}}) are skipped
+      * entirely, so a normally-blocking duplicate is allowed when the only matching owner has been
+      * deleted.
+      *
+-     * <p>The {@code sharesHousehold} flag bypasses the entire duplicate block: a request that opts in
+-     * is allowed through even when it lands in an existing household, so it is created as a declared
+-     * household member rather than rejected. The incoming telephone and email have already been
+-     * normalized by {@link #normalizeTelephone} and {@link #normalizeEmail}; each existing owner's key
+-     * is derived the same way before comparison. A match results in a 409 response naming
+-     * {@code identityKey}.
++     * <p>The {@code sharesHousehold} flag bypasses the entire duplicate block. The incoming telephone
++     * and email have already been normalized by {@link #normalizeTelephone} and {@link #normalizeEmail};
++     * each existing owner's key is derived the same way before comparison. A match results in a 409
++     * response naming {@code identityKey}.
+      */
+     private void rejectDuplicate(OwnerFieldsDto ownerFieldsDto, String householdId) {
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+@@ -556,8 +556,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue;
+             }
+-            boolean householdDuplicate = householdId != null && householdId.equals(existing.getHouseholdId());
+-            if (householdDuplicate || identityKey.equals(existingIdentityKey(existing))) {
++            if (identityKey.equals(existingIdentityKey(existing))) {
+                 throw new DuplicateOwnerIdentityException(identityKey);
+             }
+         }
+@@ -844,7 +843,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             points += 3;
+         }
+         owner.setMembershipPoints(points);
+-        owner.setMembershipLevel(membershipLevelForPoints(points));
++        owner.setMembershipLevel(capMembershipLevelByHousehold(owner, membershipLevelForPoints(points)));
++    }
++
++    /**
++     * Caps a newly derived {@code membershipLevel} so it cannot exceed one above the current maximum
++     * {@code membershipLevel} among the new owner's existing household members - the pre-existing owners
++     * already carrying the same {@code householdId}. When the owner belongs to no household, or has no
++     * existing household member, no cap applies and the derived level is returned unchanged. Runs after
++     * {@link #assignHouseholdMembership} so the owner's {@code householdId} is settled.
++     */
++    private int capMembershipLevelByHousehold(Owner owner, int derivedLevel) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null || householdId.isBlank()) {
++            return derivedLevel;
++        }
++        Integer maxHouseholdLevel = null;
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (householdId.equals(existing.getHouseholdId()) && existing.getMembershipLevel() != null
++                && (maxHouseholdLevel == null || existing.getMembershipLevel() > maxHouseholdLevel)) {
++                maxHouseholdLevel = existing.getMembershipLevel();
++            }
++        }
++        if (maxHouseholdLevel == null) {
++            return derivedLevel;
++        }
++        return Math.min(derivedLevel, maxHouseholdLevel + 1);
+     }
+ 
+     /**
