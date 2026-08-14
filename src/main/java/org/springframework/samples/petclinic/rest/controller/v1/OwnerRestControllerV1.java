@@ -223,8 +223,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        owner.setDeleted(Boolean.TRUE);
+        this.clinicService.saveOwner(owner);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -430,6 +431,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Whether an existing owner has been soft-deleted. A soft-deleted owner retains its row but is
+     * excluded from the create endpoint's duplicate and identity checks, so it never blocks the
+     * creation of a new owner. A {@code null} flag (an owner predating the soft-delete column) is
+     * treated as not deleted.
+     *
+     * @param owner an existing owner
+     * @return {@code true} if the owner is flagged deleted
+     */
+    private boolean isDeleted(Owner owner) {
+        return Boolean.TRUE.equals(owner.getDeleted());
+    }
+
+    /**
      * Validates a supplied owner postcode. The postcode is optional: a {@code null} value is
      * accepted and the request stays backward-compatible. When present it must be a 4-digit value,
      * and must fall within the inclusive range allowed for the owner's city region per the fixed
@@ -569,6 +583,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String householdId = owner.getHouseholdId();
         boolean duplicate = householdId != null && this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (duplicate) {
             throw new DuplicateOwnerIdentityException(householdId);
@@ -605,7 +620,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode != null) {
             String lastName = normalizeForComparison(owner.getLastName());
             for (Owner existing : this.clinicService.findAllOwners()) {
-                if (postcode.equals(existing.getPostcode())
+                if (!isDeleted(existing)
+                    && postcode.equals(existing.getPostcode())
                     && lastName.equals(normalizeForComparison(existing.getLastName()))
                     && !normalizedTelephone.equals(toE164OrNull(existing.getTelephone()))
                     && existing.getId() != null
