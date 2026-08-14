@@ -10,26 +10,32 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Runs in the create-owner pipeline before {@link BuildOwner}. Compares the request's lastName
- * (case-insensitively with collapsed whitespace) and its {@link OwnerAddresses#normalize normalized}
- * address against every existing owner. When they
- * match an existing owner and the request did NOT set {@code sharesHousehold} true, the request is
- * rejected with a 409 so the same household is not registered twice.
+ * Runs in the create-owner pipeline before {@link EnsureUniqueIdentity} and {@link BuildOwner}.
+ * Resolves the shared {@code householdId} that forms part of the owner's {@code identityKey}.
  *
- * <p>When {@code sharesHousehold} is true, a match is instead permitted: this step derives a stable
- * shared {@code householdId} from the canonical lastName and address, stamps it onto the matching
- * existing owner(s) that lack one, and publishes it as an {@link Out} so {@link AssignHousehold}
- * can stamp the same value onto the owner being created. Owners in the same household therefore
- * carry an identical, stable identifier. A request with no matching owner publishes {@code null}
- * (there is no household to share).
+ * <p>When {@code sharesHousehold} is true and an existing owner matches on canonical lastName
+ * (case-insensitive, collapsed whitespace) and {@link OwnerAddresses#normalize normalized} address,
+ * this step derives a stable shared {@code householdId} from that canonical lastName and address,
+ * stamps it onto the matching existing owner(s) that lack one, and publishes it as an {@link Out}
+ * so {@link AssignHousehold} can stamp the same value onto the owner being created. Owners in the
+ * same household therefore carry an identical, stable identifier.
+ *
+ * <p>Household membership is no longer a duplicate on its own: the previous household duplicate
+ * check is now expressed through the single {@code identityKey}. A request with no matching owner,
+ * or one that does not opt into sharing, publishes {@code null} — it has a unique household, so its
+ * identityKey carries an empty household component and collides only on an exact full-key match.
  */
-public class EnsureUniqueHousehold {
+public class DeriveHouseholdId {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
-            Out<HouseholdId> householdIdOut) throws DuplicateHouseholdException {
+            Out<HouseholdId> householdIdOut) {
+        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+            householdIdOut.set(null); // not sharing — a household of one, no shared id
+            return;
+        }
+
         String lastName = canonical(request.getLastName());
         String address = OwnerAddresses.normalize(request.getAddress());
 
@@ -42,15 +48,11 @@ public class EnsureUniqueHousehold {
         }
 
         if (matches.isEmpty()) {
-            householdIdOut.set(null); // unique household — nothing to share
+            householdIdOut.set(null); // no household to share yet
             return;
         }
 
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
-        }
-
-        // Caller opted into sharing: give this owner and every match the same stable identifier.
+        // Give this owner and every match the same stable identifier.
         String householdId = deriveHouseholdId(lastName, address);
         for (Owner match : matches) {
             if (match.getHouseholdId() == null) {

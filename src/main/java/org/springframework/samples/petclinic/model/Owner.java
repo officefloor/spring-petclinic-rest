@@ -201,6 +201,22 @@ public class Owner extends Person {
         return hasEmail ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The single derived duplicate-detection key, {@code normalizedTelephone|email|householdId}
+     * (the normalized telephone, the email or empty when absent, and the householdId or empty when
+     * the owner has a unique household). All duplicate detection is expressed through this one key:
+     * a create whose WHOLE identityKey equals an existing owner's is a duplicate. Because the
+     * telephone is part of the key, two members of the same household with different telephones have
+     * different identityKeys and are both allowed.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String mail = (this.email == null || this.email.isBlank()) ? "" : this.email;
+        String household = (this.householdId == null || this.householdId.isBlank()) ? "" : this.householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
     /** City -> canonical region for {@link #getLocality()}. Any other city is 'UNKNOWN'. */
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
