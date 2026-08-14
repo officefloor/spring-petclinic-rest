@@ -348,31 +348,57 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, from {@code 1} to {@code 4}. It starts at
-     * {@code 1}, gains {@code 1} when this owner carries an email address, gains {@code 1}
-     * when this owner has no namesakes ({@code namesakeCount} is {@code 0}), and gains a
-     * final {@code 1} for tenure of more than {@code 365} days (measured from the
-     * {@code registrationDate}). Because a newly created owner has zero tenure, a new owner
-     * never exceeds level {@code 3}; level {@code 4} is reserved for owners whose tenure
-     * exceeds {@code 365} days. The level is capped at {@code 4}.
+     * The owner's membership points, starting at {@code 0}. The owner gains {@code 2} when
+     * they carry an email address, {@code 1} when they have no namesakes
+     * ({@code namesakeCount} is {@code 0}), {@code 2} for a household of {@code 3} or more
+     * members ({@code householdSize}), and {@code 3} for tenure of more than {@code 365}
+     * days (measured from the {@code registrationDate}). Because a newly created owner has
+     * zero tenure, a new owner can score at most {@code 5} points.
+     *
+     * @return the membership points
+     */
+    public Integer getMembershipPoints() {
+        int points = 0;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        if (hasEmail) {
+            points += 2;
+        }
+        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        if (noNamesakes) {
+            points += 1;
+        }
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
+        }
+        if (this.registrationDate != null
+            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, from {@code 1} to {@code 4}, derived from the
+     * {@link #getMembershipPoints() membership points}: {@code 1} for {@code 0-1} points,
+     * {@code 2} for {@code 2-3} points, {@code 3} for {@code 4-5} points, and {@code 4} for
+     * {@code 6} or more points. Because a newly created owner has zero tenure, a new owner
+     * scores at most {@code 5} points and so never exceeds level {@code 3}; level {@code 4}
+     * is reserved for owners whose tenure exceeds {@code 365} days.
      *
      * @return the membership level
      */
     public Integer getMembershipLevel() {
-        int level = 1;
-        boolean hasEmail = this.email != null && !this.email.isBlank();
-        if (hasEmail) {
-            level++;
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
         }
-        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
-        if (noNamesakes) {
-            level++;
+        if (points >= 4) {
+            return 3;
         }
-        if (this.registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+        if (points >= 2) {
+            return 2;
         }
-        return Math.min(level, 4);
+        return 1;
     }
 
     /**
