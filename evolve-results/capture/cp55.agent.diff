@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 935f25d2..c870da18 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -46,6 +46,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
+     @Mapping(target = "ageBand",
+             expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
++    @Mapping(target = "ownerSegment",
++            expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegment.of(owner))")
+     @Mapping(target = "telephoneDisplay",
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.E164Telephone.display(owner.getTelephone()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 00000000..626f0937
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.mapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Derives an owner's {@link OwnerDto.OwnerSegmentEnum marketing segment} {@code '<TIER>_<AREA>'}.
++ *
++ * <p>TIER is {@code PREMIUM} when the owner's {@link MembershipLevel#effective(Owner) effective}
++ * membership level is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's
++ * {@link CustomerCode#locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
++ * {@code REGIONAL}. The four combinations are {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
++ * {@code STANDARD_METRO} and {@code STANDARD_REGIONAL}.
++ *
++ * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so MapStruct does not
++ * mistake it for a mapping method and apply it to unrelated fields.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    /** The {@code '<TIER>_<AREA>'} segment for {@code owner}. */
++    public static OwnerDto.OwnerSegmentEnum of(Owner owner) {
++        boolean premium = MembershipLevel.effective(owner) >= 3;
++        boolean metro = CityRegion.timezone(CustomerCode.locality(owner)) != null;
++        if (premium) {
++            return metro ? OwnerDto.OwnerSegmentEnum.PREMIUM_METRO : OwnerDto.OwnerSegmentEnum.PREMIUM_REGIONAL;
++        }
++        return metro ? OwnerDto.OwnerSegmentEnum.STANDARD_METRO : OwnerDto.OwnerSegmentEnum.STANDARD_REGIONAL;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index db1feaf0..7641d581 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2257,6 +2257,17 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's marketing segment '<TIER>_<AREA>': TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'; AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'. One of PREMIUM_METRO, PREMIUM_REGIONAL, STANDARD_METRO, STANDARD_REGIONAL."
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: "True when the owner has been soft-deleted via DELETE /api/owners/{id}; the record is retained and still readable. False for a newly created owner."
