@@ -24,7 +24,7 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -44,21 +44,20 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing
-     * the same householdId) has 3 or more members after this create; otherwise {@code 'SILVER'} when
-     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
+     * Derives the owner's membership level from 1 to 3: starting at 1, plus 1 when an email is
+     * present, plus 1 when {@code namesakeCount} is 0, capped at 3 (level 4 is reserved for tenure).
      */
-    default org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
-        boolean goldHousehold = owner.getHouseholdMemberCount() != null
-                && owner.getHouseholdMemberCount() >= 3;
-        if (goldHousehold) {
-            return org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.GOLD;
-        }
+    static Integer membershipLevel(Owner owner) {
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
+        }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        return noNamesakes && hasEmail
-                ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER
-                : org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE;
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**

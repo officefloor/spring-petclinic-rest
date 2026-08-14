@@ -12,8 +12,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <p>Runs after {@link AssignHouseholdId} has set the shared {@code householdId} and before
  * {@link SaveOwner}, within the same write transaction. It counts the owners persisted so far that
  * share this owner's householdId and adds one for this new, not-yet-saved owner, so the value
- * reflects the household size after this create. A household of 3 or more members yields the
- * {@code 'GOLD'} membership tier.
+ * reflects the household size after this create.
  */
 public class AssignHouseholdMemberCount {
 
