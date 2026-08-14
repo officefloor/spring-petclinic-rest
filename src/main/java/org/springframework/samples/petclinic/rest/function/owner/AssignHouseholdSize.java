@@ -7,8 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Runs in the create-owner pipeline after {@link AssignHousehold} (which stamps the shared
  * {@code householdId}) and before {@link SaveOwner}. Records how many owners share this owner's
- * household as of this create, so {@link Owner#getMembershipTier()} can award {@code 'GOLD'} when the
- * household reaches 3 or more members.
+ * household as of this create.
  *
  * <p>The owner being created is not yet persisted, so its own membership is counted with the seed
  * {@code 1} and every already-stored owner carrying the same non-null {@code householdId} adds one.
