@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 06467d58..88e34397 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -151,7 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
+         HttpHeaders headers = new HttpHeaders();
+         owner.setRegistrationDate(registrationDate);
+-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
++        owner.setCustomerCode(customerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setBulkSignupWarning(bulkSignupWarning);
+         if (sharesHousehold && !householdMembers.isEmpty()) {
+@@ -269,19 +269,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     /**
+      * Build the customer code for a newly created owner, formatted
+-     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first
+-     * three letters of the city, {@code LAST3} the upper-cased first three letters of
+-     * the last name, and {@code NNNN} a per-city 4-digit zero-padded sequence equal to
+-     * one more than the number of owners already in that city.
++     * {@code '<REGION>-<HASH8>'} where {@code REGION} is the region derived from the
++     * owner's postcode (falling back to the city, or {@code 'UNKNOWN'}, via the same
++     * derivation the locality uses), and {@code HASH8} is the first eight upper-case
++     * hex characters of the SHA-256 of the owner's normalized telephone concatenated
++     * with its last name. This identity carries no sequence number.
+      */
+-    private String nextCustomerCode(String city, String lastName) {
+-        String cityPrefix = prefixThree(city);
+-        String lastNamePrefix = prefixThree(lastName);
+-        String normalizedCity = normalizeForHousehold(city);
+-        int sequence = (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> normalizeForHousehold(existing.getCity()).equals(normalizedCity))
+-            .count() + 1;
+-        return String.format("%s-%s-%04d", cityPrefix, lastNamePrefix, sequence);
++    private String customerCode(Owner owner) {
++        String region = owner.getLocality();
++        String hash8 = customerCodeHash(owner.getTelephone(), owner.getLastName());
++        return region + "-" + hash8;
++    }
++
++    /**
++     * Compute the {@code HASH8} portion of a customer code: the first eight upper-case
++     * hex characters of the SHA-256 digest of {@code telephone + lastName} (each
++     * treated as empty when {@code null}), already in their normalized forms.
++     */
++    private String customerCodeHash(String telephone, String lastName) {
++        String key = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                .digest(key.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (int i = 0; i < 4; i++) {
++                sb.append(String.format("%02X", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ 
+     /**
+@@ -320,12 +338,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return date;
+     }
+ 
+-    /** Upper-cased first three letters of {@code value} (fewer if shorter, empty if null). */
+-    private String prefixThree(String value) {
+-        String v = value == null ? "" : value;
+-        return v.substring(0, Math.min(3, v.length())).toUpperCase(Locale.ROOT);
+-    }
+-
+     /**
+      * Find the existing owners that already belong to the same household as the given
+      * last name and address, i.e. those sharing both fields. Both are compared
