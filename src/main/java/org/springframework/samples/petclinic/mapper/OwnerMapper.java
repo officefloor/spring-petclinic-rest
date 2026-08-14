@@ -41,7 +41,7 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registrationDate year (e.g. {@code 'SMI-0007-M26'}). Returns {@code null}
+     * last two digits of the registrationDate year (e.g. {@code 'SYD-SMI-0007-M26'}). Returns {@code null}
      * when either source field is absent, so owners without a customerCode or registrationDate map cleanly.
      */
     default String membershipNumber(Owner owner) {
