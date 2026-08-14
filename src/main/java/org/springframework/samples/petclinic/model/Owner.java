@@ -108,6 +108,42 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * The stored E.164 {@link #telephone} formatted for humans as the country code, a single
+     * space, then the national digits (the digits after the country code) grouped in threes from
+     * the left, e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}. The country code is
+     * a single digit for the {@code +1} and {@code +7} zones and two digits otherwise.
+     *
+     * @return the human-formatted telephone, or the raw {@link #telephone} unchanged when it is
+     *         {@code null} or not a {@code +} followed by digits
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+[0-9]+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        int countryCodeLength = ONE_DIGIT_CALLING_CODES.contains(digits.substring(0, 1)) ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return this.telephone;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
+    }
+
+    /**
+     * The E.164 calling codes that are a single digit ({@code +1} for the North American Numbering
+     * Plan and {@code +7} for the Russia/Kazakhstan zone); every other calling code is two digits.
+     */
+    private static final Set<String> ONE_DIGIT_CALLING_CODES = Set.of("1", "7");
+
     public String getEmail() {
         return this.email;
     }
