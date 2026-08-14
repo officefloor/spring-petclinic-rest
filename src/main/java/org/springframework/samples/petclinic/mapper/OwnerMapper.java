@@ -22,6 +22,7 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -197,33 +198,52 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership level, a number from 1 to 4. It starts at {@code 1}, gains
-     * {@code 1} when an email is present, and gains {@code 1} when the owner has no namesakes
-     * ({@code namesakeCount} is {@code 0}); these pre-tenure factors are capped at {@code 3}. Level
-     * {@code 4} is reserved for tenure and is granted only when the owner's tenure exceeds
-     * {@code 365} days (measured from the {@code registrationDate} to the current date). Because a
-     * newly created owner has zero tenure, a new owner never exceeds level {@code 3}.
+     * Computes the owner's membership points. Starts at {@code 0} and adds {@code 2} when an email
+     * is present, {@code 1} when the owner has no namesakes ({@code namesakeCount} is {@code 0}),
+     * {@code 2} for a household of {@code 3} or more ({@code householdSize}), and {@code 3} when the
+     * owner's tenure exceeds {@code 365} days (measured from the {@code registrationDate} to the
+     * current date).
      */
-    default Integer membershipLevel(Owner owner) {
+    default Integer membershipPoints(Owner owner) {
         Integer namesakeCount = owner.getNamesakeCount();
         String email = owner.getEmail();
-        boolean noNamesakes = namesakeCount != null && namesakeCount == 0;
-        boolean hasEmail = email != null && !email.isBlank();
-        int level = 1;
-        if (hasEmail) {
-            level++;
+        Integer householdSize = owner.getHouseholdSize();
+        int points = 0;
+        if (email != null && !email.isBlank()) {
+            points += 2;
         }
-        if (noNamesakes) {
-            level++;
+        if (namesakeCount != null && namesakeCount == 0) {
+            points += 1;
         }
-        level = Math.min(level, 3);
+        if (householdSize != null && householdSize >= 3) {
+            points += 2;
+        }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         boolean hasTenure = registrationDate != null
             && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365;
         if (hasTenure) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Derives the owner's membership level, a number from 1 to 4, from the owner's
+     * {@link #membershipPoints(Owner) membership points}: level {@code 1} for {@code 0-1} points,
+     * {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more.
+     */
+    default Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
