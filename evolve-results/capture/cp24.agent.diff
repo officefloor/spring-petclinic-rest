@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d0fde04f..47acfa1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -164,20 +164,21 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership tier, derived at read time from stored fields: {@code 'GOLD'} when the
+-     * owner's {@link #getHouseholdSize() household} has 3 or more members (owners sharing the same
+-     * {@link #getHouseholdId() householdId}) as of this owner's creation; otherwise {@code 'SILVER'}
+-     * when {@link #getNamesakeCount() namesakeCount} is 0 and an email is present, otherwise
+-     * {@code 'BRONZE'}.
++     * The owner's membership level, a number from 1 to 3 derived at read time from stored fields.
++     * Starts at 1; add 1 when an email is present; add 1 when {@link #getNamesakeCount() namesakeCount}
++     * is 0; capped at 3 (level 4 is reserved for tenure).
+      */
+     @Transient
+-    public String getMembershipTier() {
+-        if (this.householdSize != null && this.householdSize >= 3) {
+-            return "GOLD";
+-        }
+-        boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
++    public Integer getMembershipLevel() {
++        int level = 1;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+-        return unique && hasEmail ? "SILVER" : "BRONZE";
++        if (hasEmail) {
++            level++;
++        }
++        if (this.namesakeCount != null && this.namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+index 23d15180..c6859492 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+@@ -7,8 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ /**
+  * Runs in the create-owner pipeline after {@link AssignHousehold} (which stamps the shared
+  * {@code householdId}) and before {@link SaveOwner}. Records how many owners share this owner's
+- * household as of this create, so {@link Owner#getMembershipTier()} can award {@code 'GOLD'} when the
+- * household reaches 3 or more members.
++ * household as of this create.
+  *
+  * <p>The owner being created is not yet persisted, so its own membership is counted with the seed
+  * {@code 1} and every already-stored owner carrying the same non-null {@code householdId} adds one.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 118d5351..cd83efe3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -9,15 +9,17 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Runs in the create-owner pipeline after {@link SaveOwner}, once the owner has been persisted and
+  * its id assigned. Emits a single audit line on the dedicated {@code AUDIT} logger recording the new
+- * owner's id, {@code customerCode} and {@code registrationDate} (ISO 'YYYY-MM-DD'). Read-only: it
+- * inspects the stored owner without mutating it, then hands off to the responder.
++ * owner's id, {@code customerCode}, {@code registrationDate} (ISO 'YYYY-MM-DD') and
++ * {@code membershipLevel}. Read-only: it inspects the stored owner without mutating it, then hands
++ * off to the responder.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 83de4787..62c9d7ae 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,14 +2123,16 @@ components:
+               type: string
+               example: SMI-0007-M26
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier, derived at read time. 'GOLD' when the
+-                owner's household (owners sharing the same householdId) has 3 or more members as of
+-                this create; otherwise 'SILVER' when namesakeCount is 0 and an email is present,
+-                otherwise 'BRONZE'.
+-              type: string
+-              example: SILVER
++            membershipLevel:
++              title: Membership level
++              description: The owner's membership level, a number from 1 to 3 derived at read time.
++                Starts at 1; add 1 when an email is present; add 1 when namesakeCount is 0; capped
++                at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
