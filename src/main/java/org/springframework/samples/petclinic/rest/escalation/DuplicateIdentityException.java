@@ -2,9 +2,9 @@ package org.springframework.samples.petclinic.rest.escalation;
 
 /**
  * Thrown by {@code EnsureUniqueIdentity} when a create-owner request's whole derived
- * {@code identityKey} ({@code normalizedTelephone|email|householdId}) equals an existing owner's.
- * This single key consolidates the former separate telephone, email and household duplicate checks.
- * Handled by {@link DuplicateIdentityExceptionHandler}, which responds 409.
+ * {@code identityKey} (the SHA-256 hex of {@code normalizedTelephone|lowerEmail|soundex(lastName)})
+ * equals an existing owner's. This single key consolidates the former separate telephone, email and
+ * household duplicate checks. Handled by {@link DuplicateIdentityExceptionHandler}, which responds 409.
  */
 public class DuplicateIdentityException extends Exception {
 

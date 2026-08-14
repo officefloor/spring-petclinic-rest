@@ -531,19 +531,42 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived duplicate-detection key, {@code normalizedTelephone|email|householdId}
-     * (the normalized telephone, the email or empty when absent, and the householdId or empty when
-     * the owner has a unique household). All duplicate detection is expressed through this one key:
-     * a create whose WHOLE identityKey equals an existing owner's is a duplicate. Because the
-     * telephone is part of the key, two members of the same household with different telephones have
-     * different identityKeys and are both allowed.
+     * The single derived duplicate-detection key: the 64-character lower-case hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (the normalized
+     * telephone, the lower-cased email or empty when absent, and the {@link Soundex} of the
+     * lastName). All duplicate detection is expressed through this one key: a create whose WHOLE
+     * identityKey equals an existing owner's is a duplicate. Because the telephone is part of the
+     * key, two members of the same household with different telephones have different identityKeys
+     * and are both allowed.
      */
     @Transient
     public String getIdentityKey() {
-        String tel = this.telephone == null ? "" : this.telephone;
-        String mail = (this.email == null || this.email.isBlank()) ? "" : this.email;
-        String household = (this.householdId == null || this.householdId.isBlank()) ? "" : this.householdId;
-        return tel + "|" + mail + "|" + household;
+        return identityKey(this.telephone, this.email, this.lastName);
+    }
+
+    /**
+     * Derive the {@link #getIdentityKey() identityKey} from the raw parts, so a create pipeline can
+     * compute the key for an incoming request exactly as a stored owner reports it.
+     */
+    public static String identityKey(String telephone, String email, String lastName) {
+        String tel = telephone == null ? "" : telephone;
+        String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase();
+        return sha256Hex(tel + "|" + mail + "|" + Soundex.encode(lastName));
+    }
+
+    /** The 64-character lower-case hex SHA-256 of {@code seed}. */
+    private static String sha256Hex(String seed) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b & 0xff));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e); // every JRE ships SHA-256
+        }
     }
 
     /** City -> canonical region for {@link #getLocality()}. Any other city is 'UNKNOWN'. */
