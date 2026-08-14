@@ -408,6 +408,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, derived at read time and formatted {@code '<TIER>_<AREA>'} — one of
+     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
+     * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when {@link #getMembershipLevel()
+     * membershipLevel} is 3 or more, otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the
+     * {@link #getLocality() locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code 'REGIONAL'}.
+     */
+    @Transient
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * A single Luhn check digit (0-9) computed at read time over the digits contained in the
      * {@link #getCustomerCode() customerCode} (non-digit characters such as the '-' separators are
      * ignored). {@code null} when the owner has no customerCode.
