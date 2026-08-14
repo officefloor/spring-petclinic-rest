@@ -1,6 +1,13 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: if this request carries an 'Idempotency-Key' already seen from a prior
+# successful create, replay the originally created owner (200) instead of creating a duplicate.
+# Runs first, before any validation or duplicate check, and publishes the key for recordIdempotency.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  next: validate
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: validatePostcode
@@ -106,6 +113,13 @@ save:
 # Emit an AUDIT line for the created owner (id assigned by save) before responding.
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Remember this request's Idempotency-Key -> new owner id (when a key was supplied) so a later
+# repeat with the same key replays this owner instead of creating a duplicate.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: respond
 
