@@ -218,6 +218,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(rollToBusinessDay(effectiveRegistrationDate));
         rejectDailyLimitReached(owner.getRegistrationDate());
         rejectCityAtCapacity(owner.getCity());
+        owner.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
         rejectDuplicateIdentity(owner, sharesHousehold);
@@ -886,6 +887,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new OwnerCityCapacityExceededException(city);
         }
+    }
+
+    /**
+     * The number of owners a city must already hold before a newly created owner in that city is
+     * flagged as approaching capacity. Once a city already contains at least this many owners (but
+     * still fewer than {@link #MAX_OWNERS_PER_CITY}), the new owner's {@code capacityWarning} is set.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Determines whether the owner being created is approaching the per-city capacity limit. The
+     * warning is raised when the owner's city already contains between {@link
+     * #CITY_CAPACITY_WARNING_THRESHOLD} and {@code MAX_OWNERS_PER_CITY - 1} owners (inclusive) at the
+     * time this owner is created; the hard rejection at {@link #MAX_OWNERS_PER_CITY} is unchanged.
+     * Existing owners' cities are compared case-insensitively with surrounding and repeated internal
+     * whitespace collapsed (see {@link #normalizeForComparison}), matching {@link #rejectCityAtCapacity}.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} if the city already holds 40-49 owners
+     */
+    private boolean isApproachingCityCapacity(String city) {
+        String normalizedCity = normalizeForComparison(city);
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedCity.equals(normalizeForComparison(existing.getCity())))
+            .count();
+        return ownersInCity >= CITY_CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY;
     }
 
     /**
