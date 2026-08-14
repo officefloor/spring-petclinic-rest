@@ -15,7 +15,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  *
  * <p>When {@code sharesHousehold} is true and an existing owner already shares the same last name
  * and address (last name compared case-insensitively after trimming and collapsing whitespace, and
- * address by its canonical normalized form, matching {@link EnsureUniqueHousehold}), a stable
+ * address by its canonical normalized form), a stable
  * identifier derived from that normalized last name and address is assigned to the new owner and
  * back-filled onto every matching existing owner. Because
  * the identifier is derived deterministically from the household key, all owners of a household share

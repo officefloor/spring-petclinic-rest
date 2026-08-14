@@ -8,7 +8,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
  *
  * <p>Applied whenever an owner is created (see {@link ValidateOwnerFields}) so the stored and returned
  * {@code address} is the normalized string, and reused wherever addresses are compared
- * ({@link EnsureUniqueHousehold}, {@link AssignHousehold}) so those comparisons see the same form.
+ * (see {@link AssignHousehold}) so those comparisons see the same form.
  */
 final class AddressNormalizer {
 

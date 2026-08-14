@@ -7,16 +7,15 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 when a create-owner request supplies a last name and address already used by
- * another owner (compared case-insensitively with collapsed whitespace). The body is a
- * {@link ProblemDetail}.
+ * Responds 409 when a create-owner request derives an {@code identityKey} whose whole value is
+ * already used by another owner. The body is a {@link ProblemDetail}.
  */
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<ProblemDetail>> response) {
         ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT,
-                "Another owner with the same last name and address already exists");
+                "The identity key is already used by another owner");
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
     }
 }
