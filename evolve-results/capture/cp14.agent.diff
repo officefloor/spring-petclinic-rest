@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c0f4648b..78045bb4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -131,6 +134,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 98359a6d..cff504b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -135,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         assignCustomerCode(owner);
++        assignMembershipNumber(owner);
+         assignNamesakeCount(owner);
+         assignHousehold(owner, ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+@@ -452,6 +453,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+     }
+ 
++    /**
++     * Assigns the owner's {@code membershipNumber} on create, formatted
++     * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
++     * {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}). Assigned after
++     * {@link #assignCustomerCode} and once {@code registrationDate} has been defaulted, so both
++     * inputs are present.
++     */
++    private void assignMembershipNumber(Owner owner) {
++        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
++        owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
++    }
++
+     /**
+      * Assigns the new owner's {@code namesakeCount} on create: the number of owners that already
+      * exist sharing the same {@code firstName} and {@code lastName}, compared case-insensitively.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..e071cafe 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..b7977f24 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  membership_number VARCHAR(30)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6e..bb253e12 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  membership_number VARCHAR(30),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831a..2eac545a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      membership_number TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e4f08cdf..9250590c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2132,6 +2132,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: >-
++                The owner's membership number, formatted '<customerCode>-M<YY>'
++                where YY is the last two digits of the registrationDate year.
++                Assigned at creation.
++              type: string
++              example: 'SMI-0007-M26'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
