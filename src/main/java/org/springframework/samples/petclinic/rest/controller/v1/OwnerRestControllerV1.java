@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +64,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit trail for owner-lifecycle side effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Email domains from disposable/throwaway providers, rejected on create. */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private final ClinicService clinicService;
 
@@ -116,6 +121,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalizedAddress = Owner.normalizeAddress(ownerFieldsDto.getAddress());
         if (normalizedAddress == null || normalizedAddress.isBlank()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (isDisposableEmailDomain(ownerFieldsDto.getEmail())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -433,6 +441,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** True when the email's domain is on the disposable-provider blocklist. */
+    private boolean isDisposableEmailDomain(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+        return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
 
     private String normalizeTelephone(String telephone) {
