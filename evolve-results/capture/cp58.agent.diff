@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7499145d..166a9553 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -394,6 +394,50 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * The base labels (the label before the first dot) of the known disposable email domains. An
++     * owner's email domain is judged disposable-adjacent when its own base label is one of these,
++     * so a near-variant of a blocklisted disposable domain under a different top-level domain
++     * (e.g. {@code mailinator.net} for {@code mailinator.com}) still trips the risk flag.
++     */
++    private static final Set<String> DISPOSABLE_EMAIL_BASE_LABELS =
++        Set.of("mailinator", "tempmail", "guerrillamail");
++
++    /**
++     * Whether this owner's email domain is disposable-adjacent: the domain's base label (the label
++     * before its first dot, e.g. {@code "mailinator"} in {@code "mailinator.net"}) matches the base
++     * label of a known disposable domain. An owner with no email carries no disposable-adjacent
++     * domain.
++     *
++     * @return {@code true} when the email domain is disposable-adjacent, otherwise {@code false}
++     */
++    private boolean hasDisposableAdjacentEmail() {
++        if (this.email == null) {
++            return false;
++        }
++        int at = this.email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = this.email.substring(at + 1).toLowerCase(Locale.ROOT);
++        int dot = domain.indexOf('.');
++        String baseLabel = dot < 0 ? domain : domain.substring(0, dot);
++        return DISPOSABLE_EMAIL_BASE_LABELS.contains(baseLabel);
++    }
++
++    /**
++     * Whether this owner warrants a manual risk review. It is {@code true} when any of three signals
++     * holds: the owner is a {@link #getPossibleDuplicate() possible duplicate}, the owner's email
++     * domain is {@link #hasDisposableAdjacentEmail() disposable-adjacent}, or the owner's city is
++     * over its soft capacity - the same 40-owner threshold that raises the
++     * {@link #getCapacityWarning() capacity warning}; otherwise {@code false}.
++     *
++     * @return {@code true} when any risk signal holds, otherwise {@code false} (never {@code null})
++     */
++    public Boolean getRiskFlag() {
++        return getPossibleDuplicate() || hasDisposableAdjacentEmail() || getCapacityWarning();
++    }
++
+     /**
+      * Whether this owner has been soft-deleted. A newly created owner is not deleted; deleting an
+      * owner via {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e0a799f9..0f8c38cb 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2323,6 +2323,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when the owner warrants a manual risk review because any of
++                three signals holds - the owner is a possible duplicate, the owner's email
++                domain is disposable-adjacent (its base label matches a known disposable
++                domain, catching near-variants under a different top-level domain), or the
++                owner's city is over its soft capacity (it already held 40 or more owners, the
++                same threshold that raises the capacity warning); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: Whether the owner has been soft-deleted. A newly created owner is
