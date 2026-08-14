@@ -17,19 +17,21 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Raised when an owner is created with a normalized telephone that is already used by another owner.
+ * Raised when an owner is created whose derived identity key
+ * ({@code '<normalizedTelephone>|<email>|<householdId>'}) exactly equals that of an existing owner.
+ * This single key consolidates the former separate telephone, email and household duplicate checks.
  * Maps to a 409 Conflict response.
  */
-public class DuplicateOwnerTelephoneException extends RuntimeException {
+public class DuplicateOwnerIdentityException extends RuntimeException {
 
-    private final String telephone;
+    private final String identityKey;
 
-    public DuplicateOwnerTelephoneException(String telephone) {
-        super("An owner with telephone " + telephone + " already exists");
-        this.telephone = telephone;
+    public DuplicateOwnerIdentityException(String identityKey) {
+        super("An owner with identity key " + identityKey + " already exists");
+        this.identityKey = identityKey;
     }
 
-    public String getTelephone() {
-        return this.telephone;
+    public String getIdentityKey() {
+        return this.identityKey;
     }
 }

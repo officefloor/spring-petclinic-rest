@@ -25,7 +25,23 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's duplicate-detection identity key, formatted
+     * {@code '<normalizedTelephone>|<email>|<householdId>'}. The email and household-id segments are
+     * empty when the respective field is absent. The telephone and email are already stored in their
+     * normalized (E.164 / lower-cased) form, so the stored values are used directly. This is the single
+     * key against which owner duplicates are detected: two owners collide only when their whole keys
+     * match.
+     */
+    default String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * Fixed city-to-region table used to derive an owner's locality.
