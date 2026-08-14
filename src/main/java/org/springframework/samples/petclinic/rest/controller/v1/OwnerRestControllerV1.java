@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,6 +83,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Required national-number length (the digits after the country code) per E.164 country code.
+     * A number whose country code appears here must carry exactly the mapped number of national
+     * digits; country codes not listed fall back to the generic 8-to-15 total-digit rule.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
+        Map.of("61", 9, "1", 10);
 
     private final ClinicService clinicService;
 
@@ -225,7 +234,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Normalizes a telephone number into E.164 form. Spaces, dashes and brackets are stripped.
      * When the value carries a leading {@code '+'} its country code is kept as given; otherwise the
      * Australian country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped
-     * from the national digits. The result must carry 8 to 15 digits after the {@code '+'}.
+     * from the national digits. The result must carry 8 to 15 digits after the {@code '+'}. For
+     * recognised country codes the national number (the digits after the country code) must also be
+     * exactly the length that country requires ({@code '+61'} needs 9 national digits, {@code '+1'}
+     * needs 10); a wrong national-number length yields {@code null}.
      *
      * @param telephone the raw telephone value (may be {@code null})
      * @return the E.164 telephone (e.g. {@code "+61412345678"}), or {@code null} if it cannot form
@@ -254,7 +266,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (digits.length() < 8 || digits.length() > 15) {
             return null;
         }
+        if (!hasValidNationalNumberLength(digits)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * Checks the national-number length of an E.164 digit string (country code plus national
+     * number, without the leading {@code '+'}) against its country code. When the number's country
+     * code is one of the {@link #NATIONAL_NUMBER_LENGTHS recognised codes}, the digits after the
+     * country code must number exactly what that country requires; the longest matching country
+     * code wins. Numbers whose country code is not recognised are accepted here (they are governed
+     * only by the generic total-length rule).
+     *
+     * @param digits the E.164 digits without the leading {@code '+'} (e.g. {@code "61412345678"})
+     * @return {@code true} if the national-number length is acceptable for the country code
+     */
+    private boolean hasValidNationalNumberLength(String digits) {
+        return NATIONAL_NUMBER_LENGTHS.entrySet().stream()
+            .filter(entry -> digits.startsWith(entry.getKey()))
+            .max(Comparator.comparingInt(entry -> entry.getKey().length()))
+            .map(entry -> digits.length() - entry.getKey().length() == entry.getValue())
+            .orElse(true);
     }
 
     /**
