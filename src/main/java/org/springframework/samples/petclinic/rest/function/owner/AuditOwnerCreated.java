@@ -11,8 +11,11 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        String membershipNumber = owner.getCustomerCode() == null || owner.getRegistrationDate() == null
+                ? null
+                : owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner));
+                MembershipLevel.of(owner), membershipNumber);
     }
 }
