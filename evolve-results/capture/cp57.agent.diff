@@ -1,0 +1,44 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0ccaa38a..01174734 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -93,6 +93,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Dedicated notification logger. On successful owner creation a single welcome-notification line is
++     * enqueued here carrying the new owner's id and member id, so the welcome side-effect can be observed
++     * independently of the HTTP response and the audit stream.
++     */
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
+     /**
+      * Monotonically increasing sequence number stamped on each {@code OWNER_CREATED} audit event, so
+      * the immutable event stream has a strict total order across creates. Shared across all instances
+@@ -236,6 +243,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner));
+         emitOwnerCreatedEvent(owner);
++        enqueueWelcomeNotification(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -383,6 +391,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      *
+      * @param owner the owner that was just created and persisted
+      */
++    /**
++     * Enqueues a welcome notification for a freshly created owner by emitting a single line to the
++     * dedicated {@code NOTIFY} logger carrying the new owner's id and member id. The notification is a
++     * side-effect of a successful create only, observable independently of the HTTP response.
++     *
++     * @param owner the owner that was just created and persisted
++     */
++    private void enqueueWelcomeNotification(Owner owner) {
++        NOTIFY.info("Welcome notification: ownerId={} memberId={}", owner.getId(), owner.getMemberId());
++    }
++
+     private void emitOwnerCreatedEvent(Owner owner) {
+         OwnerCreatedEvent event = new OwnerCreatedEvent(
+             OWNER_EVENT_SEQ.incrementAndGet(),
