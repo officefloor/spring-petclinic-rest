@@ -87,6 +87,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -227,6 +230,14 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Boolean getPossibleDuplicate() {
         return this.possibleDuplicate;
     }
@@ -307,6 +318,10 @@ public class Owner extends Person {
      */
     @Transient
     public Integer getMembershipPoints() {
+        return computeMembershipPoints(this.householdSize);
+    }
+
+    private int computeMembershipPoints(Integer householdSize) {
         int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
@@ -315,7 +330,7 @@ public class Owner extends Person {
         if (this.namesakeCount != null && this.namesakeCount == 0) {
             points += 1;
         }
-        if (this.householdSize != null && this.householdSize >= 3) {
+        if (householdSize != null && householdSize >= 3) {
             points += 2;
         }
         if (this.registrationDate != null
@@ -329,10 +344,34 @@ public class Owner extends Person {
      * The owner's membership level, a number from 1 to 4 derived at read time by banding
      * {@link #getMembershipPoints() membershipPoints}: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
      * Because a new owner scores at most 5 points, only tenure (+3) can reach level 4.
+     *
+     * <p>A new owner also cannot outrank their household: when a {@link #getMembershipLevelCap()
+     * membershipLevelCap} is set (one above the highest level in the household at the moment the owner
+     * joined) the banded level is capped to it.
      */
     @Transient
     public Integer getMembershipLevel() {
-        int points = getMembershipPoints();
+        return capLevel(levelForPoints(getMembershipPoints()));
+    }
+
+    /**
+     * The membership level this owner would band to if their household held {@code householdSize}
+     * members, still honouring this owner's own {@link #getMembershipLevelCap() cap}. Used when a
+     * new member sizes their household ceiling against the household as it stands once they join, so
+     * every existing member is scored under the same (grown) household size.
+     */
+    public int membershipLevelForHouseholdSize(int householdSize) {
+        return capLevel(levelForPoints(computeMembershipPoints(householdSize)));
+    }
+
+    private int capLevel(int level) {
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    private static int levelForPoints(int points) {
         if (points <= 1) {
             return 1;
         }
