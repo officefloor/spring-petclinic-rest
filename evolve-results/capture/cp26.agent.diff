@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e0761755..cd59ec85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -22,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -91,6 +92,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
+         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+ 
++    /**
++     * Required national-number length per E.164 country code (the digits that follow the country
++     * code). {@code '+61'} (Australia) requires 9 national digits; {@code '+1'} (NANP) requires 10.
++     * A country code that is not listed here is not length-checked, keeping other numbers accepted.
++     */
++    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTH =
++        Map.of("1", 10, "61", 9);
++
+     /**
+      * The maximum number of owners a single city may contain. A create request for a city that
+      * already holds this many owners is rejected with a 409 response.
+@@ -353,10 +362,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Normalizes an owner's {@code telephone} on create into E.164 form. A leading {@code '+'} and
+      * the country code that follows it are kept; otherwise the country code {@code '+61'} is assumed
+      * and a single leading {@code '0'} is dropped from the national digits. Spaces, dashes and
+-     * brackets are stripped. The result must have 8 to 15 digits after the {@code '+'}. The E.164
+-     * string is written back onto the request so it is what gets stored and returned. Any value that
+-     * cannot form a valid E.164 number is rejected with a 400 response whose {@code errors} array
+-     * names {@code telephone}.
++     * brackets are stripped. The result must have 8 to 15 digits after the {@code '+'}, and when the
++     * country code is one whose national-number length is known ({@code '+61'} => 9 national digits,
++     * {@code '+1'} => 10) the national number must have exactly that many digits. The E.164 string is
++     * written back onto the request so it is what gets stored and returned. Any value that cannot
++     * form a valid E.164 number is rejected with a 400 response whose {@code errors} array names
++     * {@code telephone}.
+      */
+     private void normalizeTelephone(OwnerFieldsDto ownerFieldsDto) {
+         ownerFieldsDto.setTelephone(toE164(ownerFieldsDto.getTelephone()));
+@@ -372,10 +383,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         boolean hasCountryCode = telephone.trim().startsWith("+");
+         String digits = telephone.replaceAll("\\D", "");
++        String countryCode;
+         String national;
+         if (hasCountryCode) {
++            countryCode = matchCountryCode(digits);
+             national = digits;
+         } else {
++            countryCode = "61";
+             if (digits.startsWith("0")) {
+                 digits = digits.substring(1);
+             }
+@@ -384,9 +398,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!national.matches("[0-9]{8,15}")) {
+             throw new InvalidOwnerFieldsException(List.of("telephone"));
+         }
++        if (countryCode != null) {
++            Integer requiredLength = COUNTRY_NATIONAL_LENGTH.get(countryCode);
++            if (requiredLength != null
++                && national.length() - countryCode.length() != requiredLength) {
++                throw new InvalidOwnerFieldsException(List.of("telephone"));
++            }
++        }
+         return "+" + national;
+     }
+ 
++    /**
++     * Returns the longest known E.164 country code (a key of {@link #COUNTRY_NATIONAL_LENGTH}) that
++     * the given country-code-prefixed digit string starts with, or {@code null} when none is known so
++     * the number is not length-checked against a country.
++     */
++    private static String matchCountryCode(String digits) {
++        return COUNTRY_NATIONAL_LENGTH.keySet().stream()
++            .filter(digits::startsWith)
++            .max(Comparator.comparingInt(String::length))
++            .orElse(null);
++    }
++
+     /**
+      * Rejects creating an owner whose E.164 telephone is already used by any other owner. The
+      * incoming value has already been converted to its E.164 form by {@link #normalizeTelephone};
