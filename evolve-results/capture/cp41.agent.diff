@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 329e90e4..b1648d7d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,6 +27,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.regex.Pattern;
++import java.util.stream.Collectors;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -456,8 +457,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * postcode (the same region derivation shared with {@link Owner#getLocality() locality}:
+      * postcode range first, falling back to the city, or {@code 'UNKNOWN'}) and {@code HASH8} is the
+      * first 8 upper-case hex characters of the SHA-256 digest of the normalized telephone
+-     * concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). Sequence numbers are not used,
+-     * so the code is a pure function of the owner's region and identity.
++     * concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). When the computed code
++     * collides with an existing owner's customer code, {@code '-<n>'} is appended using the
++     * smallest {@code n} of 2 or more that makes the result unique, guaranteeing distinct owners
++     * always receive distinct customer codes.
+      *
+      * @param owner the owner whose customer code is derived (with normalized telephone already set)
+      * @return the assigned customer code
+@@ -465,7 +468,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private String customerCode(Owner owner) {
+         String region = owner.getLocality();
+         String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName(), 8);
+-        return region + "-" + hash8;
++        String base = region + "-" + hash8;
++        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(code -> code != null)
++            .collect(Collectors.toSet());
++        if (!existingCodes.contains(base)) {
++            return base;
++        }
++        int n = 2;
++        while (existingCodes.contains(base + "-" + n)) {
++            n++;
++        }
++        return base + "-" + n;
+     }
+ 
+     /**
