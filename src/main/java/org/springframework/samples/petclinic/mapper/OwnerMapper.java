@@ -30,6 +30,8 @@ public interface OwnerMapper {
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
         expression = "java(OwnerLocality.fromCustomerCode(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+        expression = "java(OwnerLocality.timezoneForRegion(OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
