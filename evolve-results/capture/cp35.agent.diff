@@ -1,0 +1,180 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d89535e5..d4497f1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,12 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -197,6 +203,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e15e9298..2becbab8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -192,6 +192,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         assignNamesakeCount(owner);
+         assignMembershipLevel(owner);
+         assignBulkSignupWarning(owner);
++        assignPossibleDuplicate(owner);
+         assignHousehold(owner, ownerFieldsDto);
+         assignHouseholdMembership(owner);
+         this.clinicService.saveOwner(owner);
+@@ -691,6 +692,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
+     }
+ 
++    /**
++     * Assigns the new owner's {@code possibleDuplicate} / {@code possibleDuplicateOf} on create. The
++     * owner has already cleared the hard-duplicate {@code identityKey} check, so it is not a hard
++     * duplicate. It is flagged as a possible duplicate when an existing owner shares its
++     * {@code lastName} (compared case-insensitively) and its {@code postcode} (a present, exact
++     * match) while carrying a different {@code telephone}. When such an owner exists,
++     * {@code possibleDuplicate} is set to {@code true} and {@code possibleDuplicateOf} to that owner's
++     * id (the lowest id when several match); otherwise {@code possibleDuplicate} is {@code false} and
++     * {@code possibleDuplicateOf} is left {@code null}. Computed before the new owner is persisted, so
++     * it considers only the pre-existing owners.
++     */
++    private void assignPossibleDuplicate(Owner owner) {
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++        Integer matchId = null;
++        if (postcode != null) {
++            for (Owner existing : this.clinicService.findAllOwners()) {
++                if (lastName.equalsIgnoreCase(existing.getLastName())
++                    && postcode.equals(existing.getPostcode())
++                    && !postcode.isBlank()
++                    && !java.util.Objects.equals(telephone, existing.getTelephone())
++                    && existing.getId() != null
++                    && (matchId == null || existing.getId() < matchId)) {
++                    matchId = existing.getId();
++                }
++            }
++        }
++        owner.setPossibleDuplicate(matchId != null);
++        owner.setPossibleDuplicateOf(matchId);
++    }
++
+     /**
+      * Assigns the new owner's {@code householdId} when the request opts in with
+      * {@code sharesHousehold} set to {@code true} and at least one existing owner already shares the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ca63321e..20f7405b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
+   membership_level INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ccdaf862..4b2ec9bf 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,7 +52,9 @@ CREATE TABLE owners (
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
+   membership_level INTEGER,
+-  bulk_signup_warning BOOLEAN
++  bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ccf6e2e8..36c363c2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index ac6fb22e..f9ea4b2f 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_member_count INTEGER,
+                                       membership_number TEXT,
+                                       membership_level INTEGER,
+-                                      bulk_signup_warning BOOLEAN
++                                      bulk_signup_warning BOOLEAN,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cb65d142..b3543a44 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2231,6 +2231,26 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Flag captured at creation time: true when the owner is not a hard
++                duplicate but shares an existing owner's last name and postcode
++                while carrying a different telephone, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner is a possible duplicate of,
++                captured at creation time. Present only when 'possibleDuplicate' is
++                true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
