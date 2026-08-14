@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.OwnerLocality;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -97,6 +98,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTH =
         Map.of("1", 10, "61", 9);
+
+    /**
+     * Inclusive 4-digit postcode range allowed for each known region, keyed by the region an owner's
+     * city derives to (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD): NSW 2000-2099, VIC
+     * 3000-3099, QLD 4000-4099. A city that derives to no known region ({@code "UNKNOWN"}) is not in
+     * this table and accepts any 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
 
     /**
      * The maximum number of owners a single city may contain. A create request for a city that
@@ -168,6 +180,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
+        validatePostcode(ownerFieldsDto);
         rejectDuplicateIdentity(ownerFieldsDto, resolveHouseholdId(ownerFieldsDto));
         rejectCityAtCapacity(ownerFieldsDto);
         resolveRegistrationDate(ownerFieldsDto);
@@ -537,6 +550,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
         ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Validates an owner's optional {@code postcode} on create. The field may be omitted entirely
+     * (so an owner created without a postcode stays accepted), but when a value is present it must be
+     * exactly 4 digits and valid for the region the owner's {@code city} derives to: NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099. A city with no known region accepts any 4-digit postcode. A
+     * present postcode that is malformed or out of range for the city's region is rejected with a 400
+     * response whose {@code errors} array names {@code postcode}. A valid value is left on the request
+     * as-is so it is stored and returned.
+     */
+    private void validatePostcode(OwnerFieldsDto ownerFieldsDto) {
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        if (!postcode.matches("[0-9]{4}")) {
+            throw new InvalidOwnerFieldsException(List.of("postcode"));
+        }
+        int[] range = REGION_POSTCODE_RANGE.get(OwnerLocality.derive(ownerFieldsDto.getCity()));
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                throw new InvalidOwnerFieldsException(List.of("postcode"));
+            }
+        }
     }
 
     /**

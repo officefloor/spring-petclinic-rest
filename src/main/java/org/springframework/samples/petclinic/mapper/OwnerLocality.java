@@ -7,7 +7,7 @@ package org.springframework.samples.petclinic.mapper;
  * {@code String}-to-{@code String} method declared on a MapStruct mapper would be picked up as an
  * implicit conversion and applied to every String property mapping.
  */
-final class OwnerLocality {
+public final class OwnerLocality {
 
     private OwnerLocality() {
     }
@@ -16,7 +16,7 @@ final class OwnerLocality {
      * Returns the canonical region for {@code city} (Sydney-&gt;NSW, Melbourne-&gt;VIC,
      * Brisbane-&gt;QLD), or {@code "UNKNOWN"} when the city is not in the table.
      */
-    static String derive(String city) {
+    public static String derive(String city) {
         if (city == null) {
             return "UNKNOWN";
         }
