@@ -140,6 +140,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * The number of owners a city must already contain for a create in that city to be flagged as
+     * approaching capacity. When an existing city holds at least this many owners but fewer than
+     * {@value #MAX_OWNERS_PER_CITY} (so the create is still accepted), the new owner is created with
+     * {@code capacityWarning} set to {@code true}.
+     */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * The maximum number of owners that may be registered in a single day. A create request made
      * once this many owners already carry today's {@code registrationDate} is rejected with a 429
      * response.
@@ -246,6 +254,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignMembershipNumber(owner);
         assignNamesakeCount(owner);
         assignBulkSignupWarning(owner);
+        assignCapacityWarning(owner);
         assignPossibleDuplicate(owner, ownerFieldsDto);
         assignHouseholdMembership(owner);
         assignMembership(owner);
@@ -930,6 +939,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
+    }
+
+    /**
+     * Assigns the new owner's {@code capacityWarning} on create: {@code true} when the owner's city
+     * already holds between {@value #CAPACITY_WARNING_THRESHOLD} and {@value #MAX_OWNERS_PER_CITY}
+     * minus one owners (approaching the {@value #MAX_OWNERS_PER_CITY} capacity limit), otherwise
+     * {@code false}. Existing owners are counted case-insensitively on {@code city}, the same way
+     * {@link #rejectCityAtCapacity} counts them, and computed before the new owner is persisted so it
+     * counts only the pre-existing owners. A city at or over the hard limit has already been rejected
+     * by {@link #rejectCityAtCapacity}, so this only ever sees counts below the limit.
+     */
+    private void assignCapacityWarning(Owner owner) {
+        String city = owner.getCity();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        owner.setCapacityWarning(count >= CAPACITY_WARNING_THRESHOLD && count < MAX_OWNERS_PER_CITY);
     }
 
     /**

@@ -57,6 +57,7 @@ CREATE TABLE owners (
   membership_level INTEGER,
   membership_points INTEGER,
   bulk_signup_warning BOOLEAN,
+  capacity_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   deleted BOOLEAN DEFAULT FALSE
