@@ -247,6 +247,19 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
+    /**
+     * The owner's canonical API path, formed as {@code "/api/owners/"} followed by the owner's
+     * {@link #getId() id}.
+     *
+     * @return the self link, or {@code null} when the owner has not yet been assigned an id
+     */
+    public String getSelfLink() {
+        if (this.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + this.getId();
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
