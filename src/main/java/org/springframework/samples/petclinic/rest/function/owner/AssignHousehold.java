@@ -6,54 +6,41 @@ import java.security.NoSuchAlgorithmException;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Step of {@code POST /api/owners} that assigns a shared {@code householdId} when the request opts
- * into an existing household via {@code sharesHousehold}.
+ * Step of {@code POST /api/owners} that assigns the owner's deterministic {@code householdId}.
  *
- * <p>When {@code sharesHousehold} is true and an existing owner already shares the same last name
- * and address (last name compared case-insensitively after trimming and collapsing whitespace, and
- * address by its canonical normalized form), a stable
- * identifier derived from that normalized last name and address is assigned to the new owner and
- * back-filled onto every matching existing owner. Because
- * the identifier is derived deterministically from the household key, all owners of a household share
- * the same value regardless of creation order. Runs after {@link BuildOwner}, so it works on the
- * built entity, and before {@link SaveOwner}.
+ * <p>The identifier is the first 12 upper-case hex characters of SHA-256 over
+ * {@code normalizedLastName + '|' + postcode} (last name trimmed, internal whitespace collapsed and
+ * lower-cased). Because it is derived purely from the household key, every owner sharing the same
+ * last name and postcode receives the SAME value automatically, regardless of creation order and
+ * without scanning or back-filling other owners. An owner with no postcode has no household, so its
+ * {@code householdId} is {@code null}.
+ *
+ * <p>Runs after {@link BuildOwner}, so it works on the built entity, and before
+ * {@link EnsureUniqueIdentity}, so duplicate detection and {@link AssignHouseholdSize} see the
+ * finalized value. Note {@code sharesHousehold} plays no part here: it only bypasses the duplicate
+ * block downstream; the household link itself is always this computed value.
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = normalize(request.getLastName());
-        String address = AddressNormalizer.normalize(request.getAddress());
-        String householdId = null;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (normalize(existing.getLastName()).equals(lastName)
-                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
-                if (householdId == null) {
-                    householdId = householdId(lastName, address);
-                }
-                if (!householdId.equals(existing.getHouseholdId())) {
-                    existing.setHouseholdId(householdId);
-                    ownerRepository.save(existing);
-                }
-            }
-        }
-        if (householdId != null) {
-            owner.setHouseholdId(householdId);
-        }
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
     }
 
-    private static String householdId(String lastName, String address) {
-        String key = lastName + "|" + address;
+    /**
+     * The deterministic householdId for a {@code (lastName, postcode)} pair, or {@code null} when the
+     * postcode is absent (an owner with no postcode is not part of a household).
+     */
+    static String householdId(String lastName, String postcode) {
+        if (postcode == null || postcode.isBlank()) {
+            return null;
+        }
+        String key = normalize(lastName) + "|" + postcode.trim();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("H-");
+            StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
