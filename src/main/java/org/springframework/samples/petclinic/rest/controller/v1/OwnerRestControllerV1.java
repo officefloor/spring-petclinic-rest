@@ -167,17 +167,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email);
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> existing.getEmail() != null
-                    && email.equals(existing.getEmail().toLowerCase(Locale.ROOT)));
-            if (emailInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(toE164(existing.getTelephone())));
-        if (telephoneInUse) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String cityKey = householdKey(owner.getCity());
         long cityCount = this.clinicService.findAllOwners().stream()
@@ -193,24 +182,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
                 && addressKey.equals(householdKey(existing.getAddress())))
             .toList();
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (sharesHousehold) {
             String householdId = householdMembers.stream()
                 .map(Owner::getHouseholdId)
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElseGet(() -> householdId(owner));
             owner.setHouseholdId(householdId);
+            owner.setHouseholdSize(householdMembers.size() + 1);
+        } else {
+            owner.setHouseholdSize(1);
+        }
+        // Single consolidated duplicate check: the telephone, email and household duplicate rules are
+        // all expressed through the one derived identityKey (telephone|email|householdId). A create is
+        // rejected only when a new owner's WHOLE identityKey equals an existing owner's; because the
+        // telephone is part of the key, two household members with different telephones are allowed.
+        String identityKey = owner.getIdentityKey();
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+        if (identityInUse) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (sharesHousehold) {
             for (Owner member : householdMembers) {
                 if (member.getHouseholdId() == null) {
-                    member.setHouseholdId(householdId);
+                    member.setHouseholdId(owner.getHouseholdId());
                     this.clinicService.saveOwner(member);
                 }
             }
-            owner.setHouseholdSize(householdMembers.size() + 1);
-        } else if (!householdMembers.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        } else {
-            owner.setHouseholdSize(1);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         String firstNameKey = householdKey(owner.getFirstName());

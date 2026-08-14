@@ -234,6 +234,23 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's identity key: the single derived value used for duplicate detection, formed as
+     * {@code normalizedTelephone + "|" + (email or empty) + "|" + householdId}. The telephone and
+     * email are the already-normalized stored values and a {@code null} email or household id is
+     * rendered as the empty string. Two owners are duplicates only when their whole identity keys
+     * are equal; because the telephone is part of the key, household members with different
+     * telephones have different identity keys.
+     *
+     * @return the derived identity key
+     */
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = this.email == null ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
+    /**
      * City -> canonical region, the fixed ground truth for deriving locality.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
