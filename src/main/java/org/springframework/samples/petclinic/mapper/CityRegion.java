@@ -18,6 +18,10 @@ public final class CityRegion {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
             "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     private CityRegion() {
     }
 
@@ -34,6 +38,15 @@ public final class CityRegion {
     /** The canonical region for {@code city}, or "UNKNOWN" when the city is not in the table. */
     public static String locality(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * The IANA timezone name for {@code region} via the fixed region-to-timezone table
+     * (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane), or {@code null}
+     * when the region is not one of these.
+     */
+    public static String timezone(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 
     /** The region whose postcode range contains {@code postcode}, or {@code null} if none does. */
