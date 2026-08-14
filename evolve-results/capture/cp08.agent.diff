@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ad3ecc20..0014117e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164: a '+' followed by 8 to 15 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+index 8ffc0caf..5ba33d55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidTelephoneException.java
+@@ -1,16 +1,17 @@
+ package org.springframework.samples.petclinic.rest.escalation;
+ 
+ /**
+- * Thrown by {@code NormalizeOwnerTelephone} when a create-owner request carries a telephone that,
+- * once every non-digit character is stripped, is not exactly ten digits. Handled by
+- * {@link InvalidTelephoneExceptionHandler}, which responds 400.
++ * Thrown by {@code NormalizeOwnerTelephone} when a create-owner request carries a telephone that
++ * cannot be normalized into valid E.164 form (8 to 15 digits after the leading {@code '+'}, once
++ * spaces, dashes and brackets are stripped). Handled by {@link InvalidTelephoneExceptionHandler},
++ * which responds 400.
+  */
+ public class InvalidTelephoneException extends Exception {
+ 
+     private final String telephone;
+ 
+     public InvalidTelephoneException(String telephone) {
+-        super("Telephone must be exactly 10 digits after removing non-digit characters: " + telephone);
++        super("Telephone must form valid E.164 (8 to 15 digits after the '+'): " + telephone);
+         this.telephone = telephone;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index beb856d0..8322e721 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -6,18 +6,45 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+ 
+ /**
+  * Runs after {@link ValidateOwnerFields} and before {@link BuildOwner} in the create-owner
+- * pipeline. Normalizes the telephone by removing every non-digit character, requires exactly ten
+- * digits, and mutates the validated body in place so later steps build and store the normalized
+- * value. Rejects anything that is not exactly ten digits after stripping with a 400.
++ * pipeline. Normalizes the telephone into E.164 form and mutates the validated body in place so
++ * later steps build, compare and store the normalized value.
++ *
++ * <p>Rules: strip spaces, dashes and brackets. A leading {@code '+'} keeps its country code as
++ * given; otherwise country code {@code '+61'} is assumed and a single leading {@code '0'} is
++ * dropped from the national digits. The result must be 8 to 15 digits after the {@code '+'};
++ * anything else (or any leftover non-digit) is rejected with a 400. So {@code '0412 345 678'} is
++ * stored as {@code '+61412345678'}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
+         String raw = request.getTelephone();
+-        String digits = raw == null ? "" : raw.replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        request.setTelephone(toE164(raw));
++    }
++
++    private static String toE164(String raw) throws InvalidTelephoneException {
++        if (raw == null) {
++            throw new InvalidTelephoneException(raw);
++        }
++        String trimmed = raw.trim();
++        boolean hasCountryCode = trimmed.startsWith("+");
++        // Strip formatting: spaces, dashes and brackets.
++        String cleaned = trimmed.replaceAll("[\\s\\-()]", "");
++
++        String digits;
++        if (hasCountryCode) {
++            digits = cleaned.substring(1); // drop the leading '+', keep the country code
++        } else {
++            String national = cleaned;
++            if (national.startsWith("0")) {
++                national = national.substring(1); // drop a single leading national-trunk '0'
++            }
++            digits = "61" + national; // assume Australian country code
++        }
++
++        if (!digits.matches("\\d{8,15}")) {
+             throw new InvalidTelephoneException(raw);
+         }
+-        request.setTelephone(digits);
++        return "+" + digits;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4961e003..58a0fd62 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,12 +2025,14 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: The telephone number of the pet owner. Stored in E.164 form; a leading
++            '+' and country code are kept when present, otherwise country code '+61' is assumed
++            and a single leading '0' is dropped from the national digits.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+-          example: '6085551023'
++          pattern: '^[0-9+()\-\s]*$'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Optional; when present it must be a
