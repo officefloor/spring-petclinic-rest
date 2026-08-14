@@ -154,6 +154,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
@@ -477,6 +478,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersToday >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitExceededException(registrationDate);
         }
+    }
+
+    /**
+     * The number of owners that must already share a {@code registrationDate} before a newly created
+     * owner for that day is flagged with a bulk-signup warning. Once more than this many owners have
+     * been created for the day, the new owner's {@code bulkSignupWarning} is {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Determines whether the owner being created should carry a bulk-signup warning. The warning is
+     * raised when more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created for
+     * the same registration date at the time this owner is created. Existing owners are counted by their
+     * {@code registrationDate} matching the registration date of the owner being created, mirroring the
+     * daily create-limit accumulation.
+     *
+     * @param registrationDate the registration date of the owner being created
+     * @return {@code true} if the day already holds more than the threshold number of owners
+     */
+    private boolean isBulkSignupDay(LocalDate registrationDate) {
+        long ownersToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return ownersToday > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     private void rejectCityAtCapacity(String city) {
