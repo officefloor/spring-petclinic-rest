@@ -102,6 +102,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * The number of owners that must already carry a day's {@code registrationDate} before a create
+     * for that day is flagged as a bulk signup. Once more than this many owners already exist for the
+     * day, the new owner is created with {@code bulkSignupWarning} set to {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -162,6 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignCustomerCode(owner);
         assignMembershipNumber(owner);
         assignNamesakeCount(owner);
+        assignBulkSignupWarning(owner);
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
@@ -569,6 +577,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setNamesakeCount(count);
+    }
+
+    /**
+     * Assigns the new owner's {@code bulkSignupWarning} on create: {@code true} when more than
+     * {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry the new owner's adjusted
+     * business-day {@code registrationDate}, otherwise {@code false}. Counted the same way as the
+     * daily-limit rule and computed before the new owner is persisted, so it counts only the
+     * pre-existing owners for that day.
+     */
+    private void assignBulkSignupWarning(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (registrationDate.equals(existing.getRegistrationDate())) {
+                count++;
+            }
+        }
+        owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
     }
 
     /**
