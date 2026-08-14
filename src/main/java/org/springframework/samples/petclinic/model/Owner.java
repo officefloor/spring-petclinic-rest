@@ -223,6 +223,17 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's preferred contact channel: {@code "EMAIL"} when the owner carries an
+     * email address, otherwise {@code "PHONE"}.
+     *
+     * @return {@code "EMAIL"} when an email is present, otherwise {@code "PHONE"}
+     */
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
+    /**
      * City -> canonical region, the fixed ground truth for deriving locality.
      */
     private static final Map<String, String> CITY_REGION = Map.of(
