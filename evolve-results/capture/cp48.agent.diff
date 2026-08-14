@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 72f5e034..296ed9f7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+@@ -219,8 +220,8 @@ public interface OwnerMapper {
+      * Computes the owner's membership points. Starts at {@code 0} and adds {@code 2} when an email
+      * is present, {@code 1} when the owner has no namesakes ({@code namesakeCount} is {@code 0}),
+      * {@code 2} for a household of {@code 3} or more ({@code householdSize}), and {@code 3} when the
+-     * owner's tenure exceeds {@code 365} days (measured from the {@code registrationDate} to the
+-     * current date).
++     * owner's tenure spans at least one elapsed fiscal year (the {@code registrationDate}'s fiscal
++     * year is earlier than the current date's fiscal year).
+      */
+     default Integer membershipPoints(Owner owner) {
+         Integer namesakeCount = owner.getNamesakeCount();
+@@ -238,7 +239,7 @@ public interface OwnerMapper {
+         }
+         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+         boolean hasTenure = registrationDate != null
+-            && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365;
++            && fiscalYearValue(java.time.LocalDate.now()) - fiscalYearValue(registrationDate) >= 1;
+         if (hasTenure) {
+             points += 3;
+         }
+@@ -266,17 +267,40 @@ public interface OwnerMapper {
+ 
+     /**
+      * Builds the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where
+-     * {@code YY} is the last two digits of the registration date's year (e.g. {@code "NSW-3F2A1B9C-M26"}).
+-     * Returns {@code null} when the customer code or registration date is absent.
++     * {@code YY} is the last two digits of the registration date's fiscal year (e.g.
++     * {@code "NSW-3F2A1B9C-M26"}). Returns {@code null} when the customer code or registration date
++     * is absent.
+      */
+     default String membershipNumber(Owner owner) {
+         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+             return null;
+         }
+-        int yy = owner.getRegistrationDate().getYear() % 100;
++        int yy = fiscalYearValue(owner.getRegistrationDate()) % 100;
+         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+     }
+ 
++    /**
++     * Derives the owner's fiscal year from the business-day-adjusted registration date, formatted
++     * {@code 'FY<YY>'} where {@code YY} is the last two digits of the fiscal year (e.g.
++     * {@code "FY26"}). Returns {@code null} when the registration date is absent.
++     */
++    default String fiscalYear(Owner owner) {
++        java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return null;
++        }
++        return String.format("FY%02d", fiscalYearValue(registrationDate) % 100);
++    }
++
++    /**
++     * Computes the fiscal year, as a full four-digit year, of the given date. The fiscal year starts
++     * on 1 July and is named by the calendar year in which it ends, so a date on or after 1 July
++     * belongs to the following calendar year's fiscal year.
++     */
++    default int fiscalYearValue(java.time.LocalDate date) {
++        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
++    }
++
+     /**
+      * Builds the owner's salutation: the supplied title and last name joined by a single space
+      * (e.g. {@code "DR Franklin"}) when a title is present (non-blank), otherwise just the last
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index eb0ec6d4..b991c513 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2178,10 +2178,24 @@ components:
+               description: >-
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+                 where customerCode is the owner's customer code and YY is the
+-                last two digits of the registration date's year.
++                last two digits of the registration date's fiscal year (the
++                fiscal year starts on 1 July and is named by the calendar year
++                in which it ends).
+               type: string
+               example: 'NSW-3F2A1B9C-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the owner's business-day-adjusted
++                registration date, formatted 'FY<YY>' where YY is the last two
++                digits of the fiscal year. The fiscal year starts on 1 July and
++                is named by the calendar year in which it ends, so a
++                registration date on or after 1 July belongs to the following
++                calendar year's fiscal year.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
+@@ -2219,7 +2233,9 @@ components:
+                 The owner's membership points, starting at 0. Gains 2 when an
+                 email is present, 1 when the owner has no namesakes
+                 (namesakeCount is 0), 2 for a household of 3 or more, and 3 when
+-                the owner's tenure exceeds 365 days.
++                the owner's tenure spans at least one elapsed fiscal year (the
++                registration date's fiscal year is earlier than the current
++                fiscal year).
+               type: integer
+               format: int32
+               minimum: 0
