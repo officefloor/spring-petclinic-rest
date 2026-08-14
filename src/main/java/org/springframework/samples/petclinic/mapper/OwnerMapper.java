@@ -26,6 +26,10 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(OwnerLocality.derive(owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "identityKey",
+        expression = "java((owner.getTelephone() == null ? \"\" : owner.getTelephone()) + \"|\""
+            + " + (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\""
+            + " + (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
