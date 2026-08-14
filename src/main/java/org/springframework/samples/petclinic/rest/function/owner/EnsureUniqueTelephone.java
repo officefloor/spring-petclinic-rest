@@ -5,13 +5,14 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * Rejects a create-owner request whose normalized telephone is already used by an existing owner,
- * responding 409 via {@link DuplicateTelephoneException}. Runs after {@link NormalizeOwnerTelephone}
- * (which guarantees the request telephone is the 10-digit normalized form) and before
- * {@link BuildOwner}, comparing against every stored owner's telephone normalized the same way
- * (all non-digit characters stripped).
+ * Rejects a create-owner request whose E.164 telephone is already used by an existing owner, responding
+ * 409 via {@link DuplicateTelephoneException}. Runs after {@link NormalizeOwnerTelephone} (which
+ * guarantees the request telephone is the E.164 form) and before {@link BuildOwner}, comparing against
+ * every stored owner's telephone normalized to E.164 the same way. Existing telephones that cannot form
+ * a valid E.164 number are skipped rather than blocking the request.
  */
 public class EnsureUniqueTelephone {
 
@@ -19,13 +20,16 @@ public class EnsureUniqueTelephone {
             throws DuplicateTelephoneException {
         String telephone = request.getTelephone();
         for (Owner existing : ownerRepository.findAll()) {
-            if (normalize(existing.getTelephone()).equals(telephone)) {
+            String existingE164;
+            try {
+                existingE164 = E164Telephone.normalize(existing.getTelephone());
+            }
+            catch (InvalidTelephoneException ex) {
+                continue;
+            }
+            if (existingE164.equals(telephone)) {
                 throw new DuplicateTelephoneException(telephone);
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
