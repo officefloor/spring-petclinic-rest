@@ -131,6 +131,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String lastNameKey = householdKey(owner.getLastName());
+            String addressKey = householdKey(owner.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
+                    && addressKey.equals(householdKey(existing.getAddress())));
+            if (householdInUse) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -184,6 +194,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Normalizes a value for household-duplicate comparison: surrounding whitespace is trimmed,
+     * internal runs of whitespace are collapsed to a single space and the result is lower-cased,
+     * so that owners are compared case-insensitively with collapsed whitespace.
+     *
+     * @param value the raw value (must not be {@code null})
+     * @return the normalized comparison key
+     */
+    private String householdKey(String value) {
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
