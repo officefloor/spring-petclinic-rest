@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       address    TEXT,
                                       address_line1 TEXT,
                                       address_line2 TEXT,
+                                      title      TEXT,
                                       city       TEXT,
                                       telephone  TEXT,
                                       email      TEXT,

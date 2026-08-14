@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
   address VARCHAR(255) NOT NULL,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
+  title VARCHAR(10),
   city VARCHAR(80) NOT NULL,
   telephone VARCHAR(20) NOT NULL,
   email VARCHAR(255),

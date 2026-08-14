@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
@@ -274,6 +275,20 @@ public interface OwnerMapper {
         }
         int yy = owner.getRegistrationDate().getYear() % 100;
         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+    }
+
+    /**
+     * Builds the owner's salutation: the supplied title and last name joined by a single space
+     * (e.g. {@code "DR Franklin"}) when a title is present (non-blank), otherwise just the last
+     * name. Returns {@code null} when the owner has no last name.
+     */
+    default String salutation(Owner owner) {
+        String lastName = owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     /**
