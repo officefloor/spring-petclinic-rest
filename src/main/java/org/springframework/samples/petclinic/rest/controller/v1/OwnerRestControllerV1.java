@@ -27,6 +27,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,9 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import jakarta.transaction.Transactional;
 
 /**
@@ -68,6 +72,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit trail for owner-lifecycle side effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence stamped onto each {@code OWNER_CREATED} audit
+     * event, so consumers can order and de-duplicate events across the lifetime of the
+     * application. Shared across all creates; never reset.
+     */
+    private static final AtomicInteger CREATE_SEQUENCE = new AtomicInteger();
+
+    /** Serializer for the structured audit event; records serialize by their components. */
+    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
+
+    /**
+     * Immutable structured audit event emitted on owner creation. Its component order
+     * ({@code seq}, {@code ownerId}, {@code customerCode}, {@code membershipLevel},
+     * {@code event}) is also the field order of the serialized JSON. The
+     * {@code customerCode} slot carries the owner's current primary identifier — the
+     * customer code today, and whatever unifies it later (e.g. a member id).
+     */
+    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode,
+                                     Integer membershipLevel, String event) {
+    }
 
     /** Email domains from disposable/throwaway providers, rejected on create. */
     private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
@@ -233,6 +258,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -360,6 +386,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             n++;
         }
         return base + "-" + n;
+    }
+
+    /**
+     * Emit the immutable structured {@code OWNER_CREATED} audit event for a freshly
+     * created owner: a JSON object {@code {seq, ownerId, customerCode, membershipLevel,
+     * event}} logged to the dedicated {@code AUDIT} trail alongside the human-readable
+     * audit line. Each event is stamped with the next value of the shared monotonic
+     * sequence, and carries the owner's current primary identifier.
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(
+            CREATE_SEQUENCE.incrementAndGet(),
+            owner.getId(),
+            primaryIdentifier(owner),
+            owner.getMembershipLevel(),
+            "OWNER_CREATED");
+        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * The owner's current primary identifier, as carried by the structured audit event.
+     * Today this is the customer code; when the customer code is later unified into a
+     * member id, this returns that member id instead and the event follows automatically.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
