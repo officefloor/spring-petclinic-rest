@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "membershipNumber", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
