@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c9f91968..8ca058df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -190,6 +190,18 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /**
++     * The owner's current primary identifier — the single external handle that identifies this owner
++     * to other systems and to the audit trail. Today this is the {@link #getCustomerCode()
++     * customerCode}; when the customerCode is later unified into the memberId this method returns the
++     * memberId instead, so anything keyed on the primary identifier (such as the {@code OWNER_CREATED}
++     * audit event) follows the change without being touched.
++     */
++    @Transient
++    public String getPrimaryIdentifier() {
++        return this.customerCode;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 1516a69c..5538b0a0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,27 +1,56 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.LinkedHashMap;
++import java.util.Map;
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import tools.jackson.databind.ObjectMapper;
+ 
+ /**
+  * Runs in the create-owner pipeline after {@link SaveOwner}, once the owner has been persisted and
+- * its id assigned. Emits a single audit line on the dedicated {@code AUDIT} logger recording the new
+- * owner's id, {@code customerCode}, {@code registrationDate} (ISO 'YYYY-MM-DD'),
+- * {@code membershipLevel} and {@code membershipNumber}. Read-only: it inspects the stored owner
+- * without mutating it, then hands
+- * off to the responder.
++ * its id assigned. Emits two things on the dedicated {@code AUDIT} logger:
++ *
++ * <ol>
++ * <li>a human-readable audit line recording the new owner's id, {@code customerCode},
++ * {@code registrationDate} (ISO 'YYYY-MM-DD'), {@code membershipLevel} and {@code membershipNumber};
++ * and</li>
++ * <li>an immutable structured event, a JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
++ * monotonically increasing integer across every create. The event carries the owner's current
++ * {@link Owner#getPrimaryIdentifier() primary identifier} — the customerCode today, and whatever
++ * replaces it later (the memberId once the customerCode is unified into it) — so downstream consumers
++ * always see the owner's live external handle without this step changing.</li>
++ * </ol>
++ *
++ * Read-only: it inspects the stored owner without mutating it, then hands off to the responder.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Monotonically increasing sequence number across every create, process-wide. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
++    private static final ObjectMapper MAPPER = new ObjectMapper();
++
+     public void service(@Val Owner owner) {
+         AUDIT.info(
+                 "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 owner.getMembershipLevel(), owner.getMembershipNumber());
++
++        // Insertion-ordered so the serialized event reads {seq, ownerId, customerCode, ...}.
++        Map<String, Object> event = new LinkedHashMap<>();
++        event.put("seq", SEQUENCE.incrementAndGet());
++        event.put("ownerId", owner.getId());
++        event.put("customerCode", owner.getPrimaryIdentifier());
++        event.put("membershipLevel", owner.getMembershipLevel());
++        event.put("event", "OWNER_CREATED");
++        AUDIT.info(MAPPER.writeValueAsString(event));
+     }
+ }
