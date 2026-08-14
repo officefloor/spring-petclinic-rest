@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -656,7 +657,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void assignCustomerCode(Owner owner) {
         String region = OwnerLocality.derive(owner.getCity(), owner.getPostcode());
         String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName(), 8);
-        owner.setCustomerCode(region + "-" + hash8);
+        owner.setCustomerCode(deduplicateCustomerCode(region + "-" + hash8));
+    }
+
+    /**
+     * Returns {@code customerCode} unchanged when no existing owner already carries it; otherwise
+     * appends {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a value not held by
+     * any existing owner. Compared against the pre-existing owners, so the returned code is unique
+     * among them.
+     */
+    private String deduplicateCustomerCode(String customerCode) {
+        Set<String> existing = new HashSet<>();
+        for (Owner owner : this.clinicService.findAllOwners()) {
+            if (owner.getCustomerCode() != null) {
+                existing.add(owner.getCustomerCode());
+            }
+        }
+        if (!existing.contains(customerCode)) {
+            return customerCode;
+        }
+        int n = 2;
+        while (existing.contains(customerCode + "-" + n)) {
+            n++;
+        }
+        return customerCode + "-" + n;
     }
 
     /**
