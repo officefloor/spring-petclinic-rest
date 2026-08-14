@@ -1,0 +1,149 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a20ab2a3..9879553a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -90,6 +90,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -327,6 +330,22 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    /**
++     * Whether this owner has been soft-deleted. A newly created owner is not deleted; deleting an
++     * owner via {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record.
++     * A deleted owner is ignored by the create endpoint's duplicate and identity checks.
++     *
++     * @return {@code true} when the owner has been soft-deleted, otherwise {@code false} (never
++     *         {@code null})
++     */
++    public Boolean getDeleted() {
++        return this.deleted != null && this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     /**
+      * The owner's name formatted as {@code "LastName, FirstName"} from the stored names.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d4eed9b5..52c48a49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -214,6 +214,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         String householdId = householdId(owner);
+         owner.setHouseholdId(householdId);
+         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.getDeleted())
+             .filter(existing -> householdId.equals(existing.getHouseholdId()))
+             .toList();
+         owner.setHouseholdSize(householdMembers.size() + 1);
+@@ -231,6 +232,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // This still catches a full identity repeat even when it declares sharesHousehold.
+         String identityKey = owner.getIdentityKey();
+         boolean identityInUse = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.getDeleted())
+             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+         if (identityInUse) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+@@ -247,6 +249,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             String softDuplicateTelephone = owner.getTelephone();
+             Owner possibleDuplicate = softDuplicatePostcode == null ? null
+                 : this.clinicService.findAllOwners().stream()
++                    .filter(existing -> !existing.getDeleted())
+                     .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
+                     .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
+                     .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
+@@ -615,7 +618,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        this.clinicService.deleteOwner(owner);
++        // Soft-delete: flag the owner deleted and retain the record so it can still be read back.
++        owner.setDeleted(true);
++        this.clinicService.saveOwner(owner);
+         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+     }
+ 
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 15e073b1..c06be2d9 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 08567425..24fcd874 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 9e9fe25e..1c4749d9 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   possible_duplicate BIT,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8d929e07..df47c62e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4ba09c25..e8163d8b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2293,6 +2293,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: Whether the owner has been soft-deleted. A newly created owner is
++                false; DELETE /api/owners/{id} flags it true while retaining the record, and a
++                deleted owner is ignored by the create endpoint's duplicate and identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
