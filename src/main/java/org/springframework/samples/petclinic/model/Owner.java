@@ -144,6 +144,16 @@ public class Owner extends Person {
         "QLD", "Australia/Brisbane");
 
     /**
+     * Fixed version tag mixed into the version-2 identity derivations. Releasing
+     * version 2 of the owner identity rederives the region code used inside the
+     * identifiers (the {@link #getHouseholdId() householdId}, the
+     * {@link #getIdentityKey() identityKey} and the member id) so it mixes in this
+     * tag; every identifier therefore changes and no value produced under version 1
+     * is produced again.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
      * Return the owner's address. When a structured address is supplied (a non-blank
      * {@code addressLine1}) it takes precedence and the value is composed as the
      * normalized {@code addressLine1}, with a single space and the normalized
@@ -629,6 +639,19 @@ public class Owner extends Person {
     }
 
     /**
+     * Return the version-2 region code mixed into the owner's identifiers: the plain
+     * region ({@link #getLocality()}) prefixed with the fixed {@code 'V2'} version tag
+     * ({@link #IDENTITY_VERSION_TAG}), for example {@code 'V2NSW'}. This is deliberately
+     * NOT the user-facing locality — the {@code locality}, {@code timezone} and the owner
+     * segment's derived region all stay the plain region — so the version tag appears only
+     * inside the identifiers ({@link #getIdentityKey() identityKey}, householdId and member
+     * id) and every version-2 identifier differs from its version-1 form.
+     */
+    public String identityRegionCode() {
+        return IDENTITY_VERSION_TAG + getLocality();
+    }
+
+    /**
      * Look up the region whose inclusive postcode range contains this owner's
      * postcode, or {@code null} when the postcode is absent, malformed, or in no
      * known range.
@@ -680,12 +703,17 @@ public class Owner extends Person {
      * lower-cased) forms; a missing email contributes an empty segment and the last
      * name is reduced to its Soundex code. A create is rejected only when a new
      * owner's whole identity key equals an existing owner's.
+     *
+     * <p>Under version 2 of the owner identity the digest input additionally mixes in
+     * the version-2 region code ({@link #identityRegionCode()}, which carries the fixed
+     * {@code 'V2'} tag), so the key differs from its version-1 form while remaining a
+     * 64 lower-case hex SHA-256.
      */
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = (this.email == null) ? "" : this.email.toLowerCase(Locale.ROOT);
         String soundexPart = soundex(getLastName());
-        String key = telephonePart + "|" + emailPart + "|" + soundexPart;
+        String key = identityRegionCode() + "|" + telephonePart + "|" + emailPart + "|" + soundexPart;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));

@@ -89,13 +89,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Immutable structured audit event emitted on owner creation. Its component order
-     * ({@code seq}, {@code ownerId}, {@code memberId}, {@code membershipLevel},
-     * {@code event}) is also the field order of the serialized JSON. The
-     * {@code memberId} slot carries the owner's primary identifier.
+     * ({@code schemaVersion}, {@code seq}, {@code ownerId}, {@code memberId},
+     * {@code membershipLevel}, {@code event}) is also the field order of the serialized
+     * JSON. The event is at schema version 2, carrying an explicit {@code schemaVersion}
+     * of {@code 2}; the {@code memberId} slot carries the owner's primary identifier,
+     * recomputed from the version-2 identity.
      */
-    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId,
+    private record OwnerCreatedEvent(int schemaVersion, int seq, Integer ownerId, String memberId,
                                      Integer membershipLevel, String event) {
     }
+
+    /** Schema version of the structured {@code OWNER_CREATED} audit event. */
+    private static final int AUDIT_EVENT_SCHEMA_VERSION = 2;
 
     /** Email domains from disposable/throwaway providers, rejected on create. */
     private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
@@ -196,7 +201,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // (last name, postcode), so every owner at the same last name and postcode resolves
         // to the same value. It is assigned up front, before any duplicate detection, so the
         // identity key and the household check below both key off it.
-        owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
+        owner.setHouseholdId(householdId(owner));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         // Consolidated hard-duplicate detection: reject only when the new owner's WHOLE
         // identityKey (the SHA-256 over normalizedTelephone|lowerEmail|soundex(lastName))
@@ -403,7 +408,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is set by the time the member id is assigned.
      */
     private String memberIdBase(Owner owner) {
-        String region = owner.getLocality();
+        String region = owner.identityRegionCode();
         String fiscalYear = owner.getFiscalYear();
         String fy = fiscalYear == null ? "" : fiscalYear.substring(2);
         String hash8 = memberIdHash(owner.getTelephone(), owner.getLastName());
@@ -439,13 +444,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emit the immutable structured {@code OWNER_CREATED} audit event for a freshly
-     * created owner: a JSON object {@code {seq, ownerId, memberId, membershipLevel,
-     * event}} logged to the dedicated {@code AUDIT} trail alongside the human-readable
-     * audit line. Each event is stamped with the next value of the shared monotonic
-     * sequence, and carries the owner's current primary identifier.
+     * created owner: a schema-version-2 JSON object {@code {schemaVersion, seq, ownerId,
+     * memberId, membershipLevel, event}} logged to the dedicated {@code AUDIT} trail
+     * alongside the human-readable audit line. Each event is stamped with the next value
+     * of the shared monotonic sequence, and carries the owner's current primary identifier
+     * (the version-2 member id).
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = new OwnerCreatedEvent(
+            AUDIT_EVENT_SCHEMA_VERSION,
             CREATE_SEQUENCE.incrementAndGet(),
             owner.getId(),
             primaryIdentifier(owner),
@@ -595,12 +602,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the deterministic identifier shared by all owners of one household: the first
-     * 12 hex characters of the SHA-256 digest of {@code normalizedLastName + '|' + postcode}.
-     * Because it depends only on the (last name, postcode) pair, every owner at the same last
-     * name and postcode resolves to the same value regardless of creation order.
+     * 12 hex characters of the SHA-256 digest of
+     * {@code identityRegionCode + '|' + normalizedLastName + '|' + postcode}. Under version 2
+     * of the owner identity the digest input is prefixed with the version-2 region code
+     * ({@link Owner#identityRegionCode()}, carrying the fixed {@code 'V2'} tag) so the value
+     * differs from its version-1 form. Because that region derives from the same
+     * (postcode, city) and the other parts depend only on the (last name, postcode) pair,
+     * every owner at the same last name and postcode still resolves to the same value
+     * regardless of creation order.
      */
-    private String householdId(String lastName, String postcode) {
-        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
+    private String householdId(Owner owner) {
+        String postcode = owner.getPostcode();
+        String key = owner.identityRegionCode() + "|" + normalizeForHousehold(owner.getLastName())
+            + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));

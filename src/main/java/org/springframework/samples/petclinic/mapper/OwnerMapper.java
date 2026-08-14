@@ -23,6 +23,10 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "initials")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.householdId", source = "householdId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
