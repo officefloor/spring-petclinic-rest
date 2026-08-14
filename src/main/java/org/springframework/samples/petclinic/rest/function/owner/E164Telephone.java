@@ -15,7 +15,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * exactly the length that country requires — '+61' (Australia) requires 9 national digits and '+1'
  * (NANP) requires 10. A wrong national-number length for the country is likewise rejected with a 400.
  */
-final class E164Telephone {
+public final class E164Telephone {
 
     /** Country code (digits after the '+', without it) -> required national-number length. Ordered
      *  longest-first so the most specific prefix wins when resolving the country code. */
@@ -57,5 +57,37 @@ final class E164Telephone {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Formats a stored E.164 telephone for humans: the '+' and country code, a space, then the
+     * national digits grouped in threes (e.g. {@code +61412345678} becomes {@code +61 412 345 678}).
+     * A recognized country code is split off; otherwise the leading digits up to the first three are
+     * treated as the country code. Anything that is not a '+' followed by digits is returned verbatim.
+     */
+    public static String display(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) {
+            return e164;
+        }
+        String code = null;
+        for (String candidate : NATIONAL_LENGTH.keySet()) {
+            if (digits.startsWith(candidate) && digits.length() > candidate.length()) {
+                code = candidate;
+                break;
+            }
+        }
+        if (code == null) {
+            code = digits.substring(0, Math.min(3, digits.length()));
+        }
+        String national = digits.substring(code.length());
+        StringBuilder sb = new StringBuilder("+").append(code);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
     }
 }
