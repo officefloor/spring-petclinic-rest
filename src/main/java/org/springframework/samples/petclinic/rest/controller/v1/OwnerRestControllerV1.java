@@ -123,16 +123,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!owner.isPostcodeValidForCity()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        // Consolidated duplicate detection: all of the former separate telephone, email
-        // and household checks are now expressed through the single derived identityKey
-        // (telephone|email|householdId). Reject only when the new owner's WHOLE
-        // identityKey equals an existing owner's. The household id is assigned later in
-        // this method, so at this point the new owner's key carries an empty household
-        // segment; two members of the same household with different telephones therefore
-        // have different keys and are both allowed.
+        // The household id is deterministic: it is derived purely from the owner's
+        // (last name, postcode), so every owner at the same last name and postcode resolves
+        // to the same value. It is assigned up front, before any duplicate detection, so the
+        // identity key and the household check below both key off it.
+        owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        // Consolidated hard-duplicate detection: reject only when the new owner's WHOLE
+        // identityKey (telephone|email|householdId) equals an existing owner's. With the
+        // household id now computed up front, two members of one household still differ here
+        // whenever their telephone or email differs, and so are both allowed.
         String identityKey = owner.getIdentityKey();
         if (this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()))) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        // Household duplicate: because the household is keyed on (last name, postcode), any
+        // existing owner sharing this computed household id is the same household. A second
+        // such owner is rejected as a household duplicate (409) unless it explicitly declares
+        // 'sharesHousehold', which now only bypasses this block (the link is no longer created
+        // here — the id is computed).
+        List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
@@ -149,32 +161,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean bulkSignupWarning = ownersRegisteredToday > 80;
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        List<Owner> householdMembers =
-            findHouseholdMembers(ownerFieldsDto.getLastName(), normalizedAddress);
         HttpHeaders headers = new HttpHeaders();
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
-        // Soft-match ("possible duplicate"): the new owner is not a hard duplicate (its whole
-        // identityKey is unique) but shares an existing owner's last name and postcode while
-        // carrying a different telephone. Such an owner is still created, but is flagged so the
-        // likely duplication can be reviewed, pointing at the matching owner's id.
-        Owner possibleDuplicate = findPossibleDuplicate(owner);
+        // The household size (an input to the membership computation) keys off the computed
+        // household id: this owner plus everyone already sharing it.
+        owner.setHouseholdSize(householdMembers.size() + 1);
+        // Soft-match ("possible duplicate"): a declared household member is not a suspected
+        // duplicate, so only a non-declared create is scored. In practice a non-declared owner
+        // sharing an existing owner's last name and postcode is already rejected above as a
+        // household duplicate, so this now only ever confirms the owner is not a duplicate.
+        Owner possibleDuplicate = sharesHousehold ? null : findPossibleDuplicate(owner);
         owner.setPossibleDuplicate(possibleDuplicate != null);
         owner.setPossibleDuplicateOf(possibleDuplicate == null ? null : possibleDuplicate.getId());
-        if (sharesHousehold && !householdMembers.isEmpty()) {
-            String householdId = householdId(owner.getLastName(), normalizedAddress);
-            owner.setHouseholdId(householdId);
-            owner.setHouseholdSize(householdMembers.size() + 1);
-            for (Owner member : householdMembers) {
-                if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
-                }
-            }
-        }
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
@@ -350,16 +351,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Find the existing owners that already belong to the same household as the given
-     * last name and address, i.e. those sharing both fields. Both are compared
-     * case-insensitively after collapsing runs of whitespace to a single space and
-     * trimming the ends.
+     * computed household id. Because the household id is derived deterministically from
+     * the owner's (last name, postcode), this is exactly the set of other owners sharing
+     * that last name and postcode.
      */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeForHousehold(address);
+    private List<Owner> findHouseholdMembers(String householdId) {
+        if (householdId == null) {
+            return List.of();
+        }
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .toList();
     }
 
@@ -406,20 +407,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build a stable identifier shared by all owners of one household. It is derived
-     * deterministically from the normalized last name and address, so every owner at
-     * the same household resolves to the same value regardless of creation order.
+     * Build the deterministic identifier shared by all owners of one household: the first
+     * 12 hex characters of the SHA-256 digest of {@code normalizedLastName + '|' + postcode}.
+     * Because it depends only on the (last name, postcode) pair, every owner at the same last
+     * name and postcode resolves to the same value regardless of creation order.
      */
-    private String householdId(String lastName, String address) {
-        String key = normalizeForHousehold(lastName) + "\n" + normalizeForHousehold(address);
+    private String householdId(String lastName, String postcode) {
+        String key = normalizeForHousehold(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                sb.append(String.format("%02x", digest[i]));
             }
-            return "HH-" + sb;
+            return sb.toString();
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
