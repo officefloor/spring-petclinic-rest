@@ -266,6 +266,15 @@ public class Owner extends Person {
     }
 
     /**
+     * The canonical relative URL of this owner, derived at read time as {@code '/api/owners/'}
+     * followed by the owner's {@link #getId() id}.
+     */
+    @Transient
+    public String getSelfLink() {
+        return "/api/owners/" + this.getId();
+    }
+
+    /**
      * The fiscal year (starting 1 July) containing {@code date}, named by the calendar year it ends
      * in: a date on or after 1 July belongs to the next calendar year's fiscal year (e.g. 14 Aug
      * 2026 is fiscal year 2027), a date before 1 July to the current calendar year's.
