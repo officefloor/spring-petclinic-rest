@@ -42,6 +42,12 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -113,12 +119,26 @@ public class Owner extends Person {
         "VIC", "Australia/Melbourne",
         "QLD", "Australia/Brisbane");
 
+    /**
+     * Return the owner's address. When a structured address is supplied (a non-blank
+     * {@code addressLine1}) it takes precedence and the value is composed as the
+     * normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when an {@code addressLine2} is present.
+     * Otherwise the flat {@code address} is returned, preserving backward
+     * compatibility for owners supplied in the flat form.
+     */
     public String getAddress() {
+        if (this.addressLine1 != null && !this.addressLine1.isBlank()) {
+            if (this.addressLine2 != null && !this.addressLine2.isBlank()) {
+                return this.addressLine1 + " " + this.addressLine2;
+            }
+            return this.addressLine1;
+        }
         return this.address;
     }
 
     /**
-     * Set the owner's address, normalizing it to a canonical form so it is both
+     * Set the owner's flat address, normalizing it to a canonical form so it is both
      * stored and returned consistently. Leading/trailing whitespace is trimmed,
      * internal runs of whitespace are collapsed to a single space, the value is
      * upper-cased, and common street-type abbreviations are expanded ({@code ST ->
@@ -127,6 +147,33 @@ public class Owner extends Person {
      */
     public void setAddress(String address) {
         this.address = normalizeAddress(address);
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    /**
+     * Set the first line of the owner's structured address, normalized the same way
+     * as the flat {@link #setAddress(String)} (trimmed, whitespace collapsed,
+     * upper-cased, street-type abbreviations expanded). A {@code null} value is left
+     * as-is.
+     */
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = normalizeAddress(addressLine1);
+    }
+
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    /**
+     * Set the optional second line of the owner's structured address, normalized the
+     * same way as {@link #setAddressLine1(String)}. A {@code null} value is left
+     * as-is.
+     */
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = normalizeAddress(addressLine2);
     }
 
     /**

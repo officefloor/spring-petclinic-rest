@@ -119,14 +119,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedTelephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        String normalizedAddress = Owner.normalizeAddress(ownerFieldsDto.getAddress());
-        if (normalizedAddress == null || normalizedAddress.isBlank()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
         if (isDisposableEmailDomain(ownerFieldsDto.getEmail())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // The owner must supply an address in EITHER form: a non-blank structured
+        // 'addressLine1' or the flat 'address'. getAddress() prefers the structured
+        // fields (composing line 1 with an optional line 2) and falls back to the flat
+        // value; a blank result means neither form was provided. The composed value is
+        // written back so the persisted flat 'address' stays consistent with it.
+        String composedAddress = owner.getAddress();
+        if (composedAddress == null || composedAddress.isBlank()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(composedAddress);
         owner.setTelephone(normalizedTelephone);
         if (!owner.isPostcodeValidForCity()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
