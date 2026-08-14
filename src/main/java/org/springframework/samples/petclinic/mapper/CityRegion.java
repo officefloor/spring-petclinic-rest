@@ -21,9 +21,34 @@ public final class CityRegion {
     private CityRegion() {
     }
 
+    /**
+     * The canonical region, preferring the postcode: if {@code postcode} is a 4-digit code inside a
+     * known region's range it wins, disambiguating cities that share a name. Otherwise (postcode
+     * absent or in no known range) fall back to the city-to-region table, or "UNKNOWN".
+     */
+    public static String locality(String postcode, String city) {
+        String byPostcode = regionForPostcode(postcode);
+        return byPostcode != null ? byPostcode : locality(city);
+    }
+
     /** The canonical region for {@code city}, or "UNKNOWN" when the city is not in the table. */
     public static String locality(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /** The region whose postcode range contains {@code postcode}, or {@code null} if none does. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("\\d{4}")) {
+            return null;
+        }
+        int code = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (code >= range[0] && code <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**

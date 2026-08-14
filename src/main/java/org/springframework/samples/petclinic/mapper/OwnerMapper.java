@@ -27,7 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
             expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.locality(owner.getCity()))")
+            expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.locality(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "identityKey",
