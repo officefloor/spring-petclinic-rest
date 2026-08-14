@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 0940f5b0..d914cd76 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -258,4 +258,25 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException} raised when an owner is created with a supplied
++     * {@code registrationDate} that is later than the server's current date. Returns a 400 Bad Request.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        logger.debug("Future registration date at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getRegistrationDate());
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("registrationDate"));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+new file mode 100644
+index 00000000..a4b801d9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.time.LocalDate;
++
++/**
++ * Raised when an owner is created with a supplied {@code registrationDate} that is later than the
++ * server's current date. A registration date may not be in the future. Maps to a 400 Bad Request
++ * response.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    private final LocalDate registrationDate;
++
++    public FutureRegistrationDateException(LocalDate registrationDate) {
++        super("The registration date " + registrationDate + " may not be later than the server date");
++        this.registrationDate = registrationDate;
++    }
++
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3b7778a9..81008536 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
++import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+ import org.springframework.samples.petclinic.rest.advice.OwnerCityCapacityExceededException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+@@ -165,6 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setEmail(normalizeEmail(owner.getEmail()));
+         owner.setAddress(normalizeAddress(owner.getAddress()));
+         validatePostcode(owner.getPostcode(), owner.getCity());
++        rejectFutureRegistrationDate(owner.getRegistrationDate());
+         LocalDate effectiveRegistrationDate =
+             owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+         owner.setRegistrationDate(rollToBusinessDay(effectiveRegistrationDate));
+@@ -602,6 +604,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param date the effective registration date (supplied in the request or defaulted to the server date)
+      * @return the same date if it is a weekday, otherwise the following Monday
+      */
++    /**
++     * Rejects creating an owner whose supplied {@code registrationDate} is later than the server's
++     * current date. A registration date is not permitted to lie in the future; a {@code null} date
++     * (defaulted to the server date) and any date on or before today are accepted. The check runs
++     * against the date exactly as supplied, before it is rolled forward onto a business day.
++     *
++     * @param registrationDate the registration date supplied in the request, may be {@code null}
++     * @throws FutureRegistrationDateException if the supplied date is after the server date
++     */
++    private void rejectFutureRegistrationDate(LocalDate registrationDate) {
++        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(registrationDate);
++        }
++    }
++
+     private LocalDate rollToBusinessDay(LocalDate date) {
+         DayOfWeek day = date.getDayOfWeek();
+         if (day == DayOfWeek.SATURDAY) {
