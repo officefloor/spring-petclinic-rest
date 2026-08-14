@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -52,6 +54,13 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Pattern for a syntactically valid email address: a non-empty local part, an '@', and a
+     * dotted domain ending in a letters-only label. Applied to the trimmed, lower-cased value.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     private final ClinicService clinicService;
 
@@ -106,6 +115,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
+        if (owner.getEmail() != null) {
+            String email = normalizeEmail(owner.getEmail());
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            owner.setEmail(email);
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> telephone.equals(normalizeTelephone(existing.getTelephone())));
         if (telephoneInUse) {
@@ -129,6 +145,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 
+    /**
+     * Normalizes an email address for storage by trimming surrounding whitespace and lower-casing
+     * it. The result is validated by the caller against {@link #EMAIL_PATTERN}.
+     *
+     * @param email the raw email value (must not be {@code null})
+     * @return the trimmed, lower-cased email
+     */
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
@@ -136,11 +163,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        String email = ownerFieldsDto.getEmail();
+        if (email != null) {
+            email = normalizeEmail(email);
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(email);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
