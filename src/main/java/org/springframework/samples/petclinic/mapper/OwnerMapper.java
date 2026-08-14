@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class, TelephoneDisplay.class,
-        FiscalYear.class, IdentityKey.class})
+        FiscalYear.class, IdentityKey.class, OwnerSegment.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -38,6 +38,9 @@ public interface OwnerMapper {
         expression = "java(OwnerLocality.fromCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "timezone",
         expression = "java(OwnerLocality.timezoneForRegion(OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(OwnerSegment.of(owner.getMembershipLevel(), "
+            + "OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
