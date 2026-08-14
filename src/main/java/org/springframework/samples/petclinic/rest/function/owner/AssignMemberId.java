@@ -16,8 +16,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@code '<REGION><FY><HASH8><CHK>'}:
  *
  * <ul>
- * <li>REGION — the region code shared with {@link Owner#getLocality()} (derived from the postcode,
- * falling back to the city, else {@code 'UNKNOWN'});</li>
+ * <li>REGION — the version-2 region code used inside the identifiers
+ * ({@link Owner#identityRegion(String)}): the plain region ({@link Owner#getLocality()}, derived from
+ * the postcode, falling back to the city, else {@code 'UNKNOWN'}) with the {@code 'V2'} version tag
+ * mixed in, so it differs from the plain user-facing locality;</li>
  * <li>FY — the last two digits of the fiscal year (starting 1 July) derived from the
  * business-day-adjusted registrationDate, matching the {@link Owner#getFiscalYear() fiscalYear};</li>
  * <li>HASH8 — the first eight upper-case hex characters of a SHA-256 digest over the normalized
@@ -25,15 +27,15 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <li>CHK — a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
  *
- * <p>For example 'NSW271A2B3C4D5'. If the computed id collides with an existing owner's
+ * <p>For example 'NSWV2271A2B3C4D5'. If the computed id collides with an existing owner's
  * {@code memberId}, it is de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2
- * or more that makes it unique (e.g. 'NSW271A2B3C4D5-2'). Mutates the built owner in place so later
+ * or more that makes it unique (e.g. 'NSWV2271A2B3C4D5-2'). Mutates the built owner in place so later
  * steps (audit, response) derive from and store the assigned id.
  */
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = owner.getLocality();
+        String region = Owner.identityRegion(owner.getLocality());
         String fy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String hash8 = shaHex8(owner.getTelephone() + owner.getLastName());
         String core = region + fy + hash8;

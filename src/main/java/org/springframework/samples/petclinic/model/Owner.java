@@ -186,7 +186,7 @@ public class Owner extends Person {
      * The owner's member id, the single external handle that unifies the former customerCode and
      * membershipNumber. Formatted {@code '<REGION><FY><HASH8><CHK>'}: the region code, the 2-digit
      * fiscal year, the 8 upper-case hex HASH8 (the SHA-256 over normalized telephone + last name) and
-     * a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'NSW271A2B3C4D5').
+     * a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'NSWV2271A2B3C4D5').
      * Assigned at creation.
      */
     public String getMemberId() {
@@ -578,13 +578,33 @@ public class Owner extends Person {
     }
 
     /**
-     * The single derived duplicate-detection key: the 64-character lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} (the normalized
-     * telephone, the lower-cased email or empty when absent, and the {@link Soundex} of the
-     * lastName). All duplicate detection is expressed through this one key: a create whose WHOLE
-     * identityKey equals an existing owner's is a duplicate. Because the telephone is part of the
-     * key, two members of the same household with different telephones have different identityKeys
-     * and are both allowed.
+     * The fixed version tag of the version-2 identity scheme. It is mixed into every derived
+     * identifier — the {@link #getIdentityKey() identityKey}, the {@link #getMemberId() memberId}
+     * (through {@link #identityRegion(String)}) and the household id — so no value produced under
+     * version 1 is ever produced again. It is deliberately NOT part of the user-facing region:
+     * {@link #getLocality() locality}, {@link #getTimezone() timezone} and the
+     * {@link #getOwnerSegment() owner segment} keep the plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The region code used INSIDE the identifiers, rederived under version 2 by mixing in the fixed
+     * {@link #IDENTITY_VERSION_TAG}. This is distinct from {@link #getLocality() locality}: the
+     * memberId embeds this versioned region (e.g. {@code 'NSWV2'}) while locality, timezone and the
+     * owner segment keep the plain region code (e.g. {@code 'NSW'}).
+     */
+    public static String identityRegion(String plainRegion) {
+        return plainRegion + IDENTITY_VERSION_TAG;
+    }
+
+    /**
+     * The single derived duplicate-detection key: the 64-character lower-case hex SHA-256, rederived
+     * under version 2 over {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' +
+     * soundex(lastName)} (the {@link #IDENTITY_VERSION_TAG version tag}, the normalized telephone, the
+     * lower-cased email or empty when absent, and the {@link Soundex} of the lastName). All duplicate
+     * detection is expressed through this one key: a create whose WHOLE identityKey equals an existing
+     * owner's is a duplicate. Because the telephone is part of the key, two members of the same
+     * household with different telephones have different identityKeys and are both allowed.
      */
     @Transient
     public String getIdentityKey() {
@@ -593,12 +613,13 @@ public class Owner extends Person {
 
     /**
      * Derive the {@link #getIdentityKey() identityKey} from the raw parts, so a create pipeline can
-     * compute the key for an incoming request exactly as a stored owner reports it.
+     * compute the key for an incoming request exactly as a stored owner reports it. Rederived under
+     * version 2 by mixing in the fixed {@link #IDENTITY_VERSION_TAG}.
      */
     public static String identityKey(String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
         String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase();
-        return sha256Hex(tel + "|" + mail + "|" + Soundex.encode(lastName));
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + Soundex.encode(lastName));
     }
 
     /** The 64-character lower-case hex SHA-256 of {@code seed}. */

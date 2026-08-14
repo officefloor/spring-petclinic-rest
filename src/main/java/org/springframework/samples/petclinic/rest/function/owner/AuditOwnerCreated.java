@@ -18,11 +18,13 @@ import tools.jackson.databind.ObjectMapper;
  * <ol>
  * <li>a human-readable audit line recording the new owner's id, {@code memberId},
  * {@code registrationDate} (ISO 'YYYY-MM-DD') and {@code membershipLevel}; and</li>
- * <li>an immutable structured event, a JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
- * monotonically increasing integer across every create. The event carries the owner's current
- * {@link Owner#getPrimaryIdentifier() primary identifier} — the memberId — so downstream consumers
- * always see the owner's live external handle without this step changing.</li>
+ * <li>an immutable structured event at <strong>schema version 2</strong>, a JSON object
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, ownerSegment,
+ * event:'OWNER_CREATED'}} where {@code seq} is a monotonically increasing integer across every
+ * create. The event carries the owner's current {@link Owner#getPrimaryIdentifier() primary
+ * identifier} — the version-2 memberId — and the {@link Owner#getOwnerSegment() owner segment}
+ * recomputed from the version-2 identity, so downstream consumers always see the owner's live
+ * external handle without this step changing.</li>
  * </ol>
  *
  * Read-only: it inspects the stored owner without mutating it, then hands off to the responder.
@@ -42,12 +44,14 @@ public class AuditOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
                 owner.getMembershipLevel());
 
-        // Insertion-ordered so the serialized event reads {seq, ownerId, memberId, ...}.
+        // Insertion-ordered so the serialized event reads {schemaVersion, seq, ownerId, memberId, ...}.
         Map<String, Object> event = new LinkedHashMap<>();
+        event.put("schemaVersion", 2);
         event.put("seq", SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", owner.getPrimaryIdentifier());
         event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("ownerSegment", owner.getOwnerSegment());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(MAPPER.writeValueAsString(event));
     }

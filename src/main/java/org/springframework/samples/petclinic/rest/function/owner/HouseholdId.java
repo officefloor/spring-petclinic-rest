@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Pipeline variable carrying the deterministic shared household identifier from
  * {@link DeriveHouseholdId} to {@link EnsureUniqueIdentity} and {@link AssignHousehold}. A dedicated
@@ -27,9 +29,11 @@ public final class HouseholdId {
     }
 
     /**
-     * The deterministic household identifier: the first 12 hex characters of SHA-256 over
-     * {@code normalizedLastName + '|' + postcode}. Owners with the same lastName and postcode
-     * therefore always share it.
+     * The deterministic household identifier: the first 12 hex characters of a version-2 SHA-256 over
+     * {@code 'V2' + '|' + normalizedLastName + '|' + postcode} (the {@link Owner#IDENTITY_VERSION_TAG
+     * version tag}, the normalized lastName and the postcode). Owners with the same lastName and
+     * postcode therefore always share it; mixing in the fixed version tag ensures no value produced
+     * under version 1 is produced again.
      *
      * <p>A household is keyed on {@code (lastName, postcode)}, so without a postcode there is no
      * shared household: an absent or blank postcode yields {@code null} (a household of one).
@@ -38,7 +42,8 @@ public final class HouseholdId {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String seed = normalizeLastName(lastName) + "|" + postcode.trim();
+        String seed = Owner.IDENTITY_VERSION_TAG + "|" + normalizeLastName(lastName) + "|"
+                + postcode.trim();
         return sha256Hex12(seed);
     }
 
