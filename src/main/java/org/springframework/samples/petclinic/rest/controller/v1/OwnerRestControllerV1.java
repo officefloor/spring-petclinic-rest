@@ -131,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -183,6 +184,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Builds the customer code for a newly registered owner in the form
+     * {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the upper-cased first three letters
+     * of the last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to
+     * one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+     *
+     * @param lastName the owner's last name
+     * @return the assigned customer code
+     */
+    private String nextCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format(Locale.ROOT, "%s-%04d", last3, sequence);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
