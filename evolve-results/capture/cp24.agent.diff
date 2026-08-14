@@ -1,0 +1,186 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index a2af7c01..d9384acb 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,10 +23,6 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 ? \"GOLD\" "
+-            + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
+     @Mapping(target = "locality", expression = "java(OwnerLocality.derive(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a63897b5..953a2658 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,9 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -156,6 +159,14 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index fac13a61..d0d4754e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -70,7 +70,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Dedicated audit logger. On a successful create an audit line carrying the new owner's id,
+-     * {@code customerCode} and {@code registrationDate} is emitted to the logger named {@code AUDIT}.
++     * {@code customerCode}, {@code registrationDate} and {@code membershipLevel} is emitted to the
++     * logger named {@code AUDIT}.
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+@@ -169,12 +170,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         assignCustomerCode(owner);
+         assignMembershipNumber(owner);
+         assignNamesakeCount(owner);
++        assignMembershipLevel(owner);
+         assignBulkSignupWarning(owner);
+         assignHousehold(owner, ownerFieldsDto);
+         assignHouseholdMembership(owner);
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -580,6 +582,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(count);
+     }
+ 
++    /**
++     * Assigns the new owner's {@code membershipLevel} on create: a number from 1 to 3 starting at
++     * 1, plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3.
++     * Level 4 is reserved for tenure. Runs after {@link #assignNamesakeCount} so that count is
++     * settled.
++     */
++    private void assignMembershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        owner.setMembershipLevel(Math.min(level, 3));
++    }
++
+     /**
+      * Assigns the new owner's {@code bulkSignupWarning} on create: {@code true} when more than
+      * {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry the new owner's adjusted
+@@ -643,8 +662,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * Assigns the new owner's {@code householdMemberCount} on create: the number of owners sharing
+      * the new owner's {@code householdId} once this create is applied — that is, the new owner plus
+      * every existing owner already carrying the same identifier. Runs after {@link #assignHousehold}
+-     * so the identifier is settled, and drives the {@code GOLD} membership tier (3 or more members).
+-     * Left {@code null} when the owner belongs to no household.
++     * so the identifier is settled. Left {@code null} when the owner belongs to no household.
+      */
+     private void assignHouseholdMembership(Owner owner) {
+         String householdId = owner.getHouseholdId();
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0a3ad1b5..6ad67748 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0df10761..fce0693d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_member_count INTEGER,
+   membership_number VARCHAR(30),
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 390fb19d..f3209cb6 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INT,
+   household_member_count INT,
+   membership_number VARCHAR(30),
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index bfa86a7c..b13f3b05 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       household_member_count INTEGER,
+                                       membership_number TEXT,
++                                      membership_level INTEGER,
+                                       bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ae0e664e..b286b185 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2150,15 +2150,17 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier, derived at read time: 'GOLD' when the
+-                owner's household (owners sharing the same householdId) had 3 or more
+-                members after the owner was created; otherwise 'SILVER' when
+-                namesakeCount is 0 and an email is present, else 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, assigned at creation as a number from
++                1 to 3: starting at 1, plus 1 when an email is present, plus 1 when
++                namesakeCount is 0, capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
