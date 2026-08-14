@@ -656,6 +656,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_DAY = 100;
 
     /**
+     * Fixed list of public holidays. A registration date that lands on one of these dates is not a
+     * business day and is rolled forward to the next non-holiday weekday.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
      * Rejects creating an owner on a day that has already reached {@link #MAX_OWNERS_PER_DAY} or more
      * owner registrations. Existing owners are counted by their {@code registrationDate} matching the
      * registration date of the owner being created.
@@ -665,13 +676,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     /**
      * Rolls an effective registration date forward onto a business day. A registration date must fall
-     * on a weekday: when the supplied or defaulted date is a Saturday or Sunday it is rolled forward to
-     * the next Monday and that adjusted date becomes the owner's {@code registrationDate}. A weekday date
-     * is returned unchanged. Every value derived from the registration date (the daily create-limit
-     * count, the membership number's year segment, and so on) uses this adjusted date.
+     * on a weekday that is not a public holiday: when the supplied or defaulted date is a Saturday, a
+     * Sunday, or a listed public holiday it is rolled forward one day at a time until it reaches the
+     * next non-holiday business day, and that adjusted date becomes the owner's {@code registrationDate}.
+     * A date that is already a non-holiday weekday is returned unchanged. Every value derived from the
+     * registration date (the daily create-limit count, the membership number's year segment, and so on)
+     * uses this adjusted date.
      *
      * @param date the effective registration date (supplied in the request or defaulted to the server date)
-     * @return the same date if it is a weekday, otherwise the following Monday
+     * @return the same date if it is a non-holiday weekday, otherwise the next non-holiday business day
      */
     /**
      * Rejects creating an owner whose supplied {@code registrationDate} is later than the server's
@@ -689,14 +702,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     private LocalDate rollToBusinessDay(LocalDate date) {
+        LocalDate adjusted = date;
+        while (!isBusinessDay(adjusted)) {
+            adjusted = adjusted.plusDays(1);
+        }
+        return adjusted;
+    }
+
+    private boolean isBusinessDay(LocalDate date) {
         DayOfWeek day = date.getDayOfWeek();
-        if (day == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+            return false;
         }
-        if (day == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
-        }
-        return date;
+        return !PUBLIC_HOLIDAYS.contains(date);
     }
 
     private void rejectDailyLimitReached(LocalDate registrationDate) {
