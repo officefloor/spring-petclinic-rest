@@ -90,6 +90,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
 
+    /**
+     * Required national-number length per E.164 country calling code. After normalization the leading
+     * country code is stripped and the remaining national digits must match the expected count exactly
+     * (e.g. {@code +61} requires 9 national digits, {@code +1} requires 10). Country codes not listed
+     * here are only subject to the generic E.164 length bounds.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
+        Map.of("1", 10, "61", 9);
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -367,7 +376,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!digits.matches("[0-9]{8,15}")) {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
+        validateNationalNumberLength(digits);
         return "+" + digits;
+    }
+
+    /**
+     * Validates that the national-number portion of a normalized E.164 number (the digits after the
+     * country calling code) has the exact length required for that country. The country code is matched
+     * against {@link #NATIONAL_NUMBER_LENGTHS} (e.g. {@code +61} requires 9 national digits, {@code +1}
+     * requires 10). Numbers whose country code is not listed are left to the generic length bounds.
+     *
+     * @param digits the normalized E.164 digits, without the leading {@code '+'}
+     * @throws InvalidOwnerFieldsException if the national-number length is wrong for the country code
+     */
+    private void validateNationalNumberLength(String digits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalLength = digits.length() - countryCode.length();
+                if (nationalLength != entry.getValue()) {
+                    throw new InvalidOwnerFieldsException(List.of("telephone"));
+                }
+                return;
+            }
+        }
     }
 
     /**
