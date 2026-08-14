@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -122,9 +123,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        LocalDate today = LocalDate.now();
+        LocalDate effectiveDate = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : LocalDate.now();
+        LocalDate registrationDate = toBusinessDay(effectiveDate);
+        owner.setRegistrationDate(registrationDate);
         long createdToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         if (createdToday >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
@@ -139,9 +143,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
         if (owner.getEmail() != null) {
             String email = normalizeEmail(owner.getEmail());
             if (!EMAIL_PATTERN.matcher(email).matches()) {
@@ -331,6 +332,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && cityKey.equals(householdKey(existing.getCity())))
             .count() + 1;
         return String.format(Locale.ROOT, "%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Rolls a registration date forward onto a business day. When the given date falls on a
+     * Saturday or Sunday it is advanced to the following Monday; a weekday is returned unchanged.
+     *
+     * @param date the effective registration date (must not be {@code null})
+     * @return the same date if it is a weekday, otherwise the next Monday
+     */
+    private LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
