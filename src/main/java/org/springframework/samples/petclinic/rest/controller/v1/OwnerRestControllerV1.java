@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -59,6 +60,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -148,6 +151,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int TENURE_LEVEL_THRESHOLD_FISCAL_YEARS = 1;
 
+    /**
+     * The HTTP header carrying a client-supplied idempotency token for owner creation. When a create
+     * request repeats with a token already seen, the originally created owner is returned instead of
+     * a second owner being created.
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers the owner id created for each seen {@code Idempotency-Key}, so a repeated create with
+     * an already-seen key returns the originally created owner (200) instead of creating a duplicate.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -194,6 +210,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = idempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = this.idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         normalizeAddress(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
@@ -215,6 +241,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignHouseholdMembership(owner);
         assignMembership(owner);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            this.idempotentCreates.put(idempotencyKey, owner.getId());
+        }
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
@@ -329,6 +358,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * does not catch). The names of all offending fields are collected so the caller receives a
      * 400 response whose {@code errors} array lists each one.
      */
+    /**
+     * Returns the trimmed {@code Idempotency-Key} header of the current request, or {@code null} when
+     * the header is absent, blank or there is no active request. A present key opts a create into the
+     * idempotent-repeat behaviour tracked by {@link #idempotentCreates}.
+     */
+    private String idempotencyKey() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+            return null;
+        }
+        String key = attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        if (key == null || key.trim().isEmpty()) {
+            return null;
+        }
+        return key.trim();
+    }
+
     private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
         List<String> missingFields = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
