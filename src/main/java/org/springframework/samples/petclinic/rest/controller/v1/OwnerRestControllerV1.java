@@ -158,6 +158,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email);
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> existing.getEmail() != null
+                    && email.equals(existing.getEmail().toLowerCase(Locale.ROOT)));
+            if (emailInUse) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
         }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .anyMatch(existing -> telephone.equals(toE164(existing.getTelephone())));
