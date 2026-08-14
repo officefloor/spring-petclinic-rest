@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       city       TEXT,
                                       telephone  TEXT,
                                       email      TEXT,
+                                      title      TEXT,
                                       postcode   TEXT,
                                       registration_date DATE,
                                       birth_date DATE,
