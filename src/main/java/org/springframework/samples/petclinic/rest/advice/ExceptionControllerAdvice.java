@@ -194,9 +194,9 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateOwnerIdentityException} raised when an owner is created whose derived
-     * identity key ({@code '<normalizedTelephone>|<email>|<householdId>'}) exactly equals that of an
-     * existing owner. This single check consolidates the former separate telephone, email and household
-     * duplicate checks. Returns a 409 Conflict.
+     * identity key (the SHA-256 hex digest of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'})
+     * exactly equals that of an existing owner. This single check consolidates the former separate telephone,
+     * email and household duplicate checks. Returns a 409 Conflict.
      *
      * @param e The {@link DuplicateOwnerIdentityException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.

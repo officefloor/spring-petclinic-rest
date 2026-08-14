@@ -100,18 +100,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's duplicate-detection identity key, formatted
-     * {@code '<normalizedTelephone>|<email>|<householdId>'}. The email and household-id segments are
-     * empty when the respective field is absent. The telephone and email are already stored in their
-     * normalized (E.164 / lower-cased) form, so the stored values are used directly. This is the single
-     * key against which owner duplicates are detected: two owners collide only when their whole keys
-     * match.
+     * Derives the owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64 hex
+     * characters) of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. The telephone and
+     * email segments are empty when the respective field is absent, and the last-name segment is the
+     * {@link #soundex(String) Soundex code} of the owner's last name. The telephone and email are already
+     * stored in their normalized (E.164 / lower-cased) form, so the stored values are used directly. This
+     * is the single key against which owner duplicates are detected: two owners collide only when their
+     * whole keys match.
      */
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String lastNameCode = OwnerIdentity.soundex(owner.getLastName());
+        return OwnerIdentity.sha256Hex(telephone + "|" + email + "|" + lastNameCode);
     }
 
     /**

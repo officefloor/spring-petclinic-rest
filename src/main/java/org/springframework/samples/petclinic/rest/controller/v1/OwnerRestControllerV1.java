@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.OwnerIdentity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -212,7 +213,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
         rejectDuplicateIdentity(owner, sharesHousehold);
-        assignPossibleDuplicate(owner, normalizedTelephone, sharesHousehold);
+        assignPossibleDuplicate(owner, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
@@ -572,21 +573,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Best-effort conversion of an existing telephone value to E.164 form for duplicate comparison,
-     * returning {@code null} when the value cannot form a valid E.164 number.
-     *
-     * @param telephone an existing owner's stored telephone value
-     * @return the E.164 form, or {@code null} if it cannot be normalized
-     */
-    private String toE164OrNull(String telephone) {
-        try {
-            return normalizeTelephone(telephone);
-        } catch (InvalidOwnerFieldsException ex) {
-            return null;
-        }
-    }
-
-    /**
      * Normalizes an optional owner email. A {@code null} value is left untouched (the field is optional).
      * When a value is present it must be a syntactically valid address (see {@link #EMAIL_PATTERN}); the
      * accepted value is trimmed and lower-cased before it is stored and returned.
@@ -613,13 +599,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose derived identity key
-     * ({@code '<normalizedTelephone>|<email>|<householdId>'}, see {@link OwnerMapper#identityKey})
-     * exactly equals that of an existing non-deleted owner. Two owners are treated as duplicates only
-     * when their whole identity keys match, so members of the same household (same {@code householdId})
-     * who differ in telephone or email are not duplicates and are admitted as additional household
-     * members. Such an owner is rejected with a 409, <em>unless</em> the request opts into
-     * {@code sharesHousehold}, which bypasses the block entirely.
+     * Rejects creating an owner whose derived identity key (the SHA-256 hex digest of
+     * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}, see {@link OwnerMapper#identityKey})
+     * exactly equals that of an existing non-deleted owner. Two owners are treated as duplicates only when
+     * their whole identity keys match, so owners who share a last-name Soundex but differ in telephone or
+     * email are not duplicates and are admitted (flagged as a soft match instead). Such an owner is rejected
+     * with a 409, <em>unless</em> the request opts into {@code sharesHousehold}, which bypasses the block
+     * entirely.
      *
      * @param owner the owner being created, whose identity key is matched
      * @param sharesHousehold whether the request declared the owner a shared-household member
@@ -641,23 +627,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Flags a soft ("possible") duplicate on the owner being created. Unlike a hard duplicate (which is
      * rejected outright by {@link #rejectDuplicateIdentity}), a soft duplicate is still created: it is an
-     * owner that is not a hard duplicate but shares an existing owner's last name (compared
-     * case-insensitively, see {@link #normalizeForComparison}) and postcode while carrying a <em>different</em>
-     * telephone. When such an existing owner is found, {@code possibleDuplicate} is set {@code true} and
+     * owner whose {@link OwnerMapper#identityKey identity key} <em>differs</em> from an existing owner's
+     * but which shares that owner's last-name {@link OwnerMapper#soundex Soundex code} and postcode. When
+     * such an existing owner is found, {@code possibleDuplicate} is set {@code true} and
      * {@code possibleDuplicateOf} is set to that owner's id (the earliest by id when several match); otherwise
      * {@code possibleDuplicate} is {@code false} and {@code possibleDuplicateOf} stays {@code null}. Both values
      * are snapshotted on the owner so they reflect the population as it stood when the owner was created.
      *
-     * <p>A declared household member (a request that set {@code sharesHousehold} to bypass the household
-     * duplicate block) is never a <em>suspected</em> duplicate: it is knowingly created as another member
-     * of the household, so {@code possibleDuplicate} is left {@code false} and {@code possibleDuplicateOf}
+     * <p>Because the telephone is part of the identity key, two owners with the same last name and postcode
+     * but different telephones no longer collide on the identity key, so they are admitted as a soft match
+     * here rather than rejected as a hard household duplicate.
+     *
+     * <p>A declared household member (a request that set {@code sharesHousehold} to bypass the duplicate
+     * block) is never a <em>suspected</em> duplicate: it is knowingly created as another member of the
+     * household, so {@code possibleDuplicate} is left {@code false} and {@code possibleDuplicateOf}
      * {@code null} without consulting the existing population.
      *
-     * @param owner the owner being created, whose last name and postcode are matched
-     * @param normalizedTelephone the E.164 telephone of the owner being created
+     * @param owner the owner being created, whose last-name Soundex and postcode are matched
      * @param sharesHousehold whether the request declared the owner a shared-household member
      */
-    private void assignPossibleDuplicate(Owner owner, String normalizedTelephone, boolean sharesHousehold) {
+    private void assignPossibleDuplicate(Owner owner, boolean sharesHousehold) {
         if (sharesHousehold) {
             owner.setPossibleDuplicateOf(null);
             owner.setPossibleDuplicate(false);
@@ -666,12 +655,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String postcode = owner.getPostcode();
         Integer matchId = null;
         if (postcode != null) {
-            String lastName = normalizeForComparison(owner.getLastName());
+            String identityKey = ownerMapper.identityKey(owner);
+            String lastNameCode = OwnerIdentity.soundex(owner.getLastName());
             for (Owner existing : this.clinicService.findAllOwners()) {
                 if (!isDeleted(existing)
                     && postcode.equals(existing.getPostcode())
-                    && lastName.equals(normalizeForComparison(existing.getLastName()))
-                    && !normalizedTelephone.equals(toE164OrNull(existing.getTelephone()))
+                    && lastNameCode.equals(OwnerIdentity.soundex(existing.getLastName()))
+                    && !identityKey.equals(ownerMapper.identityKey(existing))
                     && existing.getId() != null
                     && (matchId == null || existing.getId() < matchId)) {
                     matchId = existing.getId();

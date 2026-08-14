@@ -17,10 +17,10 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Raised when an owner is created whose derived identity key
- * ({@code '<normalizedTelephone>|<email>|<householdId>'}) exactly equals that of an existing owner.
- * This single key consolidates the former separate telephone, email and household duplicate checks.
- * Maps to a 409 Conflict response.
+ * Raised when an owner is created whose derived identity key (the SHA-256 hex digest of
+ * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}) exactly equals that of an existing
+ * owner. This single key consolidates the former separate telephone, email and household duplicate
+ * checks. Maps to a 409 Conflict response.
  */
 public class DuplicateOwnerIdentityException extends RuntimeException {
 
