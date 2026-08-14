@@ -14,6 +14,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * dropped from the national digits. The result must be 8 to 15 digits after the {@code '+'};
  * anything else (or any leftover non-digit) is rejected with a 400. So {@code '0412 345 678'} is
  * stored as {@code '+61412345678'}.
+ *
+ * <p>Known country codes additionally fix the national-number length: {@code '+61'} requires 9
+ * national digits and {@code '+1'} requires 10. A number whose national part is the wrong length
+ * for its country code is rejected with a 400. Other country codes carry no length rule.
  */
 public class NormalizeOwnerTelephone {
 
@@ -45,6 +49,29 @@ public class NormalizeOwnerTelephone {
         if (!digits.matches("\\d{8,15}")) {
             throw new InvalidTelephoneException(raw);
         }
+        requireNationalLength(digits, raw);
         return "+" + digits;
+    }
+
+    /**
+     * Enforces the national-number length for country codes that fix it: {@code '61'} requires 9
+     * national digits, {@code '1'} requires 10. Country codes without a rule pass through.
+     */
+    private static void requireNationalLength(String digits, String raw)
+            throws InvalidTelephoneException {
+        int required;
+        int nationalLength;
+        if (digits.startsWith("61")) {
+            required = 9;
+            nationalLength = digits.length() - 2;
+        } else if (digits.startsWith("1")) {
+            required = 10;
+            nationalLength = digits.length() - 1;
+        } else {
+            return; // no length rule for this country code
+        }
+        if (nationalLength != required) {
+            throw new InvalidTelephoneException(raw);
+        }
     }
 }

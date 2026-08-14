@@ -3,8 +3,9 @@ package org.springframework.samples.petclinic.rest.escalation;
 /**
  * Thrown by {@code NormalizeOwnerTelephone} when a create-owner request carries a telephone that
  * cannot be normalized into valid E.164 form (8 to 15 digits after the leading {@code '+'}, once
- * spaces, dashes and brackets are stripped). Handled by {@link InvalidTelephoneExceptionHandler},
- * which responds 400.
+ * spaces, dashes and brackets are stripped), or whose national-number length is wrong for a
+ * country code that fixes it ({@code '+61'} needs 9 national digits, {@code '+1'} needs 10).
+ * Handled by {@link InvalidTelephoneExceptionHandler}, which responds 400.
  */
 public class InvalidTelephoneException extends Exception {
 
