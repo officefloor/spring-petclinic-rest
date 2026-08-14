@@ -139,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } else {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -250,6 +251,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
+    /**
+     * Counts how many existing owners share the given first and last name, compared
+     * case-insensitively, at the moment before the new owner is persisted. The result is
+     * stored on the owner as its {@code namesakeCount}, so it reflects the population as it
+     * stood when the owner was created rather than being recomputed on later reads.
+     *
+     * @param firstName the first name of the owner being created
+     * @param lastName the last name of the owner being created
+     * @return the number of pre-existing owners with the same first and last name
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        String first = firstName == null ? "" : firstName;
+        String last = lastName == null ? "" : lastName;
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> first.equalsIgnoreCase(existing.getFirstName())
+                && last.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
     private String nextCustomerCode(String lastName) {
         String letters = lastName == null ? "" : lastName;
         String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
