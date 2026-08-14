@@ -33,7 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints",
             expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel",
-            expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
+            expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.effective(owner))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.luhn(owner.getCustomerCode()))")
     @Mapping(target = "locality",
@@ -58,6 +58,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)

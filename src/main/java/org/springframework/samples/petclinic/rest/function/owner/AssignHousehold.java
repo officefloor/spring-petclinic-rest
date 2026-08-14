@@ -19,8 +19,8 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>Runs after {@link BuildOwner}, so it works on the built entity, and before
  * {@link EnsureUniqueIdentity}, so duplicate detection and {@link AssignHouseholdSize} see the
- * finalized value. Note {@code sharesHousehold} plays no part here: it only bypasses the duplicate
- * block downstream; the household link itself is always this computed value.
+ * finalized value. Note {@code sharesHousehold} plays no part here: it only suppresses the
+ * possible-duplicate flag downstream; the household link itself is always this computed value.
  */
 public class AssignHousehold {
 

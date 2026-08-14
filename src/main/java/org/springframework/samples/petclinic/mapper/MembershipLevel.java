@@ -58,4 +58,15 @@ public final class MembershipLevel {
         }
         return 4;
     }
+
+    /**
+     * The effective membership level of {@code owner}: the level captured on the owner at creation
+     * (the household-capped value stored in {@code membershipLevel}) when present, otherwise the
+     * freshly {@link #of(Owner) computed} level. Owners created before the cap existed (e.g. seed
+     * data) have no stored level and fall back to the computed value.
+     */
+    public static int effective(Owner owner) {
+        Integer stored = owner.getMembershipLevel();
+        return stored != null ? stored : of(owner);
+    }
 }
