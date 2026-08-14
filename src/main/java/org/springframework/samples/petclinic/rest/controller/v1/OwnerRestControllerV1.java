@@ -54,6 +54,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import tools.jackson.databind.ObjectMapper;
@@ -171,10 +172,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The telephone number is invalid");
         }
         if (isDisposableEmailDomain(ownerFieldsDto.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Disposable email domains are not accepted");
         }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         // The owner must supply an address in EITHER form: a non-blank structured
@@ -184,12 +185,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // written back so the persisted flat 'address' stays consistent with it.
         String composedAddress = owner.getAddress();
         if (composedAddress == null || composedAddress.isBlank()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An address must be supplied");
         }
         owner.setAddress(composedAddress);
         owner.setTelephone(normalizedTelephone);
         if (!owner.isPostcodeValidForCity()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The postcode is not valid for the city");
         }
         // The household id is deterministic: it is derived purely from the owner's
         // (last name, postcode), so every owner at the same last name and postcode resolves
@@ -208,25 +209,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()))) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An owner with the same identity already exists");
         }
         // The household id is still computed for household-size and membership-level purposes,
         // but sharing it no longer rejects the create.
         List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
         long ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
         if (ownersInCity >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The city has reached its owner capacity");
         }
         boolean capacityWarning = ownersInCity >= 40 && ownersInCity <= 49;
         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The registration date must not be in the future");
         }
         LocalDate effectiveDate =
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         long ownersRegisteredToday = countOwnersRegisteredOn(registrationDate);
         if (ownersRegisteredToday >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "The daily owner registration limit has been reached");
         }
         boolean bulkSignupWarning = ownersRegisteredToday > 80;
         HttpHeaders headers = new HttpHeaders();
@@ -279,7 +280,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         if (normalizedTelephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The telephone number is invalid");
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());

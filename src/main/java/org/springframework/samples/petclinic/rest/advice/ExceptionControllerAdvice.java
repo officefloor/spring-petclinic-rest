@@ -37,6 +37,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Global Exception handler for REST controllers.
@@ -84,6 +85,30 @@ public class ExceptionControllerAdvice {
     @ExceptionHandler(AccessDeniedException.class)
     public void handleAccessDeniedException(AccessDeniedException e) throws AccessDeniedException {
         throw e;
+    }
+
+    /**
+     * Handles {@link ResponseStatusException} raised by controllers to reject a request with an
+     * explicit status (e.g. 400 Bad Request, 409 Conflict, 429 Too Many Requests). The response
+     * carries an RFC 7807 {@code application/problem+json} body with {@code type}, {@code title},
+     * {@code status} and {@code detail}, preserving the exception's HTTP status code.
+     *
+     * @param e The {@link ResponseStatusException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} whose body is the problem detail and whose status matches the exception
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        logger.warn("Request rejected with {} at {} {}: {}",
+            status.value(),
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getReason());
+        String detail = e.getReason() != null ? e.getReason() : ERROR_INVALID_REQUEST;
+        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
+        return ResponseEntity.status(status).body(problemDetail);
     }
 
     /**
