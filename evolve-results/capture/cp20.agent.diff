@@ -1,0 +1,130 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
+index b9c6c671..028036dd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
+@@ -2,25 +2,29 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DailyLimitExceededException;
+ 
+ /**
+- * Rejects a create-owner request once 100 or more owners have already been registered today (by
+- * registrationDate), so the escalation handler can respond 429. Runs within the same write
+- * transaction as the insert so the count reflects only owners already persisted (excluding this
+- * new, not-yet-saved one), giving a hard cap of 100 owners created per calendar day.
++ * Rejects a create-owner request once 100 or more owners have already been registered on this
++ * request's adjusted business day (by registrationDate), so the escalation handler can respond 429.
++ * Runs after {@link DefaultRegistrationDate} has resolved and business-day-adjusted the entity's
++ * registrationDate, and within the same write transaction as the insert so the count reflects only
++ * owners already persisted (excluding this new, not-yet-saved one), giving a hard cap of 100 owners
++ * created per business day.
+  */
+ public class CheckDailyLimit {
+ 
+     private static final int DAILY_LIMIT = 100;
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyLimitExceededException {
+-        LocalDate today = LocalDate.now();
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws DailyLimitExceededException {
++        LocalDate day = owner.getRegistrationDate();
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (today.equals(existing.getRegistrationDate())) {
++            if (day.equals(existing.getRegistrationDate())) {
+                 count++;
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultRegistrationDate.java
+index 39f7a19e..caf17326 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultRegistrationDate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultRegistrationDate.java
+@@ -1,22 +1,37 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Defaults a create-owner request's registration date to the server's current date when the
+- * client supplied none. A supplied date is left untouched, so it round-trips unchanged.
++ * Resolves a create-owner request's effective registration date and forces it onto a business day.
++ * When the client supplied no date, the server's current date is used; a supplied date is kept.
++ * Either way, if the effective date falls on a Saturday or Sunday it is rolled forward to the next
++ * Monday, so the persisted {@code registrationDate} is always a business day.
+  *
+  * <p>Runs after {@link BuildOwner} has mapped the request onto the entity and mutates that same
+- * entity in place (via {@code @Val}), so {@link SaveOwner} persists the resolved date.
++ * entity in place (via {@code @Val}), so {@link CheckDailyLimit}, {@link SaveOwner} and any value
++ * derived from the registration date (e.g. the membership number's year segment) all see the
++ * adjusted date.
+  */
+ public class DefaultRegistrationDate {
+ 
+     public void service(@Val Owner owner) {
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
++        LocalDate date = owner.getRegistrationDate();
++        if (date == null) {
++            date = LocalDate.now();
+         }
++        owner.setRegistrationDate(toBusinessDay(date));
++    }
++
++    /** Roll a weekend date forward to the next Monday; a weekday is returned unchanged. */
++    private static LocalDate toBusinessDay(LocalDate date) {
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 568ff8bc..ed9075cb 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -26,14 +26,6 @@ checkHouseholdUnique:
+ checkCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckCityCapacity
+   govern: [ transaction ]
+-  next: checkDailyLimit
+-
+-# Reject (429) once 100 or more owners have already been registered today (by registrationDate).
+-# Reads within the same write transaction as the insert so the count and the insert see one
+-# consistent view.
+-checkDailyLimit:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CheckDailyLimit
+-  govern: [ transaction ]
+   next: build
+ 
+ build:
+@@ -41,11 +33,20 @@ build:
+   govern: [ transaction ]
+   next: defaultRegistrationDate
+ 
+-# When the client supplied no registrationDate, stamp today's server date; a supplied
+-# date is kept as-is. Runs before save so the resolved date is persisted.
++# Resolve the effective registrationDate (supplied, else today's server date) and roll a weekend
++# date forward to the next Monday, so the persisted date is always a business day. Runs before the
++# daily-limit count and save so both see the adjusted date.
+ defaultRegistrationDate:
+   class: org.springframework.samples.petclinic.rest.function.owner.DefaultRegistrationDate
+   govern: [ transaction ]
++  next: checkDailyLimit
++
++# Reject (429) once 100 or more owners have already been registered on this request's adjusted
++# business day (by registrationDate). Runs after the date is resolved so it counts per business day,
++# within the same write transaction as the insert so the count and the insert see one consistent view.
++checkDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckDailyLimit
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ # Assign the '<CITY3>-<LAST3>-<NNNN>' customer code. NNNN is one more than the owners
