@@ -30,7 +30,8 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
@@ -122,19 +123,85 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64 hex
-     * characters) of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. The telephone and
-     * email segments are empty when the respective field is absent, and the last-name segment is the
-     * {@link #soundex(String) Soundex code} of the owner's last name. The telephone and email are already
-     * stored in their normalized (E.164 / lower-cased) form, so the stored values are used directly. This
-     * is the single key against which owner duplicates are detected: two owners collide only when their
-     * whole keys match.
+     * The fixed version tag mixed into the region code used inside the version-2 identifiers, so every
+     * identifier changes and no value produced under version 1 is produced again. It is only ever mixed
+     * into the identifiers' derivation; it never appears in the user-facing {@code locality},
+     * {@code timezone} or owner segment (see {@link #regionCodeV2(Owner)}).
+     */
+    String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The API version of the owner identity contract carried by every owner response: {@code 2}.
+     */
+    default Integer apiVersion() {
+        return 2;
+    }
+
+    /**
+     * Derives the owner's plain region code from the postcode first and then the city, mirroring the
+     * region used to build the member id: the region whose {@link #REGION_POSTCODES} range contains the
+     * (4-digit) postcode, else the fixed {@link #CITY_REGION} city table, else {@code "UNKNOWN"}. This is
+     * the plain, un-tagged region (e.g. {@code "NSW"}); the user-facing {@code locality} equals it.
+     */
+    default String regionCode(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode != null) {
+            try {
+                int value = Integer.parseInt(postcode.trim());
+                for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+                    int[] range = entry.getValue();
+                    if (value >= range[0] && value <= range[1]) {
+                        return entry.getKey();
+                    }
+                }
+            }
+            catch (NumberFormatException ex) {
+                // Not a numeric postcode; fall back to the city table below.
+            }
+        }
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * Derives the version-2 region code used inside the identifiers: the plain {@link #regionCode(Owner)
+     * region} with the fixed {@link #IDENTITY_VERSION_TAG 'V2'} version tag prefixed (e.g. {@code "V2NSW"}).
+     * This tagged value is mixed into the member id, household id and identity key so every identifier
+     * differs from its version-1 form, while the plain region alone continues to feed {@code locality},
+     * {@code timezone} and the owner segment.
+     */
+    default String regionCodeV2(Owner owner) {
+        return IDENTITY_VERSION_TAG + regionCode(owner);
+    }
+
+    /**
+     * Derives the owner's version-2 duplicate-detection identity key: the lower-case SHA-256 hex digest
+     * (64 hex characters) of {@code '<regionCodeV2>|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}.
+     * The leading segment is the {@link #regionCodeV2(Owner) version-2 region code}, which mixes in the
+     * {@code 'V2'} tag so the key differs from the version-1 key. The telephone and email segments are
+     * empty when the respective field is absent, and the last-name segment is the {@link #soundex(String)
+     * Soundex code} of the owner's last name. The telephone and email are already stored in their
+     * normalized (E.164 / lower-cased) form, so the stored values are used directly. This is the single
+     * key against which owner duplicates are detected: two owners collide only when their whole keys match.
      */
     default String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
         String lastNameCode = OwnerIdentity.soundex(owner.getLastName());
-        return OwnerIdentity.sha256Hex(telephone + "|" + email + "|" + lastNameCode);
+        return OwnerIdentity.sha256Hex(regionCodeV2(owner) + "|" + telephone + "|" + email + "|" + lastNameCode);
+    }
+
+    /**
+     * Groups the owner's version-2 identifiers (member id, household id and identity key) into the nested
+     * {@code identity} object of the owner response. The member id and household id are read from the
+     * owner as assigned at creation; the identity key is derived on read via {@link #identityKey(Owner)}.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
     }
 
     /**

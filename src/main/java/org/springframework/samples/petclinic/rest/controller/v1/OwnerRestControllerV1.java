@@ -227,7 +227,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectCityAtCapacity(owner.getCity());
         owner.setCapacityWarning(isApproachingCityCapacity(owner.getCity()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        owner.setHouseholdId(householdId(owner.getLastName(), owner.getPostcode()));
+        owner.setHouseholdId(householdId(owner));
         rejectDuplicateIdentity(owner, sharesHousehold);
         assignPossibleDuplicate(owner, sharesHousehold);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -407,9 +407,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             OWNER_EVENT_SEQ.incrementAndGet(),
             owner.getId(),
             primaryIdentifier(owner),
-            ownerMapper.membershipLevel(owner));
+            ownerMapper.membershipLevel(owner),
+            ownerMapper.ownerSegment(owner).getValue());
         AUDIT.info(event.toJson());
     }
+
+    /**
+     * The schema version of the {@code OWNER_CREATED} audit event. Version 2 accompanies the version-2
+     * owner identity: the event carries an explicit {@code schemaVersion} and the owner segment recomputed
+     * from the version-2 identity.
+     */
+    private static final int OWNER_EVENT_SCHEMA_VERSION = 2;
 
     /**
      * Returns the owner's current primary identifier, the single value the {@code OWNER_CREATED} audit
@@ -425,23 +433,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Immutable, structured {@code OWNER_CREATED} audit event. Serialized to a compact JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} for the {@code AUDIT}
-     * log. Being a record, once constructed its fields cannot change, so the emitted event is a faithful
-     * snapshot of the owner at creation time.
+     * Immutable, structured {@code OWNER_CREATED} audit event, at schema version 2. Serialized to a compact
+     * JSON object {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}} for the {@code AUDIT} log. Version 2 adds the explicit {@code schemaVersion}
+     * and the {@code ownerSegment} recomputed from the version-2 identity, and the {@code memberId} carried
+     * is the version-2 member id. Being a record, once constructed its fields cannot change, so the emitted
+     * event is a faithful snapshot of the owner at creation time.
      *
      * @param seq strictly increasing sequence number across all creates
      * @param ownerId the created owner's id
-     * @param memberId the owner's current primary identifier at creation time
+     * @param memberId the owner's version-2 primary identifier at creation time
      * @param membershipLevel the owner's effective membership level at creation time
+     * @param ownerSegment the owner's segment recomputed from the version-2 identity at creation time
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
+                                     String ownerSegment) {
 
         private String toJson() {
-            return "{\"seq\":" + seq
+            return "{\"schemaVersion\":" + OWNER_EVENT_SCHEMA_VERSION
+                + ",\"seq\":" + seq
                 + ",\"ownerId\":" + ownerId
                 + ",\"memberId\":" + jsonValue(memberId)
                 + ",\"membershipLevel\":" + membershipLevel
+                + ",\"ownerSegment\":" + jsonValue(ownerSegment)
                 + ",\"event\":\"OWNER_CREATED\"}";
         }
 
@@ -470,13 +484,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the unified member id for a newly created owner, formatted {@code '<REGION><FY><HASH8><CHK>'}
-     * where {@code REGION} is the region code derived from the owner's postcode (see {@link #deriveRegion}),
-     * {@code FY} is the two-digit fiscal year of the owner's business-day-adjusted registration date,
-     * {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the owner's normalized
-     * telephone concatenated with the last name (the same HASH8 used by the region-and-hash identity), and
-     * {@code CHK} is a single Luhn check digit computed over the digits of {@code '<REGION><FY><HASH8>'}. For
-     * example an owner in the NSW postcode range registered in fiscal year 2026 gets an id such as
-     * {@code 'NSW263F2A1B9C7'}.
+     * where {@code REGION} is the plain region code derived from the owner's postcode (see
+     * {@link #deriveRegion}), {@code FY} is the two-digit fiscal year of the owner's business-day-adjusted
+     * registration date, {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of
+     * {@code '<regionCodeV2>|<normalizedTelephone><lastName>'} — the {@link #regionCodeV2(String) version-2
+     * region code} (which mixes in the fixed {@code 'V2'} tag) followed by the owner's normalized telephone
+     * and last name — and {@code CHK} is a single Luhn check digit computed over the digits of
+     * {@code '<REGION><FY><HASH8>'}. Mixing the {@code 'V2'} tag into the hash makes every member id differ
+     * from the value version 1 produced, while the leading {@code REGION} segment stays the plain region so
+     * {@code locality}, {@code timezone} and the owner segment never see the tag.
      *
      * <p>When the computed member id collides with an existing owner's member id, it is de-duplicated by
      * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes the result unique across
@@ -490,7 +506,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String region = deriveRegion(owner.getPostcode(), owner.getCity());
         String fiscalYear = String.format("%02d", ownerMapper.fiscalYearValue(owner.getRegistrationDate()) % 100);
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String hash8 = sha256Hex8(normalizedTelephone + lastName);
+        String hash8 = sha256Hex8(regionCodeV2(region) + "|" + normalizedTelephone + lastName);
         String base = region + fiscalYear + hash8;
         String memberId = base + luhnCheckDigit(base);
         Set<String> existingIds = this.clinicService.findAllOwners().stream()
@@ -545,6 +561,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param city the owner's city, used to resolve the region when the postcode does not
      * @return the canonical region string, or {@code "UNKNOWN"} when neither source resolves a region
      */
+    /**
+     * The fixed version tag mixed into the region code used inside the version-2 identifiers (member id,
+     * household id and identity key), so every identifier differs from the value version 1 produced. The
+     * tag is only ever mixed into the identifiers' derivation; it never appears in the plain region used
+     * for {@code locality}, {@code timezone} or the owner segment.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * Derives the version-2 region code used inside the identifiers: the plain region with the fixed
+     * {@link #IDENTITY_VERSION_TAG 'V2'} version tag prefixed (e.g. {@code "V2NSW"}). This mirrors the
+     * mapper's {@code regionCodeV2} so the member id, household id and identity key are all derived over
+     * the same tagged region.
+     *
+     * @param region the plain region code (see {@link #deriveRegion})
+     * @return the version-2 region code
+     */
+    private String regionCodeV2(String region) {
+        return IDENTITY_VERSION_TAG + region;
+    }
+
     private String deriveRegion(String postcode, String city) {
         if (postcode != null) {
             try {
@@ -1010,19 +1047,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the deterministic household identifier for a given last name and postcode: the first 12
-     * hex characters of the SHA-256 digest of {@code '<normalizedLastName>|<postcode>'}, where the last
-     * name is normalized for case- and whitespace-insensitive comparison (see
-     * {@link #normalizeForComparison}) and a {@code null} postcode contributes an empty segment. Every
-     * owner that shares a last name and postcode therefore resolves to the exact same identifier,
-     * regardless of creation order, making them members of one household.
+     * Derives the deterministic version-2 household identifier for an owner: the first 12 hex characters
+     * of the SHA-256 digest of {@code '<regionCodeV2>|<normalizedLastName>|<postcode>'}, where the leading
+     * segment is the {@link #regionCodeV2(String) version-2 region code} (which mixes in the fixed
+     * {@code 'V2'} tag), the last name is normalized for case- and whitespace-insensitive comparison (see
+     * {@link #normalizeForComparison}) and a {@code null} postcode contributes an empty segment. Mixing the
+     * {@code 'V2'} tag in makes the identifier differ from the value version 1 produced; every owner that
+     * shares a last name and postcode still resolves to the exact same identifier, regardless of creation
+     * order, making them members of one household.
      *
-     * @param lastName the owner's last name
-     * @param postcode the owner's postcode, may be {@code null}
+     * @param owner the owner being created, whose last name, postcode and derived region feed the id
      * @return the deterministic household identifier
      */
-    private String householdId(String lastName, String postcode) {
-        String key = normalizeForComparison(lastName) + "|" + (postcode == null ? "" : postcode);
+    private String householdId(Owner owner) {
+        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String key = regionCodeV2(region) + "|" + normalizeForComparison(lastName)
+            + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
