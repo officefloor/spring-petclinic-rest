@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Runs in the create-owner pipeline after {@link SaveOwner}, once the owner has been persisted and
  * its id assigned. Emits a single audit line on the dedicated {@code AUDIT} logger recording the new
- * owner's id, {@code customerCode}, {@code registrationDate} (ISO 'YYYY-MM-DD') and
- * {@code membershipLevel}. Read-only: it inspects the stored owner without mutating it, then hands
+ * owner's id, {@code customerCode}, {@code registrationDate} (ISO 'YYYY-MM-DD'),
+ * {@code membershipLevel} and {@code membershipNumber}. Read-only: it inspects the stored owner
+ * without mutating it, then hands
  * off to the responder.
  */
 public class AuditOwnerCreated {
@@ -18,8 +19,9 @@ public class AuditOwnerCreated {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info(
+                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel());
+                owner.getMembershipLevel(), owner.getMembershipNumber());
     }
 }
