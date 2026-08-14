@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6832abb0..9a21d49e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,7 +17,7 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+     imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class, TelephoneDisplay.class,
+-        FiscalYear.class, IdentityKey.class})
++        FiscalYear.class, IdentityKey.class, OwnerSegment.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "selfLink",
+@@ -38,6 +38,9 @@ public interface OwnerMapper {
+         expression = "java(OwnerLocality.fromCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "timezone",
+         expression = "java(OwnerLocality.timezoneForRegion(OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(OwnerSegment.of(owner.getMembershipLevel(), "
++            + "OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 00000000..a8b0bc2e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Set;
++
++/**
++ * Derives an owner's marketing segment, formatted {@code '<TIER>_<AREA>'}.
++ *
++ * <p>The tier is {@code "PREMIUM"} when the {@code membershipLevel} is 3 or more, otherwise
++ * {@code "STANDARD"} (including when the level is absent). The area is {@code "METRO"} when the
++ * {@code locality} is a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}. The two are
++ * joined with an underscore, yielding one of {@code "PREMIUM_METRO"}, {@code "PREMIUM_REGIONAL"},
++ * {@code "STANDARD_METRO"} or {@code "STANDARD_REGIONAL"}.
++ *
++ * <p>Kept as a standalone helper rather than a method on {@link OwnerMapper}: a single-argument
++ * method declared on a MapStruct mapper would be picked up as an implicit conversion and applied to
++ * every matching property mapping.
++ */
++public final class OwnerSegment {
++
++    /** Localities that count as METRO. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * Returns the {@code '<TIER>_<AREA>'} segment for {@code membershipLevel} and {@code locality}.
++     */
++    public static String of(Integer membershipLevel, String locality) {
++        String tier = membershipLevel != null && membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = locality != null && METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a71ddb0c..cdd71901 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2329,6 +2329,18 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, derived at read time and formatted
++                '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or
++                more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a
++                known region (NSW, VIC or QLD), otherwise 'REGIONAL'. One of
++                'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO' or
++                'STANDARD_REGIONAL'.
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
