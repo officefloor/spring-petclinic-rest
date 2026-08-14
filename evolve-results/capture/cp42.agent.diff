@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2cb01440..fb0a4b85 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+@@ -145,6 +146,22 @@ public interface OwnerMapper {
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
++    /**
++     * Fixed region-to-timezone table used to derive an owner's timezone as an IANA name.
++     */
++    java.util.Map<String, String> REGION_TIMEZONE =
++        java.util.Map.of("NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
++    /**
++     * Derives the owner's timezone as an IANA name from the owner's {@link #locality(Owner) locality}
++     * (region) via the fixed {@link #REGION_TIMEZONE} table: {@code NSW -> Australia/Sydney},
++     * {@code VIC -> Australia/Melbourne}, {@code QLD -> Australia/Brisbane}. Returns {@code null} when
++     * the region does not resolve to a known timezone (e.g. the locality is {@code "UNKNOWN"}).
++     */
++    default String timezone(Owner owner) {
++        return REGION_TIMEZONE.get(locality(owner));
++    }
++
+     /**
+      * Known E.164 country calling codes, longest first, used to split a stored E.164 telephone into
+      * its country code and national digits when formatting {@link #telephoneDisplay(Owner)}.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 60b85a98..20b320e4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2215,6 +2215,17 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived from the owner's
++                locality/region via the fixed region-to-timezone table:
++                NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane. Absent when no region could be
++                resolved.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
