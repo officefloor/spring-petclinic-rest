@@ -208,10 +208,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignCustomerCode(owner);
         assignMembershipNumber(owner);
         assignNamesakeCount(owner);
-        assignMembershipLevel(owner);
         assignBulkSignupWarning(owner);
         assignPossibleDuplicate(owner, ownerFieldsDto);
         assignHouseholdMembership(owner);
+        assignMembership(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
@@ -690,25 +690,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the new owner's {@code membershipLevel} on create: a number from 1 to 3 starting at
-     * 1, plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3.
-     * Level 4 is reserved for owners whose tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS}
-     * days; a newly created owner has zero tenure, so on create the level never exceeds 3. Runs
-     * after {@link #assignNamesakeCount} so that count is settled.
+     * Assigns the new owner's {@code membershipPoints} and derived {@code membershipLevel} on create.
+     * Points start at 0 and accrue: plus 2 when an email is present, plus 1 when {@code namesakeCount}
+     * is 0, plus 2 for a household of 3 or more members, and plus 3 for tenure exceeding
+     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days. The points are then mapped to a level of 1 (0-1
+     * points), 2 (2-3), 3 (4-5), or 4 (6 or more). Runs after {@link #assignNamesakeCount} and
+     * {@link #assignHouseholdMembership} so those counts are settled. A newly created owner has zero
+     * tenure, so the tenure bonus never applies on create.
      */
-    private void assignMembershipLevel(Owner owner) {
-        int level = 1;
+    private void assignMembership(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
+            points += 2;
+        }
         if (tenureDays(owner) > TENURE_LEVEL_THRESHOLD_DAYS) {
-            level = 4;
+            points += 3;
         }
-        owner.setMembershipLevel(level);
+        owner.setMembershipPoints(points);
+        owner.setMembershipLevel(membershipLevelForPoints(points));
+    }
+
+    /**
+     * Maps {@code membershipPoints} to a {@code membershipLevel}: 1 for 0-1 points, 2 for 2-3, 3 for
+     * 4-5, and 4 for 6 or more points.
+     */
+    private int membershipLevelForPoints(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**

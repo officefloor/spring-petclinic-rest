@@ -52,6 +52,7 @@ CREATE TABLE owners (
   household_member_count INTEGER,
   membership_number VARCHAR(30),
   membership_level INTEGER,
+  membership_points INTEGER,
   bulk_signup_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER
