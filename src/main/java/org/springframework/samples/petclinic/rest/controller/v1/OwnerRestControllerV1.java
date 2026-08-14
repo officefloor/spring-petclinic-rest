@@ -137,7 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(toE164(ownerFieldsDto.getTelephone()));
         normalizeEmail(ownerFieldsDto);
         currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
@@ -254,38 +254,69 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes an owner's {@code telephone} on create by removing every non-digit character and
-     * requiring exactly ten digits to remain. The stripped, 10-digit value is written back onto the
-     * request so it is what gets stored and returned. Any value that does not reduce to exactly ten
-     * digits is rejected with a 400 response whose {@code errors} array names {@code telephone}.
+     * Normalizes an owner's {@code telephone} on create into E.164 form. A leading {@code '+'} and
+     * the country code that follows it are kept; otherwise the country code {@code '+61'} is assumed
+     * and a single leading {@code '0'} is dropped from the national digits. Spaces, dashes and
+     * brackets are stripped. The result must have 8 to 15 digits after the {@code '+'}. The E.164
+     * string is written back onto the request so it is what gets stored and returned. Any value that
+     * cannot form a valid E.164 number is rejected with a 400 response whose {@code errors} array
+     * names {@code telephone}.
      */
     private void normalizeTelephone(OwnerFieldsDto ownerFieldsDto) {
-        String telephone = ownerFieldsDto.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidOwnerFieldsException(List.of("telephone"));
-        }
-        ownerFieldsDto.setTelephone(digits);
+        ownerFieldsDto.setTelephone(toE164(ownerFieldsDto.getTelephone()));
     }
 
     /**
-     * Rejects creating an owner whose normalized telephone is already used by any other owner.
-     * The incoming value has already been reduced to its 10-digit normal form by
-     * {@link #normalizeTelephone}; each existing owner's stored telephone is normalized the same
-     * way (stripping non-digit characters) before comparison so differing input formats still
-     * collide. A match results in a 409 response naming {@code telephone}.
+     * Converts a raw telephone value to E.164 form, or throws {@link InvalidOwnerFieldsException}
+     * (400) naming {@code telephone} when it cannot form a valid number.
+     */
+    private static String toE164(String telephone) {
+        if (telephone == null) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        boolean hasCountryCode = telephone.trim().startsWith("+");
+        String digits = telephone.replaceAll("\\D", "");
+        String national;
+        if (hasCountryCode) {
+            national = digits;
+        } else {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            national = "61" + digits;
+        }
+        if (!national.matches("[0-9]{8,15}")) {
+            throw new InvalidOwnerFieldsException(List.of("telephone"));
+        }
+        return "+" + national;
+    }
+
+    /**
+     * Rejects creating an owner whose E.164 telephone is already used by any other owner. The
+     * incoming value has already been converted to its E.164 form by {@link #normalizeTelephone};
+     * each existing owner's stored telephone is converted the same way before comparison so numbers
+     * that only differ in formatting still collide. A match results in a 409 response naming
+     * {@code telephone}.
      */
     private void rejectDuplicateTelephone(OwnerFieldsDto ownerFieldsDto) {
         String telephone = ownerFieldsDto.getTelephone();
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (telephone.equals(normalizeDigits(existing.getTelephone()))) {
+            if (telephone.equals(normalizeExisting(existing.getTelephone()))) {
                 throw new DuplicateOwnerTelephoneException(telephone);
             }
         }
     }
 
-    private static String normalizeDigits(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    /**
+     * Returns the E.164 form of an already-stored telephone for duplicate comparison, or {@code null}
+     * when the stored value cannot form a valid E.164 number (so it never matches an incoming one).
+     */
+    private static String normalizeExisting(String telephone) {
+        try {
+            return toE164(telephone);
+        } catch (InvalidOwnerFieldsException ex) {
+            return null;
+        }
     }
 
     /**
