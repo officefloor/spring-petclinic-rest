@@ -15,13 +15,16 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class})
+@Mapper(uses = PetMapper.class,
+    imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class, TelephoneDisplay.class})
 public interface OwnerMapper {
 
     @Mapping(target = "checkDigit",
         expression = "java(CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
