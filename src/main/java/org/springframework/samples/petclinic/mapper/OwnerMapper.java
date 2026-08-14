@@ -50,10 +50,34 @@ public interface OwnerMapper {
         java.util.Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * Derives the owner's locality from the city using the fixed {@link #CITY_REGION} table,
-     * returning the canonical region string, or {@code "UNKNOWN"} when the city is not listed.
+     * Inclusive 4-digit postcode range {@code [low, high]} owned by each region: NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099. Used to resolve an owner's region from the postcode first.
+     */
+    java.util.Map<String, int[]> REGION_POSTCODES =
+        java.util.Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /**
+     * Derives the owner's locality, preferring the postcode: the region whose {@link #REGION_POSTCODES}
+     * range contains the (4-digit) postcode is returned, and only when the postcode is absent or in no
+     * known range does it fall back to the fixed {@link #CITY_REGION} city table. Returns the canonical
+     * region string, or {@code "UNKNOWN"} when neither source resolves a region.
      */
     default String locality(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode != null) {
+            try {
+                int value = Integer.parseInt(postcode.trim());
+                for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+                    int[] range = entry.getValue();
+                    if (value >= range[0] && value <= range[1]) {
+                        return entry.getKey();
+                    }
+                }
+            }
+            catch (NumberFormatException ex) {
+                // Not a numeric postcode; fall back to the city table below.
+            }
+        }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
