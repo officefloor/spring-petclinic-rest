@@ -1,0 +1,259 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+index feb0748f..83e0b407 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+@@ -58,4 +58,15 @@ public final class MembershipLevel {
+         }
+         return 4;
+     }
++
++    /**
++     * The effective membership level of {@code owner}: the level captured on the owner at creation
++     * (the household-capped value stored in {@code membershipLevel}) when present, otherwise the
++     * freshly {@link #of(Owner) computed} level. Owners created before the cap existed (e.g. seed
++     * data) have no stored level and fall back to the computed value.
++     */
++    public static int effective(Owner owner) {
++        Integer stored = owner.getMembershipLevel();
++        return stored != null ? stored : of(owner);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 55fe13e7..54f79c6a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -33,7 +33,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints",
+             expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel",
+-            expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.of(owner))")
++            expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.effective(owner))")
+     @Mapping(target = "checkDigit",
+             expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.luhn(owner.getCustomerCode()))")
+     @Mapping(target = "locality",
+@@ -58,6 +58,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", ignore = true)
+     @Mapping(target = "namesakeCount", ignore = true)
+     @Mapping(target = "householdSize", ignore = true)
++    @Mapping(target = "membershipLevel", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "possibleDuplicate", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6580796a..820bdb27 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -208,6 +211,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index 465f2af2..6da0f157 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -19,8 +19,8 @@ import org.springframework.samples.petclinic.model.Owner;
+  *
+  * <p>Runs after {@link BuildOwner}, so it works on the built entity, and before
+  * {@link EnsureUniqueIdentity}, so duplicate detection and {@link AssignHouseholdSize} see the
+- * finalized value. Note {@code sharesHousehold} plays no part here: it only bypasses the duplicate
+- * block downstream; the household link itself is always this computed value.
++ * finalized value. Note {@code sharesHousehold} plays no part here: it only suppresses the
++ * possible-duplicate flag downstream; the household link itself is always this computed value.
+  */
+ public class AssignHousehold {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+new file mode 100644
+index 00000000..115e10df
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapMembershipLevel.java
+@@ -0,0 +1,42 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.MembershipLevel;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Step of {@code POST /api/owners} that captures the owner's household-capped {@code membershipLevel}.
++ *
++ * <p>The owner's naturally {@link MembershipLevel#of(Owner) computed} level cannot exceed one above
++ * the current maximum {@link MembershipLevel#effective(Owner) effective} level among the existing
++ * members of its household (owners sharing the same {@code householdId}, which is not yet the owner
++ * being created). When the owner has no household or has no existing household member, no cap applies
++ * and the natural level is stored verbatim.
++ *
++ * <p>Runs after {@link AssignHouseholdSize} and {@link AssignNamesakeCount} so the inputs the natural
++ * level depends on (household size, namesake count, email, registration date) are finalized, and
++ * before {@link SaveOwner} so the captured level is persisted with the owner. The stored value is what
++ * {@code OwnerMapper} later returns as {@code membershipLevel}.
++ */
++public class CapMembershipLevel {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        int natural = MembershipLevel.of(owner);
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            owner.setMembershipLevel(natural);
++            return;
++        }
++        Integer maxExisting = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                int level = MembershipLevel.effective(existing);
++                if (maxExisting == null || level > maxExisting) {
++                    maxExisting = level;
++                }
++            }
++        }
++        owner.setMembershipLevel(maxExisting == null ? natural : Math.min(natural, maxExisting + 1));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+index 99947954..e50ca7e4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueIdentity.java
+@@ -3,34 +3,25 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
+ 
+ /**
+- * Duplicate detection for {@code POST /api/owners}, keyed on the deterministic {@code householdId}
+- * (see {@link AssignHousehold}). Rejects a create with 409 via {@link DuplicateIdentityException} in
+- * either of two cases:
+- *
+- * <ul>
+- * <li><b>Household duplicate</b> — an existing owner already has the same {@code householdId} (i.e.
+- * the same last name and postcode, so it is the same household). This is bypassed when the request
+- * sets {@code sharesHousehold}, in which case the new owner is created as a declared household
+- * member.</li>
+- * <li><b>Exact identity</b> — the new owner's WHOLE {@code identityKey} (see {@link IdentityKey})
+- * equals an existing owner's, i.e. the same telephone, email and household. A truly identical record
+- * is always a conflict, even for a declared member.</li>
+- * </ul>
++ * Consolidated duplicate detection for {@code POST /api/owners}: rejects a create with 409 via
++ * {@link DuplicateIdentityException} only when the new owner's WHOLE {@code identityKey} (see
++ * {@link IdentityKey}) — {@code normalizedTelephone|email|householdId} — equals an existing owner's,
++ * i.e. the same telephone, email and household. Members of the same household with a different
++ * telephone (or email) have different keys, so several owners may legitimately share one household;
++ * this is what lets a household accumulate members for the membership-level cap (see
++ * {@link CapMembershipLevel}). Only a truly identical record is a conflict.
+  *
+  * <p>Runs after {@link AssignHousehold}, so the new owner's householdId is finalized before it is
+- * compared, and before {@link SaveOwner}.
++ * compared, and before {@link SaveOwner}. Soft-deleted owners no longer block a create.
+  */
+ public class EnsureUniqueIdentity {
+ 
+-    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository)
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DuplicateIdentityException {
+-        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
+         String identityKey = IdentityKey.of(owner);
+-        String householdId = owner.getHouseholdId();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
+                 continue; // the owner being created is not yet its own duplicate
+@@ -38,10 +29,6 @@ public class EnsureUniqueIdentity {
+             if (Boolean.TRUE.equals(existing.getDeleted())) {
+                 continue; // a soft-deleted owner no longer blocks a create
+             }
+-            if (!sharesHousehold && householdId != null
+-                    && householdId.equals(existing.getHouseholdId())) {
+-                throw new DuplicateIdentityException(householdId);
+-            }
+             if (IdentityKey.of(existing).equals(identityKey)) {
+                 throw new DuplicateIdentityException(identityKey);
+             }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c8c79a58..d344388b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 86cc9f0c..d935c120 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  membership_level INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d921c96b..7ad8adec 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INT,
+   household_size INT,
++  membership_level INT,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0423744a..4d243cde 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INT,
+                                       household_size INT,
++                                      membership_level INT,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INT,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f5b1a2f5..8802e662 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -103,6 +103,14 @@ assignNamesakeCount:
+ assignBulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignBulkSignupWarning
+   govern: [ transaction ]
++  next: capMembershipLevel
++
++# Capture the household-capped membershipLevel: the naturally computed level, but no more than one
++# above the current maximum among existing household members. Runs after householdSize/namesakeCount
++# are set (the level's inputs) and before save, so the capped value is persisted.
++capMembershipLevel:
++  class: org.springframework.samples.petclinic.rest.function.owner.CapMembershipLevel
++  govern: [ transaction ]
+   next: save
+ 
+ save:
