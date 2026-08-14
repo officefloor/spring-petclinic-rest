@@ -23,6 +23,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -55,6 +56,9 @@ public class Owner extends Person {
 
     @Column(name = "registration_date")
     private LocalDate registrationDate;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "postcode")
     @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
@@ -171,6 +175,34 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * Return the owner's age band derived from the birth date, computed against the
+     * registration date: {@code 'MINOR'} when under 18, {@code 'ADULT'} when 18 to
+     * 64 inclusive, and {@code 'SENIOR'} when 65 or older. Returns {@code null} when
+     * either the birth date or the registration date is not set.
+     */
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     public String getPostcode() {
