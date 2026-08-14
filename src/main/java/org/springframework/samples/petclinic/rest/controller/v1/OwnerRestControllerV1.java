@@ -191,8 +191,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     this.clinicService.saveOwner(member);
                 }
             }
+            owner.setHouseholdSize(householdMembers.size() + 1);
         } else if (!householdMembers.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        } else {
+            owner.setHouseholdSize(1);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         String firstNameKey = householdKey(owner.getFirstName());

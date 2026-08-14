@@ -66,6 +66,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -149,6 +152,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The number of owners in this owner's household (owners sharing the same
+     * {@code householdId}) as of when this owner was created, used to derive the GOLD
+     * membership tier.
+     *
+     * @return the household member count, or {@code null} if it has not been assigned
+     */
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
+    /**
      * The owner's name formatted as {@code "LastName, FirstName"} from the stored names.
      *
      * @return the formatted display name
@@ -184,13 +202,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code "SILVER"} when this owner has no namesakes
+     * The owner's membership tier: {@code "GOLD"} when this owner's household (owners
+     * sharing the same {@code householdId}) had 3 or more members when this owner was
+     * created; otherwise {@code "SILVER"} when this owner has no namesakes
      * ({@code namesakeCount} is {@code 0}) and carries an email address, otherwise
      * {@code "BRONZE"}.
      *
      * @return the membership tier
      */
     public String getMembershipTier() {
+        if (this.householdSize != null && this.householdSize >= 3) {
+            return "GOLD";
+        }
         boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
