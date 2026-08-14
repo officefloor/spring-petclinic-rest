@@ -1,0 +1,169 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 82546539..80806e67 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -314,6 +317,23 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    /**
++     * The upper bound applied to this owner's {@link #getMembershipLevel() membership level}: one
++     * above the highest membership level held by their household members at the time this owner was
++     * created. It is assigned only to an owner admitted into an already-populated household, and is
++     * {@code null} (no cap) for a household founder or a declared household member, so their level is
++     * not restricted.
++     *
++     * @return the membership-level cap, or {@code null} when no cap applies
++     */
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     /**
+      * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
+      * postcode while carrying a different telephone, flagging a likely duplicate registration.
+@@ -493,9 +513,27 @@ public class Owner extends Person {
+      * scores at most {@code 5} points and so never exceeds level {@code 3}; level {@code 4}
+      * is reserved for owners whose tenure spans at least one elapsed fiscal year.
+      *
++     * <p>When a {@link #getMembershipLevelCap() membership-level cap} has been assigned the
++     * points-derived level is capped to it, so an owner admitted into an existing household can never
++     * exceed one level above their household's highest member.
++     *
+      * @return the membership level
+      */
+     public Integer getMembershipLevel() {
++        int level = pointsMembershipLevel();
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
++        }
++        return level;
++    }
++
++    /**
++     * The membership level derived purely from the {@link #getMembershipPoints() membership points},
++     * before any {@link #getMembershipLevelCap() household cap} is applied.
++     *
++     * @return the uncapped, points-derived membership level
++     */
++    private int pointsMembershipLevel() {
+         int points = getMembershipPoints();
+         if (points >= 6) {
+             return 4;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f2310cee..78308fc7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -248,12 +248,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .toList();
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         // Household-duplicate block: a second owner in an existing household (same computed
+-        // householdId) is rejected as a duplicate. 'sharesHousehold' now only BYPASSES this block —
+-        // declaring the new owner a member — rather than creating the household link itself.
+-        if (!householdMembers.isEmpty() && !sharesHousehold) {
++        // householdId) is rejected as a duplicate unless it is a member we can tell apart. A member is
++        // admitted when it either declares 'sharesHousehold' or supplies its own email (a distinct
++        // contact identifying a distinct person); an undistinguished second owner is still a 409.
++        if (!householdMembers.isEmpty() && !sharesHousehold && !hasEmail) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Level ceiling: an owner admitted into an already-populated household without declaring
++        // membership has its membership level capped at one above the household's current maximum, so
++        // an undeclared newcomer can never outrank the household it joined. Declared members and
++        // household founders are left uncapped. With no existing household member no cap applies.
++        if (!householdMembers.isEmpty() && !sharesHousehold) {
++            int maxHouseholdLevel = householdMembers.stream()
++                .mapToInt(Owner::getMembershipLevel)
++                .max()
++                .orElse(0);
++            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
++        }
+         // Single consolidated duplicate check: the telephone, email and household duplicate rules are
+         // all expressed through the one derived identityKey (telephone|email|householdId). A create is
+         // rejected only when a new owner's WHOLE identityKey equals an existing owner's; because the
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c06be2d9..73745c34 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN
++  deleted BOOLEAN,
++  membership_level_cap INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 24fcd874..278d99c1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,7 +56,8 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  deleted BOOLEAN
++  deleted BOOLEAN,
++  membership_level_cap INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1c4749d9..93483bcc 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate BIT,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN,
++  membership_level_cap INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index df47c62e..73788677 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+-                                      deleted BOOLEAN
++                                      deleted BOOLEAN,
++                                      membership_level_cap INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 752c39ca..61cd747e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2216,7 +2216,10 @@ components:
+                 the membership points on create - 1 for 0-1 points, 2 for 2-3 points, 3
+                 for 4-5 points, and 4 for 6 or more points. Because a new owner has zero
+                 tenure, level 4 is reserved for owners whose tenure spans at least one
+-                elapsed fiscal year.
++                elapsed fiscal year. An owner admitted into an already-populated household
++                without declaring membership is additionally capped at one level above the
++                current maximum membership level among their household members; with no
++                existing household member no cap applies.
+               type: integer
+               format: int32
+               minimum: 1
