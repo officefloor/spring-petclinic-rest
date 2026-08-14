@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "bulk_signup_warning")
+    private Boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -128,6 +131,21 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    /**
+     * Whether more than 80 owners had already been created today at the time this owner
+     * was created, indicating an unusually high signup volume.
+     *
+     * @return {@code true} when the bulk-signup threshold was exceeded, otherwise
+     *         {@code false} (never {@code null})
+     */
+    public Boolean getBulkSignupWarning() {
+        return this.bulkSignupWarning != null && this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     /**

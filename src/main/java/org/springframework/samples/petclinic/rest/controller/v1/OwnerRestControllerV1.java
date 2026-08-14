@@ -141,6 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (createdToday >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+        owner.setBulkSignupWarning(createdToday > 80);
         String address = normalizeAddress(owner.getAddress());
         if (address == null || address.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
