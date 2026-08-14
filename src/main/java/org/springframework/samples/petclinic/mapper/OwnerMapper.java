@@ -18,8 +18,14 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity.memberId", source = "memberId")
+    @Mapping(target = "identity.identityKey", source = "identityKey")
+    @Mapping(target = "identity.householdId", source = "householdId")
     OwnerDto toOwnerDto(Owner owner);
 
+    @Mapping(target = "memberId", source = "identity.memberId")
+    @Mapping(target = "householdId", source = "identity.householdId")
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)

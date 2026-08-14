@@ -604,14 +604,39 @@ public class Owner extends Person {
     }
 
     /**
+     * The fixed version tag mixed into the version-2 identity derivations. It appears only inside the
+     * identifiers ({@link #getIdentityKey() identityKey}, the member id and the household id) and the
+     * version-2 region code ({@link #getIdentityRegionCode()}); it never appears in the user-facing
+     * {@link #getLocality() locality}, {@link #getTimezone() timezone} or
+     * {@link #getOwnerSegment() owner segment}.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The version-2 region code mixed INSIDE the owner's identifiers: the plain region
+     * ({@link #getLocality() locality}) with the fixed {@link #IDENTITY_VERSION_TAG 'V2' version tag}
+     * appended, so every identifier derived from it (the member id in particular) differs from its
+     * version-1 value. The tag is confined to the identifiers: {@link #getLocality() locality},
+     * {@link #getTimezone() timezone} and the {@link #getOwnerSegment() owner segment} keep the plain
+     * region code.
+     *
+     * @return the version-2 region code (e.g. {@code "NSWV2"})
+     */
+    public String getIdentityRegionCode() {
+        return getLocality() + IDENTITY_VERSION_TAG;
+    }
+
+    /**
      * The owner's identity key: the single derived value used for duplicate detection. It is the
      * lower-case, 64-character hex SHA-256 digest over
-     * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}, where the telephone
-     * is the already-normalized stored value, the email is lower-cased (a {@code null} email is
-     * rendered as the empty string) and the last name is reduced to its Soundex code. Two owners are
-     * duplicates only when their whole identity keys are equal; because the telephone is part of the
-     * key, two owners sharing a last name (Soundex) but with different telephones have different
-     * identity keys and so are not hard duplicates.
+     * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName) + "|" + "V2"}, where
+     * the telephone is the already-normalized stored value, the email is lower-cased (a {@code null}
+     * email is rendered as the empty string), the last name is reduced to its Soundex code and
+     * {@code "V2"} is the fixed {@link #IDENTITY_VERSION_TAG version tag} that rederives the key under
+     * version 2 so it differs from every version-1 value. Two owners are duplicates only when their
+     * whole identity keys are equal; because the telephone is part of the key, two owners sharing a
+     * last name (Soundex) but with different telephones have different identity keys and so are not
+     * hard duplicates.
      *
      * @return the derived identity key
      */
@@ -619,7 +644,8 @@ public class Owner extends Person {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
         String soundexPart = soundex(getLastName());
-        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart
+            + "|" + IDENTITY_VERSION_TAG);
     }
 
     /**
