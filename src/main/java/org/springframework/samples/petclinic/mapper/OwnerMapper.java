@@ -87,12 +87,21 @@ public interface OwnerMapper {
         java.util.Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's locality, preferring the postcode: the region whose {@link #REGION_POSTCODES}
-     * range contains the (4-digit) postcode is returned, and only when the postcode is absent or in no
-     * known range does it fall back to the fixed {@link #CITY_REGION} city table. Returns the canonical
-     * region string, or {@code "UNKNOWN"} when neither source resolves a region.
+     * Derives the owner's locality, the {@code REGION} segment of the owner's customer code (the
+     * region-and-hash identity {@code '<REGION>-<HASH8>'}). Only when no customer code is present does
+     * it fall back to deriving the region directly, preferring the postcode's {@link #REGION_POSTCODES}
+     * range and then the fixed {@link #CITY_REGION} city table. Returns the canonical region string, or
+     * {@code "UNKNOWN"} when neither source resolves a region.
      */
     default String locality(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            String region = dash >= 0 ? customerCode.substring(0, dash) : customerCode;
+            if (!region.isEmpty()) {
+                return region;
+            }
+        }
         String postcode = owner.getPostcode();
         if (postcode != null) {
             try {
@@ -143,7 +152,7 @@ public interface OwnerMapper {
 
     /**
      * Builds the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where
-     * {@code YY} is the last two digits of the registration date's year (e.g. {@code "SMI-0007-M26"}).
+     * {@code YY} is the last two digits of the registration date's year (e.g. {@code "NSW-3F2A1B9C-M26"}).
      * Returns {@code null} when the customer code or registration date is absent.
      */
     default String membershipNumber(Owner owner) {

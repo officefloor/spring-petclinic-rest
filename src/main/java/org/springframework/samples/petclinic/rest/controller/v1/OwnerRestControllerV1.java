@@ -177,7 +177,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(buildCustomerCode(owner, normalizedTelephone));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -283,18 +283,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a newly created owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
-     * where {@code CITY3} is the upper-cased first three letters of the owner's city, {@code LAST3}
-     * is the upper-cased first three letters of the owner's last name, and {@code NNNN} is a per-city
-     * 4-digit zero-padded sequence equal to one more than the number of owners already in that city.
-     * For example an owner named "Smithers" in "Springfield" created when 10 owners already live in
-     * Springfield gets {@code 'SPR-SMI-0011'}.
-     *
-     * @param city the owner's city
-     * @param lastName the owner's last name
-     * @return the assigned customer code
-     */
-    /**
      * Counts how many existing owners share the given first and last name, compared
      * case-insensitively, at the moment before the new owner is persisted. The result is
      * stored on the owner as its {@code namesakeCount}, so it reflects the population as it
@@ -313,16 +301,69 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
-    private String nextCustomerCode(String city, String lastName) {
-        String cityLetters = city == null ? "" : city;
-        String city3 = cityLetters.substring(0, Math.min(3, cityLetters.length())).toUpperCase(Locale.ROOT);
-        String letters = lastName == null ? "" : lastName;
-        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
-        String normalizedCity = normalizeForComparison(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizedCity.equals(normalizeForComparison(existing.getCity())))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    /**
+     * Builds the customer code for a newly created owner, formatted {@code '<REGION>-<HASH8>'} where
+     * {@code REGION} is the region code derived from the owner's postcode (see {@link #deriveRegion})
+     * and {@code HASH8} is the first 8 upper-case hex characters of the SHA-256 digest of the owner's
+     * normalized telephone concatenated with the last name. For example an owner in the NSW postcode
+     * range gets a code such as {@code 'NSW-3F2A1B9C'}.
+     *
+     * @param owner the owner being created, whose postcode, city and last name feed the code
+     * @param normalizedTelephone the owner's E.164-normalized telephone
+     * @return the assigned customer code
+     */
+    private String buildCustomerCode(Owner owner, String normalizedTelephone) {
+        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String hash8 = sha256Hex8(normalizedTelephone + lastName);
+        return region + "-" + hash8;
+    }
+
+    /**
+     * Derives an owner's region code, preferring the postcode: the region whose {@link #REGION_POSTCODES}
+     * range contains the (4-digit) postcode is returned, falling back to the fixed {@link #CITY_REGION}
+     * city table when the postcode is absent or in no known range, and finally to {@code "UNKNOWN"}.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @param city the owner's city, used to resolve the region when the postcode does not
+     * @return the canonical region string, or {@code "UNKNOWN"} when neither source resolves a region
+     */
+    private String deriveRegion(String postcode, String city) {
+        if (postcode != null) {
+            try {
+                int value = Integer.parseInt(postcode.trim());
+                for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+                    int[] range = entry.getValue();
+                    if (value >= range[0] && value <= range[1]) {
+                        return entry.getKey();
+                    }
+                }
+            } catch (NumberFormatException ex) {
+                // Not a numeric postcode; fall back to the city table below.
+            }
+        }
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Computes the first 8 upper-case hex characters (the first 4 bytes) of the SHA-256 digest of the
+     * given input's UTF-8 bytes.
+     *
+     * @param input the string to hash
+     * @return the 8-character upper-case hex prefix of the SHA-256 digest
+     */
+    private String sha256Hex8(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                hex.append(String.format("%02X", digest[i]));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**
