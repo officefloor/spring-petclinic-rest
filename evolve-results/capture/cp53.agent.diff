@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a14c0f7..d4864f29 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -27,6 +27,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+@@ -134,6 +135,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
+ 
++    /**
++     * Source of the {@code seq} field on the structured {@code OWNER_CREATED} audit event: a
++     * monotonically increasing integer stamped on each owner create, across all creates.
++     */
++    private static final AtomicLong OWNER_CREATED_SEQUENCE = new AtomicLong();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -316,6 +323,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), owner.getMembershipNumber());
++        OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
++            owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
++        AUDIT.info("{}", event.toJson());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -582,6 +592,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param owner the owner whose customer code is derived (with normalized telephone already set)
+      * @return the assigned customer code
+      */
++    /**
++     * The owner's current primary identifier, the value carried by the structured
++     * {@code OWNER_CREATED} audit event. Today that identifier is the {@link Owner#getCustomerCode()
++     * customerCode}; when the customer code is later unified into the member id this single seam is
++     * what makes the event carry the member id instead.
++     *
++     * @param owner the freshly created owner (with its customer code already assigned)
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Immutable structured audit event emitted alongside the human-readable audit line when an owner
++     * is created. It is serialized to a compact JSON object and published to the {@code AUDIT}
++     * logger so it can be routed and asserted independently of the diagnostic log. The
++     * {@code customerCode} field carries the owner's {@link #primaryIdentifier(Owner) current primary
++     * identifier}, so it transparently follows that identifier when it is later unified into the
++     * member id.
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++                                     Integer membershipLevel) {
++
++        private static final String EVENT = "OWNER_CREATED";
++
++        private String toJson() {
++            return "{\"seq\":" + this.seq
++                + ",\"ownerId\":" + this.ownerId
++                + ",\"customerCode\":" + quote(this.customerCode)
++                + ",\"membershipLevel\":" + this.membershipLevel
++                + ",\"event\":\"" + EVENT + "\"}";
++        }
++
++        private static String quote(String value) {
++            if (value == null) {
++                return "null";
++            }
++            String escaped = value.replace("\\", "\\\\").replace("\"", "\\\"");
++            return "\"" + escaped + "\"";
++        }
++    }
++
+     private String customerCode(Owner owner) {
+         String region = owner.getLocality();
+         String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName(), 8);
