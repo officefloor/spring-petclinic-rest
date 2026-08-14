@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4955fae5..f2310cee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -26,6 +26,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ 
+@@ -52,6 +53,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.context.request.RequestAttributes;
++import org.springframework.web.context.request.RequestContextHolder;
++import org.springframework.web.context.request.ServletRequestAttributes;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -117,6 +121,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Map<String, String> CITY_REGION = Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    /**
++     * The HTTP header carrying a client-supplied idempotency token for owner creation. When a create
++     * repeats with a token already seen, the originally created owner is returned rather than a
++     * duplicate being made.
++     */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Maps each seen {@code Idempotency-Key} to the id of the owner its first successful create
++     * produced, so a repeat with the same key returns that owner instead of creating a duplicate.
++     */
++    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -164,6 +181,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey != null) {
++            Integer existingId = idempotentCreates.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existing = this.clinicService.findOwnerById(existingId);
++                if (existing != null) {
++                    // Repeat of a create already performed under this key: return the original
++                    // owner with 200 instead of creating a duplicate.
++                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
++                }
++            }
++        }
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         LocalDate suppliedDate = owner.getRegistrationDate();
+         if (suppliedDate != null && suppliedDate.isAfter(LocalDate.now())) {
+@@ -271,6 +300,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+         owner.setNamesakeCount((int) namesakeCount);
+         this.clinicService.saveOwner(owner);
++        if (idempotencyKey != null) {
++            idempotentCreates.put(idempotencyKey, owner.getId());
++        }
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             owner.getMembershipLevel(), owner.getMembershipNumber());
+@@ -299,6 +331,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param city the owner's city (may be {@code null})
+      * @return the canonical region, or {@code "UNKNOWN"}
+      */
++    /**
++     * The {@code Idempotency-Key} header of the current request, trimmed, or {@code null} when the
++     * header is absent, blank, or no servlet request is bound to the current thread.
++     *
++     * @return the idempotency key, or {@code null}
++     */
++    private String currentIdempotencyKey() {
++        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
++        if (attributes instanceof ServletRequestAttributes servletAttributes) {
++            String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
++            if (key != null && !key.isBlank()) {
++                return key.trim();
++            }
++        }
++        return null;
++    }
++
+     private String regionForCity(String city) {
+         if (city == null) {
+             return "UNKNOWN";
