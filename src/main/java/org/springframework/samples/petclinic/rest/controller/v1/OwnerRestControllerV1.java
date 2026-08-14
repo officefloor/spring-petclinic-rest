@@ -171,6 +171,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignNamesakeCount(owner);
         assignBulkSignupWarning(owner);
         assignHousehold(owner, ownerFieldsDto);
+        assignHouseholdMembership(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -636,6 +637,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 this.clinicService.saveOwner(member);
             }
         }
+    }
+
+    /**
+     * Assigns the new owner's {@code householdMemberCount} on create: the number of owners sharing
+     * the new owner's {@code householdId} once this create is applied — that is, the new owner plus
+     * every existing owner already carrying the same identifier. Runs after {@link #assignHousehold}
+     * so the identifier is settled, and drives the {@code GOLD} membership tier (3 or more members).
+     * Left {@code null} when the owner belongs to no household.
+     */
+    private void assignHouseholdMembership(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            owner.setHouseholdMemberCount(null);
+            return;
+        }
+        int count = 1;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        owner.setHouseholdMemberCount(count);
     }
 
     /**
