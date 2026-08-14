@@ -20,6 +20,8 @@ import java.util.List;
         FiscalYear.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink",
+        expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "checkDigit",
         expression = "java(CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "displayName",
