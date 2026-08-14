@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 270d8f5b..bd8eaeb5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,7 @@ public interface OwnerMapper {
+             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
+                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -44,21 +44,20 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing
+-     * the same householdId) has 3 or more members after this create; otherwise {@code 'SILVER'} when
+-     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
++     * Derives the owner's membership level from 1 to 3: starting at 1, plus 1 when an email is
++     * present, plus 1 when {@code namesakeCount} is 0, capped at 3 (level 4 is reserved for tenure).
+      */
+-    default org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+-        boolean goldHousehold = owner.getHouseholdMemberCount() != null
+-                && owner.getHouseholdMemberCount() >= 3;
+-        if (goldHousehold) {
+-            return org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.GOLD;
+-        }
++    static Integer membershipLevel(Owner owner) {
++        int level = 1;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        if (hasEmail) {
++            level++;
++        }
+         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+-        return noNamesakes && hasEmail
+-                ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER
+-                : org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE;
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+index 6346daa3..9d0c2fc1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+@@ -12,8 +12,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * <p>Runs after {@link AssignHouseholdId} has set the shared {@code householdId} and before
+  * {@link SaveOwner}, within the same write transaction. It counts the owners persisted so far that
+  * share this owner's householdId and adds one for this new, not-yet-saved owner, so the value
+- * reflects the household size after this create. A household of 3 or more members yields the
+- * {@code 'GOLD'} membership tier.
++ * reflects the household size after this create.
+  */
+ public class AssignHouseholdMemberCount {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 0e779ff2..62dd057a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -4,11 +4,12 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Emits an audit line for a newly created owner via the dedicated {@code AUDIT} logger,
+- * carrying the owner's id, customerCode and registrationDate.
++ * carrying the owner's id, customerCode, registrationDate and membershipLevel.
+  *
+  * <p>Runs after {@link SaveOwner} so the generated id is present, within the same write
+  * transaction as the insert.
+@@ -18,7 +19,8 @@ public class AuditOwnerCreated {
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                OwnerMapper.membershipLevel(owner));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 972bc4f9..8962e238 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -67,8 +67,7 @@ assignHouseholdId:
+ 
+ # Count this owner's household (owners sharing the assigned householdId) including this new owner,
+ # giving the household size after this create. Runs after the householdId is assigned and within the
+-# write transaction so it counts only owners already persisted plus this one. A count of 3 or more
+-# yields the 'GOLD' membership tier.
++# write transaction so it counts only owners already persisted plus this one.
+ assignHouseholdMemberCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdMemberCount
+   govern: [ transaction ]
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 55ba5722..0ed66a27 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2127,18 +2127,17 @@ components:
+               type: string
+               example: SYD-SMI-0007-M26
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household (owners sharing
+-                the same householdId) has 3 or more members after this create; otherwise 'SILVER'
+-                when namesakeCount is 0 and an email is present, otherwise 'BRONZE'. Derived and returned.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: SILVER
++                The owner's membership level from 1 to 3, assigned at creation: starting at 1,
++                plus 1 when an email is present, plus 1 when namesakeCount is 0, capped at 3
++                (level 4 is reserved for tenure). Derived and returned.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
