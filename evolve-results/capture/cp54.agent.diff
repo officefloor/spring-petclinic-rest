@@ -1,0 +1,118 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 447b7bc2..2aa0a11c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -305,6 +308,22 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether the owner's city was approaching its capacity limit when this owner
++     * was created: the city already held between 40 and 49 owners (inclusive), just
++     * short of the hard limit of 50.
++     *
++     * @return {@code true} when the city was approaching capacity, otherwise
++     *         {@code false} (never {@code null})
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning != null && this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * The number of owners in this owner's household (owners sharing the same
+      * {@code householdId}) as of when this owner was created, used to derive the GOLD
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d4864f29..8e0c91ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -244,6 +244,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (cityCount >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        // Approaching-capacity warning: the city already holds 40-49 owners, just short of the
++        // hard limit of 50. The 50+ rejection above still applies unchanged.
++        owner.setCapacityWarning(cityCount >= 40 && cityCount < 50);
+         // The household is keyed on (normalized last name, postcode): every owner derives the same
+         // deterministic householdId from those two fields, so owners sharing them are the same
+         // household. This computed id is what duplicate detection and the household size below key off.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 73745c34..b64f9035 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 278d99c1..eea4b562 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 93483bcc..c27da1ca 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BIT,
++  capacity_warning BIT,
+   household_size INTEGER,
+   possible_duplicate BIT,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 73788677..a223d692 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bc642d58..735ba066 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2270,6 +2270,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already held between 40 and 49
++                owners (inclusive) at the time this owner was created, indicating the
++                city is approaching its hard capacity limit of 50; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The owner's preferred contact channel, 'EMAIL' when the owner
