@@ -441,16 +441,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the owner's {@code customerCode} on create, formatted {@code '<LAST3>-<NNNN>'} where
-     * {@code LAST3} is the upper-cased first three letters of {@code lastName} and {@code NNNN} is a
-     * global 4-digit zero-padded sequence equal to one more than the current number of owners
-     * (e.g. {@code 'SMI-0007'}).
+     * Assigns the owner's {@code customerCode} on create, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
+     * where {@code CITY3} is the upper-cased first three letters of {@code city}, {@code LAST3} is the
+     * upper-cased first three letters of {@code lastName} and {@code NNNN} is a per-city 4-digit
+     * zero-padded sequence equal to one more than the number of owners already in that city
+     * (e.g. {@code 'SYD-SMI-0007'}).
      */
     private void assignCustomerCode(Owner owner) {
+        String city = owner.getCity();
         String lastName = owner.getLastName();
-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
+        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        int sequence = 1;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                sequence++;
+            }
+        }
+        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence));
     }
 
     /**
