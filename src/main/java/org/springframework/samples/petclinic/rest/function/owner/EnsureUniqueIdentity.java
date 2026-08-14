@@ -8,14 +8,17 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
 /**
  * Consolidated duplicate detection for {@code POST /api/owners}: rejects a create with 409 via
  * {@link DuplicateIdentityException} only when the new owner's WHOLE {@code identityKey} (see
- * {@link IdentityKey}) — {@code normalizedTelephone|email|householdId} — equals an existing owner's,
- * i.e. the same telephone, email and household. Members of the same household with a different
- * telephone (or email) have different keys, so several owners may legitimately share one household;
- * this is what lets a household accumulate members for the membership-level cap (see
- * {@link CapMembershipLevel}). Only a truly identical record is a conflict.
+ * {@link IdentityKey}) — the SHA-256 hex over {@code normalizedTelephone|lowerEmail|soundex(lastName)}
+ * — equals an existing owner's, i.e. the same telephone, email and phonetic surname. The identityKey
+ * is the single identity rule: the computed householdId plays no part here, so two owners with the
+ * same surname and postcode but different telephones have different keys and are both allowed (they
+ * are surfaced as a soft match by {@link FlagPossibleDuplicate}). This is what lets a household
+ * accumulate members for the membership-level cap (see {@link CapMembershipLevel}). Only a truly
+ * identical identity is a conflict.
  *
- * <p>Runs after {@link AssignHousehold}, so the new owner's householdId is finalized before it is
- * compared, and before {@link SaveOwner}. Soft-deleted owners no longer block a create.
+ * <p>Runs after {@link AssignHousehold} and before {@link SaveOwner}. The email-domain blocklist
+ * ({@link RejectDisposableEmailDomain}) has already applied earlier in the pipeline. Soft-deleted
+ * owners no longer block a create.
  */
 public class EnsureUniqueIdentity {
 
