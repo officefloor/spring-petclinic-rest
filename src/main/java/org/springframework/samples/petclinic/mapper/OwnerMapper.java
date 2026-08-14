@@ -22,7 +22,6 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -32,7 +31,6 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -72,35 +70,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits contained
-     * in the owner's customer code. Returns {@code null} when the customer code is absent.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
      * Derives the owner's duplicate-detection identity key: the lower-case SHA-256 hex digest (64 hex
      * characters) of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}. The telephone and
      * email segments are empty when the respective field is absent, and the last-name segment is the
@@ -130,20 +99,17 @@ public interface OwnerMapper {
         java.util.Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's locality, the {@code REGION} segment of the owner's customer code (the
-     * region-and-hash identity {@code '<REGION>-<HASH8>'}). Only when no customer code is present does
-     * it fall back to deriving the region directly, preferring the postcode's {@link #REGION_POSTCODES}
-     * range and then the fixed {@link #CITY_REGION} city table. Returns the canonical region string, or
-     * {@code "UNKNOWN"} when neither source resolves a region.
+     * Derives the owner's locality, the leading {@code REGION} segment of the owner's member id (the
+     * unified identity {@code '<REGION><FY><HASH8><CHK>'}, whose region is the run of leading letters
+     * before the two-digit fiscal year). Only when no member id is present does it fall back to deriving
+     * the region directly, preferring the postcode's {@link #REGION_POSTCODES} range and then the fixed
+     * {@link #CITY_REGION} city table. Returns the canonical region string, or {@code "UNKNOWN"} when
+     * neither source resolves a region.
      */
     default String locality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            String region = dash >= 0 ? customerCode.substring(0, dash) : customerCode;
-            if (!region.isEmpty()) {
-                return region;
-            }
+        String region = memberIdRegion(owner);
+        if (region != null && !region.isEmpty()) {
+            return region;
         }
         String postcode = owner.getPostcode();
         if (postcode != null) {
@@ -310,30 +276,61 @@ public interface OwnerMapper {
     }
 
     /**
-     * Builds the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where
-     * {@code YY} is the last two digits of the registration date's fiscal year (e.g.
-     * {@code "NSW-3F2A1B9C-M26"}). Returns {@code null} when the customer code or registration date
-     * is absent.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        int yy = fiscalYearValue(owner.getRegistrationDate()) % 100;
-        return String.format("%s-M%02d", owner.getCustomerCode(), yy);
-    }
-
-    /**
-     * Derives the owner's fiscal year from the business-day-adjusted registration date, formatted
-     * {@code 'FY<YY>'} where {@code YY} is the last two digits of the fiscal year (e.g.
-     * {@code "FY26"}). Returns {@code null} when the registration date is absent.
+     * Derives the owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY} is the two-digit
+     * fiscal year. The value is read from the {@code FY} segment of the owner's member id (the two
+     * digits following the leading region of {@code '<REGION><FY><HASH8><CHK>'}), so it references the
+     * same fiscal year embedded in the member id. Only when no member id is present does it fall back to
+     * computing the fiscal year from the business-day-adjusted registration date. Returns {@code null}
+     * when neither a member id nor a registration date is available.
      */
     default String fiscalYear(Owner owner) {
+        String fy = memberIdFiscalYear(owner);
+        if (fy != null) {
+            return "FY" + fy;
+        }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return null;
         }
         return String.format("FY%02d", fiscalYearValue(registrationDate) % 100);
+    }
+
+    /**
+     * Extracts the leading {@code REGION} segment from the owner's member id: the run of leading letters
+     * before the two-digit fiscal year in {@code '<REGION><FY><HASH8><CHK>'}. Returns {@code null} when
+     * the owner has no member id.
+     */
+    default String memberIdRegion(Owner owner) {
+        String memberId = owner.getMemberId();
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return memberId.substring(0, i);
+    }
+
+    /**
+     * Extracts the two-digit {@code FY} segment from the owner's member id: the two digits immediately
+     * following the leading region in {@code '<REGION><FY><HASH8><CHK>'}. Returns {@code null} when the
+     * owner has no member id or the segment is not present.
+     */
+    default String memberIdFiscalYear(Owner owner) {
+        String region = memberIdRegion(owner);
+        if (region == null) {
+            return null;
+        }
+        String memberId = owner.getMemberId();
+        if (memberId.length() < region.length() + 2) {
+            return null;
+        }
+        String fy = memberId.substring(region.length(), region.length() + 2);
+        if (fy.chars().allMatch(Character::isDigit)) {
+            return fy;
+        }
+        return null;
     }
 
     /**
