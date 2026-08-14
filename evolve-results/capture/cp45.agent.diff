@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fb0a4b85..72f5e034 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
++    @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+@@ -276,6 +277,20 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+     }
+ 
++    /**
++     * Builds the owner's salutation: the supplied title and last name joined by a single space
++     * (e.g. {@code "DR Franklin"}) when a title is present (non-blank), otherwise just the last
++     * name. Returns {@code null} when the owner has no last name.
++     */
++    default String salutation(Owner owner) {
++        String lastName = owner.getLastName();
++        String title = owner.getTitle();
++        if (title == null || title.isBlank()) {
++            return lastName;
++        }
++        return title + " " + lastName;
++    }
++
+     /**
+      * Builds the owner's initials as the upper-cased first letters of the first and last
+      * names, dot-separated with a trailing dot (e.g. {@code "J.S."}).
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3e476b26..9732fe17 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -45,6 +45,9 @@ public class Owner extends Person {
+     @Column(name = "address_line2")
+     private String addressLine2;
+ 
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -202,6 +205,14 @@ public class Owner extends Person {
+         this.addressLine2 = addressLine2;
+     }
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index bf328252..d4904293 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255) NOT NULL,
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
++  title VARCHAR(10),
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index fa9d695a..1d8b3ac2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
++  title      VARCHAR(10),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 301dd59d..55f67550 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
++  title VARCHAR(10),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d65ca024..fa93611c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       address    TEXT,
+                                       address_line1 TEXT,
+                                       address_line2 TEXT,
++                                      title      TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2762f6de..44883e23 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,14 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            The optional honorific title of the pet owner (one of MR, MRS, MS,
++            DR). When present it is combined with the last name to form the
++            owner's 'salutation'.
++          type: string
++          example: DR
+         address:
+           title: Address
+           description: >-
+@@ -2139,6 +2147,14 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, formatted '<title> <lastName>' when a
++                title was supplied, otherwise just the last name.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             initials:
+               title: Initials
+               description: >-
