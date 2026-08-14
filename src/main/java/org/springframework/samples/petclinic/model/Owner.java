@@ -115,6 +115,16 @@ public class Owner extends Person {
         "RD", "ROAD",
         "AVE", "AVENUE");
 
+    /**
+     * Second-level labels of the known disposable/throwaway email providers (the
+     * label immediately left of the TLD, e.g. {@code mailinator} for
+     * {@code mailinator.com}). Used to flag disposable-adjacent domains — those
+     * sharing a provider's base name via a subdomain or a different TLD — which the
+     * exact-match create-time blocklist does not catch.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_BASE_LABELS = Set.of(
+        "mailinator", "tempmail", "guerrillamail");
+
     /** Fixed city-to-region table used to derive an owner's locality. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
@@ -550,6 +560,44 @@ public class Owner extends Person {
 
     public void setCapacityWarning(Boolean capacityWarning) {
         this.capacityWarning = capacityWarning;
+    }
+
+    /**
+     * Whether the owner's email domain is disposable-adjacent: its second-level
+     * label (the label immediately left of the TLD) matches a known disposable
+     * provider's base name. This catches domains the exact-match create-time
+     * blocklist misses, such as a subdomain ({@code x.mailinator.com}) or the same
+     * provider under a different TLD ({@code mailinator.net}). Returns {@code false}
+     * when the email is absent or has no recognisable domain.
+     */
+    public boolean isDisposableAdjacentEmail() {
+        if (this.email == null) {
+            return false;
+        }
+        int at = this.email.lastIndexOf('@');
+        if (at < 0 || at == this.email.length() - 1) {
+            return false;
+        }
+        String domain = this.email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return false;
+        }
+        String secondLevel = labels[labels.length - 2];
+        return DISPOSABLE_EMAIL_BASE_LABELS.contains(secondLevel);
+    }
+
+    /**
+     * Whether this owner should be flagged for risk review. True when any of these
+     * hold: the owner is a possible duplicate, the email domain is
+     * disposable-adjacent, or the owner's city is over its soft capacity (the
+     * capacity warning is set, meaning the city already held 40 or more owners when
+     * this one was created); otherwise false.
+     */
+    public Boolean getRiskFlag() {
+        boolean possibleDuplicateMatch = Boolean.TRUE.equals(this.possibleDuplicate);
+        boolean overSoftCapacity = Boolean.TRUE.equals(this.capacityWarning);
+        return possibleDuplicateMatch || overSoftCapacity || isDisposableAdjacentEmail();
     }
 
     /**
