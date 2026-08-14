@@ -26,6 +26,8 @@ public interface OwnerMapper {
             expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel",
             expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+    @Mapping(target = "checkDigit",
+            expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.luhn(owner.getCustomerCode()))")
     @Mapping(target = "locality",
             expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.locality(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference",
