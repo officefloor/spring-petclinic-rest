@@ -27,7 +27,30 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's age band from the birth date, computed as the owner's age on the
+     * registration date: {@code MINOR} when under 18, {@code ADULT} from 18 to 64, and
+     * {@code SENIOR} at 65 or older. Returns {@code null} when the birth date or registration
+     * date is absent, so an owner created without a birth date carries no age band.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (birthDate == null || registrationDate == null) {
+            return null;
+        }
+        int age = java.time.Period.between(birthDate, registrationDate).getYears();
+        if (age < 18) {
+            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.ADULT;
+        }
+        return org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Computes the owner's check digit: a single Luhn check digit (0-9) over the digits contained
