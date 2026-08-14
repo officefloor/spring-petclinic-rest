@@ -163,6 +163,32 @@ public class Owner extends Person {
         this.telephone = telephone;
     }
 
+    /**
+     * Return the stored E.164 telephone formatted for humans: a {@code '+'} and the
+     * country code, a space, then the national digits grouped in threes and separated
+     * by single spaces (for example {@code '+61412345678' -> '+61 412 345 678'}). The
+     * North American country code ({@code '+1'}) is one digit; other country codes are
+     * taken as two. Returns {@code null} when the telephone is not set, and returns the
+     * raw value unchanged when it is not a well-formed E.164 number.
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("^\\+[0-9]+$")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return this.telephone;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return sb.toString();
+    }
+
     public String getEmail() {
         return this.email;
     }
