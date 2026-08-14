@@ -288,6 +288,49 @@ public class Owner extends Person {
     }
 
     /**
+     * The stored E.164 {@link #getTelephone() telephone} formatted for humans, derived at read
+     * time: the country code, a space, then the national digits grouped in threes (e.g.
+     * {@code '+61412345678'} yields {@code '+61 412 345 678'}). Known country codes ({@code '+61'},
+     * {@code '+1'}) are split off explicitly; otherwise a two-digit country code is assumed. The
+     * raw {@link #getTelephone() telephone} itself stays in E.164 form. {@code null} when the owner
+     * has no telephone or it is not a well-formed E.164 number.
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.matches("\\+[0-9]+")) {
+            return null;
+        }
+        String digits = this.telephone.substring(1); // drop the leading '+'
+        String countryCode = countryCodeOf(digits);
+        String national = digits.substring(countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        display.append(' ');
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                display.append(' ');
+            }
+            display.append(national.charAt(i));
+        }
+        return display.toString();
+    }
+
+    /**
+     * The E.164 country code at the start of {@code digits} (the '+'-stripped number). Known codes
+     * are matched longest-first; any other number falls back to a two-digit country code.
+     */
+    private static String countryCodeOf(String digits) {
+        for (String code : KNOWN_COUNTRY_CODES) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                return code;
+            }
+        }
+        return digits.length() > 2 ? digits.substring(0, 2) : digits;
+    }
+
+    /** Recognised E.164 country codes, longest-first, for {@link #getTelephoneDisplay()}. */
+    private static final List<String> KNOWN_COUNTRY_CODES = List.of("61", "1");
+
+    /**
      * The owner's preferred contact channel, derived at read time: {@code 'EMAIL'} when an
      * {@link #getEmail() email} is present, otherwise {@code 'PHONE'}.
      */
