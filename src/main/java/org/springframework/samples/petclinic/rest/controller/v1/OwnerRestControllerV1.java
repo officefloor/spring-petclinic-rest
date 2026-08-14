@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitReachedException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -165,6 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         resolveRegistrationDate(ownerFieldsDto);
         rejectDailyLimitReached(ownerFieldsDto.getRegistrationDate());
         normalizeEmail(ownerFieldsDto);
+        rejectDuplicateEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
@@ -501,6 +503,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
         ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Rejects creating an owner whose email is already used by any other owner, compared on the
+     * lower-cased form so addresses that differ only in letter case still collide. The incoming
+     * value has already been trimmed and lower-cased by {@link #normalizeEmail}; each existing
+     * owner's stored email is lower-cased the same way before comparison. Owners without an email
+     * are ignored, and a request that supplies no email is never rejected. A match results in a
+     * 409 response naming {@code email}.
+     */
+    private void rejectDuplicateEmail(OwnerFieldsDto ownerFieldsDto) {
+        String email = ownerFieldsDto.getEmail();
+        if (email == null) {
+            return;
+        }
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String existingEmail = existing.getEmail();
+            if (existingEmail != null && email.equals(existingEmail.toLowerCase(Locale.ROOT))) {
+                throw new DuplicateOwnerEmailException(email);
+            }
+        }
     }
 
     /**
