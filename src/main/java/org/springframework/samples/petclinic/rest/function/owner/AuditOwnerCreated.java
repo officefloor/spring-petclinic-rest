@@ -16,14 +16,12 @@ import tools.jackson.databind.ObjectMapper;
  * its id assigned. Emits two things on the dedicated {@code AUDIT} logger:
  *
  * <ol>
- * <li>a human-readable audit line recording the new owner's id, {@code customerCode},
- * {@code registrationDate} (ISO 'YYYY-MM-DD'), {@code membershipLevel} and {@code membershipNumber};
- * and</li>
+ * <li>a human-readable audit line recording the new owner's id, {@code memberId},
+ * {@code registrationDate} (ISO 'YYYY-MM-DD') and {@code membershipLevel}; and</li>
  * <li>an immutable structured event, a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq} is a
  * monotonically increasing integer across every create. The event carries the owner's current
- * {@link Owner#getPrimaryIdentifier() primary identifier} — the customerCode today, and whatever
- * replaces it later (the memberId once the customerCode is unified into it) — so downstream consumers
+ * {@link Owner#getPrimaryIdentifier() primary identifier} — the memberId — so downstream consumers
  * always see the owner's live external handle without this step changing.</li>
  * </ol>
  *
@@ -40,15 +38,15 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         AUDIT.info(
-                "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+                "Owner created: id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
-        // Insertion-ordered so the serialized event reads {seq, ownerId, customerCode, ...}.
+        // Insertion-ordered so the serialized event reads {seq, ownerId, memberId, ...}.
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", owner.getPrimaryIdentifier());
+        event.put("memberId", owner.getPrimaryIdentifier());
         event.put("membershipLevel", owner.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(MAPPER.writeValueAsString(event));

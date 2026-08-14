@@ -69,17 +69,14 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
@@ -185,24 +182,30 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, the single external handle that unifies the former customerCode and
+     * membershipNumber. Formatted {@code '<REGION><FY><HASH8><CHK>'}: the region code, the 2-digit
+     * fiscal year, the 8 upper-case hex HASH8 (the SHA-256 over normalized telephone + last name) and
+     * a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. 'NSW271A2B3C4D5').
+     * Assigned at creation.
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
      * The owner's current primary identifier — the single external handle that identifies this owner
-     * to other systems and to the audit trail. Today this is the {@link #getCustomerCode()
-     * customerCode}; when the customerCode is later unified into the memberId this method returns the
-     * memberId instead, so anything keyed on the primary identifier (such as the {@code OWNER_CREATED}
-     * audit event) follows the change without being touched.
+     * to other systems and to the audit trail. This is the {@link #getMemberId() memberId}, so
+     * anything keyed on the primary identifier (such as the {@code OWNER_CREATED} audit event) tracks
+     * it automatically.
      */
     @Transient
     public String getPrimaryIdentifier() {
-        return this.customerCode;
+        return this.memberId;
     }
 
     public String getHouseholdId() {
@@ -219,14 +222,6 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Boolean getBulkSignupWarning() {
@@ -420,36 +415,6 @@ public class Owner extends Person {
         String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
         String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
-    }
-
-    /**
-     * A single Luhn check digit (0-9) computed at read time over the digits contained in the
-     * {@link #getCustomerCode() customerCode} (non-digit characters such as the '-' separators are
-     * ignored). {@code null} when the owner has no customerCode.
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
