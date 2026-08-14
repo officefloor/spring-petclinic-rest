@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(32),
   bulk_signup_warning BIT,
   household_size INTEGER,
+  possible_duplicate BIT,
+  possible_duplicate_of INTEGER,
   INDEX(last_name)
 ) engine=InnoDB;
 
