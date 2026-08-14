@@ -109,6 +109,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /**
+     * City -> canonical region, the fixed ground truth for deriving the region a postcode is
+     * validated against. A city not listed here derives the {@code "UNKNOWN"} region, which imposes
+     * no postcode-range constraint.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -171,11 +179,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         owner.setBulkSignupWarning(createdToday > 80);
-        String address = normalizeAddress(owner.getAddress());
-        if (address == null || address.isEmpty()) {
+        if (!applyAddress(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -191,7 +197,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
-        if (!isPostcodeValidForCity(owner.getPostcode(), owner.getLocality())) {
+        if (!isPostcodeValidForCity(owner.getPostcode(), regionForCity(owner.getCity()))) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         String cityKey = householdKey(owner.getCity());
@@ -283,6 +289,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return {@code true} when the postcode is absent, the region has no range, or the postcode is
      *         within the region's range; {@code false} when it is out of range
      */
+    /**
+     * The canonical region for the given city via the fixed {@link #CITY_REGION} table, or
+     * {@code "UNKNOWN"} when the city is {@code null} or not in the table.
+     *
+     * @param city the owner's city (may be {@code null})
+     * @return the canonical region, or {@code "UNKNOWN"}
+     */
+    private String regionForCity(String city) {
+        if (city == null) {
+            return "UNKNOWN";
+        }
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
     private boolean isPostcodeValidForCity(String postcode, String locality) {
         if (postcode == null) {
             return true;
@@ -381,6 +401,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
+    }
+
+    /**
+     * Applies the owner's address, preferring the structured form over the flat one. When a
+     * non-blank {@code addressLine1} is supplied the structured fields are normalized in place and
+     * the flat {@code address} is composed as the normalized {@code addressLine1} followed, when a
+     * non-blank {@code addressLine2} is present, by a single space and the normalized
+     * {@code addressLine2}. Otherwise the flat {@code address} is normalized in place. An owner
+     * that supplies neither a non-blank {@code addressLine1} nor a non-blank flat {@code address}
+     * is invalid.
+     *
+     * @param owner the owner whose address fields are normalized and composed in place
+     * @return {@code true} when a usable address was applied, {@code false} when none was supplied
+     */
+    private boolean applyAddress(Owner owner) {
+        String line1 = owner.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine1 = normalizeAddress(line1);
+            owner.setAddressLine1(normalizedLine1);
+            String composed = normalizedLine1;
+            String line2 = owner.getAddressLine2();
+            if (line2 != null && !line2.isBlank()) {
+                String normalizedLine2 = normalizeAddress(line2);
+                owner.setAddressLine2(normalizedLine2);
+                composed = normalizedLine1 + " " + normalizedLine2;
+            }
+            owner.setAddress(composed);
+            return true;
+        }
+        String address = normalizeAddress(owner.getAddress());
+        if (address == null || address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
+        return true;
     }
 
     /**
