@@ -4,25 +4,23 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * Immutable structured audit event emitted once per created owner.
  *
  * <p>Rendered to AUDIT as the compact JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:"OWNER_CREATED"}}. {@code seq} is a
+ * {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}. {@code seq} is a
  * monotonically increasing integer across creates (see {@link AuditOwnerCreated}).
  *
- * <p>The {@code identifier} carries the owner's <em>current primary identifier</em>: the
- * customerCode today, and whatever replaces it later. When the customerCode is unified into the
- * memberId, only {@link AuditOwnerCreated} needs to source the identifier from the memberId — the
- * event still renders it under the primary-identifier key, so the wire shape follows the identity.
+ * <p>The {@code identifier} carries the owner's <em>current primary identifier</em>, the memberId,
+ * rendered under the primary-identifier key so the wire shape follows the identity.
  */
 public record OwnerCreatedEvent(long seq, int ownerId, String identifier, int membershipLevel) {
 
     /** The event type marker. */
     public static final String EVENT = "OWNER_CREATED";
 
-    /** The JSON key for the primary identifier — {@code customerCode} while that is the identity. */
-    private static final String IDENTIFIER_KEY = "customerCode";
+    /** The JSON key for the primary identifier — the {@code memberId}. */
+    private static final String IDENTIFIER_KEY = "memberId";
 
     /**
      * Compact, deterministic JSON:
-     * {@code {"seq":..,"ownerId":..,"customerCode":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
      */
     public String toJson() {
         return "{\"seq\":" + this.seq

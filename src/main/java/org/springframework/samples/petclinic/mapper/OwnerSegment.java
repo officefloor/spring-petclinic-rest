@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
  *
  * <p>TIER is {@code PREMIUM} when the owner's {@link MembershipLevel#effective(Owner) effective}
  * membership level is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's
- * {@link CustomerCode#locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
+ * {@link MemberId#locality(Owner) locality} is a known region (NSW, VIC or QLD), otherwise
  * {@code REGIONAL}. The four combinations are {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL},
  * {@code STANDARD_METRO} and {@code STANDARD_REGIONAL}.
  *
@@ -23,7 +23,7 @@ public final class OwnerSegment {
     /** The {@code '<TIER>_<AREA>'} segment for {@code owner}. */
     public static OwnerDto.OwnerSegmentEnum of(Owner owner) {
         boolean premium = MembershipLevel.effective(owner) >= 3;
-        boolean metro = CityRegion.timezone(CustomerCode.locality(owner)) != null;
+        boolean metro = CityRegion.timezone(MemberId.locality(owner)) != null;
         if (premium) {
             return metro ? OwnerDto.OwnerSegmentEnum.PREMIUM_METRO : OwnerDto.OwnerSegmentEnum.PREMIUM_REGIONAL;
         }

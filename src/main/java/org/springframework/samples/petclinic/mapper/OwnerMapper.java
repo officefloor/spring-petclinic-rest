@@ -26,20 +26,16 @@ public interface OwnerMapper {
             expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipNumber",
-            expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + org.springframework.samples.petclinic.mapper.FiscalYear.yearSegment(owner.getRegistrationDate()))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.mapper.FiscalYear.label(owner))")
     @Mapping(target = "membershipPoints",
             expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(org.springframework.samples.petclinic.mapper.MembershipLevel.effective(owner))")
-    @Mapping(target = "checkDigit",
-            expression = "java(org.springframework.samples.petclinic.mapper.CheckDigit.luhn(owner.getCustomerCode()))")
     @Mapping(target = "locality",
-            expression = "java(org.springframework.samples.petclinic.mapper.CustomerCode.locality(owner))")
+            expression = "java(org.springframework.samples.petclinic.mapper.MemberId.locality(owner))")
     @Mapping(target = "timezone",
-            expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.timezone(org.springframework.samples.petclinic.mapper.CustomerCode.locality(owner)))")
+            expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.timezone(org.springframework.samples.petclinic.mapper.MemberId.locality(owner)))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "identityKey",
@@ -56,7 +52,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdSize", ignore = true)

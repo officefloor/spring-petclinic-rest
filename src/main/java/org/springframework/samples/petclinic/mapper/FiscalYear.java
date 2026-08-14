@@ -9,8 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * onward belongs to the fiscal year that ends the following 30 June; a date up to 30 June belongs to
  * the fiscal year ending that 30 June. Each fiscal year is labelled by the calendar year it ends in.
  *
- * <p>All date-derived owner values sit on this basis: the {@code fiscalYear} label, the membership
- * number's year segment and the tenure count (elapsed fiscal years) are all taken from the owner's
+ * <p>All date-derived owner values sit on this basis: the {@code fiscalYear} label, the memberId's
+ * FY segment and the tenure count (elapsed fiscal years) are all taken from the owner's
  * business-day-adjusted {@code registrationDate}.
  *
  * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so MapStruct does not
@@ -44,7 +44,7 @@ public final class FiscalYear {
 
     /**
      * The two-digit year segment of {@code date}'s fiscal year, used for both the {@code fiscalYear}
-     * label and the membership number's year segment.
+     * label and the memberId's FY segment.
      */
     public static String yearSegment(LocalDate date) {
         return String.format("%02d", endingYear(date) % 100);
