@@ -33,7 +33,20 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds the owner's self link, formatted {@code '/api/owners/<id>'} where {@code id} is the
+     * owner's id. Returns {@code null} when the owner has no id.
+     */
+    default String selfLink(Owner owner) {
+        Integer id = owner.getId();
+        if (id == null) {
+            return null;
+        }
+        return "/api/owners/" + id;
+    }
 
     /**
      * Derives the owner's age band from the birth date, computed as the owner's age on the
