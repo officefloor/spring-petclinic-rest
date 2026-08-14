@@ -1,0 +1,241 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7ec49e6a..7661ecaa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -92,6 +98,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 75942a80..d4eed9b5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -109,6 +109,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+ 
++    /**
++     * City -> canonical region, the fixed ground truth for deriving the region a postcode is
++     * validated against. A city not listed here derives the {@code "UNKNOWN"} region, which imposes
++     * no postcode-range constraint.
++     */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -171,11 +179,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         owner.setBulkSignupWarning(createdToday > 80);
+-        String address = normalizeAddress(owner.getAddress());
+-        if (address == null || address.isEmpty()) {
++        if (!applyAddress(owner)) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+-        owner.setAddress(address);
+         String telephone = toE164(owner.getTelephone());
+         if (telephone == null) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+@@ -191,7 +197,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+             owner.setEmail(email);
+         }
+-        if (!isPostcodeValidForCity(owner.getPostcode(), owner.getLocality())) {
++        if (!isPostcodeValidForCity(owner.getPostcode(), regionForCity(owner.getCity()))) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+         String cityKey = householdKey(owner.getCity());
+@@ -283,6 +289,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @return {@code true} when the postcode is absent, the region has no range, or the postcode is
+      *         within the region's range; {@code false} when it is out of range
+      */
++    /**
++     * The canonical region for the given city via the fixed {@link #CITY_REGION} table, or
++     * {@code "UNKNOWN"} when the city is {@code null} or not in the table.
++     *
++     * @param city the owner's city (may be {@code null})
++     * @return the canonical region, or {@code "UNKNOWN"}
++     */
++    private String regionForCity(String city) {
++        if (city == null) {
++            return "UNKNOWN";
++        }
++        return CITY_REGION.getOrDefault(city, "UNKNOWN");
++    }
++
+     private boolean isPostcodeValidForCity(String postcode, String locality) {
+         if (postcode == null) {
+             return true;
+@@ -383,6 +403,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
+     }
+ 
++    /**
++     * Applies the owner's address, preferring the structured form over the flat one. When a
++     * non-blank {@code addressLine1} is supplied the structured fields are normalized in place and
++     * the flat {@code address} is composed as the normalized {@code addressLine1} followed, when a
++     * non-blank {@code addressLine2} is present, by a single space and the normalized
++     * {@code addressLine2}. Otherwise the flat {@code address} is normalized in place. An owner
++     * that supplies neither a non-blank {@code addressLine1} nor a non-blank flat {@code address}
++     * is invalid.
++     *
++     * @param owner the owner whose address fields are normalized and composed in place
++     * @return {@code true} when a usable address was applied, {@code false} when none was supplied
++     */
++    private boolean applyAddress(Owner owner) {
++        String line1 = owner.getAddressLine1();
++        if (line1 != null && !line1.isBlank()) {
++            String normalizedLine1 = normalizeAddress(line1);
++            owner.setAddressLine1(normalizedLine1);
++            String composed = normalizedLine1;
++            String line2 = owner.getAddressLine2();
++            if (line2 != null && !line2.isBlank()) {
++                String normalizedLine2 = normalizeAddress(line2);
++                owner.setAddressLine2(normalizedLine2);
++                composed = normalizedLine1 + " " + normalizedLine2;
++            }
++            owner.setAddress(composed);
++            return true;
++        }
++        String address = normalizeAddress(owner.getAddress());
++        if (address == null || address.isEmpty()) {
++            return false;
++        }
++        owner.setAddress(address);
++        return true;
++    }
++
+     /**
+      * Normalizes a postal address for storage and comparison: surrounding whitespace is trimmed,
+      * internal runs of whitespace are collapsed to a single space, the value is upper-cased and
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0f2799c5..bf328252 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 87ad0279..fa9d695a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE owners (
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 0c84f928..f930adc2 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address VARCHAR(255),
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6b05537b..7fa941cf 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address    TEXT,
++                                      address_line1 TEXT,
++                                      address_line2 TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a9fe3f64..6209a3dc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,12 +2011,31 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. Accepted for backward
++            compatibility; when structured 'addressLine1' is supplied it takes
++            precedence and this value is composed from the normalized address lines
++            and returned here.
+           type: string
+           minLength: 1
+           maxLength: 255
+           pattern: '(?s).*\S.*'
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the structured postal address. Preferred over
++            the flat 'address' when present; normalized (upper-cased, whitespace
++            collapsed, common street-type abbreviations expanded) like the flat address.
++          type: string
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the structured postal address.
++            Normalized like 'addressLine1' and, when present, appended to it (separated
++            by a single space) to form the composed 'address'.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2081,7 +2100,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
