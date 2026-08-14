@@ -170,6 +170,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        String firstNameKey = householdKey(owner.getFirstName());
+        String namesakeLastNameKey = householdKey(owner.getLastName());
+        long namesakeCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> firstNameKey.equals(householdKey(existing.getFirstName()))
+                && namesakeLastNameKey.equals(householdKey(existing.getLastName())))
+            .count();
+        owner.setNamesakeCount((int) namesakeCount);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
