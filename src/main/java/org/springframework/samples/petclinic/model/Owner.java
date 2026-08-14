@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -121,6 +124,36 @@ public class Owner extends Person {
 
     public void setRegistrationDate(LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /**
+     * The owner's age band, derived from the {@link #birthDate} measured in completed years
+     * against the {@link #registrationDate}: {@code "MINOR"} when under 18, {@code "ADULT"}
+     * from 18 to 64, and {@code "SENIOR"} at 65 and over.
+     *
+     * @return the age band, or {@code null} when either the birth date or the registration
+     *         date has not been assigned
+     */
+    public String getAgeBand() {
+        if (this.birthDate == null || this.registrationDate == null) {
+            return null;
+        }
+        int age = java.time.Period.between(this.birthDate, this.registrationDate).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     public String getCustomerCode() {
