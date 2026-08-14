@@ -139,6 +139,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
+    /**
+     * The tenure, in days, an owner must exceed to reach {@code membershipLevel} 4. Tenure accrues
+     * from membership, so a newly created owner (zero tenure) never clears this threshold and is
+     * therefore capped at level 3 on create.
+     */
+    private static final int TENURE_LEVEL_THRESHOLD_DAYS = 365;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -685,8 +692,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assigns the new owner's {@code membershipLevel} on create: a number from 1 to 3 starting at
      * 1, plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3.
-     * Level 4 is reserved for tenure. Runs after {@link #assignNamesakeCount} so that count is
-     * settled.
+     * Level 4 is reserved for owners whose tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS}
+     * days; a newly created owner has zero tenure, so on create the level never exceeds 3. Runs
+     * after {@link #assignNamesakeCount} so that count is settled.
      */
     private void assignMembershipLevel(Owner owner) {
         int level = 1;
@@ -696,7 +704,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        owner.setMembershipLevel(Math.min(level, 3));
+        level = Math.min(level, 3);
+        if (tenureDays(owner) > TENURE_LEVEL_THRESHOLD_DAYS) {
+            level = 4;
+        }
+        owner.setMembershipLevel(level);
+    }
+
+    /**
+     * The tenure, in days, of a newly created owner. Tenure accrues from membership over time, and a
+     * new owner has not been a member for any elapsed time yet, so this is always {@code 0} on create
+     * (regardless of any backdated {@code registrationDate}).
+     */
+    private long tenureDays(Owner owner) {
+        return 0L;
     }
 
     /**
