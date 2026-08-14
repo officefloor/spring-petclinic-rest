@@ -1,0 +1,171 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3c50f9ae..84c775ee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,12 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -210,6 +216,35 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    /**
++     * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
++     * postcode while carrying a different telephone, flagging a likely duplicate registration.
++     *
++     * @return {@code true} when a soft-duplicate match was found on creation, otherwise
++     *         {@code false} (never {@code null})
++     */
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate != null && this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    /**
++     * The id of the existing owner this owner may duplicate (same last name and postcode,
++     * different telephone), or {@code null} when this owner is not a possible duplicate.
++     *
++     * @return the matching owner id, or {@code null}
++     */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     /**
+      * The owner's name formatted as {@code "LastName, FirstName"} from the stored names.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 183ca1c8..55004bb8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -227,6 +227,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 }
+             }
+         }
++        // Soft-duplicate detection: the create has already passed the hard-duplicate (identity) check
++        // above, so it is not an exact duplicate. It is nonetheless flagged as a possible duplicate when
++        // it shares an existing owner's last name (compared case-insensitively) and postcode while
++        // carrying a different telephone. The lowest-id match is recorded as 'possibleDuplicateOf'.
++        String softDuplicateLastNameKey = householdKey(owner.getLastName());
++        String softDuplicatePostcode = owner.getPostcode();
++        String softDuplicateTelephone = owner.getTelephone();
++        Owner possibleDuplicate = softDuplicatePostcode == null ? null
++            : this.clinicService.findAllOwners().stream()
++                .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
++                .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
++                .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
++                .min(Comparator.comparing(Owner::getId))
++                .orElse(null);
++        if (possibleDuplicate != null) {
++            owner.setPossibleDuplicate(true);
++            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
++        } else {
++            owner.setPossibleDuplicate(false);
++        }
+         owner.setCustomerCode(customerCode(owner));
+         String firstNameKey = householdKey(owner.getFirstName());
+         String namesakeLastNameKey = householdKey(owner.getLastName());
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 161702b6..0f2799c5 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -43,7 +43,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index dc804d6b..87ad0279 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,7 +50,9 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+-  household_size INTEGER
++  household_size INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 10d18dde..0c84f928 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BIT,
+   household_size INTEGER,
++  possible_duplicate BIT,
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 9123f552..6b05537b 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+-                                      household_size INTEGER
++                                      household_size INTEGER,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 88901333..af40f0fe 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2213,6 +2213,24 @@ components:
+               type: string
+               example: '+61412345678||HH-1A2B3C4D5E6F'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner, although not a hard duplicate, shares an
++                existing owner's last name and postcode while carrying a different
++                telephone, indicating a likely duplicate registration; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The ID of the existing owner this owner may duplicate (same last
++                name and postcode, different telephone). Present only when
++                'possibleDuplicate' is true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
