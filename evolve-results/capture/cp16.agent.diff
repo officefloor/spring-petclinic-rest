@@ -1,0 +1,100 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 85fc548a..26b50287 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -41,7 +41,7 @@ public interface OwnerMapper {
+ 
+     /**
+      * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
+-     * last two digits of the registrationDate year (e.g. {@code 'SMI-0007-M26'}). Returns {@code null}
++     * last two digits of the registrationDate year (e.g. {@code 'SYD-SMI-0007-M26'}). Returns {@code null}
+      * when either source field is absent, so owners without a customerCode or registrationDate map cleanly.
+      */
+     default String membershipNumber(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index d1032fc6..2131e41b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -5,20 +5,28 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Assigns the owner's {@code customerCode}, formatted {@code '<LAST3>-<NNNN>'} where LAST3 is the
+- * upper-cased first three letters of lastName and NNNN is a global 4-digit zero-padded sequence
+- * equal to one more than the current number of owners (e.g. {@code 'SMI-0007'}).
++ * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
++ * the upper-cased first three letters of city, LAST3 the upper-cased first three letters of lastName
++ * and NNNN is a per-city 4-digit zero-padded sequence equal to one more than the owners already in
++ * that city (e.g. {@code 'SYD-SMI-0007'}).
+  *
+  * <p>Runs after {@link BuildOwner} has mapped the request onto the entity and before {@link SaveOwner},
+- * within the same write transaction; it counts the owners persisted so far (excluding this new,
+- * not-yet-saved one) so each created owner gets the next sequence number.
++ * within the same write transaction; it counts the same-city owners persisted so far (excluding this
++ * new, not-yet-saved one) so each created owner gets the next sequence number for its city.
+  */
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+         String lastName = owner.getLastName();
+         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = ownerRepository.findAll().size() + 1;
+-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
++        int sequence = 1;
++        for (Owner other : ownerRepository.findAll()) {
++            if (city.equalsIgnoreCase(other.getCity())) {
++                sequence++;
++            }
++        }
++        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 58f6e2b9..b14a01b7 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -33,9 +33,9 @@ defaultRegistrationDate:
+   govern: [ transaction ]
+   next: assignCustomerCode
+ 
+-# Assign the '<LAST3>-<NNNN>' customer code. NNNN is one more than the current owner
+-# count; runs before save (within the write transaction) so it counts only owners
+-# already persisted, giving each new owner the next global sequence number.
++# Assign the '<CITY3>-<LAST3>-<NNNN>' customer code. NNNN is one more than the owners
++# already in this owner's city; runs before save (within the write transaction) so it
++# counts only same-city owners already persisted, giving each the next per-city number.
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e3589056..4568e24c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,11 +2092,12 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<LAST3>-<NNNN>' where LAST3 is the
+-                upper-cased first three letters of lastName and NNNN is a global 4-digit
+-                zero-padded sequence assigned at creation.
++                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3 is
++                the upper-cased first three letters of city, LAST3 the upper-cased first three
++                letters of lastName and NNNN a per-city 4-digit zero-padded sequence assigned
++                at creation.
+               type: string
+-              example: FRA-0007
++              example: SYD-FRA-0007
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2124,7 +2125,7 @@ components:
+                 the last two digits of the registrationDate year. Derived from the owner's
+                 own fields and returned.
+               type: string
+-              example: SMI-0007-M26
++              example: SYD-SMI-0007-M26
+               readOnly: true
+             membershipTier:
+               title: Membership tier
