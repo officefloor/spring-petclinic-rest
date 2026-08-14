@@ -76,8 +76,8 @@ public class Owner extends Person {
     @Pattern(regexp = "^[0-9]{4}$", message = "Postcode must be 4 digits")
     private String postcode;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -356,42 +356,12 @@ public class Owner extends Person {
         return value >= range[0] && value <= range[1];
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
-    }
-
-    /**
-     * Return a single Luhn check digit (0-9) computed over the digits contained in
-     * the owner's customer code, or {@code null} when the customer code is not set.
-     * Non-digit characters in the code are ignored; the rightmost digit is doubled
-     * first, following the standard Luhn algorithm.
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean doubleDigit = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int digit = c - '0';
-            if (doubleDigit) {
-                digit *= 2;
-                if (digit > 9) {
-                    digit -= 9;
-                }
-            }
-            sum += digit;
-            doubleDigit = !doubleDigit;
-        }
-        return (10 - (sum % 10)) % 10;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /**
@@ -422,20 +392,6 @@ public class Owner extends Person {
             return null;
         }
         return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
-     * Return the owner's membership number, formatted {@code '<customerCode>-M<YY>'}
-     * where {@code YY} is the last two digits of the fiscal year derived from the
-     * registration date (for example {@code 'SMI-0007-M27'}). Returns {@code null}
-     * when either the customer code or the registration date is not set.
-     */
-    public String getMembershipNumber() {
-        Integer fiscalYear = fiscalYearOf(this.registrationDate);
-        if (this.customerCode == null || fiscalYear == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, fiscalYear % 100);
     }
 
     public String getHouseholdId() {
