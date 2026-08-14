@@ -244,6 +244,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityCount >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // Approaching-capacity warning: the city already holds 40-49 owners, just short of the
+        // hard limit of 50. The 50+ rejection above still applies unchanged.
+        owner.setCapacityWarning(cityCount >= 40 && cityCount < 50);
         // The household is keyed on (normalized last name, postcode): every owner derives the same
         // deterministic householdId from those two fields, so owners sharing them are the same
         // household. This computed id is what duplicate detection and the household size below key off.
