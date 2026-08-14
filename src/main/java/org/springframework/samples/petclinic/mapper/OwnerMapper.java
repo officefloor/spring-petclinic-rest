@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -219,8 +220,8 @@ public interface OwnerMapper {
      * Computes the owner's membership points. Starts at {@code 0} and adds {@code 2} when an email
      * is present, {@code 1} when the owner has no namesakes ({@code namesakeCount} is {@code 0}),
      * {@code 2} for a household of {@code 3} or more ({@code householdSize}), and {@code 3} when the
-     * owner's tenure exceeds {@code 365} days (measured from the {@code registrationDate} to the
-     * current date).
+     * owner's tenure spans at least one elapsed fiscal year (the {@code registrationDate}'s fiscal
+     * year is earlier than the current date's fiscal year).
      */
     default Integer membershipPoints(Owner owner) {
         Integer namesakeCount = owner.getNamesakeCount();
@@ -238,7 +239,7 @@ public interface OwnerMapper {
         }
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         boolean hasTenure = registrationDate != null
-            && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365;
+            && fiscalYearValue(java.time.LocalDate.now()) - fiscalYearValue(registrationDate) >= 1;
         if (hasTenure) {
             points += 3;
         }
@@ -266,15 +267,38 @@ public interface OwnerMapper {
 
     /**
      * Builds the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where
-     * {@code YY} is the last two digits of the registration date's year (e.g. {@code "NSW-3F2A1B9C-M26"}).
-     * Returns {@code null} when the customer code or registration date is absent.
+     * {@code YY} is the last two digits of the registration date's fiscal year (e.g.
+     * {@code "NSW-3F2A1B9C-M26"}). Returns {@code null} when the customer code or registration date
+     * is absent.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        int yy = owner.getRegistrationDate().getYear() % 100;
+        int yy = fiscalYearValue(owner.getRegistrationDate()) % 100;
         return String.format("%s-M%02d", owner.getCustomerCode(), yy);
+    }
+
+    /**
+     * Derives the owner's fiscal year from the business-day-adjusted registration date, formatted
+     * {@code 'FY<YY>'} where {@code YY} is the last two digits of the fiscal year (e.g.
+     * {@code "FY26"}). Returns {@code null} when the registration date is absent.
+     */
+    default String fiscalYear(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearValue(registrationDate) % 100);
+    }
+
+    /**
+     * Computes the fiscal year, as a full four-digit year, of the given date. The fiscal year starts
+     * on 1 July and is named by the calendar year in which it ends, so a date on or after 1 July
+     * belongs to the following calendar year's fiscal year.
+     */
+    default int fiscalYearValue(java.time.LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
