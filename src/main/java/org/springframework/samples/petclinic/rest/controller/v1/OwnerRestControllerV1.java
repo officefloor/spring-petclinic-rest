@@ -311,7 +311,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 owner.setPossibleDuplicate(false);
             }
         }
-        owner.setCustomerCode(customerCode(owner));
+        owner.setMemberId(memberId(owner));
         String firstNameKey = householdKey(owner.getFirstName());
         String namesakeLastNameKey = householdKey(owner.getLastName());
         long namesakeCount = this.clinicService.findAllOwners().stream()
@@ -323,9 +323,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (idempotencyKey != null) {
             idempotentCreates.put(idempotencyKey, owner.getId());
         }
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            owner.getMembershipLevel());
         OwnerCreatedEvent event = new OwnerCreatedEvent(OWNER_CREATED_SEQUENCE.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), owner.getMembershipLevel());
         AUDIT.info("{}", event.toJson());
@@ -582,41 +582,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a newly registered owner in the form
-     * {@code '<REGION>-<HASH8>'}, where {@code REGION} is the region code derived from the owner's
-     * postcode (the same region derivation shared with {@link Owner#getLocality() locality}:
-     * postcode range first, falling back to the city, or {@code 'UNKNOWN'}) and {@code HASH8} is the
-     * first 8 upper-case hex characters of the SHA-256 digest of the normalized telephone
-     * concatenated with the last name (e.g. {@code 'NSW-1A2B3C4D'}). When the computed code
-     * collides with an existing owner's customer code, {@code '-<n>'} is appended using the
-     * smallest {@code n} of 2 or more that makes the result unique, guaranteeing distinct owners
-     * always receive distinct customer codes.
-     *
-     * @param owner the owner whose customer code is derived (with normalized telephone already set)
-     * @return the assigned customer code
-     */
-    /**
      * The owner's current primary identifier, the value carried by the structured
-     * {@code OWNER_CREATED} audit event. Today that identifier is the {@link Owner#getCustomerCode()
-     * customerCode}; when the customer code is later unified into the member id this single seam is
-     * what makes the event carry the member id instead.
+     * {@code OWNER_CREATED} audit event: the owner's {@link Owner#getMemberId() memberId}, the
+     * single unified identifier that replaced the former customer code.
      *
-     * @param owner the freshly created owner (with its customer code already assigned)
+     * @param owner the freshly created owner (with its member id already assigned)
      * @return the owner's current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Immutable structured audit event emitted alongside the human-readable audit line when an owner
      * is created. It is serialized to a compact JSON object and published to the {@code AUDIT}
      * logger so it can be routed and asserted independently of the diagnostic log. The
-     * {@code customerCode} field carries the owner's {@link #primaryIdentifier(Owner) current primary
-     * identifier}, so it transparently follows that identifier when it is later unified into the
-     * member id.
+     * {@code memberId} field carries the owner's {@link #primaryIdentifier(Owner) current primary
+     * identifier}, the unified member id.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                                      Integer membershipLevel) {
 
         private static final String EVENT = "OWNER_CREATED";
@@ -624,7 +608,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         private String toJson() {
             return "{\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
-                + ",\"customerCode\":" + quote(this.customerCode)
+                + ",\"memberId\":" + quote(this.memberId)
                 + ",\"membershipLevel\":" + this.membershipLevel
                 + ",\"event\":\"" + EVENT + "\"}";
         }
@@ -638,22 +622,71 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
-    private String customerCode(Owner owner) {
+    /**
+     * Builds the member id for a newly registered owner in the form
+     * {@code '<REGION><FY><HASH8><CHK>'}: {@code REGION} is the region code (the same region
+     * derivation shared with {@link Owner#getLocality() locality}: postcode range first, falling
+     * back to the city, or {@code 'UNKNOWN'}); {@code FY} is the 2-digit fiscal year of the
+     * registration date (the last two digits of {@link Owner#getFiscalYear()}); {@code HASH8} is the
+     * first 8 upper-case hex characters of the SHA-256 digest of the normalized telephone
+     * concatenated with the last name (the same HASH8 used by the region-and-hash identity); and
+     * {@code CHK} is a single Luhn check digit computed over the decimal digits of
+     * {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW261A2B3C4D7'}). When the computed id collides with
+     * an existing owner's member id, {@code '-<n>'} is appended using the smallest {@code n} of 2 or
+     * more that makes the result unique, guaranteeing distinct owners always receive distinct member
+     * ids.
+     *
+     * @param owner the owner whose member id is derived (with normalized telephone and registration
+     *              date already set)
+     * @return the assigned member id
+     */
+    private String memberId(Owner owner) {
         String region = owner.getLocality();
+        String fiscalYear = owner.getFiscalYear();
+        String fy = fiscalYear == null ? "00" : fiscalYear.substring(fiscalYear.length() - 2);
         String hash8 = sha256UpperHex(owner.getTelephone() + owner.getLastName(), 8);
-        String base = region + "-" + hash8;
-        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+        String core = region + fy + hash8;
+        String base = core + luhnCheckDigit(core);
+        Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(Collectors.toSet());
-        if (!existingCodes.contains(base)) {
+        if (!existingIds.contains(base)) {
             return base;
         }
         int n = 2;
-        while (existingCodes.contains(base + "-" + n)) {
+        while (existingIds.contains(base + "-" + n)) {
             n++;
         }
         return base + "-" + n;
+    }
+
+    /**
+     * The single Luhn check digit ({@code 0}-{@code 9}) computed with the standard Luhn algorithm
+     * over the decimal digits contained in {@code value} (non-digit characters are ignored).
+     *
+     * @param value the string whose decimal digits are checked
+     * @return the Luhn check digit
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

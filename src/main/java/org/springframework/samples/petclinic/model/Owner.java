@@ -72,8 +72,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -269,12 +269,21 @@ public class Owner extends Person {
         return "/api/owners/" + this.getId();
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /**
+     * The owner's member id, the single unified identifier formatted
+     * {@code '<REGION><FY><HASH8><CHK>'}: the region code, the 2-digit fiscal year, the 8-character
+     * upper-hex HASH8 of the region-and-hash identity, and a single Luhn check digit computed over
+     * the digits of {@code <REGION><FY><HASH8>}. It is assigned on creation (with collision handling)
+     * and unifies the former customer code, membership number and check digit.
+     *
+     * @return the member id, or {@code null} if it has not been assigned
+     */
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -448,52 +457,6 @@ public class Owner extends Person {
     private static int fiscalYearOf(LocalDate date) {
         return date.getMonthValue() >= java.time.Month.JULY.getValue()
             ? date.getYear() : date.getYear() - 1;
-    }
-
-    /**
-     * The owner's membership number formatted as {@code "<customerCode>-M<YY>"}, where
-     * {@code YY} is the last two digits of the registration date's fiscal year (the same fiscal
-     * year returned by {@link #getFiscalYear()}, e.g. {@code "NSW-1A2B3C4D-M26"}).
-     *
-     * @return the formatted membership number, or {@code null} if the customer code or
-     *         registration date has not been assigned
-     */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
-    }
-
-    /**
-     * The owner's Luhn check digit: a single digit ({@code 0}-{@code 9}) computed with the
-     * standard Luhn algorithm over the decimal digits contained in the {@code customerCode}
-     * (non-digit characters are ignored).
-     *
-     * @return the Luhn check digit, or {@code null} if the customer code has not been assigned
-     */
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
