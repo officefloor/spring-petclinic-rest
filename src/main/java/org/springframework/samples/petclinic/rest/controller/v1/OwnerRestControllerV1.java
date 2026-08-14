@@ -252,7 +252,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
@@ -489,6 +490,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * empty) + '|' + (householdId or empty)} - is also a duplicate; this still catches owners with no
      * postcode (and therefore no household) that share a telephone and email. Both checks are a 409.
      *
+     * <p>Owners flagged {@code deleted} (soft-deleted via {@code DELETE /api/owners/{id}}) are skipped
+     * entirely, so a normally-blocking duplicate is allowed when the only matching owner has been
+     * deleted.
+     *
      * <p>The {@code sharesHousehold} flag bypasses the entire duplicate block: a request that opts in
      * is allowed through even when it lands in an existing household, so it is created as a declared
      * household member rather than rejected. The incoming telephone and email have already been
@@ -502,6 +507,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String identityKey = identityKey(ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             boolean householdDuplicate = householdId != null && householdId.equals(existing.getHouseholdId());
             if (householdDuplicate || identityKey.equals(existingIdentityKey(existing))) {
                 throw new DuplicateOwnerIdentityException(identityKey);
