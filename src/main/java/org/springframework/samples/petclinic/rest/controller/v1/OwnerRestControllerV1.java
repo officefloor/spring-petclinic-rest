@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -65,6 +67,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Pattern for a syntactically valid email address: a non-empty local part, an '@', and a
      * dotted domain ending in a letters-only label. Applied to the trimmed, lower-cased value.
      */
+    /**
+     * Dedicated audit logger. Successful side-effects (e.g. owner creation) are recorded here so
+     * they can be routed and asserted independently of the application's diagnostic logging.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
@@ -194,6 +202,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
         owner.setNamesakeCount((int) namesakeCount);
         this.clinicService.saveOwner(owner);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
