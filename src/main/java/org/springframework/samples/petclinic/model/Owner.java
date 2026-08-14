@@ -178,6 +178,23 @@ public class Owner extends Person {
         return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
     }
 
+    /**
+     * City -> canonical region, the fixed ground truth for deriving locality.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * The owner's locality: the canonical region derived from the city using the fixed
+     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC},
+     * {@code Brisbane->QLD}), or {@code "UNKNOWN"} when the city is not in the table.
+     *
+     * @return the canonical region string, or {@code "UNKNOWN"}
+     */
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
