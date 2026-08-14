@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 57439f1e..90f8325d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -1,27 +1,45 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Runs in the create-owner pipeline before {@link SaveOwner}. Assigns the owner's
+- * {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is the upper-cased
+- * first three letters of the city, LAST3 the upper-cased first three letters of the last name and
+- * NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of owners
+- * already in that city (e.g. 'SYD-SMI-0007'). Mutates the built owner in place so later steps store
+- * and respond with the assigned code.
++ * {@code customerCode}, formatted {@code '<REGION>-<HASH8>'} where REGION is the region code shared
++ * with {@link Owner#getLocality()} (derived from the postcode, falling back to the city, else
++ * {@code 'UNKNOWN'}) and HASH8 is the first eight upper-case hex characters of a SHA-256 digest over
++ * the normalized telephone concatenated with the last name (e.g. 'NSW-1A2B3C4D'). The sequence
++ * numbers of the former city-and-last-name format are gone. Mutates the built owner in place so
++ * later steps (membership number, check digit, audit) derive from and store the assigned code.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String city = owner.getCity();
+-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+-        String lastName = owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        int sequence = (int) ownerRepository.findAll().stream()
+-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+-                .count() + 1;
+-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    public void service(@Val Owner owner) {
++        String region = owner.getLocality();
++        String hash8 = shaHex8(owner.getTelephone() + owner.getLastName());
++        owner.setCustomerCode(region + "-" + hash8);
++    }
++
++    /** First eight UPPER-case hex characters of SHA-256 over the UTF-8 bytes of {@code s}. */
++    private static String shaHex8(String s) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(s.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (byte b : digest) {
++                sb.append(String.format("%02X", b));
++                if (sb.length() >= 8) {
++                    break;
++                }
++            }
++            return sb.substring(0, 8);
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+index 38c7a623..cdd2b97d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -7,7 +7,8 @@ import org.springframework.samples.petclinic.model.Owner;
+  * Runs in the create-owner pipeline after {@link AssignCustomerCode} and
+  * {@link DefaultOwnerRegistrationDate}, before {@link SaveOwner}. Assigns the owner's
+  * {@code membershipNumber}, formatted {@code '<customerCode>-M<YY>'} where YY is the last two digits
+- * of the registrationDate year (e.g. 'SYD-SMI-0007-M26'). Mutates the built owner in place so later
++ * of the registrationDate year over the region-and-hash customerCode (e.g. 'NSW-1A2B3C4D-M26').
++ * Mutates the built owner in place so later
+  * steps store and respond with the assigned number.
+  */
+ public class AssignMembershipNumber {
