@@ -214,6 +214,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = householdId(owner);
         owner.setHouseholdId(householdId);
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.getDeleted())
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .toList();
         owner.setHouseholdSize(householdMembers.size() + 1);
@@ -231,6 +232,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // This still catches a full identity repeat even when it declares sharesHousehold.
         String identityKey = owner.getIdentityKey();
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.getDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (identityInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -247,6 +249,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             String softDuplicateTelephone = owner.getTelephone();
             Owner possibleDuplicate = softDuplicatePostcode == null ? null
                 : this.clinicService.findAllOwners().stream()
+                    .filter(existing -> !existing.getDeleted())
                     .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
                     .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
                     .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
@@ -615,7 +618,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft-delete: flag the owner deleted and retain the record so it can still be read back.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
