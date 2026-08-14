@@ -581,15 +581,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Resolves an owner's effective {@code registrationDate} on create and rolls it onto a business
      * day. When the caller supplies no value it defaults to the server's current date; a value
-     * provided in the request is kept. The effective date, whether supplied or defaulted, must fall
-     * on a business day: a Saturday or Sunday is rolled forward to the following Monday. The adjusted
-     * date is written back onto the request so it is what gets stored and returned (in ISO
-     * {@code YYYY-MM-DD} format) and what every value derived from the registration date is based on.
+     * provided in the request is kept. A supplied value later than the server's current date is
+     * rejected with a 400 response whose {@code errors} array names {@code registrationDate}. The
+     * effective date, whether supplied or defaulted, must fall on a business day: a Saturday or
+     * Sunday is rolled forward to the following Monday. The adjusted date is written back onto the
+     * request so it is what gets stored and returned (in ISO {@code YYYY-MM-DD} format) and what
+     * every value derived from the registration date is based on.
      */
     private void resolveRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
         LocalDate effective = ownerFieldsDto.getRegistrationDate();
         if (effective == null) {
             effective = LocalDate.now();
+        }
+        else if (effective.isAfter(LocalDate.now())) {
+            throw new InvalidOwnerFieldsException(List.of("registrationDate"));
         }
         ownerFieldsDto.setRegistrationDate(toBusinessDay(effective));
     }
