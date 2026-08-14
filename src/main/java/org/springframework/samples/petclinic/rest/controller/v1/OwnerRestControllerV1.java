@@ -140,7 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -243,11 +243,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code for a newly created owner, formatted {@code '<LAST3>-<NNNN>'} where
-     * {@code LAST3} is the upper-cased first three letters of the owner's last name and {@code NNNN}
-     * is a global 4-digit zero-padded sequence equal to one more than the current number of owners.
-     * For example an owner named "Smithers" created when 10 owners already exist gets {@code 'SMI-0011'}.
+     * Builds the customer code for a newly created owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
+     * where {@code CITY3} is the upper-cased first three letters of the owner's city, {@code LAST3}
+     * is the upper-cased first three letters of the owner's last name, and {@code NNNN} is a per-city
+     * 4-digit zero-padded sequence equal to one more than the number of owners already in that city.
+     * For example an owner named "Smithers" in "Springfield" created when 10 owners already live in
+     * Springfield gets {@code 'SPR-SMI-0011'}.
      *
+     * @param city the owner's city
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
@@ -270,11 +273,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String cityLetters = city == null ? "" : city;
+        String city3 = cityLetters.substring(0, Math.min(3, cityLetters.length())).toUpperCase(Locale.ROOT);
         String letters = lastName == null ? "" : lastName;
         String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String normalizedCity = normalizeForComparison(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedCity.equals(normalizeForComparison(existing.getCity())))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
