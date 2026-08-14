@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -78,6 +79,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Map<String, String> ADDRESS_ABBREVIATIONS =
         Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * The maximum number of owners a single city may contain. A create request for a city that
+     * already holds this many owners is rejected with a 409 response.
+     */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     private final ClinicService clinicService;
 
@@ -130,6 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto);
         rejectDuplicateHousehold(ownerFieldsDto);
+        rejectCityAtCapacity(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
@@ -395,6 +403,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 throw new DuplicateOwnerHouseholdException(
                     ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
             }
+        }
+    }
+
+    /**
+     * Rejects creating an owner in a city that has reached capacity: a city that already contains
+     * {@value #MAX_OWNERS_PER_CITY} or more owners cannot take another one. Existing owners are
+     * counted with a case-insensitive match on {@code city}, the same way {@link #assignCustomerCode}
+     * groups a city. A city at or over the limit results in a 409 response naming {@code city}.
+     */
+    private void rejectCityAtCapacity(OwnerFieldsDto ownerFieldsDto) {
+        String city = ownerFieldsDto.getCity();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        if (count >= MAX_OWNERS_PER_CITY) {
+            throw new OwnerCityAtCapacityException(city);
         }
     }
 

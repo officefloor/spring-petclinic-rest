@@ -193,6 +193,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link OwnerCityAtCapacityException} thrown when an owner is created whose city
+     * already contains the maximum number of owners (50), compared case-insensitively. Returns a
+     * 409 Conflict whose {@code errors} array names {@code city}.
+     *
+     * @param e The {@link OwnerCityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(OwnerCityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleOwnerCityAtCapacityException(OwnerCityAtCapacityException e, HttpServletRequest request) {
+        logger.debug("Owner city at capacity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getCity());
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("city"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
