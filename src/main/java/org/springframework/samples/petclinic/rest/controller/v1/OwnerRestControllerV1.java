@@ -73,6 +73,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit trail for owner-lifecycle side effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated trail for the welcome notification enqueued on successful create. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /**
      * Monotonically increasing sequence stamped onto each {@code OWNER_CREATED} audit
      * event, so consumers can order and de-duplicate events across the lifetime of the
@@ -260,6 +263,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
