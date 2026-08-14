@@ -216,6 +216,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
+        owner.setMembershipLevelCap(membershipLevelCap(owner.getHouseholdId()));
         owner.setCustomerCode(buildCustomerCode(owner, normalizedTelephone));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
@@ -612,27 +613,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that would be a second member of an existing household. The household
-     * is keyed on {@code (lastName, postcode)} through the deterministic {@link #householdId}, so any
-     * existing owner carrying the same {@code householdId} makes the owner being created a household
-     * duplicate. Such an owner is rejected with a 409, <em>unless</em> the request opts into
-     * {@code sharesHousehold}: a declared household member deliberately bypasses this block and is
-     * created as an additional member of the household.
+     * Rejects creating an owner whose derived identity key
+     * ({@code '<normalizedTelephone>|<email>|<householdId>'}, see {@link OwnerMapper#identityKey})
+     * exactly equals that of an existing non-deleted owner. Two owners are treated as duplicates only
+     * when their whole identity keys match, so members of the same household (same {@code householdId})
+     * who differ in telephone or email are not duplicates and are admitted as additional household
+     * members. Such an owner is rejected with a 409, <em>unless</em> the request opts into
+     * {@code sharesHousehold}, which bypasses the block entirely.
      *
-     * @param owner the owner being created, whose computed household id is matched
+     * @param owner the owner being created, whose identity key is matched
      * @param sharesHousehold whether the request declared the owner a shared-household member
-     * @throws DuplicateOwnerIdentityException if another owner already belongs to the same household
+     * @throws DuplicateOwnerIdentityException if another owner already has the same identity key
      */
     private void rejectDuplicateIdentity(Owner owner, boolean sharesHousehold) {
         if (sharesHousehold) {
             return;
         }
-        String householdId = owner.getHouseholdId();
-        boolean duplicate = householdId != null && this.clinicService.findAllOwners().stream()
+        String identityKey = ownerMapper.identityKey(owner);
+        boolean duplicate = this.clinicService.findAllOwners().stream()
             .filter(existing -> !isDeleted(existing))
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .anyMatch(existing -> identityKey.equals(ownerMapper.identityKey(existing)));
         if (duplicate) {
-            throw new DuplicateOwnerIdentityException(householdId);
+            throw new DuplicateOwnerIdentityException(identityKey);
         }
     }
 
@@ -824,6 +826,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(owner -> householdId.equals(owner.getHouseholdId()))
             .count();
         return (int) existing + 1;
+    }
+
+    /**
+     * Computes the membership-level ceiling for the owner being created, snapshotted at creation time.
+     * A new owner's membership level cannot exceed one above the current maximum membership level among
+     * their existing household members: the returned cap is that maximum plus one. Existing household
+     * members are the non-deleted owners already carrying the same {@code householdId}, and their
+     * membership level is their effective (already-capped) {@link OwnerMapper#membershipLevel level}.
+     * Returns {@code null} when there is no existing household member, in which case no cap applies.
+     *
+     * @param householdId the household identifier assigned to the owner being created, may be {@code null}
+     * @return one above the highest household member's membership level, or {@code null} when none exist
+     */
+    private Integer membershipLevelCap(String householdId) {
+        if (householdId == null) {
+            return null;
+        }
+        java.util.OptionalInt maxLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(existing -> ownerMapper.membershipLevel(existing))
+            .max();
+        return maxLevel.isPresent() ? maxLevel.getAsInt() + 1 : null;
     }
 
     /**
