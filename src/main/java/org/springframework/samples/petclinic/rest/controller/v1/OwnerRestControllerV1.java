@@ -147,6 +147,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        String cityKey = householdKey(owner.getCity());
+        long cityCount = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null
+                && cityKey.equals(householdKey(existing.getCity())))
+            .count();
+        if (cityCount >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         String lastNameKey = householdKey(owner.getLastName());
         String addressKey = householdKey(owner.getAddress());
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
