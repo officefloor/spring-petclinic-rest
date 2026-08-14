@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -115,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto);
+        rejectDuplicateHousehold(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
@@ -318,6 +320,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (InvalidOwnerFieldsException ex) {
             return null;
         }
+    }
+
+    /**
+     * Rejects creating an owner whose {@code lastName} and {@code address} already belong to another
+     * owner. Both fields are compared case-insensitively and with runs of whitespace collapsed to a
+     * single space, so values that differ only in letter case or spacing still collide. When the
+     * request opts in with {@code sharesHousehold} set to {@code true} the check is skipped, allowing
+     * household members to share a name and address. A match results in a 409 response naming
+     * {@code lastName} and {@code address}.
+     */
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = normalizeForComparison(ownerFieldsDto.getLastName());
+        String address = normalizeForComparison(ownerFieldsDto.getAddress());
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName.equals(normalizeForComparison(existing.getLastName()))
+                && address.equals(normalizeForComparison(existing.getAddress()))) {
+                throw new DuplicateOwnerHouseholdException(
+                    ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            }
+        }
+    }
+
+    /**
+     * Normalizes a value for case-insensitive, whitespace-insensitive comparison: leading and
+     * trailing whitespace is trimmed, internal runs of whitespace are collapsed to a single space and
+     * the result is lower-cased. A {@code null} value normalizes to the empty string.
+     */
+    private static String normalizeForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
