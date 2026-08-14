@@ -36,7 +36,10 @@ public class AssignHousehold {
         if (postcode == null || postcode.isBlank()) {
             return null;
         }
-        String key = normalize(lastName) + "|" + postcode.trim();
+        // Version-2 identity: mix in the fixed 'V2' tag so the householdId differs from its version-1
+        // form. The tag is constant, so owners of the same last name and postcode still share a value.
+        String key = normalize(lastName) + "|" + postcode.trim() + "|"
+                + org.springframework.samples.petclinic.mapper.CityRegion.IDENTITY_VERSION_TAG;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

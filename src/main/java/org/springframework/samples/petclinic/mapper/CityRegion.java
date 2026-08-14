@@ -22,6 +22,14 @@ public final class CityRegion {
     private static final Map<String, String> REGION_TIMEZONE = Map.of(
             "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
 
+    /**
+     * Fixed version tag mixed into the region used <em>inside</em> the identifiers (memberId,
+     * householdId, identityKey) by the version-2 identity algorithm, so every identifier differs from
+     * its version-1 form. It is never surfaced in the user-facing {@code locality} or {@code timezone},
+     * which stay the plain region.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private CityRegion() {
     }
 
@@ -38,6 +46,29 @@ public final class CityRegion {
     /** The canonical region for {@code city}, or "UNKNOWN" when the city is not in the table. */
     public static String locality(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * The region code used <em>inside</em> the version-2 identifiers: the plain canonical region (see
+     * {@link #locality(String, String)}) with the fixed {@link #IDENTITY_VERSION_TAG} mixed in
+     * (e.g. {@code "NSW"} becomes {@code "NSWV2"}). This is what feeds the identifier derivations so
+     * every version-2 identifier differs from its version-1 form; the plain region is what surfaces in
+     * {@code locality}/{@code timezone}.
+     */
+    public static String identityRegion(String postcode, String city) {
+        return locality(postcode, city) + IDENTITY_VERSION_TAG;
+    }
+
+    /**
+     * Recovers the plain region from an identity region produced by
+     * {@link #identityRegion(String, String)} by removing the trailing {@link #IDENTITY_VERSION_TAG},
+     * so the user-facing {@code locality}, {@code timezone} and owner segment stay the plain region.
+     */
+    public static String plainRegion(String identityRegion) {
+        if (identityRegion != null && identityRegion.endsWith(IDENTITY_VERSION_TAG)) {
+            return identityRegion.substring(0, identityRegion.length() - IDENTITY_VERSION_TAG.length());
+        }
+        return identityRegion;
     }
 
     /**

@@ -29,8 +29,11 @@ public final class IdentityKey {
     }
 
     public static String of(Owner owner) {
+        // Version-2 identity: mix in the fixed 'V2' tag so the identityKey differs from its version-1
+        // form. The tag is constant, so duplicate detection (whole-key equality) is unaffected.
         String raw = normalizeTelephone(owner.getTelephone()) + "|" + normalizeEmail(owner.getEmail())
-                + "|" + Soundex.of(owner.getLastName());
+                + "|" + Soundex.of(owner.getLastName())
+                + "|" + org.springframework.samples.petclinic.mapper.CityRegion.IDENTITY_VERSION_TAG;
         return sha256Hex(raw);
     }
 

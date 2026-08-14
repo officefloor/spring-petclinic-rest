@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 
 import java.util.Collection;
 import java.util.List;
@@ -38,8 +40,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.mapper.CityRegion.timezone(org.springframework.samples.petclinic.mapper.MemberId.locality(owner)))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(ownerIdentity(owner))")
     @Mapping(target = "ageBand",
             expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
     @Mapping(target = "ownerSegment",
@@ -51,6 +53,19 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * Builds the nested version-2 {@code identity} object grouping the owner's memberId, identityKey
+     * and householdId. The identityKey is derived on read (see {@link IdentityKey#of(Owner)}); the
+     * memberId and householdId were assigned and stored during creation.
+     */
+    default OwnerIdentityDto ownerIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(IdentityKey.of(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)

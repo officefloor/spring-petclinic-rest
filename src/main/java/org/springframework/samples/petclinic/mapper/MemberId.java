@@ -63,7 +63,9 @@ public final class MemberId {
     public static String locality(Owner owner) {
         String region = region(owner.getMemberId());
         if (region != null && !region.isEmpty()) {
-            return region;
+            // The REGION carried in a version-2 memberId is the identity region (plain + 'V2' tag);
+            // strip the tag so the user-facing locality/timezone/segment stay the plain region.
+            return CityRegion.plainRegion(region);
         }
         return CityRegion.locality(owner.getPostcode(), owner.getCity());
     }

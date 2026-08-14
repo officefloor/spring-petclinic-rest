@@ -27,7 +27,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = CityRegion.locality(owner.getPostcode(), owner.getCity());
+        // Version-2 identity region: the plain region with the fixed 'V2' tag mixed in, so every
+        // memberId differs from its version-1 form. The plain region is recovered for locality.
+        String region = CityRegion.identityRegion(owner.getPostcode(), owner.getCity());
         String fiscalYear = owner.getRegistrationDate() == null ? ""
                 : FiscalYear.yearSegment(owner.getRegistrationDate());
         String base = MemberId.of(region, fiscalYear, owner.getTelephone(), owner.getLastName());
