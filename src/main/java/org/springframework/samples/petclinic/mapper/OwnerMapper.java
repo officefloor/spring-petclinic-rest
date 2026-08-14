@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "householdSize", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
