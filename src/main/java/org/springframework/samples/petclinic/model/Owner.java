@@ -88,6 +88,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "household_size")
     private Integer householdSize;
 
@@ -578,6 +581,19 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(Boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /**
+     * Whether this owner's city already held between 40 and 49 owners at the time
+     * it was created, flagging that the city is approaching the per-city capacity
+     * limit of 50 (at which further creates are rejected).
+     */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     /**

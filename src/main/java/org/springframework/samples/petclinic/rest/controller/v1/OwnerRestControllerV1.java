@@ -211,9 +211,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The household id is still computed for household-size and membership-level purposes,
         // but sharing it no longer rejects the create.
         List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
-        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
+        long ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
+        if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        boolean capacityWarning = ownersInCity >= 40 && ownersInCity <= 49;
         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
@@ -230,6 +232,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
+        owner.setCapacityWarning(capacityWarning);
         // The household size (an input to the membership computation) keys off the computed
         // household id: this owner plus everyone already sharing it.
         owner.setHouseholdSize(householdMembers.size() + 1);
