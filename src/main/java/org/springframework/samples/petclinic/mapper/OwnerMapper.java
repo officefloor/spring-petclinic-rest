@@ -33,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "membershipNumber", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "membershipLevelCap", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
