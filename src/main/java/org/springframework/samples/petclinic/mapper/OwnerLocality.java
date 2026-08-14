@@ -59,6 +59,22 @@ public final class OwnerLocality {
         }
     }
 
+    /**
+     * Returns the region an owner's identity resolves to by reading it back off the
+     * {@code customerCode}, which is formatted {@code '<REGION>-<HASH8>'}: the portion before the
+     * first {@code '-'}. The locality therefore shares the single region-and-hash identity assigned
+     * at creation instead of being recomputed from the city and postcode. Returns {@code "UNKNOWN"}
+     * when the customer code is absent, blank, or carries no region segment.
+     */
+    public static String fromCustomerCode(String customerCode) {
+        if (customerCode == null || customerCode.isBlank()) {
+            return "UNKNOWN";
+        }
+        int dash = customerCode.indexOf('-');
+        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
+        return region.isBlank() ? "UNKNOWN" : region;
+    }
+
     /** Region for a 4-digit {@code postcode} in a known range, or {@code null} otherwise. */
     private static String regionForPostcode(String postcode) {
         if (postcode == null || !postcode.matches("[0-9]{4}")) {

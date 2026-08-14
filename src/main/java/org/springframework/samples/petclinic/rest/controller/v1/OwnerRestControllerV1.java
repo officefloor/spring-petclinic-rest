@@ -607,30 +607,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the owner's {@code customerCode} on create, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
-     * where {@code CITY3} is the upper-cased first three letters of {@code city}, {@code LAST3} is the
-     * upper-cased first three letters of {@code lastName} and {@code NNNN} is a per-city 4-digit
-     * zero-padded sequence equal to one more than the number of owners already in that city
-     * (e.g. {@code 'SYD-SMI-0007'}).
+     * Assigns the owner's {@code customerCode} on create, formatted {@code '<REGION>-<HASH8>'} where
+     * {@code REGION} is the region the owner's identity derives to from its postcode (falling back to
+     * the city table when the postcode is absent or in no known range) and {@code HASH8} is the first
+     * eight upper-case hex characters of the SHA-256 digest of the normalized telephone concatenated
+     * with the last name (e.g. {@code 'NSW-1A2B3C4D'}). The telephone has already been normalized to
+     * E.164 form by {@link #normalizeTelephone}. There is no per-city sequence: the identity is a
+     * pure function of region, telephone and last name.
      */
     private void assignCustomerCode(Owner owner) {
-        String city = owner.getCity();
-        String lastName = owner.getLastName();
-        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = 1;
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (city.equalsIgnoreCase(existing.getCity())) {
-                sequence++;
-            }
-        }
-        owner.setCustomerCode(String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence));
+        String region = OwnerLocality.derive(owner.getCity(), owner.getPostcode());
+        String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName(), 8);
+        owner.setCustomerCode(region + "-" + hash8);
     }
 
     /**
      * Assigns the owner's {@code membershipNumber} on create, formatted
      * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
-     * {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}). Assigned after
+     * {@code registrationDate} year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Assigned after
      * {@link #assignCustomerCode} and once {@code registrationDate} has been defaulted, so both
      * inputs are present.
      */
@@ -786,14 +780,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owners in the same household therefore derive the same value regardless of creation order.
      */
     private static String newHouseholdId(String normalizedLastName, String normalizedAddress) {
+        return shaHexUpper(normalizedLastName + "|" + normalizedAddress, 12);
+    }
+
+    /**
+     * Returns the first {@code length} characters of the SHA-256 digest of {@code input}, rendered as
+     * upper-case hexadecimal. Used to derive the {@code customerCode} hash segment and the household
+     * identifier, both stable functions of their inputs.
+     */
+    private static String shaHexUpper(String input, int length) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((normalizedLastName + "|" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+                .digest(input.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 hex.append(String.format("%02x", b));
             }
-            return hex.substring(0, 12).toUpperCase(Locale.ROOT);
+            return hex.substring(0, length).toUpperCase(Locale.ROOT);
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is required but unavailable", ex);
         }

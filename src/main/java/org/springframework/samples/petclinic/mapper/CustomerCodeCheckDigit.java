@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.mapper;
 /**
  * Computes the Luhn check digit over the digits of an owner's {@code customerCode}.
  *
- * <p>The customer code contains non-digit separators (e.g. {@code 'SYD-SMI-0007'}); only the digit
+ * <p>The customer code contains non-digit characters (e.g. {@code 'NSW-1A2B3C4D'}); only the digit
  * characters take part in the Luhn calculation, processed right-to-left with every second digit
  * doubled and any result above nine reduced by nine. The check digit is the amount that must be
  * added to the running sum to reach the next multiple of ten.
