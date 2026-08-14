@@ -16,10 +16,13 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -131,15 +134,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastNameKey = householdKey(owner.getLastName());
-            String addressKey = householdKey(owner.getAddress());
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
-                    && addressKey.equals(householdKey(existing.getAddress())));
-            if (householdInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+        String lastNameKey = householdKey(owner.getLastName());
+        String addressKey = householdKey(owner.getAddress());
+        List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
+                && addressKey.equals(householdKey(existing.getAddress())))
+            .toList();
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String householdId = householdMembers.stream()
+                .map(Owner::getHouseholdId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseGet(() -> householdId(owner));
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (member.getHouseholdId() == null) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
             }
+        } else if (!householdMembers.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -206,6 +221,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String householdKey(String value) {
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Derives a stable, shared household identifier for the owner's household. The value is a
+     * deterministic function of the normalized last name and address ({@link #householdKey}), so
+     * every owner in the same household derives the identical identifier of the form
+     * {@code 'HH-<12 upper-case hex>'}.
+     *
+     * @param owner the owner whose household identifier is derived
+     * @return the stable household identifier
+     */
+    private String householdId(Owner owner) {
+        String key = householdKey(owner.getLastName()) + "|" + householdKey(owner.getAddress());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
