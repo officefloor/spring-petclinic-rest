@@ -301,6 +301,16 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
+    /**
+     * The owner's IANA timezone, derived at read time from the owner's region
+     * ({@link #getLocality()}) via the pinned region-to-timezone table (NSW->Australia/Sydney,
+     * VIC->Australia/Melbourne, QLD->Australia/Brisbane). {@code null} when the region is unknown.
+     */
+    @Transient
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
+    }
+
     /** The region whose range contains {@code postcode}, or {@code null} when absent/out of range. */
     private static String regionForPostcode(String postcode) {
         if (postcode == null || !postcode.matches("[0-9]{4}")) {
@@ -409,6 +419,10 @@ public class Owner extends Person {
     /** City -> canonical region for {@link #getLocality()}. Any other city is 'UNKNOWN'. */
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** Region -> IANA timezone for {@link #getTimezone()}. */
+    private static final Map<String, String> REGION_TIMEZONE =
+        Map.of("NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
 
     /** Region -> inclusive 4-digit postcode range {low, high}, preferred by {@link #getLocality()}. */
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
