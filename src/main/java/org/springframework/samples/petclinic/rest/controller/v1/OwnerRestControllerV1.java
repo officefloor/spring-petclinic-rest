@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -75,6 +76,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * Disposable email domains that are refused: an owner whose email domain is on this blocklist
+     * is rejected. The value is the already-normalized (trimmed, lower-cased) email's domain.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Common address abbreviations expanded to their full form during address normalization.
@@ -175,6 +183,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getEmail() != null) {
             String email = normalizeEmail(owner.getEmail());
             if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            if (isDisposableEmailDomain(email)) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email);
@@ -353,6 +364,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether the domain of the given normalized email is on the disposable-domain blocklist
+     * ({@link #DISPOSABLE_EMAIL_DOMAINS}). The domain is the substring after the last {@code '@'};
+     * an email without an {@code '@'} carries no blocked domain.
+     *
+     * @param email the trimmed, lower-cased email
+     * @return {@code true} when the email's domain is blocklisted
+     */
+    private boolean isDisposableEmailDomain(String email) {
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        return DISPOSABLE_EMAIL_DOMAINS.contains(email.substring(at + 1));
     }
 
     /**
