@@ -461,6 +461,25 @@ public class Owner extends Person {
     }
 
     /**
+     * Region -> IANA timezone name, the fixed ground truth for deriving the owner's timezone from
+     * its locality.
+     */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * The owner's timezone: the IANA name resolved from the {@link #getLocality() locality} via the
+     * fixed region-to-timezone table ({@code NSW->Australia/Sydney}, {@code VIC->Australia/Melbourne},
+     * {@code QLD->Australia/Brisbane}), or {@code null} when the locality is not one of these regions
+     * (e.g. {@code "UNKNOWN"}).
+     *
+     * @return the IANA timezone name, or {@code null}
+     */
+    public String getTimezone() {
+        return REGION_TIMEZONE.get(getLocality());
+    }
+
+    /**
      * Region whose postcode range contains the given postcode, or {@code null} when the postcode is
      * absent, not a 4-digit number, or in no known range.
      *
