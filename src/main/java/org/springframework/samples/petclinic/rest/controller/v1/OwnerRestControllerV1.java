@@ -135,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
+        assignNamesakeCount(owner);
         assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -449,6 +450,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+    }
+
+    /**
+     * Assigns the new owner's {@code namesakeCount} on create: the number of owners that already
+     * exist sharing the same {@code firstName} and {@code lastName}, compared case-insensitively.
+     * Computed before the new owner is persisted, so it counts only the pre-existing owners.
+     */
+    private void assignNamesakeCount(Owner owner) {
+        String firstName = owner.getFirstName();
+        String lastName = owner.getLastName();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName())) {
+                count++;
+            }
+        }
+        owner.setNamesakeCount(count);
     }
 
     /**
