@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b6335d5c..9cc5e07a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -126,6 +129,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+@@ -264,6 +275,27 @@ public class Owner extends Person {
+         return hasEmail ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * The owner's age band, derived at read time from {@link #getBirthDate() birthDate} measured
++     * against the {@link #getRegistrationDate() registrationDate}: {@code 'MINOR'} when the owner is
++     * under 18 at registration, {@code 'ADULT'} from 18 to 64, {@code 'SENIOR'} at 65 or over.
++     * {@code null} when the owner has no birthDate (or no registrationDate to measure against).
++     */
++    @Transient
++    public String getAgeBand() {
++        if (this.birthDate == null || this.registrationDate == null) {
++            return null;
++        }
++        int years = java.time.Period.between(this.birthDate, this.registrationDate).getYears();
++        if (years < 18) {
++            return "MINOR";
++        }
++        if (years < 65) {
++            return "ADULT";
++        }
++        return "SENIOR";
++    }
++
+     /**
+      * The single derived duplicate-detection key, {@code normalizedTelephone|email|householdId}
+      * (the normalized telephone, the email or empty when absent, and the householdId or empty when
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d4ed068b..532928e6 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 483e8868..87bfb3c3 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4ad92f0c..d814c2ac 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 2ab53b49..1ef57a3e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5b454f89..7027f605 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2050,6 +2050,13 @@ components:
+           type: string
+           pattern: '^[0-9]{4}$'
+           example: '2000'
++        birthDate:
++          title: Birth date
++          description: The owner's date of birth, in ISO 'YYYY-MM-DD' format. Optional. When present
++            it drives the derived ageBand, computed against the owner's registrationDate.
++          type: string
++          format: date
++          example: '1990-01-01'
+         registrationDate:
+           title: Registration date
+           description: The date the pet owner was registered, in ISO 'YYYY-MM-DD' format.
+@@ -2169,6 +2176,14 @@ components:
+               type: string
+               example: EMAIL
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: The owner's age band, derived at read time from birthDate against the
++                registrationDate. 'MINOR' when under 18, 'ADULT' from 18 to 64, 'SENIOR' at 65 or
++                over. Absent when the owner has no birthDate.
++              type: string
++              example: ADULT
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: The single derived duplicate-detection key,
