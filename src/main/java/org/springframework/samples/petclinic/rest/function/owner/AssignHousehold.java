@@ -14,9 +14,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * into an existing household via {@code sharesHousehold}.
  *
  * <p>When {@code sharesHousehold} is true and an existing owner already shares the same last name
- * and address (compared case-insensitively after trimming and collapsing whitespace, matching
- * {@link EnsureUniqueHousehold}), a stable identifier derived from that normalized last name and
- * address is assigned to the new owner and back-filled onto every matching existing owner. Because
+ * and address (last name compared case-insensitively after trimming and collapsing whitespace, and
+ * address by its canonical normalized form, matching {@link EnsureUniqueHousehold}), a stable
+ * identifier derived from that normalized last name and address is assigned to the new owner and
+ * back-filled onto every matching existing owner. Because
  * the identifier is derived deterministically from the household key, all owners of a household share
  * the same value regardless of creation order. Runs after {@link BuildOwner}, so it works on the
  * built entity, and before {@link SaveOwner}.
@@ -28,11 +29,11 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         String householdId = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (normalize(existing.getLastName()).equals(lastName)
-                    && normalize(existing.getAddress()).equals(address)) {
+                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
                 if (householdId == null) {
                     householdId = householdId(lastName, address);
                 }

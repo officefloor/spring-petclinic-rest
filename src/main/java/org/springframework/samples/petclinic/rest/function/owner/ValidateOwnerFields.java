@@ -12,11 +12,18 @@ import org.springframework.web.bind.annotation.RequestBody;
  * First step of {@code POST /api/owners}. Rejects a create request that is missing or blank in any
  * required field, so an invalid body is a 400 whose {@code errors} array names each offending field.
  * Runs before {@link BuildOwner}, which then reads the published body via {@code @Val}.
+ *
+ * <p>The {@code address} is normalized in place first (see {@link AddressNormalizer}) so it is stored
+ * and returned in normalized form, and so the required-field check rejects an address that is blank
+ * after normalization (for example one made only of whitespace).
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        if (request.getAddress() != null) {
+            request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        }
         List<String> errors = new ArrayList<>();
         require(errors, "firstName", request.getFirstName());
         require(errors, "lastName", request.getLastName());
