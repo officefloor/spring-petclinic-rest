@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e569be92..e4319881 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -41,21 +41,24 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Derives the owner's membership tier: {@code "GOLD"} when the owner's household had 3 or more
+-     * members after the owner was created ({@code householdSize} is at least {@code 3}); otherwise
+-     * {@code "SILVER"} when the owner has no namesakes ({@code namesakeCount} is {@code 0}) and an
+-     * email is present, and {@code "BRONZE"} in every remaining case.
++     * Derives the owner's membership level, a number from 1 to 3 determined on creation. It starts
++     * at {@code 1}, gains {@code 1} when an email is present, gains {@code 1} when the owner has no
++     * namesakes ({@code namesakeCount} is {@code 0}), and is capped at {@code 3} (level {@code 4} is
++     * reserved for tenure).
+      */
+-    default String membershipTier(Owner owner) {
+-        Integer householdSize = owner.getHouseholdSize();
+-        if (householdSize != null && householdSize >= 3) {
+-            return "GOLD";
+-        }
++    default Integer membershipLevel(Owner owner) {
+         Integer namesakeCount = owner.getNamesakeCount();
+         String email = owner.getEmail();
+         boolean noNamesakes = namesakeCount != null && namesakeCount == 0;
+         boolean hasEmail = email != null && !email.isBlank();
+-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
++        int level = 1;
++        if (hasEmail) {
++            level++;
++        }
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 70b0d17b..e36ee78d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -77,8 +77,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Dedicated audit logger. Successful owner creation emits a single line here carrying the new
+-     * owner's id, customer code and registration date, so audit side-effects can be observed
+-     * independently of the HTTP response.
++     * owner's id, customer code, registration date and membership level, so audit side-effects can
++     * be observed independently of the HTTP response.
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+@@ -158,8 +158,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.membershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -565,7 +566,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * inclusive of that owner. Existing owners are matched by their {@code householdId} equalling the
+      * given identifier; the owner being created is added on because it is counted before being persisted.
+      * An owner that did not opt into a shared household (its {@code householdId} is {@code null}) is a
+-     * household of one. The value is snapshotted on the owner and drives the {@code GOLD} membership tier.
++     * household of one. The value is snapshotted on the owner.
+      *
+      * @param householdId the household identifier assigned to the owner being created, may be {@code null}
+      * @return the number of household members, including the owner being created
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a7ff16fb..395c6177 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2142,14 +2142,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier, derived on read. 'SILVER' when the
+-                owner has no namesakes (namesakeCount is 0) and an email is
+-                present; otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, a number from 1 to 3 determined on
++                creation. It starts at 1, gains 1 when an email is present, gains
++                1 when the owner has no namesakes (namesakeCount is 0), and is
++                capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
