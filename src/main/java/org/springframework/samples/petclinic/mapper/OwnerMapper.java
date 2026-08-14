@@ -23,7 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "locality", expression = "java(OwnerLocality.derive(owner.getCity()))")
+    @Mapping(target = "locality",
+        expression = "java(OwnerLocality.derive(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",

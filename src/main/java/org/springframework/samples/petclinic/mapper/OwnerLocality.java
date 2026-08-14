@@ -1,7 +1,14 @@
 package org.springframework.samples.petclinic.mapper;
 
+import java.util.Map;
+
 /**
- * Derives an owner's locality (region) from the city using a fixed city-to-region table.
+ * Derives an owner's locality (region) from the postcode and city.
+ *
+ * <p>The postcode is preferred: a 4-digit postcode falling in a known region range (NSW 2000-2099,
+ * VIC 3000-3099, QLD 4000-4099) fixes the region and disambiguates cities that share a name. Only
+ * when the postcode is absent or in no known range does derivation fall back to the fixed
+ * city-to-region table.
  *
  * <p>Kept as a standalone helper rather than a method on {@link OwnerMapper}: a single-argument
  * {@code String}-to-{@code String} method declared on a MapStruct mapper would be picked up as an
@@ -9,7 +16,27 @@ package org.springframework.samples.petclinic.mapper;
  */
 public final class OwnerLocality {
 
+    /** Region -&gt; inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     private OwnerLocality() {
+    }
+
+    /**
+     * Returns the canonical region, preferring the {@code postcode}: a postcode in a known region
+     * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) selects that region. When the postcode is
+     * absent, malformed, or in no known range, falls back to the city-to-region table via
+     * {@link #derive(String)}.
+     */
+    public static String derive(String city, String postcode) {
+        String fromPostcode = regionForPostcode(postcode);
+        if (fromPostcode != null) {
+            return fromPostcode;
+        }
+        return derive(city);
     }
 
     /**
@@ -30,5 +57,20 @@ public final class OwnerLocality {
             default:
                 return "UNKNOWN";
         }
+    }
+
+    /** Region for a 4-digit {@code postcode} in a known range, or {@code null} otherwise. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 }
