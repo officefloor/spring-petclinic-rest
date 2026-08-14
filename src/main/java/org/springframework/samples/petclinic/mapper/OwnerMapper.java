@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class, TelephoneDisplay.class,
-        FiscalYear.class})
+        FiscalYear.class, IdentityKey.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -45,9 +45,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear",
         expression = "java(FiscalYear.of(owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
-        expression = "java((owner.getTelephone() == null ? \"\" : owner.getTelephone()) + \"|\""
-            + " + (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\""
-            + " + (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
+        expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

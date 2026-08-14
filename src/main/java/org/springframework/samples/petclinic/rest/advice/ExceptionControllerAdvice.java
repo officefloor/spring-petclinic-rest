@@ -148,8 +148,8 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateOwnerIdentityException} thrown when an owner is created whose derived
-     * {@code identityKey} - {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId
-     * or empty)} - already, in its entirety, belongs to another owner. Returns a 409 Conflict whose
+     * {@code identityKey} - the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail +
+     * '|' + soundex(lastName)} - already belongs to another owner. Returns a 409 Conflict whose
      * {@code errors} array names {@code identityKey}.
      *
      * @param e The {@link DuplicateOwnerIdentityException} to be handled

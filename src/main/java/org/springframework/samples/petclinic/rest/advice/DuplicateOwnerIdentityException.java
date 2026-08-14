@@ -17,10 +17,10 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a request to create an owner produces a derived {@code identityKey} -
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)} - that is
- * already, in its entirety, used by another owner. Carries the offending identity key so the
- * exception handler can report it, and lets the handler return a 409 Conflict.
+ * Thrown when a request to create an owner produces a derived {@code identityKey} - the SHA-256 hex
+ * digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} - that is
+ * already used by another owner. Carries the offending identity key so the exception handler can
+ * report it, and lets the handler return a 409 Conflict.
  */
 public class DuplicateOwnerIdentityException extends RuntimeException {
 
