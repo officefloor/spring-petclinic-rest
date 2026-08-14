@@ -176,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             assignHousehold(owner);
         }
         rejectDuplicateIdentity(owner, normalizedTelephone);
+        assignPossibleDuplicate(owner, normalizedTelephone);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
@@ -563,6 +564,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (normalizedTelephone == null ? "" : normalizedTelephone)
             + "|" + (email == null ? "" : email)
             + "|" + (householdId == null ? "" : householdId);
+    }
+
+    /**
+     * Flags a soft ("possible") duplicate on the owner being created. Unlike a hard duplicate (which is
+     * rejected outright by {@link #rejectDuplicateIdentity}), a soft duplicate is still created: it is an
+     * owner that is not a hard duplicate but shares an existing owner's last name (compared
+     * case-insensitively, see {@link #normalizeForComparison}) and postcode while carrying a <em>different</em>
+     * telephone. When such an existing owner is found, {@code possibleDuplicate} is set {@code true} and
+     * {@code possibleDuplicateOf} is set to that owner's id (the earliest by id when several match); otherwise
+     * {@code possibleDuplicate} is {@code false} and {@code possibleDuplicateOf} stays {@code null}. Both values
+     * are snapshotted on the owner so they reflect the population as it stood when the owner was created.
+     *
+     * @param owner the owner being created, whose last name and postcode are matched
+     * @param normalizedTelephone the E.164 telephone of the owner being created
+     */
+    private void assignPossibleDuplicate(Owner owner, String normalizedTelephone) {
+        String postcode = owner.getPostcode();
+        Integer matchId = null;
+        if (postcode != null) {
+            String lastName = normalizeForComparison(owner.getLastName());
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (postcode.equals(existing.getPostcode())
+                    && lastName.equals(normalizeForComparison(existing.getLastName()))
+                    && !normalizedTelephone.equals(toE164OrNull(existing.getTelephone()))
+                    && existing.getId() != null
+                    && (matchId == null || existing.getId() < matchId)) {
+                    matchId = existing.getId();
+                }
+            }
+        }
+        owner.setPossibleDuplicateOf(matchId);
+        owner.setPossibleDuplicate(matchId != null);
     }
 
     /**
