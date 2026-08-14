@@ -24,7 +24,7 @@ public class ValidateOwnerFields {
         List<String> errors = new ArrayList<>();
         requireText("firstName", request.getFirstName(), errors);
         requireText("lastName", request.getLastName(), errors);
-        requireText("address", request.getAddress(), errors);
+        normalizeAddress(request, errors);
         requireText("city", request.getCity(), errors);
         requireText("telephone", request.getTelephone(), errors);
         normalizeTelephone(request, errors);
@@ -33,6 +33,21 @@ public class ValidateOwnerFields {
             throw new OwnerFieldsValidationException(errors);
         }
         validated.set(request);
+    }
+
+    /**
+     * Normalizes the address to its canonical form (see {@link AddressNormalizer}) and stores it back
+     * on the request so later steps persist and return it, and so household comparisons use it. The
+     * required-field check happens here on the normalized value: an address that is blank after
+     * normalization adds an {@code address} error (400).
+     */
+    private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
+        String normalized = AddressNormalizer.normalize(request.getAddress());
+        if (normalized.isEmpty()) {
+            errors.add("address");
+            return;
+        }
+        request.setAddress(normalized);
     }
 
     /**

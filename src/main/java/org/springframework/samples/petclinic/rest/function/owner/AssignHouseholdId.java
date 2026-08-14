@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Assigns the owner's {@code householdId}: a stable identifier shared by all owners who live in the
  * same household, i.e. share a last name and address. It is the first 12 upper-cased hex characters
- * of the SHA-256 of {@code '<lastName>|<address>'}, with last name and address normalized exactly as
- * {@link CheckHouseholdUnique} normalizes them (lower-cased, runs of whitespace collapsed, trimmed).
+ * of the SHA-256 of {@code '<lastName>|<address>'}, with the last name normalized exactly as
+ * {@link CheckHouseholdUnique} normalizes it (lower-cased, runs of whitespace collapsed, trimmed) and
+ * the address normalized to its canonical form (see {@link AddressNormalizer}).
  *
  * <p>Because the id derives only from that normalized pair, two owners who intentionally share a
  * household (accepted via {@code sharesHousehold}) deterministically receive the same value without
@@ -21,7 +22,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignHouseholdId {
 
     public void service(@Val Owner owner) {
-        String key = normalize(owner.getLastName()) + "|" + normalize(owner.getAddress());
+        String key = normalize(owner.getLastName()) + "|" + AddressNormalizer.normalize(owner.getAddress());
         owner.setHouseholdId(shaHex(key, 12));
     }
 
