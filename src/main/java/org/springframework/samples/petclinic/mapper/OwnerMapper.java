@@ -44,10 +44,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership tier: {@code 'SILVER'} when namesakeCount is 0 and an email is
-     * present, otherwise {@code 'BRONZE'}.
+     * Derives the owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing
+     * the same householdId) has 3 or more members after this create; otherwise {@code 'SILVER'} when
+     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
      */
     default org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        boolean goldHousehold = owner.getHouseholdMemberCount() != null
+                && owner.getHouseholdMemberCount() >= 3;
+        if (goldHousehold) {
+            return org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.GOLD;
+        }
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         return noNamesakes && hasEmail
@@ -75,6 +81,7 @@ public interface OwnerMapper {
     @Mapping(target = "customerCode", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
+    @Mapping(target = "householdMemberCount", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
