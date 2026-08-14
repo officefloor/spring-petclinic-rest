@@ -24,6 +24,7 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -332,11 +333,13 @@ public class Owner extends Person {
     }
 
     /**
-     * Return the owner's membership level, a number from {@code 1} to {@code 3}
-     * assigned at creation: starting at {@code 1}, plus {@code 1} when an email
-     * address is present, plus {@code 1} when the owner has no namesakes (namesake
-     * count is {@code 0}), capped at {@code 3}. (Level {@code 4} is reserved for
-     * tenure.)
+     * Return the owner's membership level, a number from {@code 1} to {@code 4}.
+     * The pre-tenure factors, starting at {@code 1}, add {@code 1} when an email
+     * address is present and {@code 1} when the owner has no namesakes (namesake
+     * count is {@code 0}), capped at {@code 3}. Level {@code 4} is reserved for
+     * tenure: it is reached by adding {@code 1} when the owner's tenure (days
+     * since the registration date) exceeds {@code 365}. Because a newly created
+     * owner has zero tenure, a new owner never exceeds level {@code 3}.
      */
     public Integer getMembershipLevel() {
         int level = 1;
@@ -347,7 +350,12 @@ public class Owner extends Person {
         if (this.namesakeCount != null && this.namesakeCount == 0) {
             level += 1;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (this.registrationDate != null
+                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            level += 1;
+        }
+        return level;
     }
 
     public void setNamesakeCount(Integer namesakeCount) {
