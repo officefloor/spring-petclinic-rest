@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -287,6 +288,25 @@ public interface OwnerMapper {
             return cap;
         }
         return level;
+    }
+
+    /**
+     * Known regions considered {@code METRO} for the owner's segment: NSW, VIC and QLD.
+     */
+    java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derives the owner's segment, formatted {@code '<TIER>_<AREA>'}. {@code TIER} is {@code PREMIUM}
+     * when the owner's {@link #membershipLevel(Owner) membership level} is {@code 3} or more, otherwise
+     * {@code STANDARD}. {@code AREA} is {@code METRO} when the owner's {@link #locality(Owner) locality}
+     * is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        Integer level = membershipLevel(owner);
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
+        return org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum
+            .fromValue(tier + "_" + area);
     }
 
     /**
