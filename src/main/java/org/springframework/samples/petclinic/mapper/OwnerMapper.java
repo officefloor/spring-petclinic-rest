@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -141,6 +142,49 @@ public interface OwnerMapper {
             }
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * Known E.164 country calling codes, longest first, used to split a stored E.164 telephone into
+     * its country code and national digits when formatting {@link #telephoneDisplay(Owner)}.
+     */
+    String[] TELEPHONE_COUNTRY_CODES = {"61", "1"};
+
+    /**
+     * Formats the owner's stored E.164 telephone for humans: the country code, a space, then the
+     * national digits grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}).
+     * The country code is recognised from the {@link #TELEPHONE_COUNTRY_CODES} table; when none matches,
+     * all digits after the {@code '+'} are treated as the national number. Returns {@code null} when the
+     * telephone is absent, and the value unchanged when it is not a {@code '+'}-prefixed E.164 number.
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null) {
+            return null;
+        }
+        if (!telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        if (!digits.chars().allMatch(Character::isDigit)) {
+            return telephone;
+        }
+        String countryCode = "";
+        for (String code : TELEPHONE_COUNTRY_CODES) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                countryCode = code;
+                break;
+            }
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     /**
