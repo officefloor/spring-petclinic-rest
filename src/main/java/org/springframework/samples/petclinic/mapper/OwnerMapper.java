@@ -24,7 +24,20 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's membership tier: {@code 'SILVER'} when namesakeCount is 0 and an email is
+     * present, otherwise {@code 'BRONZE'}.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        return noNamesakes && hasEmail
+                ? org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.SILVER
+                : org.springframework.samples.petclinic.rest.dto.OwnerDto.MembershipTierEnum.BRONZE;
+    }
 
     /**
      * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
