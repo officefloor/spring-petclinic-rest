@@ -24,7 +24,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -387,16 +386,47 @@ public class Owner extends Person {
     }
 
     /**
-     * Return the owner's membership number, formatted {@code '<customerCode>-M<YY>'}
-     * where {@code YY} is the last two digits of the registration date's year (for
-     * example {@code 'SMI-0007-M26'}). Returns {@code null} when either the customer
-     * code or the registration date is not set.
+     * Return the owner's fiscal year, formatted {@code 'FY<YY>'} where {@code YY}
+     * is the last two digits of the fiscal year derived from the (business-day
+     * adjusted) registration date. The fiscal year starts on 1 July and is named
+     * after the calendar year in which it ends, so a registration date on or after
+     * 1 July belongs to the fiscal year ending the following calendar year (for
+     * example {@code 2026-08-14 -> 'FY27'}), while a date before 1 July belongs to
+     * the fiscal year ending in that same calendar year. Returns {@code null} when
+     * the registration date is not set.
      */
-    public String getMembershipNumber() {
-        if (this.customerCode == null || this.registrationDate == null) {
+    public String getFiscalYear() {
+        Integer fiscalYear = fiscalYearOf(this.registrationDate);
+        if (fiscalYear == null) {
             return null;
         }
-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
+        return String.format("FY%02d", fiscalYear % 100);
+    }
+
+    /**
+     * Return the fiscal year (the calendar year in which the fiscal year ends) that
+     * the given date falls in, where the fiscal year starts on 1 July, or
+     * {@code null} when the date is {@code null}.
+     */
+    private static Integer fiscalYearOf(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Return the owner's membership number, formatted {@code '<customerCode>-M<YY>'}
+     * where {@code YY} is the last two digits of the fiscal year derived from the
+     * registration date (for example {@code 'SMI-0007-M27'}). Returns {@code null}
+     * when either the customer code or the registration date is not set.
+     */
+    public String getMembershipNumber() {
+        Integer fiscalYear = fiscalYearOf(this.registrationDate);
+        if (this.customerCode == null || fiscalYear == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", this.customerCode, fiscalYear % 100);
     }
 
     public String getHouseholdId() {
@@ -416,8 +446,9 @@ public class Owner extends Person {
      * membership level is derived. Starting at {@code 0}, add {@code 2} when an
      * email address is present, {@code 1} when the owner has no namesakes
      * (namesake count is {@code 0}), {@code 2} for a household of {@code 3} or
-     * more, and {@code 3} when the owner's tenure (days since the registration
-     * date) exceeds {@code 365}.
+     * more, and {@code 3} when the owner's tenure (the number of fiscal years
+     * elapsed since the registration date, the fiscal year starting on 1 July) is
+     * at least {@code 1}.
      */
     public Integer getMembershipPoints() {
         int points = 0;
@@ -431,9 +462,12 @@ public class Owner extends Person {
         if (this.householdSize != null && this.householdSize >= 3) {
             points += 2;
         }
-        if (this.registrationDate != null
-                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            points += 3;
+        Integer registrationFiscalYear = fiscalYearOf(this.registrationDate);
+        if (registrationFiscalYear != null) {
+            int elapsedFiscalYears = fiscalYearOf(LocalDate.now()) - registrationFiscalYear;
+            if (elapsedFiscalYears >= 1) {
+                points += 3;
+            }
         }
         return points;
     }
