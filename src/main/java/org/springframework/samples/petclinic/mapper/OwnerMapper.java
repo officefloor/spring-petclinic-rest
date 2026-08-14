@@ -23,6 +23,9 @@ public interface OwnerMapper {
         expression = "java(CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation",
+        expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName()"
+            + " : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "telephoneDisplay",
         expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "initials",
