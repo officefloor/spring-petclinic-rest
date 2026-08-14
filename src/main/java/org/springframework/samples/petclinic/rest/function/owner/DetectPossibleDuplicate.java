@@ -38,6 +38,9 @@ public class DetectPossibleDuplicate {
             if (existing.getId() == null) {
                 continue;
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are not counted as possible duplicates
+            }
             if (lastName.equals(existing.getLastName())
                     && postcode.equals(existing.getPostcode())
                     && !sameHousehold(owner, existing)
