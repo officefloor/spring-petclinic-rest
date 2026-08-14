@@ -70,7 +70,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. On a successful create an audit line carrying the new owner's id,
-     * {@code customerCode} and {@code registrationDate} is emitted to the logger named {@code AUDIT}.
+     * {@code customerCode}, {@code registrationDate} and {@code membershipLevel} is emitted to the
+     * logger named {@code AUDIT}.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -169,12 +170,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignCustomerCode(owner);
         assignMembershipNumber(owner);
         assignNamesakeCount(owner);
+        assignMembershipLevel(owner);
         assignBulkSignupWarning(owner);
         assignHousehold(owner, ownerFieldsDto);
         assignHouseholdMembership(owner);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -581,6 +583,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Assigns the new owner's {@code membershipLevel} on create: a number from 1 to 3 starting at
+     * 1, plus 1 when an email is present, plus 1 when {@code namesakeCount} is 0, capped at 3.
+     * Level 4 is reserved for tenure. Runs after {@link #assignNamesakeCount} so that count is
+     * settled.
+     */
+    private void assignMembershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            level++;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
+        }
+        owner.setMembershipLevel(Math.min(level, 3));
+    }
+
+    /**
      * Assigns the new owner's {@code bulkSignupWarning} on create: {@code true} when more than
      * {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry the new owner's adjusted
      * business-day {@code registrationDate}, otherwise {@code false}. Counted the same way as the
@@ -643,8 +662,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Assigns the new owner's {@code householdMemberCount} on create: the number of owners sharing
      * the new owner's {@code householdId} once this create is applied — that is, the new owner plus
      * every existing owner already carrying the same identifier. Runs after {@link #assignHousehold}
-     * so the identifier is settled, and drives the {@code GOLD} membership tier (3 or more members).
-     * Left {@code null} when the owner belongs to no household.
+     * so the identifier is settled. Left {@code null} when the owner belongs to no household.
      */
     private void assignHouseholdMembership(Owner owner) {
         String householdId = owner.getHouseholdId();
