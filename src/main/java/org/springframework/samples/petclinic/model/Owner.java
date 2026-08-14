@@ -282,6 +282,50 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's risk flag, derived at read time: {@code true} when any risk signal holds, otherwise
+     * {@code false}. A signal holds when the owner is a {@link #getPossibleDuplicate() possible
+     * duplicate}, when its {@link #getEmail() email} domain is <em>disposable-adjacent</em> (its
+     * second-level label matches a disposable domain — e.g. {@code 'mailinator'} — while the domain
+     * itself is not on the disposable blocklist, so it was allowed at creation), or when the city is
+     * over its soft capacity ({@link #getCapacityWarning() capacityWarning}).
+     */
+    @Transient
+    public Boolean getRiskFlag() {
+        if (Boolean.TRUE.equals(this.possibleDuplicate) || Boolean.TRUE.equals(this.capacityWarning)) {
+            return true;
+        }
+        return isDisposableAdjacentEmail(this.email);
+    }
+
+    /**
+     * Second-level labels of the disposable email domains (mirrors the blocklist applied at creation
+     * in {@code OwnerEmails}). An email whose domain shares one of these labels — a different TLD or a
+     * subdomain of a disposable domain — is <em>disposable-adjacent</em>.
+     */
+    private static final Set<String> DISPOSABLE_DOMAIN_LABELS =
+        Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Whether {@code email}'s domain is disposable-adjacent: its second-level label (the label
+     * immediately before the final TLD) matches a known disposable domain. Absent/blank or malformed
+     * addresses are not adjacent.
+     */
+    private static boolean isDisposableAdjacentEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String[] labels = email.substring(at + 1).toLowerCase().split("\\.");
+        if (labels.length < 2) {
+            return false;
+        }
+        return DISPOSABLE_DOMAIN_LABELS.contains(labels[labels.length - 2]);
+    }
+
+    /**
      * The owner's salutation, derived at read time as the {@link #getTitle() title}, a single space
      * and the {@link #getLastName() lastName} (e.g. {@code 'DR Franklin'}); just the lastName when no
      * title is present.
