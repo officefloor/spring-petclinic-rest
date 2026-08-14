@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityCapacityExceededException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -165,6 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(owner.getEmail()));
         owner.setAddress(normalizeAddress(owner.getAddress()));
         validatePostcode(owner.getPostcode(), owner.getCity());
+        rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveRegistrationDate =
             owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         owner.setRegistrationDate(rollToBusinessDay(effectiveRegistrationDate));
@@ -602,6 +604,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param date the effective registration date (supplied in the request or defaulted to the server date)
      * @return the same date if it is a weekday, otherwise the following Monday
      */
+    /**
+     * Rejects creating an owner whose supplied {@code registrationDate} is later than the server's
+     * current date. A registration date is not permitted to lie in the future; a {@code null} date
+     * (defaulted to the server date) and any date on or before today are accepted. The check runs
+     * against the date exactly as supplied, before it is rolled forward onto a business day.
+     *
+     * @param registrationDate the registration date supplied in the request, may be {@code null}
+     * @throws FutureRegistrationDateException if the supplied date is after the server date
+     */
+    private void rejectFutureRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(registrationDate);
+        }
+    }
+
     private LocalDate rollToBusinessDay(LocalDate date) {
         DayOfWeek day = date.getDayOfWeek();
         if (day == DayOfWeek.SATURDAY) {
