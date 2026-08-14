@@ -11,12 +11,17 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * separate telephone, email and household checks. Runs after the telephone and email are normalized
  * and after {@link DeriveHouseholdId} has resolved any shared {@code householdId}.
  *
- * <p>It derives the request's {@code identityKey} exactly as {@link Owner#getIdentityKey()} does —
- * {@code normalizedTelephone|email|householdId} (email and householdId empty when absent) — and
- * rejects with a 409 only when the WHOLE key equals an existing owner's. Because the telephone is
- * part of the key, two members of the same household (same {@code householdId}) with different
- * telephones have different identityKeys and are both allowed; only an exact full-key match is a
- * duplicate.
+ * <p>It applies two 409 rules against the already-stored owners:
+ * <ul>
+ * <li><b>Identity duplicate</b> — the request's {@code identityKey}, derived exactly as
+ * {@link Owner#getIdentityKey()} does ({@code normalizedTelephone|email|householdId}, email and
+ * householdId empty when absent), equals an existing owner's whole key. This always rejects, even
+ * with {@code sharesHousehold}.</li>
+ * <li><b>Household duplicate</b> — the request's computed {@code householdId} (from lastName and
+ * postcode) matches an existing owner's. Because the household is keyed on {@code (lastName,
+ * postcode)}, a second owner in that household is a duplicate <em>unless</em> it declares
+ * {@code sharesHousehold}, which admits it as a member.</li>
+ * </ul>
  */
 public class EnsureUniqueIdentity {
 
@@ -24,9 +29,15 @@ public class EnsureUniqueIdentity {
             OwnerRepository ownerRepository) throws DuplicateIdentityException {
         String householdIdValue = (householdId == null) ? null : householdId.value();
         String identityKey = identityKey(request, householdIdValue);
+        boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         for (Owner existing : ownerRepository.findAll()) {
             if (identityKey.equals(existing.getIdentityKey())) {
                 throw new DuplicateIdentityException(identityKey);
+            }
+            // A household of one (no postcode) shares with no one; sharesHousehold admits a member.
+            if (!sharesHousehold && householdIdValue != null
+                    && householdIdValue.equals(existing.getHouseholdId())) {
+                throw new DuplicateIdentityException(householdIdValue);
             }
         }
     }

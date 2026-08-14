@@ -14,6 +14,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner is still created, but flagged with {@code possibleDuplicate = true} and
  * {@code possibleDuplicateOf} set to the matching owner's id (the lowest id when several match).
  * Otherwise {@code possibleDuplicate} is set to {@code false} and no match id is recorded.
+ *
+ * <p>An existing owner in the <em>same household</em> (same computed {@code householdId}) is never a
+ * soft match: a second owner sharing lastName and postcode is either rejected as a household
+ * duplicate ({@link EnsureUniqueIdentity}) or admitted as a declared member via
+ * {@code sharesHousehold}, and a declared member is not a suspected duplicate.
  */
 public class DetectPossibleDuplicate {
 
@@ -35,6 +40,7 @@ public class DetectPossibleDuplicate {
             }
             if (lastName.equals(existing.getLastName())
                     && postcode.equals(existing.getPostcode())
+                    && !sameHousehold(owner, existing)
                     && !equalsTelephone(telephone, existing.getTelephone())) {
                 if (matchId == null || existing.getId() < matchId) {
                     matchId = existing.getId();
@@ -50,5 +56,9 @@ public class DetectPossibleDuplicate {
 
     private static boolean equalsTelephone(String a, String b) {
         return a == null ? b == null : a.equals(b);
+    }
+
+    private static boolean sameHousehold(Owner a, Owner b) {
+        return a.getHouseholdId() != null && a.getHouseholdId().equals(b.getHouseholdId());
     }
 }

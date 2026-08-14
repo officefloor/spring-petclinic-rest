@@ -4,10 +4,10 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Runs in the create-owner pipeline after {@link BuildOwner}. Stamps the shared household identifier
- * derived by {@link EnsureUniqueHousehold} onto the owner being created so it is stored and returned.
- * When the request did not join an existing household the identifier is {@code null} and the owner
- * keeps none.
+ * Runs in the create-owner pipeline after {@link BuildOwner}. Stamps the deterministic household
+ * identifier computed by {@link DeriveHouseholdId} onto the owner being created so it is stored and
+ * returned. Every owner with a postcode gets one (owners sharing lastName and postcode share the
+ * value); an owner with no postcode has no shared household and the identifier is {@code null}.
  */
 public class AssignHousehold {
 
