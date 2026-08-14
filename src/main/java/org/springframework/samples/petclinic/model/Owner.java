@@ -153,7 +153,7 @@ public class Owner extends Person {
     /**
      * The owner's membership number formatted as {@code "<customerCode>-M<YY>"}, where
      * {@code YY} is the last two digits of the registration date's year (e.g.
-     * {@code "SMI-0007-M26"}).
+     * {@code "SYD-SMI-0007-M26"}).
      *
      * @return the formatted membership number, or {@code null} if the customer code or
      *         registration date has not been assigned

@@ -169,7 +169,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } else if (!householdMembers.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         String firstNameKey = householdKey(owner.getFirstName());
         String namesakeLastNameKey = householdKey(owner.getLastName());
         long namesakeCount = this.clinicService.findAllOwners().stream()
@@ -299,17 +299,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the customer code for a newly registered owner in the form
-     * {@code '<LAST3>-<NNNN>'}, where {@code LAST3} is the upper-cased first three letters
-     * of the last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to
-     * one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+     * {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3} is the upper-cased first three
+     * letters of the city, {@code LAST3} the upper-cased first three letters of the last name
+     * and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the
+     * number of owners already registered in that city (e.g. {@code 'SYD-SMI-0007'}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format(Locale.ROOT, "%s-%04d", last3, sequence);
+        String cityKey = householdKey(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && cityKey.equals(householdKey(existing.getCity())))
+            .count() + 1;
+        return String.format(Locale.ROOT, "%s-%s-%04d", city3, last3, sequence);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
