@@ -213,6 +213,37 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's Luhn check digit: a single digit ({@code 0}-{@code 9}) computed with the
+     * standard Luhn algorithm over the decimal digits contained in the {@code customerCode}
+     * (non-digit characters are ignored).
+     *
+     * @return the Luhn check digit, or {@code null} if the customer code has not been assigned
+     */
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The owner's numeric membership level, from {@code 1} to {@code 3}, computed on
      * creation. It starts at {@code 1}, gains {@code 1} when this owner carries an email
      * address, gains {@code 1} when this owner has no namesakes ({@code namesakeCount} is
