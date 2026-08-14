@@ -1,0 +1,113 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2978f75a..04fcb299 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -233,6 +233,23 @@ public class Owner extends Person {
+         return hasEmail ? "EMAIL" : "PHONE";
+     }
+ 
++    /**
++     * The owner's identity key: the single derived value used for duplicate detection, formed as
++     * {@code normalizedTelephone + "|" + (email or empty) + "|" + householdId}. The telephone and
++     * email are the already-normalized stored values and a {@code null} email or household id is
++     * rendered as the empty string. Two owners are duplicates only when their whole identity keys
++     * are equal; because the telephone is part of the key, household members with different
++     * telephones have different identity keys.
++     *
++     * @return the derived identity key
++     */
++    public String getIdentityKey() {
++        String telephonePart = this.telephone == null ? "" : this.telephone;
++        String emailPart = this.email == null ? "" : this.email;
++        String householdPart = this.householdId == null ? "" : this.householdId;
++        return telephonePart + "|" + emailPart + "|" + householdPart;
++    }
++
+     /**
+      * City -> canonical region, the fixed ground truth for deriving locality.
+      */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 0949c07d..3e668a64 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -167,17 +167,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+             }
+             owner.setEmail(email);
+-            boolean emailInUse = this.clinicService.findAllOwners().stream()
+-                .anyMatch(existing -> existing.getEmail() != null
+-                    && email.equals(existing.getEmail().toLowerCase(Locale.ROOT)));
+-            if (emailInUse) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+-            }
+-        }
+-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> telephone.equals(toE164(existing.getTelephone())));
+-        if (telephoneInUse) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         String cityKey = householdKey(owner.getCity());
+         long cityCount = this.clinicService.findAllOwners().stream()
+@@ -193,24 +182,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .filter(existing -> lastNameKey.equals(householdKey(existing.getLastName()))
+                 && addressKey.equals(householdKey(existing.getAddress())))
+             .toList();
+-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
++        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
++        if (sharesHousehold) {
+             String householdId = householdMembers.stream()
+                 .map(Owner::getHouseholdId)
+                 .filter(Objects::nonNull)
+                 .findFirst()
+                 .orElseGet(() -> householdId(owner));
+             owner.setHouseholdId(householdId);
++            owner.setHouseholdSize(householdMembers.size() + 1);
++        } else {
++            owner.setHouseholdSize(1);
++        }
++        // Single consolidated duplicate check: the telephone, email and household duplicate rules are
++        // all expressed through the one derived identityKey (telephone|email|householdId). A create is
++        // rejected only when a new owner's WHOLE identityKey equals an existing owner's; because the
++        // telephone is part of the key, two household members with different telephones are allowed.
++        String identityKey = owner.getIdentityKey();
++        boolean identityInUse = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
++        if (identityInUse) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
++        if (sharesHousehold) {
+             for (Owner member : householdMembers) {
+                 if (member.getHouseholdId() == null) {
+-                    member.setHouseholdId(householdId);
++                    member.setHouseholdId(owner.getHouseholdId());
+                     this.clinicService.saveOwner(member);
+                 }
+             }
+-            owner.setHouseholdSize(householdMembers.size() + 1);
+-        } else if (!householdMembers.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        } else {
+-            owner.setHouseholdSize(1);
+         }
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         String firstNameKey = householdKey(owner.getFirstName());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d4e8f679..42bdd842 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2164,6 +2164,15 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: The single derived key used for duplicate detection, formed as
++                'normalizedTelephone|email|householdId' where a missing email or household
++                id is rendered as the empty string. A create is rejected with 409 only when
++                a new owner's whole identity key equals an existing owner's.
++              type: string
++              example: '+61412345678||HH-1A2B3C4D5E6F'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
