@@ -318,15 +318,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * normalized telephone concatenated with the last name. For example an owner in the NSW postcode
      * range gets a code such as {@code 'NSW-3F2A1B9C'}.
      *
+     * <p>When the computed code collides with an existing owner's customer code, it is de-duplicated
+     * by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes the result
+     * unique across all existing owners' customer codes. The de-duplicated code is what gets assigned.
+     *
      * @param owner the owner being created, whose postcode, city and last name feed the code
      * @param normalizedTelephone the owner's E.164-normalized telephone
-     * @return the assigned customer code
+     * @return the assigned customer code, de-duplicated against existing owners if necessary
      */
     private String buildCustomerCode(Owner owner, String normalizedTelephone) {
         String region = deriveRegion(owner.getPostcode(), owner.getCity());
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String hash8 = sha256Hex8(normalizedTelephone + lastName);
-        return region + "-" + hash8;
+        String baseCode = region + "-" + hash8;
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existingCodes.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (existingCodes.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
