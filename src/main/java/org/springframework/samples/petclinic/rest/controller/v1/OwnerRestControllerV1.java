@@ -149,8 +149,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        LocalDate effectiveDate = owner.getRegistrationDate() != null
-            ? owner.getRegistrationDate() : LocalDate.now();
+        LocalDate suppliedDate = owner.getRegistrationDate();
+        if (suppliedDate != null && suppliedDate.isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        LocalDate effectiveDate = suppliedDate != null ? suppliedDate : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         owner.setRegistrationDate(registrationDate);
         long createdToday = this.clinicService.findAllOwners().stream()
