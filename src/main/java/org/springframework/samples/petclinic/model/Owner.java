@@ -191,6 +191,16 @@ public class Owner extends Person {
         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
     }
 
+    /**
+     * The owner's preferred contact channel, derived at read time: {@code 'EMAIL'} when an
+     * {@link #getEmail() email} is present, otherwise {@code 'PHONE'}.
+     */
+    @Transient
+    public String getContactPreference() {
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
+
     /** City -> canonical region for {@link #getLocality()}. Any other city is 'UNKNOWN'. */
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
