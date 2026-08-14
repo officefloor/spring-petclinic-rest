@@ -92,6 +92,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS =
         Map.of("61", 9, "1", 10);
 
+    /**
+     * Inclusive 4-digit postcode range {@code {low, high}} per region, the fixed ground truth for
+     * validating an owner's postcode against the region derived from its city. A region not listed
+     * here (e.g. the {@code "UNKNOWN"} locality of an unmapped city) imposes no range constraint, so
+     * any 4-digit postcode is accepted.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -168,6 +177,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             owner.setEmail(email);
         }
+        if (!isPostcodeValidForCity(owner.getPostcode(), owner.getLocality())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String cityKey = householdKey(owner.getCity());
         long cityCount = this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null
@@ -228,6 +240,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Validates an owner's postcode against the region derived from its city. The postcode is
+     * optional: a {@code null} value is always accepted. When present it must fall within the
+     * inclusive range mapped to the region by {@link #REGION_POSTCODES}; a region with no known
+     * range (e.g. the {@code "UNKNOWN"} locality of an unmapped city) accepts any 4-digit postcode.
+     * The 4-digit syntax itself is enforced upstream by bean validation.
+     *
+     * @param postcode the owner's postcode (may be {@code null})
+     * @param locality the region derived from the owner's city
+     * @return {@code true} when the postcode is absent, the region has no range, or the postcode is
+     *         within the region's range; {@code false} when it is out of range
+     */
+    private boolean isPostcodeValidForCity(String postcode, String locality) {
+        if (postcode == null) {
+            return true;
+        }
+        int[] range = REGION_POSTCODES.get(locality);
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /**
