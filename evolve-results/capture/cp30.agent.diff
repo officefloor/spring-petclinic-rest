@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9ca5a790..a824fa6c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -193,15 +193,37 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's region, derived at read time from the {@link #getCity() city} using a fixed
+-     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}).
+-     * Any city not in the table yields {@code 'UNKNOWN'}.
++     * The owner's region, derived at read time. The {@link #getPostcode() postcode} is preferred:
++     * a 4-digit postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
++     * QLD 4000-4099) yields that region, which disambiguates cities that share a name. Only when the
++     * postcode is absent (or in no known range) does it fall back to the fixed city-to-region table
++     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}). Any unresolved value
++     * yields {@code 'UNKNOWN'}.
+      */
+     @Transient
+     public String getLocality() {
++        String byPostcode = regionForPostcode(this.postcode);
++        if (byPostcode != null) {
++            return byPostcode;
++        }
+         return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+     }
+ 
++    /** The region whose range contains {@code postcode}, or {@code null} when absent/out of range. */
++    private static String regionForPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * The owner's preferred contact channel, derived at read time: {@code 'EMAIL'} when an
+      * {@link #getEmail() email} is present, otherwise {@code 'PHONE'}.
+@@ -232,6 +254,12 @@ public class Owner extends Person {
+     private static final Map<String, String> CITY_REGION =
+         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    /** Region -> inclusive 4-digit postcode range {low, high}, preferred by {@link #getLocality()}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9b6e6877..255385e2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2145,9 +2145,11 @@ components:
+               readOnly: true
+             locality:
+               title: Locality
+-              description: The owner's region, derived at read time from the city using the pinned
+-                city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN'
+-                when the city is not in the table.
++              description: The owner's region, derived at read time. The postcode is preferred - a
++                4-digit postcode in a known region's range (NSW 2000-2099, VIC 3000-3099,
++                QLD 4000-4099) yields that region, disambiguating cities that share a name. When the
++                postcode is absent or in no known range it falls back to the pinned city-to-region
++                table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' otherwise.
+               type: string
+               example: NSW
+               readOnly: true
