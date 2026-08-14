@@ -16,14 +16,12 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class,
-    imports = {OwnerLocality.class, CustomerCodeCheckDigit.class, AgeBand.class, TelephoneDisplay.class,
+    imports = {OwnerLocality.class, AgeBand.class, TelephoneDisplay.class,
         FiscalYear.class, IdentityKey.class, OwnerSegment.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
         expression = "java(\"/api/owners/\" + owner.getId())")
-    @Mapping(target = "checkDigit",
-        expression = "java(CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation",
@@ -35,12 +33,12 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
-        expression = "java(OwnerLocality.fromCustomerCode(owner.getCustomerCode()))")
+        expression = "java(OwnerLocality.fromMemberId(owner.getMemberId()))")
     @Mapping(target = "timezone",
-        expression = "java(OwnerLocality.timezoneForRegion(OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
+        expression = "java(OwnerLocality.timezoneForRegion(OwnerLocality.fromMemberId(owner.getMemberId())))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerSegment.of(owner.getMembershipLevel(), "
-            + "OwnerLocality.fromCustomerCode(owner.getCustomerCode())))")
+            + "OwnerLocality.fromMemberId(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
@@ -55,7 +53,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);

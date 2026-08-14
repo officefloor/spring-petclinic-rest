@@ -66,19 +66,24 @@ public final class OwnerLocality {
     }
 
     /**
-     * Returns the region an owner's identity resolves to by reading it back off the
-     * {@code customerCode}, which is formatted {@code '<REGION>-<HASH8>'}: the portion before the
-     * first {@code '-'}. The locality therefore shares the single region-and-hash identity assigned
-     * at creation instead of being recomputed from the city and postcode. Returns {@code "UNKNOWN"}
-     * when the customer code is absent, blank, or carries no region segment.
+     * Returns the region an owner's identity resolves to by reading it back off the {@code memberId},
+     * which is formatted {@code '<REGION><FY><HASH8><CHK>'}: the leading REGION segment. The locality
+     * therefore shares the single region-and-hash identity assigned at creation instead of being
+     * recomputed from the city and postcode. A known region ({@code NSW}, {@code VIC} or {@code QLD})
+     * is matched as the member id's prefix; any other member id - including one assigned to an owner
+     * whose region derived to {@code "UNKNOWN"} - resolves to {@code "UNKNOWN"}, as does an absent or
+     * blank value.
      */
-    public static String fromCustomerCode(String customerCode) {
-        if (customerCode == null || customerCode.isBlank()) {
+    public static String fromMemberId(String memberId) {
+        if (memberId == null || memberId.isBlank()) {
             return "UNKNOWN";
         }
-        int dash = customerCode.indexOf('-');
-        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
-        return region.isBlank() ? "UNKNOWN" : region;
+        for (String region : REGION_TIMEZONE.keySet()) {
+            if (memberId.startsWith(region)) {
+                return region;
+            }
+        }
+        return "UNKNOWN";
     }
 
     /**
