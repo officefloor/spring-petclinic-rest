@@ -1,0 +1,152 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 97bddadb..ad3ecc20 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.time.LocalDate;
+ import java.util.*;
+ 
+ /**
+@@ -52,6 +53,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "registration_date")
++    private LocalDate registrationDate;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -87,6 +91,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++
++    public void setRegistrationDate(LocalDate registrationDate) {
++        this.registrationDate = registrationDate;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
+new file mode 100644
+index 00000000..c60a7446
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DefaultOwnerRegistrationDate.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Runs in the create-owner pipeline after {@link BuildOwner}. The registration date is optional on
++ * create: when the request supplied one it is carried through untouched, but when it is absent this
++ * step defaults it to the server's current date, mutating the built owner in place so later steps
++ * store and respond with the resolved value (formatted as ISO 'YYYY-MM-DD').
++ */
++public class DefaultOwnerRegistrationDate {
++
++    public void service(@Val Owner owner) {
++        if (owner.getRegistrationDate() == null) {
++            owner.setRegistrationDate(LocalDate.now());
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 33bc0c80..77bb1228 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+-  email VARCHAR(255)
++  email VARCHAR(255),
++  registration_date DATE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 005b04d1..4a767727 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+-  email      VARCHAR(255)
++  email      VARCHAR(255),
++  registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e2082e0b..4e5bc62e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  registration_date DATE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c1e01cc4..a363d746 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       address    TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+-                                      email      TEXT
++                                      email      TEXT,
++                                      registration_date DATE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index eadbedd9..4c4b1258 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -24,6 +24,11 @@ email:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: registrationDate
++
++registrationDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.DefaultOwnerRegistrationDate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 143dadac..4961e003 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2039,6 +2039,13 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++        registrationDate:
++          title: Registration date
++          description: The date the pet owner was registered, in ISO 'YYYY-MM-DD' format.
++            Optional on create; when omitted it defaults to the server's current date.
++          type: string
++          format: date
++          example: '2020-06-15'
+       required:
+         - firstName
+         - lastName
