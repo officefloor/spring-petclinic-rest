@@ -193,6 +193,36 @@ public class Owner extends Person {
     }
 
     /**
+     * A single Luhn check digit (0-9) computed at read time over the digits contained in the
+     * {@link #getCustomerCode() customerCode} (non-digit characters such as the '-' separators are
+     * ignored). {@code null} when the owner has no customerCode.
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The owner's region, derived at read time. The {@link #getPostcode() postcode} is preferred:
      * a 4-digit postcode falling in a known region's range (NSW 2000-2099, VIC 3000-3099,
      * QLD 4000-4099) yields that region, which disambiguates cities that share a name. Only when the
