@@ -395,6 +395,50 @@ public class Owner extends Person {
     }
 
     /**
+     * The base labels (the label before the first dot) of the known disposable email domains. An
+     * owner's email domain is judged disposable-adjacent when its own base label is one of these,
+     * so a near-variant of a blocklisted disposable domain under a different top-level domain
+     * (e.g. {@code mailinator.net} for {@code mailinator.com}) still trips the risk flag.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_BASE_LABELS =
+        Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Whether this owner's email domain is disposable-adjacent: the domain's base label (the label
+     * before its first dot, e.g. {@code "mailinator"} in {@code "mailinator.net"}) matches the base
+     * label of a known disposable domain. An owner with no email carries no disposable-adjacent
+     * domain.
+     *
+     * @return {@code true} when the email domain is disposable-adjacent, otherwise {@code false}
+     */
+    private boolean hasDisposableAdjacentEmail() {
+        if (this.email == null) {
+            return false;
+        }
+        int at = this.email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = this.email.substring(at + 1).toLowerCase(Locale.ROOT);
+        int dot = domain.indexOf('.');
+        String baseLabel = dot < 0 ? domain : domain.substring(0, dot);
+        return DISPOSABLE_EMAIL_BASE_LABELS.contains(baseLabel);
+    }
+
+    /**
+     * Whether this owner warrants a manual risk review. It is {@code true} when any of three signals
+     * holds: the owner is a {@link #getPossibleDuplicate() possible duplicate}, the owner's email
+     * domain is {@link #hasDisposableAdjacentEmail() disposable-adjacent}, or the owner's city is
+     * over its soft capacity - the same 40-owner threshold that raises the
+     * {@link #getCapacityWarning() capacity warning}; otherwise {@code false}.
+     *
+     * @return {@code true} when any risk signal holds, otherwise {@code false} (never {@code null})
+     */
+    public Boolean getRiskFlag() {
+        return getPossibleDuplicate() || hasDisposableAdjacentEmail() || getCapacityWarning();
+    }
+
+    /**
      * Whether this owner has been soft-deleted. A newly created owner is not deleted; deleting an
      * owner via {@code DELETE /api/owners/{id}} flags it {@code true} while retaining the record.
      * A deleted owner is ignored by the create endpoint's duplicate and identity checks.
