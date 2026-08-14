@@ -1,0 +1,136 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9879553a..c26947ba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -366,10 +366,39 @@ public class Owner extends Person {
+             + Character.toUpperCase(this.getLastName().charAt(0)) + ".";
+     }
+ 
++    /**
++     * The fiscal year of the (business-day-adjusted) {@link #registrationDate}, formatted as
++     * {@code "FY<YY>"}. The fiscal year starts on 1 July: a registration date on or after 1 July
++     * belongs to that calendar year's fiscal year, an earlier date belongs to the previous year's,
++     * and {@code YY} is the last two digits of the year the fiscal year started (e.g. a date in
++     * August 2026 yields {@code "FY26"}, a date in March 2026 yields {@code "FY25"}).
++     *
++     * @return the formatted fiscal year, or {@code null} if the registration date has not been
++     *         assigned
++     */
++    public String getFiscalYear() {
++        if (this.registrationDate == null) {
++            return null;
++        }
++        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
++    }
++
++    /**
++     * The starting calendar year of the fiscal year (which begins on 1 July) that the given date
++     * falls in: the date's own year when it is on or after 1 July, otherwise the previous year.
++     *
++     * @param date the date whose fiscal year is derived (must not be {@code null})
++     * @return the starting calendar year of the fiscal year
++     */
++    private static int fiscalYearOf(LocalDate date) {
++        return date.getMonthValue() >= java.time.Month.JULY.getValue()
++            ? date.getYear() : date.getYear() - 1;
++    }
++
+     /**
+      * The owner's membership number formatted as {@code "<customerCode>-M<YY>"}, where
+-     * {@code YY} is the last two digits of the registration date's year (e.g.
+-     * {@code "NSW-1A2B3C4D-M26"}).
++     * {@code YY} is the last two digits of the registration date's fiscal year (the same fiscal
++     * year returned by {@link #getFiscalYear()}, e.g. {@code "NSW-1A2B3C4D-M26"}).
+      *
+      * @return the formatted membership number, or {@code null} if the customer code or
+      *         registration date has not been assigned
+@@ -378,7 +407,7 @@ public class Owner extends Person {
+         if (this.customerCode == null || this.registrationDate == null) {
+             return null;
+         }
+-        return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
++        return String.format("%s-M%02d", this.customerCode, fiscalYearOf(this.registrationDate) % 100);
+     }
+ 
+     /**
+@@ -416,9 +445,10 @@ public class Owner extends Person {
+      * The owner's membership points, starting at {@code 0}. The owner gains {@code 2} when
+      * they carry an email address, {@code 1} when they have no namesakes
+      * ({@code namesakeCount} is {@code 0}), {@code 2} for a household of {@code 3} or more
+-     * members ({@code householdSize}), and {@code 3} for tenure of more than {@code 365}
+-     * days (measured from the {@code registrationDate}). Because a newly created owner has
+-     * zero tenure, a new owner can score at most {@code 5} points.
++     * members ({@code householdSize}), and {@code 3} for tenure of at least one elapsed
++     * fiscal year (the {@code registrationDate}'s fiscal year precedes the current fiscal
++     * year, the fiscal year starting on 1 July). Because a newly created owner is still in
++     * the current fiscal year, a new owner can score at most {@code 5} points.
+      *
+      * @return the membership points
+      */
+@@ -436,7 +466,7 @@ public class Owner extends Person {
+             points += 2;
+         }
+         if (this.registrationDate != null
+-            && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
++            && fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate) >= 1) {
+             points += 3;
+         }
+         return points;
+@@ -448,7 +478,7 @@ public class Owner extends Person {
+      * {@code 2} for {@code 2-3} points, {@code 3} for {@code 4-5} points, and {@code 4} for
+      * {@code 6} or more points. Because a newly created owner has zero tenure, a new owner
+      * scores at most {@code 5} points and so never exceeds level {@code 3}; level {@code 4}
+-     * is reserved for owners whose tenure exceeds {@code 365} days.
++     * is reserved for owners whose tenure spans at least one elapsed fiscal year.
+      *
+      * @return the membership level
+      */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e8163d8b..10b6dfc7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2172,11 +2172,22 @@ components:
+               maximum: 9
+               example: 4
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: The fiscal year of the business-day-adjusted registration
++                date, formatted as 'FY<YY>' where the fiscal year starts on 1 July and
++                YY is the last two digits of the year the fiscal year started (a date
++                on or after 1 July belongs to that year's fiscal year, an earlier date
++                belongs to the previous year's).
++              type: string
++              example: 'FY26'
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number formatted as
+-                '<customerCode>-M<YY>', where YY is the last two digits of the
+-                registration date's year.
++                '<customerCode>-M<YY>', where YY is the last two digits of the fiscal
++                year of the registration date (the same fiscal year returned as
++                'fiscalYear').
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+@@ -2185,7 +2196,8 @@ components:
+               description: The owner's membership points, computed on create. It starts
+                 at 0, gains 2 when the owner carries an email address, gains 1 when the
+                 owner has no namesakes (namesakeCount is 0), gains 2 for a household of 3
+-                or more members, and gains 3 for tenure of more than 365 days.
++                or more members, and gains 3 for tenure of at least one elapsed fiscal
++                year (the registration date's fiscal year precedes the current one).
+               type: integer
+               format: int32
+               minimum: 0
+@@ -2196,7 +2208,8 @@ components:
+               description: The owner's numeric membership level from 1 to 4, derived from
+                 the membership points on create - 1 for 0-1 points, 2 for 2-3 points, 3
+                 for 4-5 points, and 4 for 6 or more points. Because a new owner has zero
+-                tenure, level 4 is reserved for owners whose tenure exceeds 365 days.
++                tenure, level 4 is reserved for owners whose tenure spans at least one
++                elapsed fiscal year.
+               type: integer
+               format: int32
+               minimum: 1
