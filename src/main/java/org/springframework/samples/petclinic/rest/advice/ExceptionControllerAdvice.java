@@ -215,6 +215,27 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DailyOwnerLimitReachedException} thrown when an owner is created after the
+     * maximum number of owners for the day (100), counted by {@code registrationDate}, has already
+     * been reached. Returns a 429 Too Many Requests.
+     *
+     * @param e The {@link DailyOwnerLimitReachedException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitReachedException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitReachedException(DailyOwnerLimitReachedException e, HttpServletRequest request) {
+        logger.debug("Daily owner limit reached at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getDate());
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
