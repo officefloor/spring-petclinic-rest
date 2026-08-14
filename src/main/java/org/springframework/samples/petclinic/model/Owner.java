@@ -190,6 +190,18 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /**
+     * The owner's current primary identifier — the single external handle that identifies this owner
+     * to other systems and to the audit trail. Today this is the {@link #getCustomerCode()
+     * customerCode}; when the customerCode is later unified into the memberId this method returns the
+     * memberId instead, so anything keyed on the primary identifier (such as the {@code OWNER_CREATED}
+     * audit event) follows the change without being touched.
+     */
+    @Transient
+    public String getPrimaryIdentifier() {
+        return this.customerCode;
+    }
+
     public String getHouseholdId() {
         return this.householdId;
     }
