@@ -208,26 +208,50 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4 derived at read time from stored fields.
-     * Starts at 1; add 1 when an email is present; add 1 when {@link #getNamesakeCount() namesakeCount}
-     * is 0; add 1 when tenure (days since {@link #getRegistrationDate() registrationDate}) exceeds 365.
-     * Capped at 4. A newly created owner has zero tenure, so a new owner never exceeds level 3.
+     * The owner's membership points, derived at read time from stored fields. Starts at 0; add 2 when
+     * an email is present; add 1 when {@link #getNamesakeCount() namesakeCount} is 0; add 2 for a
+     * household of 3 or more ({@link #getHouseholdSize() householdSize}); add 3 when tenure (days since
+     * {@link #getRegistrationDate() registrationDate}) exceeds 365. A newly created owner has zero
+     * tenure, so a new owner can score at most 5 points.
      */
     @Transient
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+            points += 1;
+        }
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
         }
         if (this.registrationDate != null
                 && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4 derived at read time by banding
+     * {@link #getMembershipPoints() membershipPoints}: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
+     * Because a new owner scores at most 5 points, only tenure (+3) can reach level 4.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
