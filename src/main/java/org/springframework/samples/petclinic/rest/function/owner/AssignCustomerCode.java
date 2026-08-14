@@ -1,9 +1,13 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.CityRegion;
 import org.springframework.samples.petclinic.mapper.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Step of {@code POST /api/owners} that assigns the owner's {@code customerCode}.
@@ -12,12 +16,29 @@ import org.springframework.samples.petclinic.model.Owner;
  * from the postcode (postcode-preferred, city-table fallback; see {@link CityRegion}) and HASH8 is the
  * first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName}
  * (e.g. {@code 'NSW-1A2B3C4D'}). The telephone has already been normalized to E.164 form by
- * {@link NormalizeOwnerTelephone}, so it feeds the hash verbatim. There are no sequence numbers.
+ * {@link NormalizeOwnerTelephone}, so it feeds the hash verbatim.
+ *
+ * <p>When the computed code collides with an existing owner's {@code customerCode}, {@code '-<n>'} is
+ * appended with the smallest {@code n} of 2 or more that makes it unique (e.g. {@code 'NSW-1A2B3C4D-2'}).
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = CityRegion.locality(owner.getPostcode(), owner.getCity());
-        owner.setCustomerCode(CustomerCode.of(region, owner.getTelephone(), owner.getLastName()));
+        String base = CustomerCode.of(region, owner.getTelephone(), owner.getLastName());
+
+        Set<String> existing = new HashSet<>();
+        for (Owner other : ownerRepository.findAll()) {
+            String code = other.getCustomerCode();
+            if (code != null) {
+                existing.add(code);
+            }
+        }
+
+        String candidate = base;
+        for (int n = 2; existing.contains(candidate); n++) {
+            candidate = base + "-" + n;
+        }
+        owner.setCustomerCode(candidate);
     }
 }
