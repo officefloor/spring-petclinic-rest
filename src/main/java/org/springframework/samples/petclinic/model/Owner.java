@@ -654,6 +654,21 @@ public class Owner extends Person {
     }
 
     /**
+     * Return the owner's marketing segment, formatted {@code '<TIER>_<AREA>'}.
+     * {@code TIER} is {@code 'PREMIUM'} when the {@link #getMembershipLevel()
+     * membership level} is {@code 3} or more, otherwise {@code 'STANDARD'}.
+     * {@code AREA} is {@code 'METRO'} when the {@link #getLocality() locality}
+     * is a known region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise
+     * {@code 'REGIONAL'}.
+     */
+    public String getOwnerSegment() {
+        Integer membershipLevel = getMembershipLevel();
+        String tier = (membershipLevel != null && membershipLevel >= 3) ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Return the owner's derived identity key, which consolidates all duplicate
      * detection into a single value: the SHA-256 digest, rendered as 64 lower-case
      * hex characters, of {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}.
