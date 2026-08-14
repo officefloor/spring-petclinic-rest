@@ -36,22 +36,51 @@ public class ValidateOwnerFields {
     }
 
     /**
-     * Strips every non-digit from the telephone and requires exactly 10 digits, storing the
-     * normalized value back on the request so later steps persist and return it. A telephone that
-     * is not exactly 10 digits after stripping adds a {@code telephone} error (400). Skipped when
-     * the telephone is missing/blank, which {@link #requireText} has already flagged.
+     * Normalizes the telephone to E.164 and stores it back on the request so later steps persist
+     * and return it. A leading {@code +} and its country code are kept; otherwise country code
+     * {@code +61} is assumed and a single leading {@code 0} is dropped from the national digits.
+     * Spaces, dashes and brackets are stripped, and the result must carry 8 to 15 digits after the
+     * {@code +}. So {@code "0412 345 678"} becomes {@code "+61412345678"}. A number that cannot form
+     * valid E.164 adds a {@code telephone} error (400). Skipped when the telephone is missing/blank,
+     * which {@link #requireText} has already flagged.
      */
     private static void normalizeTelephone(OwnerFieldsDto request, List<String> errors) {
         String telephone = request.getTelephone();
         if (telephone == null || telephone.isBlank()) {
             return;
         }
-        String digits = telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String e164 = toE164(telephone);
+        if (e164 == null) {
             errors.add("telephone");
             return;
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
+    }
+
+    /**
+     * Returns the E.164 form of {@code telephone}, or {@code null} when it cannot form a valid one.
+     */
+    private static String toE164(String telephone) {
+        String input = telephone.trim();
+        boolean international = input.startsWith("+");
+        // strip spaces, dashes and brackets from the remainder
+        String cleaned = (international ? input.substring(1) : input).replaceAll("[\\s\\-()]", "");
+        if (!cleaned.matches("\\d+")) {
+            return null; // stray characters left over — not a phone number
+        }
+        String digits;
+        if (international) {
+            digits = cleaned;
+        }
+        else {
+            // no country code: assume +61 and drop a single leading national '0'
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
+            return null;
+        }
+        return "+" + digits;
     }
 
     private static void requireText(String field, String value, List<String> errors) {
