@@ -165,6 +165,19 @@ public class Owner extends Person {
         return String.format("%s-M%02d", this.customerCode, this.registrationDate.getYear() % 100);
     }
 
+    /**
+     * The owner's membership tier: {@code "SILVER"} when this owner has no namesakes
+     * ({@code namesakeCount} is {@code 0}) and carries an email address, otherwise
+     * {@code "BRONZE"}.
+     *
+     * @return the membership tier
+     */
+    public String getMembershipTier() {
+        boolean noNamesakes = this.namesakeCount != null && this.namesakeCount == 0;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return (noNamesakes && hasEmail) ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
