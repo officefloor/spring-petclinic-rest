@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -50,6 +51,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityE
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.audit.OwnerCreatedEvent;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -82,6 +84,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * logger named {@code AUDIT}.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence number stamped onto each structured {@link OwnerCreatedEvent}.
+     * Shared across all creates so the events carry a total order independent of the owner id.
+     */
+    private static final AtomicLong AUDIT_SEQUENCE = new AtomicLong();
 
     /**
      * Syntactic check for an email address: a non-empty local part, an {@code @}, and a domain with
@@ -248,10 +256,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
             owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Emits the immutable structured {@link OwnerCreatedEvent} for a just-persisted owner to the
+     * {@code AUDIT} logger as a JSON object, alongside the human-readable audit line. Each event is
+     * stamped with the next value of {@link #AUDIT_SEQUENCE} (monotonically increasing across creates)
+     * and carries the owner's current primary identifier via {@link #primaryIdentifier}.
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQUENCE.incrementAndGet(), owner.getId(),
+            primaryIdentifier(owner), owner.getMembershipLevel());
+        AUDIT.info(event.toJson());
+    }
+
+    /**
+     * The owner's current primary identifier, as carried by the structured {@link OwnerCreatedEvent}.
+     * Today that is the {@code customerCode}; this single accessor is the seam through which the
+     * identifier later switches - when the customer code is unified into the member id, this returns
+     * the member id instead and every emitted event follows automatically.
+     */
+    private static String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
