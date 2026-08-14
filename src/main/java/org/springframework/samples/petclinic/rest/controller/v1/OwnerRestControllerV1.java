@@ -248,11 +248,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .toList();
         owner.setHouseholdSize(householdMembers.size() + 1);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         // Household-duplicate block: a second owner in an existing household (same computed
-        // householdId) is rejected as a duplicate. 'sharesHousehold' now only BYPASSES this block —
-        // declaring the new owner a member — rather than creating the household link itself.
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
+        // householdId) is rejected as a duplicate unless it is a member we can tell apart. A member is
+        // admitted when it either declares 'sharesHousehold' or supplies its own email (a distinct
+        // contact identifying a distinct person); an undistinguished second owner is still a 409.
+        if (!householdMembers.isEmpty() && !sharesHousehold && !hasEmail) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        // Level ceiling: an owner admitted into an already-populated household without declaring
+        // membership has its membership level capped at one above the household's current maximum, so
+        // an undeclared newcomer can never outrank the household it joined. Declared members and
+        // household founders are left uncapped. With no existing household member no cap applies.
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
+            int maxHouseholdLevel = householdMembers.stream()
+                .mapToInt(Owner::getMembershipLevel)
+                .max()
+                .orElse(0);
+            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
         }
         // Single consolidated duplicate check: the telephone, email and household duplicate rules are
         // all expressed through the one derived identityKey (telephone|email|householdId). A create is

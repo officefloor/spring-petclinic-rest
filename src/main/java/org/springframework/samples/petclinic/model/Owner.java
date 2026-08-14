@@ -84,6 +84,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -315,6 +318,23 @@ public class Owner extends Person {
     }
 
     /**
+     * The upper bound applied to this owner's {@link #getMembershipLevel() membership level}: one
+     * above the highest membership level held by their household members at the time this owner was
+     * created. It is assigned only to an owner admitted into an already-populated household, and is
+     * {@code null} (no cap) for a household founder or a declared household member, so their level is
+     * not restricted.
+     *
+     * @return the membership-level cap, or {@code null} when no cap applies
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
+    /**
      * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
      * postcode while carrying a different telephone, flagging a likely duplicate registration.
      *
@@ -493,9 +513,27 @@ public class Owner extends Person {
      * scores at most {@code 5} points and so never exceeds level {@code 3}; level {@code 4}
      * is reserved for owners whose tenure spans at least one elapsed fiscal year.
      *
+     * <p>When a {@link #getMembershipLevelCap() membership-level cap} has been assigned the
+     * points-derived level is capped to it, so an owner admitted into an existing household can never
+     * exceed one level above their household's highest member.
+     *
      * @return the membership level
      */
     public Integer getMembershipLevel() {
+        int level = pointsMembershipLevel();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    /**
+     * The membership level derived purely from the {@link #getMembershipPoints() membership points},
+     * before any {@link #getMembershipLevelCap() household cap} is applied.
+     *
+     * @return the uncapped, points-derived membership level
+     */
+    private int pointsMembershipLevel() {
         int points = getMembershipPoints();
         if (points >= 6) {
             return 4;

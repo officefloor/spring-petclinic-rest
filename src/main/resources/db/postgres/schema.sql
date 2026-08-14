@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_size INTEGER,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
-                                      deleted BOOLEAN
+                                      deleted BOOLEAN,
+                                      membership_level_cap INTEGER
 );
 CREATE INDEX ON owners (last_name);
 
