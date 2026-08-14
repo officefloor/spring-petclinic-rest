@@ -297,7 +297,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String customerCode(Owner owner) {
         String region = owner.getLocality();
         String hash8 = customerCodeHash(owner.getTelephone(), owner.getLastName());
-        return region + "-" + hash8;
+        String base = region + "-" + hash8;
+        java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
