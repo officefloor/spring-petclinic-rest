@@ -15,9 +15,11 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = OwnerLocality.class)
+@Mapper(uses = PetMapper.class, imports = {OwnerLocality.class, CustomerCodeCheckDigit.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "checkDigit",
+        expression = "java(CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
