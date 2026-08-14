@@ -27,10 +27,30 @@ public class ValidateOwnerFields {
         requireText("address", request.getAddress(), errors);
         requireText("city", request.getCity(), errors);
         requireText("telephone", request.getTelephone(), errors);
+        normalizeTelephone(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsValidationException(errors);
         }
         validated.set(request);
+    }
+
+    /**
+     * Strips every non-digit from the telephone and requires exactly 10 digits, storing the
+     * normalized value back on the request so later steps persist and return it. A telephone that
+     * is not exactly 10 digits after stripping adds a {@code telephone} error (400). Skipped when
+     * the telephone is missing/blank, which {@link #requireText} has already flagged.
+     */
+    private static void normalizeTelephone(OwnerFieldsDto request, List<String> errors) {
+        String telephone = request.getTelephone();
+        if (telephone == null || telephone.isBlank()) {
+            return;
+        }
+        String digits = telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            errors.add("telephone");
+            return;
+        }
+        request.setTelephone(digits);
     }
 
     private static void requireText(String field, String value, List<String> errors) {
