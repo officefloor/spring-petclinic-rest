@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.FiscalYear;
 import org.springframework.samples.petclinic.mapper.OwnerLocality;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
@@ -141,11 +142,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
     /**
-     * The tenure, in days, an owner must exceed to reach {@code membershipLevel} 4. Tenure accrues
-     * from membership, so a newly created owner (zero tenure) never clears this threshold and is
-     * therefore capped at level 3 on create.
+     * The tenure, in elapsed fiscal years, an owner must exceed to reach {@code membershipLevel} 4.
+     * Tenure accrues from membership, so a newly created owner (zero tenure) never clears this
+     * threshold and is therefore capped at level 3 on create.
      */
-    private static final int TENURE_LEVEL_THRESHOLD_DAYS = 365;
+    private static final int TENURE_LEVEL_THRESHOLD_FISCAL_YEARS = 1;
 
     private final ClinicService clinicService;
 
@@ -745,13 +746,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the owner's {@code membershipNumber} on create, formatted
-     * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
-     * {@code registrationDate} year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Assigned after
-     * {@link #assignCustomerCode} and once {@code registrationDate} has been defaulted, so both
-     * inputs are present.
+     * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the fiscal year of
+     * the business-day-adjusted {@code registrationDate} (the fiscal year starts on 1 July, e.g. a
+     * registration on 2026-08-03 falls in fiscal year 2027 and yields {@code 'NSW-1A2B3C4D-M27'}).
+     * Assigned after {@link #assignCustomerCode} and once {@code registrationDate} has been
+     * defaulted, so both inputs are present.
      */
     private void assignMembershipNumber(Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String yy = String.format("%02d", FiscalYear.yearOf(owner.getRegistrationDate()) % 100);
         owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
     }
 
@@ -777,7 +779,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Assigns the new owner's {@code membershipPoints} and derived {@code membershipLevel} on create.
      * Points start at 0 and accrue: plus 2 when an email is present, plus 1 when {@code namesakeCount}
      * is 0, plus 2 for a household of 3 or more members, and plus 3 for tenure exceeding
-     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days. The points are then mapped to a level of 1 (0-1
+     * {@value #TENURE_LEVEL_THRESHOLD_FISCAL_YEARS} elapsed fiscal year. The points are then mapped to a level of 1 (0-1
      * points), 2 (2-3), 3 (4-5), or 4 (6 or more). Runs after {@link #assignNamesakeCount} and
      * {@link #assignHouseholdMembership} so those counts are settled. A newly created owner has zero
      * tenure, so the tenure bonus never applies on create.
@@ -793,7 +795,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > TENURE_LEVEL_THRESHOLD_DAYS) {
+        if (tenureFiscalYears(owner) > TENURE_LEVEL_THRESHOLD_FISCAL_YEARS) {
             points += 3;
         }
         owner.setMembershipPoints(points);
@@ -818,11 +820,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The tenure, in days, of a newly created owner. Tenure accrues from membership over time, and a
-     * new owner has not been a member for any elapsed time yet, so this is always {@code 0} on create
-     * (regardless of any backdated {@code registrationDate}).
+     * The tenure, in elapsed fiscal years, of a newly created owner. Tenure accrues from membership
+     * over time, and a new owner has not been a member for any elapsed fiscal year yet, so this is
+     * always {@code 0} on create (regardless of any backdated {@code registrationDate}).
      */
-    private long tenureDays(Owner owner) {
+    private long tenureFiscalYears(Owner owner) {
         return 0L;
     }
 
