@@ -39,6 +39,9 @@ public class FlagPossibleDuplicate {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // the owner being created is not its own possible duplicate
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is not a possible-duplicate match
+            }
             if (!normalize(existing.getLastName()).equals(lastName)) {
                 continue;
             }

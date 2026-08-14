@@ -35,6 +35,9 @@ public class EnsureUniqueIdentity {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // the owner being created is not yet its own duplicate
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner no longer blocks a create
+            }
             if (!sharesHousehold && householdId != null
                     && householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateIdentityException(householdId);
