@@ -14,15 +14,18 @@ import org.springframework.web.bind.annotation.RequestBody;
  * {@link BuildOwner} runs. Publishes the validated body for later steps as they must not bind the
  * request body a second time.
  *
- * <p>The address is {@link OwnerAddresses#normalize normalized} in place before it is checked and
- * published, so an address that is blank only after normalization is rejected here and every later
- * step (build, household comparison, store/return) works with the single normalized form.
+ * <p>An address may be supplied structured (a non-blank {@code addressLine1} plus optional
+ * {@code addressLine2}) or flat ({@code address}); an owner is valid when it supplies either.
+ * {@link OwnerAddresses#applyTo} normalizes whichever fields are present in place and composes the
+ * flat {@code address} (structured preferred) before it is checked and published, so an address
+ * blank in both forms is rejected here and every later step (build, household comparison,
+ * store/return) works with the single normalized composed form.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
-        request.setAddress(OwnerAddresses.normalize(request.getAddress()));
+        OwnerAddresses.applyTo(request);
 
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
