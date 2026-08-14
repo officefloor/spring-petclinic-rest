@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -74,6 +75,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * at least one dot. Whitespace and additional {@code @} characters are disallowed.
      */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Disposable email domains that are not accepted for an owner. An email whose domain (the part
+     * after the {@code @}, compared case-insensitively) is listed here is rejected with a 400.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Dedicated audit logger. Successful owner creation emits a single line here carrying the new
@@ -507,7 +515,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @param email the raw email value from the submitted owner payload, may be {@code null}
      * @return {@code null} if no email was supplied, otherwise the lower-cased email
-     * @throws InvalidOwnerFieldsException if a value is present but not a syntactically valid address
+     * @throws InvalidOwnerFieldsException if a value is present but not a syntactically valid address,
+     *         or if its domain is on the disposable-domain blocklist ({@link #DISPOSABLE_EMAIL_DOMAINS})
      */
     private String normalizeEmail(String email) {
         if (email == null) {
@@ -517,7 +526,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidOwnerFieldsException(List.of("email"));
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        return normalized;
     }
 
     /**
