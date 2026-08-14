@@ -333,29 +333,50 @@ public class Owner extends Person {
     }
 
     /**
-     * Return the owner's membership level, a number from {@code 1} to {@code 4}.
-     * The pre-tenure factors, starting at {@code 1}, add {@code 1} when an email
-     * address is present and {@code 1} when the owner has no namesakes (namesake
-     * count is {@code 0}), capped at {@code 3}. Level {@code 4} is reserved for
-     * tenure: it is reached by adding {@code 1} when the owner's tenure (days
-     * since the registration date) exceeds {@code 365}. Because a newly created
-     * owner has zero tenure, a new owner never exceeds level {@code 3}.
+     * Return the owner's membership points, the raw score from which the
+     * membership level is derived. Starting at {@code 0}, add {@code 2} when an
+     * email address is present, {@code 1} when the owner has no namesakes
+     * (namesake count is {@code 0}), {@code 2} for a household of {@code 3} or
+     * more, and {@code 3} when the owner's tenure (days since the registration
+     * date) exceeds {@code 365}.
      */
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         boolean hasEmail = this.email != null && !this.email.isBlank();
         if (hasEmail) {
-            level += 1;
+            points += 2;
         }
         if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level += 1;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
+        }
         if (this.registrationDate != null
                 && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level += 1;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * Return the owner's membership level, a number from {@code 1} to {@code 4},
+     * derived from {@link #getMembershipPoints()}: {@code 1} for {@code 0-1}
+     * points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
+     * {@code 4} for {@code 6} or more.
+     */
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     public void setNamesakeCount(Integer namesakeCount) {
