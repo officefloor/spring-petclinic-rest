@@ -60,6 +60,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdSize", ignore = true)
     @Mapping(target = "membershipLevel", ignore = true)
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "capacityWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
     @Mapping(target = "deleted", ignore = true)
