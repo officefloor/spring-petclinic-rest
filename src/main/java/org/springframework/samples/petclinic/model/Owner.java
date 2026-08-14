@@ -141,6 +141,18 @@ public class Owner extends Person {
         this.membershipNumber = membershipNumber;
     }
 
+    /**
+     * The owner's membership tier, derived at read time from stored fields: {@code 'SILVER'} when
+     * {@link #getNamesakeCount() namesakeCount} is 0 and an email is present, otherwise
+     * {@code 'BRONZE'}.
+     */
+    @Transient
+    public String getMembershipTier() {
+        boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
+        boolean hasEmail = this.email != null && !this.email.isBlank();
+        return unique && hasEmail ? "SILVER" : "BRONZE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
