@@ -87,6 +87,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles a {@link RestRejectionException} raised by a controller when a business rule rejects a
+     * request. The rejection is rendered as an RFC&nbsp;7807 {@code application/problem+json} body
+     * carrying {@code type}, {@code title}, {@code status} and {@code detail}, preserving the
+     * exception's HTTP status (a 400, 409 or 429).
+     *
+     * @param e The {@link RestRejectionException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the problem detail and the rejection's HTTP status
+     */
+    @ExceptionHandler(RestRejectionException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRestRejectionException(RestRejectionException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.debug("Request rejected at {} {} with status {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            status.value(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setTitle(status.getReasonPhrase());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles all general exceptions by returning a 500 Internal Server Error status with error details.
      *
      * @param e The {@link Exception} to be handled

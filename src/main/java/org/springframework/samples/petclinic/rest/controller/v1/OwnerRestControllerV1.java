@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RestRejectionException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -210,7 +211,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         LocalDate suppliedDate = owner.getRegistrationDate();
         if (suppliedDate != null && suppliedDate.isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The registration date must not be in the future");
         }
         LocalDate effectiveDate = suppliedDate != null ? suppliedDate : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
@@ -219,29 +221,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         if (createdToday >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RestRejectionException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner registration limit has been reached");
         }
         owner.setBulkSignupWarning(createdToday > 80);
         if (!applyAddress(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "A valid address is required");
         }
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The telephone number is not a valid E.164 number");
         }
         owner.setTelephone(telephone);
         if (owner.getEmail() != null) {
             String email = normalizeEmail(owner.getEmail());
             if (!EMAIL_PATTERN.matcher(email).matches()) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                    "The email address is not valid");
             }
             if (isDisposableEmailDomain(email)) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                    "The email domain is not accepted");
             }
             owner.setEmail(email);
         }
         if (!isPostcodeValidForCity(owner.getPostcode(), regionForCity(owner.getCity()))) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The postcode is not valid for the owner's city region");
         }
         String cityKey = householdKey(owner.getCity());
         long cityCount = this.clinicService.findAllOwners().stream()
@@ -249,7 +257,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && cityKey.equals(householdKey(existing.getCity())))
             .count();
         if (cityCount >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RestRejectionException(HttpStatus.CONFLICT,
+                "The city has reached its owner capacity");
         }
         // Approaching-capacity warning: the city already holds 40-49 owners, just short of the
         // hard limit of 50. The 50+ rejection above still applies unchanged.
@@ -291,7 +300,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> !existing.getDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (identityInUse) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RestRejectionException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         // Soft-duplicate detection. A declared household member (sharesHousehold) is never a suspected
         // duplicate. Any other owner whose identityKey differs from an existing owner's but that shares
@@ -763,12 +773,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null) {
             email = normalizeEmail(email);
             if (!EMAIL_PATTERN.matcher(email).matches()) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                    "The email address is not valid");
             }
         }
         String telephone = toE164(ownerFieldsDto.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestRejectionException(HttpStatus.BAD_REQUEST,
+                "The telephone number is not a valid E.164 number");
         }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
