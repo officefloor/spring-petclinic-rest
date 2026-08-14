@@ -1,0 +1,106 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 056445e1..716a45fd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -70,6 +71,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Common street-type abbreviations expanded during address normalization. Keys are the
++     * upper-cased abbreviation as it appears as a whole whitespace-delimited token; values are the
++     * expanded form.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -116,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        normalizeAddress(ownerFieldsDto);
+         validateRequiredFields(ownerFieldsDto);
+         normalizeTelephone(ownerFieldsDto);
+         rejectDuplicateTelephone(ownerFieldsDto);
+@@ -260,6 +270,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return value == null || value.trim().isEmpty();
+     }
+ 
++    /**
++     * Normalizes an owner's {@code address} on create and writes the canonical form back onto the
++     * request so it is what gets validated, compared, stored and returned. The value is trimmed,
++     * runs of internal whitespace are collapsed to a single space, the result is upper-cased and
++     * common street-type abbreviations are expanded as whole tokens ({@code ST}->{@code STREET},
++     * {@code RD}->{@code ROAD}, {@code AVE}->{@code AVENUE}). Running before the required-field check
++     * means an address that is blank after normalization is rejected like a missing one.
++     */
++    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(canonicalAddress(ownerFieldsDto.getAddress()));
++    }
++
++    /**
++     * Returns the canonical form of an address: trimmed, internal whitespace runs collapsed to a
++     * single space, upper-cased, with common street-type abbreviations expanded as whole tokens. A
++     * {@code null} value returns {@code null}. The transform is idempotent, so an already-canonical
++     * address is returned unchanged, making it safe to apply to stored values during comparison.
++     */
++    private static String canonicalAddress(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Normalizes an owner's {@code telephone} on create into E.164 form. A leading {@code '+'} and
+      * the country code that follows it are kept; otherwise the country code {@code '+61'} is assumed
+@@ -339,10 +386,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return;
+         }
+         String lastName = normalizeForComparison(ownerFieldsDto.getLastName());
+-        String address = normalizeForComparison(ownerFieldsDto.getAddress());
++        String address = canonicalAddress(ownerFieldsDto.getAddress());
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (lastName.equals(normalizeForComparison(existing.getLastName()))
+-                && address.equals(normalizeForComparison(existing.getAddress()))) {
++                && address.equals(canonicalAddress(existing.getAddress()))) {
+                 throw new DuplicateOwnerHouseholdException(
+                     ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+             }
+@@ -420,11 +467,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return;
+         }
+         String lastName = normalizeForComparison(owner.getLastName());
+-        String address = normalizeForComparison(owner.getAddress());
++        String address = canonicalAddress(owner.getAddress());
+         List<Owner> members = new ArrayList<>();
+         for (Owner existing : this.clinicService.findAllOwners()) {
+             if (lastName.equals(normalizeForComparison(existing.getLastName()))
+-                && address.equals(normalizeForComparison(existing.getAddress()))) {
++                && address.equals(canonicalAddress(existing.getAddress()))) {
+                 members.add(existing);
+             }
+         }
