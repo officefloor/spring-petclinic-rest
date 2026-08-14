@@ -13,11 +13,17 @@ import org.springframework.web.bind.annotation.RequestBody;
  * firstName, lastName, address, city or telephone with a 400 naming each offending field, before
  * {@link BuildOwner} runs. Publishes the validated body for later steps as they must not bind the
  * request body a second time.
+ *
+ * <p>The address is {@link OwnerAddresses#normalize normalized} in place before it is checked and
+ * published, so an address that is blank only after normalization is rejected here and every later
+ * step (build, household comparison, store/return) works with the single normalized form.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(OwnerAddresses.normalize(request.getAddress()));
+
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);

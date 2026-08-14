@@ -13,8 +13,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Runs in the create-owner pipeline before {@link BuildOwner}. Compares the request's lastName and
- * address against every existing owner — case-insensitively with collapsed whitespace. When they
+ * Runs in the create-owner pipeline before {@link BuildOwner}. Compares the request's lastName
+ * (case-insensitively with collapsed whitespace) and its {@link OwnerAddresses#normalize normalized}
+ * address against every existing owner. When they
  * match an existing owner and the request did NOT set {@code sharesHousehold} true, the request is
  * rejected with a 409 so the same household is not registered twice.
  *
@@ -30,12 +31,12 @@ public class EnsureUniqueHousehold {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
             Out<HouseholdId> householdIdOut) throws DuplicateHouseholdException {
         String lastName = canonical(request.getLastName());
-        String address = canonical(request.getAddress());
+        String address = OwnerAddresses.normalize(request.getAddress());
 
         List<Owner> matches = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(canonical(existing.getLastName()))
-                    && address.equals(canonical(existing.getAddress()))) {
+                    && address.equals(OwnerAddresses.normalize(existing.getAddress()))) {
                 matches.add(existing);
             }
         }
