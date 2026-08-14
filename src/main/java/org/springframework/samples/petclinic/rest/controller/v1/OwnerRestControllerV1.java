@@ -111,8 +111,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = normalizeTelephone(owner.getTelephone());
-        if (telephone.length() != 10) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
@@ -127,7 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setEmail(email);
         }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(normalizeTelephone(existing.getTelephone())));
+            .anyMatch(existing -> telephone.equals(toE164(existing.getTelephone())));
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -139,14 +139,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a telephone number for creation by stripping every non-digit character,
-     * leaving only the digits. Callers require the result to be exactly 10 digits.
+     * Normalizes a telephone number into E.164 form. Spaces, dashes and brackets are stripped.
+     * When the value carries a leading {@code '+'} its country code is kept as given; otherwise the
+     * Australian country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped
+     * from the national digits. The result must carry 8 to 15 digits after the {@code '+'}.
      *
      * @param telephone the raw telephone value (may be {@code null})
-     * @return the digits-only telephone (never {@code null})
+     * @return the E.164 telephone (e.g. {@code "+61412345678"}), or {@code null} if it cannot form
+     *         a valid E.164 number
      */
-    private String normalizeTelephone(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    private String toE164(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        String trimmed = telephone.trim();
+        boolean hasCountryCode = trimmed.startsWith("+");
+        String cleaned = trimmed.replaceAll("[\\s()\\[\\]-]", "");
+        if (hasCountryCode) {
+            cleaned = cleaned.substring(1);
+        }
+        if (!cleaned.matches("[0-9]+")) {
+            return null;
+        }
+        String digits;
+        if (hasCountryCode) {
+            digits = cleaned;
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
+            return null;
+        }
+        return "+" + digits;
     }
 
     /**
@@ -174,11 +199,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
         }
+        String telephone = toE164(ownerFieldsDto.getTelephone());
+        if (telephone == null) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(telephone);
         currentOwner.setEmail(email);
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
