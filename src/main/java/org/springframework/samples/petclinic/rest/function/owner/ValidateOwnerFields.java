@@ -28,6 +28,7 @@ public class ValidateOwnerFields {
         requireText("city", request.getCity(), errors);
         requireText("telephone", request.getTelephone(), errors);
         normalizeTelephone(request, errors);
+        OwnerEmail.normalize(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsValidationException(errors);
         }
