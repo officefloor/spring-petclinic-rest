@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -122,6 +125,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
+        assignHousehold(owner, ownerFieldsDto);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -398,5 +402,65 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         owner.setCustomerCode(String.format("%s-%04d", prefix, sequence));
+    }
+
+    /**
+     * Assigns the new owner's {@code householdId} when the request opts in with
+     * {@code sharesHousehold} set to {@code true} and at least one existing owner already shares the
+     * same last name and address (compared case-insensitively with runs of whitespace collapsed, the
+     * same way {@link #rejectDuplicateHousehold} matches). The household's members and the new owner
+     * all end up carrying one stable shared identifier: if any existing member already has a
+     * {@code householdId} it is reused, otherwise a new one is derived from the normalized last name
+     * and address. Any existing member that is missing the identifier is updated so the whole
+     * household stays consistent. When the flag is absent, or set but no matching owner exists, no
+     * identifier is assigned.
+     */
+    private void assignHousehold(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = normalizeForComparison(owner.getLastName());
+        String address = normalizeForComparison(owner.getAddress());
+        List<Owner> members = new ArrayList<>();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName.equals(normalizeForComparison(existing.getLastName()))
+                && address.equals(normalizeForComparison(existing.getAddress()))) {
+                members.add(existing);
+            }
+        }
+        if (members.isEmpty()) {
+            return;
+        }
+        String householdId = members.stream()
+            .map(Owner::getHouseholdId)
+            .filter(id -> id != null && !id.isBlank())
+            .findFirst()
+            .orElseGet(() -> newHouseholdId(lastName, address));
+        owner.setHouseholdId(householdId);
+        for (Owner member : members) {
+            if (!householdId.equals(member.getHouseholdId())) {
+                member.setHouseholdId(householdId);
+                this.clinicService.saveOwner(member);
+            }
+        }
+    }
+
+    /**
+     * Derives a stable household identifier from the normalized last name and address: the first
+     * twelve upper-case hex characters of the SHA-256 digest of {@code "<lastName>|<address>"}. Two
+     * owners in the same household therefore derive the same value regardless of creation order.
+     */
+    private static String newHouseholdId(String normalizedLastName, String normalizedAddress) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((normalizedLastName + "|" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 12).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", ex);
+        }
     }
 }
