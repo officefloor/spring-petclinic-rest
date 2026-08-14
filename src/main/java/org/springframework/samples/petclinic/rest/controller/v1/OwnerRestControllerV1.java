@@ -122,6 +122,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        LocalDate today = LocalDate.now();
+        long createdToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (createdToday >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         String address = normalizeAddress(owner.getAddress());
         if (address == null || address.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
