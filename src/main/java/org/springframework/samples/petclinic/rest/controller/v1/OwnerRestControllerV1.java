@@ -230,7 +230,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        normalizeAddress(ownerFieldsDto);
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -351,15 +354,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes an owner's {@code address} on create and writes the canonical form back onto the
-     * request so it is what gets validated, compared, stored and returned. The value is trimmed,
-     * runs of internal whitespace are collapsed to a single space, the result is upper-cased and
-     * common street-type abbreviations are expanded as whole tokens ({@code ST}->{@code STREET},
-     * {@code RD}->{@code ROAD}, {@code AVE}->{@code AVENUE}). Running before the required-field check
-     * means an address that is blank after normalization is rejected like a missing one.
+     * Normalizes an owner's address on create, supporting both the structured form
+     * ({@code addressLine1} plus optional {@code addressLine2}) and the flat {@code address} form kept
+     * for backward compatibility. Whichever fields are supplied are canonicalized in place - trimmed,
+     * internal whitespace runs collapsed to a single space, upper-cased and common street-type
+     * abbreviations expanded as whole tokens ({@code ST}->{@code STREET}, {@code RD}->{@code ROAD},
+     * {@code AVE}->{@code AVENUE}). The canonical {@code addressLine1}/{@code addressLine2} are written
+     * back, and the composed {@code address} - the normalized {@code addressLine1} with a single space
+     * and the normalized {@code addressLine2} appended when present, falling back to the normalized
+     * flat {@code address} when no structured line is given - is written onto the request so it is what
+     * gets validated, compared, stored and returned. Running before the required-field check means an
+     * address that is blank in both forms after normalization is rejected like a missing one.
      */
     private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(canonicalAddress(ownerFieldsDto.getAddress()));
+        String line1 = canonicalAddress(ownerFieldsDto.getAddressLine1());
+        String line2 = canonicalAddress(ownerFieldsDto.getAddressLine2());
+        String flat = canonicalAddress(ownerFieldsDto.getAddress());
+        ownerFieldsDto.setAddressLine1(line1);
+        ownerFieldsDto.setAddressLine2(line2);
+        ownerFieldsDto.setAddress(composeAddress(line1, line2, flat));
+    }
+
+    /**
+     * Composes the effective address, preferring the structured form: when {@code line1} is present
+     * (non-blank) the result is {@code line1}, with a single space and {@code line2} appended when
+     * {@code line2} is present; otherwise the flat {@code address} is used. All three inputs are
+     * expected to be already canonicalized. Returns the flat value (which may be {@code null} or blank,
+     * left for the required-field check to reject) when no structured line is supplied.
+     */
+    private static String composeAddress(String line1, String line2, String flat) {
+        if (line1 != null && !line1.isBlank()) {
+            if (line2 != null && !line2.isBlank()) {
+                return line1 + " " + line2;
+            }
+            return line1;
+        }
+        return flat;
     }
 
     /**
