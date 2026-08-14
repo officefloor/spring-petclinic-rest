@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 01aeff02..420e3c34 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -88,6 +88,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -580,6 +583,19 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * Whether this owner's city already held between 40 and 49 owners at the time
++     * it was created, flagging that the city is approaching the per-city capacity
++     * limit of 50 (at which further creates are rejected).
++     */
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     /**
+      * Return the owner's locality (region), preferring the postcode: when the
+      * postcode is present and falls within a known region's inclusive range
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 27256848..d5db4801 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -211,9 +211,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // The household id is still computed for household-size and membership-level purposes,
+         // but sharing it no longer rejects the create.
+         List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
+-        if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
++        long ownersInCity = countOwnersInCity(ownerFieldsDto.getCity());
++        if (ownersInCity >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        boolean capacityWarning = ownersInCity >= 40 && ownersInCity <= 49;
+         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+@@ -230,6 +232,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(customerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setBulkSignupWarning(bulkSignupWarning);
++        owner.setCapacityWarning(capacityWarning);
+         // The household size (an input to the membership computation) keys off the computed
+         // household id: this owner plus everyone already sharing it.
+         owner.setHouseholdSize(householdMembers.size() + 1);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 429513c8..773af77b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4393b6af..863cc8b9 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 658e80d1..999b0a69 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   membership_level_cap INTEGER,
+   postcode VARCHAR(4),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index ec7f786e..5e334bae 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       membership_level_cap INTEGER,
+                                       postcode TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 64a8e52e..2a281013 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2292,6 +2292,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether this owner's city already held between 40 and 49 owners
++                at the time it was created, flagging that the city is approaching
++                the per-city capacity limit of 50 (at which further creates are
++                rejected).
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
