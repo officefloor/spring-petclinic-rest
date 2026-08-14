@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -103,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
+        rejectDuplicateTelephone(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -250,5 +252,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         ownerFieldsDto.setTelephone(digits);
+    }
+
+    /**
+     * Rejects creating an owner whose normalized telephone is already used by any other owner.
+     * The incoming value has already been reduced to its 10-digit normal form by
+     * {@link #normalizeTelephone}; each existing owner's stored telephone is normalized the same
+     * way (stripping non-digit characters) before comparison so differing input formats still
+     * collide. A match results in a 409 response naming {@code telephone}.
+     */
+    private void rejectDuplicateTelephone(OwnerFieldsDto ownerFieldsDto) {
+        String telephone = ownerFieldsDto.getTelephone();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (telephone.equals(normalizeDigits(existing.getTelephone()))) {
+                throw new DuplicateOwnerTelephoneException(telephone);
+            }
+        }
+    }
+
+    private static String normalizeDigits(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }
