@@ -192,6 +192,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignNamesakeCount(owner);
         assignMembershipLevel(owner);
         assignBulkSignupWarning(owner);
+        assignPossibleDuplicate(owner);
         assignHousehold(owner, ownerFieldsDto);
         assignHouseholdMembership(owner);
         this.clinicService.saveOwner(owner);
@@ -689,6 +690,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
+    }
+
+    /**
+     * Assigns the new owner's {@code possibleDuplicate} / {@code possibleDuplicateOf} on create. The
+     * owner has already cleared the hard-duplicate {@code identityKey} check, so it is not a hard
+     * duplicate. It is flagged as a possible duplicate when an existing owner shares its
+     * {@code lastName} (compared case-insensitively) and its {@code postcode} (a present, exact
+     * match) while carrying a different {@code telephone}. When such an owner exists,
+     * {@code possibleDuplicate} is set to {@code true} and {@code possibleDuplicateOf} to that owner's
+     * id (the lowest id when several match); otherwise {@code possibleDuplicate} is {@code false} and
+     * {@code possibleDuplicateOf} is left {@code null}. Computed before the new owner is persisted, so
+     * it considers only the pre-existing owners.
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        Integer matchId = null;
+        if (postcode != null) {
+            for (Owner existing : this.clinicService.findAllOwners()) {
+                if (lastName.equalsIgnoreCase(existing.getLastName())
+                    && postcode.equals(existing.getPostcode())
+                    && !postcode.isBlank()
+                    && !java.util.Objects.equals(telephone, existing.getTelephone())
+                    && existing.getId() != null
+                    && (matchId == null || existing.getId() < matchId)) {
+                    matchId = existing.getId();
+                }
+            }
+        }
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
     }
 
     /**
