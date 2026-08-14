@@ -1,0 +1,210 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b144e987..9c38549a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", ignore = true)
+     @Mapping(target = "bulkSignupWarning", ignore = true)
+     @Mapping(target = "householdSize", ignore = true)
++    @Mapping(target = "membershipLevelCap", ignore = true)
+     @Mapping(target = "possibleDuplicate", ignore = true)
+     @Mapping(target = "possibleDuplicateOf", ignore = true)
+     @Mapping(target = "deleted", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ba98a8c3..4ca4b7c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -227,6 +230,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+@@ -307,6 +318,10 @@ public class Owner extends Person {
+      */
+     @Transient
+     public Integer getMembershipPoints() {
++        return computeMembershipPoints(this.householdSize);
++    }
++
++    private int computeMembershipPoints(Integer householdSize) {
+         int points = 0;
+         boolean hasEmail = this.email != null && !this.email.isBlank();
+         if (hasEmail) {
+@@ -315,7 +330,7 @@ public class Owner extends Person {
+         if (this.namesakeCount != null && this.namesakeCount == 0) {
+             points += 1;
+         }
+-        if (this.householdSize != null && this.householdSize >= 3) {
++        if (householdSize != null && householdSize >= 3) {
+             points += 2;
+         }
+         if (this.registrationDate != null
+@@ -329,10 +344,34 @@ public class Owner extends Person {
+      * The owner's membership level, a number from 1 to 4 derived at read time by banding
+      * {@link #getMembershipPoints() membershipPoints}: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more).
+      * Because a new owner scores at most 5 points, only tenure (+3) can reach level 4.
++     *
++     * <p>A new owner also cannot outrank their household: when a {@link #getMembershipLevelCap()
++     * membershipLevelCap} is set (one above the highest level in the household at the moment the owner
++     * joined) the banded level is capped to it.
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+-        int points = getMembershipPoints();
++        return capLevel(levelForPoints(getMembershipPoints()));
++    }
++
++    /**
++     * The membership level this owner would band to if their household held {@code householdSize}
++     * members, still honouring this owner's own {@link #getMembershipLevelCap() cap}. Used when a
++     * new member sizes their household ceiling against the household as it stands once they join, so
++     * every existing member is scored under the same (grown) household size.
++     */
++    public int membershipLevelForHouseholdSize(int householdSize) {
++        return capLevel(levelForPoints(computeMembershipPoints(householdSize)));
++    }
++
++    private int capLevel(int level) {
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
++        }
++        return level;
++    }
++
++    private static int levelForPoints(int points) {
+         if (points <= 1) {
+             return 1;
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+new file mode 100644
+index 00000000..1aaf10c1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevelCap.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Runs in the create-owner pipeline after {@link AssignHousehold} (which stamps the shared
++ * {@code householdId}) and {@link AssignHouseholdSize} (which records the household's current size),
++ * before {@link SaveOwner}. Stamps the owner's {@code membershipLevelCap}: a new owner's
++ * {@link Owner#getMembershipLevel() membershipLevel} may not exceed one above the highest level
++ * currently held by the other members of their household.
++ *
++ * <p>Every already-stored owner sharing this owner's non-null {@code householdId} is a household
++ * member. Each is scored under the household as it stands once the new owner joins — that is, at the
++ * current total {@link Owner#getHouseholdSize() householdSize} — so a member's household-size bonus
++ * reflects the grown household rather than whatever it was when they themselves were created. The cap
++ * is {@code max(memberLevel) + 1}. With no household ({@code householdId == null}) or no existing
++ * member, no cap is stamped and the owner's level bands freely.
++ */
++public class AssignMembershipLevelCap {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return; // no shared household — nobody to be capped against
++        }
++        Integer size = owner.getHouseholdSize();
++        int householdSize = size == null ? 1 : size;
++        Integer maxLevel = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                int level = existing.membershipLevelForHouseholdSize(householdSize);
++                if (maxLevel == null || level > maxLevel) {
++                    maxLevel = level;
++                }
++            }
++        }
++        if (maxLevel != null) {
++            owner.setMembershipLevelCap(maxLevel + 1);
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0e6d5b7e..9b85a2d5 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(32),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 88e23913..6d199705 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,6 +55,7 @@ CREATE TABLE owners (
+   membership_number VARCHAR(32),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2fce68ce..12740549 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(32),
+   bulk_signup_warning BIT,
+   household_size INTEGER,
++  membership_level_cap INTEGER,
+   possible_duplicate BIT,
+   possible_duplicate_of INTEGER,
+   deleted BIT DEFAULT 0,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1fa918b9..8b56c8e8 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
++                                      membership_level_cap INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 89480271..a5032dc9 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -64,6 +64,11 @@ household-assign:
+ household-size:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdSize
+   govern: [ transaction ]
++  next: membership-level-cap
++
++membership-level-cap:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevelCap
++  govern: [ transaction ]
+   next: validateRegistrationDate
+ 
+ validateRegistrationDate:
