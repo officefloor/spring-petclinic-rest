@@ -26,14 +26,6 @@ checkHouseholdUnique:
 checkCityCapacity:
   class: org.springframework.samples.petclinic.rest.function.owner.CheckCityCapacity
   govern: [ transaction ]
-  next: checkDailyLimit
-
-# Reject (429) once 100 or more owners have already been registered today (by registrationDate).
-# Reads within the same write transaction as the insert so the count and the insert see one
-# consistent view.
-checkDailyLimit:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckDailyLimit
-  govern: [ transaction ]
   next: build
 
 build:
@@ -41,10 +33,19 @@ build:
   govern: [ transaction ]
   next: defaultRegistrationDate
 
-# When the client supplied no registrationDate, stamp today's server date; a supplied
-# date is kept as-is. Runs before save so the resolved date is persisted.
+# Resolve the effective registrationDate (supplied, else today's server date) and roll a weekend
+# date forward to the next Monday, so the persisted date is always a business day. Runs before the
+# daily-limit count and save so both see the adjusted date.
 defaultRegistrationDate:
   class: org.springframework.samples.petclinic.rest.function.owner.DefaultRegistrationDate
+  govern: [ transaction ]
+  next: checkDailyLimit
+
+# Reject (429) once 100 or more owners have already been registered on this request's adjusted
+# business day (by registrationDate). Runs after the date is resolved so it counts per business day,
+# within the same write transaction as the insert so the count and the insert see one consistent view.
+checkDailyLimit:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckDailyLimit
   govern: [ transaction ]
   next: assignCustomerCode
 
