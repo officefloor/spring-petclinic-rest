@@ -149,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // whenever their telephone or email differs, and so are both allowed.
         String identityKey = owner.getIdentityKey();
         if (this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -229,8 +230,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        // Soft-delete: retain the row and flag it deleted rather than removing it. The owner
+        // remains readable via GET, and is subsequently ignored by the create endpoint's
+        // duplicate and identity checks.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -387,6 +392,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return List.of();
         }
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .toList();
     }
@@ -407,6 +413,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedLastName = normalizeForHousehold(owner.getLastName());
         String telephone = owner.getTelephone();
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
                 && postcode.equals(existing.getPostcode())
                 && !java.util.Objects.equals(telephone, existing.getTelephone()))
