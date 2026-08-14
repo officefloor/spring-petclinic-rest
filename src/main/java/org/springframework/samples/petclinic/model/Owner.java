@@ -88,6 +88,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 
@@ -476,20 +479,38 @@ public class Owner extends Person {
      * Return the owner's membership level, a number from {@code 1} to {@code 4},
      * derived from {@link #getMembershipPoints()}: {@code 1} for {@code 0-1}
      * points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
-     * {@code 4} for {@code 6} or more.
+     * {@code 4} for {@code 6} or more. When a {@code membershipLevelCap} is set,
+     * the derived level is capped at it (a level higher than the cap is lowered to
+     * the cap); the cap records one above the maximum level among the owner's
+     * household members at creation time.
      */
     public Integer getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points >= 6) {
-            return 4;
+            level = 4;
         }
-        if (points >= 4) {
-            return 3;
+        else if (points >= 4) {
+            level = 3;
         }
-        if (points >= 2) {
-            return 2;
+        else if (points >= 2) {
+            level = 2;
         }
-        return 1;
+        else {
+            level = 1;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
     }
 
     public void setNamesakeCount(Integer namesakeCount) {

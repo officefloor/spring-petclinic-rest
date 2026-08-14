@@ -186,7 +186,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // 'sharesHousehold', which now only bypasses this block (the link is no longer created
         // here — the id is computed).
         List<Owner> householdMembers = findHouseholdMembers(owner.getHouseholdId());
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
+        if (!householdMembers.isEmpty() && !sharesHousehold && !introducesDistinctEmail(owner, householdMembers)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (countOwnersInCity(ownerFieldsDto.getCity()) >= 50) {
@@ -211,6 +211,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The household size (an input to the membership computation) keys off the computed
         // household id: this owner plus everyone already sharing it.
         owner.setHouseholdSize(householdMembers.size() + 1);
+        // Level ceiling: a new owner joining a household they did not explicitly declare
+        // (the distinct-email path above) may not out-rank the household. Cap the derived
+        // membership level at one above the current maximum among the existing household
+        // members; with no existing member no cap applies.
+        if (!sharesHousehold && !householdMembers.isEmpty()) {
+            int maxHouseholdLevel = householdMembers.stream()
+                .mapToInt(Owner::getMembershipLevel)
+                .max()
+                .orElse(0);
+            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
+        }
         // Soft-match ("possible duplicate"): a declared household member is not a suspected
         // duplicate, so only a non-declared create is scored. In practice a non-declared owner
         // sharing an existing owner's last name and postcode is already rejected above as a
@@ -441,6 +452,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .toList();
+    }
+
+    /**
+     * Whether the new owner introduces an email address that distinguishes them from every
+     * existing member of their household. A member of an already-populated household that was
+     * not explicitly declared with {@code sharesHousehold} is normally rejected as a household
+     * duplicate; when the new owner supplies an email that no current household member holds,
+     * they are a distinct, identifiable person and are admitted (with a capped membership
+     * level) rather than rejected. A new owner with no email cannot be distinguished this way.
+     */
+    private boolean introducesDistinctEmail(Owner owner, List<Owner> householdMembers) {
+        String email = owner.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return householdMembers.stream()
+            .noneMatch(existing -> email.equalsIgnoreCase(existing.getEmail()));
     }
 
     /**
