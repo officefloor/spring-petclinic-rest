@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cfacada4..71a1ebed 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -22,6 +22,7 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.Objects;
+ import java.util.regex.Pattern;
+ 
+@@ -66,6 +67,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final Pattern EMAIL_PATTERN =
+         Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+ 
++    /**
++     * Common address abbreviations expanded to their full form during address normalization.
++     * Matching is performed per whitespace-separated token on the upper-cased value.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -114,6 +122,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        String address = normalizeAddress(owner.getAddress());
++        if (address == null || address.isEmpty()) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
++        owner.setAddress(address);
+         String telephone = toE164(owner.getTelephone());
+         if (telephone == null) {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+@@ -211,6 +224,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return email.trim().toLowerCase(Locale.ROOT);
+     }
+ 
++    /**
++     * Normalizes a postal address for storage and comparison: surrounding whitespace is trimmed,
++     * internal runs of whitespace are collapsed to a single space, the value is upper-cased and
++     * common street-type abbreviations are expanded per token ({@code ST -> STREET},
++     * {@code RD -> ROAD}, {@code AVE -> AVENUE}). The stored and returned address is this
++     * normalized form, and every household comparison uses it.
++     *
++     * @param address the raw address value (may be {@code null})
++     * @return the normalized address, or {@code null} if the input was {@code null}
++     */
++    private String normalizeAddress(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++
+     /**
+      * Normalizes a value for household-duplicate comparison: surrounding whitespace is trimmed,
+      * internal runs of whitespace are collapsed to a single space and the result is lower-cased,
