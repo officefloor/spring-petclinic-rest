@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1e09b75d..5892ab29 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -36,6 +36,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
+     @Mapping(target = "ageBand",
+             expression = "java(org.springframework.samples.petclinic.mapper.AgeBand.of(owner))")
++    @Mapping(target = "telephoneDisplay",
++            expression = "java(org.springframework.samples.petclinic.rest.function.owner.E164Telephone.display(owner.getTelephone()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+index 853d2350..ed955718 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -15,7 +15,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * exactly the length that country requires — '+61' (Australia) requires 9 national digits and '+1'
+  * (NANP) requires 10. A wrong national-number length for the country is likewise rejected with a 400.
+  */
+-final class E164Telephone {
++public final class E164Telephone {
+ 
+     /** Country code (digits after the '+', without it) -> required national-number length. Ordered
+      *  longest-first so the most specific prefix wins when resolving the country code. */
+@@ -58,4 +58,36 @@ final class E164Telephone {
+         }
+         return "+" + digits;
+     }
++
++    /**
++     * Formats a stored E.164 telephone for humans: the '+' and country code, a space, then the
++     * national digits grouped in threes (e.g. {@code +61412345678} becomes {@code +61 412 345 678}).
++     * A recognized country code is split off; otherwise the leading digits up to the first three are
++     * treated as the country code. Anything that is not a '+' followed by digits is returned verbatim.
++     */
++    public static String display(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) {
++            return e164;
++        }
++        String code = null;
++        for (String candidate : NATIONAL_LENGTH.keySet()) {
++            if (digits.startsWith(candidate) && digits.length() > candidate.length()) {
++                code = candidate;
++                break;
++            }
++        }
++        if (code == null) {
++            code = digits.substring(0, Math.min(3, digits.length()));
++        }
++        String national = digits.substring(code.length());
++        StringBuilder sb = new StringBuilder("+").append(code);
++        for (int i = 0; i < national.length(); i += 3) {
++            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return sb.toString();
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 102e4997..9300ae7c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2096,6 +2096,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: "The stored E.164 'telephone' formatted for humans: the '+' and country code, a space, then the national digits grouped in threes (e.g. '+61 412 345 678')."
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: Assigned customer code formatted '<REGION>-<HASH8>', where REGION is the canonical region derived from the postcode (postcode-preferred, city-table fallback) and HASH8 is the first 8 upper-case hex characters of SHA-256 over normalizedTelephone + lastName.
