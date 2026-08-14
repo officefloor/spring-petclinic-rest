@@ -155,6 +155,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+        owner.setHouseholdSize(countHousehold(owner.getHouseholdId()));
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
@@ -557,6 +558,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setHouseholdId(householdId);
+    }
+
+    /**
+     * Counts how many owners belong to the household the owner being created has just been assigned to,
+     * inclusive of that owner. Existing owners are matched by their {@code householdId} equalling the
+     * given identifier; the owner being created is added on because it is counted before being persisted.
+     * An owner that did not opt into a shared household (its {@code householdId} is {@code null}) is a
+     * household of one. The value is snapshotted on the owner and drives the {@code GOLD} membership tier.
+     *
+     * @param householdId the household identifier assigned to the owner being created, may be {@code null}
+     * @return the number of household members, including the owner being created
+     */
+    private int countHousehold(String householdId) {
+        if (householdId == null) {
+            return 1;
+        }
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(owner -> householdId.equals(owner.getHouseholdId()))
+            .count();
+        return (int) existing + 1;
     }
 
     /**
