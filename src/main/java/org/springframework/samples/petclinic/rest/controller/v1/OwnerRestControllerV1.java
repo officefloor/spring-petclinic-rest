@@ -227,6 +227,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        // Soft-duplicate detection: the create has already passed the hard-duplicate (identity) check
+        // above, so it is not an exact duplicate. It is nonetheless flagged as a possible duplicate when
+        // it shares an existing owner's last name (compared case-insensitively) and postcode while
+        // carrying a different telephone. The lowest-id match is recorded as 'possibleDuplicateOf'.
+        String softDuplicateLastNameKey = householdKey(owner.getLastName());
+        String softDuplicatePostcode = owner.getPostcode();
+        String softDuplicateTelephone = owner.getTelephone();
+        Owner possibleDuplicate = softDuplicatePostcode == null ? null
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing -> softDuplicateLastNameKey.equals(householdKey(existing.getLastName())))
+                .filter(existing -> softDuplicatePostcode.equals(existing.getPostcode()))
+                .filter(existing -> !softDuplicateTelephone.equals(existing.getTelephone()))
+                .min(Comparator.comparing(Owner::getId))
+                .orElse(null);
+        if (possibleDuplicate != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(possibleDuplicate.getId());
+        } else {
+            owner.setPossibleDuplicate(false);
+        }
         owner.setCustomerCode(customerCode(owner));
         String firstNameKey = householdKey(owner.getFirstName());
         String namesakeLastNameKey = householdKey(owner.getLastName());

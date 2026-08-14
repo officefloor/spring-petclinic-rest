@@ -75,6 +75,12 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -208,6 +214,35 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    /**
+     * Whether this owner, though not a hard duplicate, shares an existing owner's last name and
+     * postcode while carrying a different telephone, flagging a likely duplicate registration.
+     *
+     * @return {@code true} when a soft-duplicate match was found on creation, otherwise
+     *         {@code false} (never {@code null})
+     */
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate != null && this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    /**
+     * The id of the existing owner this owner may duplicate (same last name and postcode,
+     * different telephone), or {@code null} when this owner is not a possible duplicate.
+     *
+     * @return the matching owner id, or {@code null}
+     */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     /**
