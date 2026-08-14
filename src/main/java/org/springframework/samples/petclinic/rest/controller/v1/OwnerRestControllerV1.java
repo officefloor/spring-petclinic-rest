@@ -172,7 +172,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(owner.getEmail()));
-        owner.setAddress(normalizeAddress(owner.getAddress()));
+        applyAddress(owner);
         validatePostcode(owner.getPostcode(), owner.getCity());
         rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveRegistrationDate =
@@ -410,7 +410,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             invalidFields.add("lastName");
         }
-        if (isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
+        if (isBlank(ownerFieldsDto.getAddressLine1())
+            && isBlank(normalizeAddress(ownerFieldsDto.getAddress()))) {
             invalidFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -799,6 +800,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param address the raw address value from the submitted owner payload, may be {@code null}
      * @return the normalized address
      */
+    /**
+     * Applies address normalization to the owner and derives the composed {@code address}, preferring
+     * the structured fields over the flat {@code address} input for backward compatibility. When a
+     * non-blank {@code addressLine1} is supplied, both structured lines are normalized (see
+     * {@link #normalizeAddress}) and stored, and the composed {@code address} becomes the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended when an
+     * {@code addressLine2} was supplied. Otherwise the flat {@code address} is normalized and stored, and
+     * the structured lines are cleared. The stored {@code address} is the form every later step reads.
+     *
+     * @param owner the owner being created, whose raw address fields are normalized in place
+     */
+    private void applyAddress(Owner owner) {
+        String line1 = owner.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine1 = normalizeAddress(line1);
+            String normalizedLine2 = normalizeAddress(owner.getAddressLine2());
+            owner.setAddressLine1(normalizedLine1);
+            if (!normalizedLine2.isEmpty()) {
+                owner.setAddressLine2(normalizedLine2);
+                owner.setAddress(normalizedLine1 + " " + normalizedLine2);
+            } else {
+                owner.setAddressLine2(null);
+                owner.setAddress(normalizedLine1);
+            }
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(owner.getAddress()));
+        }
+    }
+
     private String normalizeAddress(String address) {
         if (address == null) {
             return "";
