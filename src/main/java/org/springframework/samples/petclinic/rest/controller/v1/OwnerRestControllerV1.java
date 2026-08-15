@@ -411,23 +411,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Find an existing owner that makes this (already known to be non-hard-duplicate) owner a
-     * "possible duplicate": one that shares the owner's last name (case-insensitive) and postcode
-     * but carries a different (normalized) telephone. When several match, the one with the smallest
-     * id is chosen so the result is deterministic. Returns {@code null} when the owner has no
-     * postcode or no such existing owner exists.
+     * "possible duplicate": one whose last name shares this owner's {@link Owner#soundex(String)
+     * soundex} and whose postcode matches, yet whose whole {@link Owner#getIdentityKey() identityKey}
+     * differs (so it is not a hard duplicate). When several match, the one with the smallest id is
+     * chosen so the result is deterministic. Returns {@code null} when the owner has no postcode or no
+     * such existing owner exists.
      */
     private Owner possibleDuplicateOf(Owner owner) {
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
-        String telephone = owner.getTelephone();
         if (lastName == null || postcode == null || postcode.isEmpty()) {
             return null;
         }
+        String soundex = Owner.soundex(lastName);
+        String identityKey = owner.getIdentityKey();
         Owner match = null;
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (lastName.equalsIgnoreCase(existing.getLastName())
+            if (soundex.equals(Owner.soundex(existing.getLastName()))
                 && postcode.equals(existing.getPostcode())
-                && !java.util.Objects.equals(telephone, existing.getTelephone())) {
+                && !identityKey.equals(existing.getIdentityKey())) {
                 if (match == null || (existing.getId() != null && match.getId() != null
                     && existing.getId() < match.getId())) {
                     match = existing;
@@ -571,8 +573,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean declaredHouseholdMember = sharesHousehold && !householdMembers.isEmpty();
 
-        // Hard duplicate: a new owner whose WHOLE identityKey (telephone|email|householdId) equals an
-        // existing owner's is a byte-for-byte identity match and is always rejected.
+        // Hard duplicate: a new owner whose identityKey (SHA-256 over telephone|email|soundex(lastName))
+        // equals an existing, non-deleted owner's is the same identity and is always rejected. This is
+        // now the single duplicate check: because the telephone is part of the key, two owners with the
+        // same last name and postcode but different telephones no longer collide here and instead fall
+        // through to the possible-duplicate (soft-match) flagging below.
         String identityKey = owner.getIdentityKey();
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (existing.isDeleted()) {
@@ -588,8 +593,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // level capped (see below) at one above the current household maximum. The 'sharesHousehold'
         // flag now only signals that the caller vouches for the member, suppressing the
         // possible-duplicate flagging below.
-        // A declared household member is not a suspected duplicate. Otherwise, flag an owner that
-        // shares an existing owner's last name and postcode with a different telephone.
+        // A declared household member is not a suspected duplicate. Otherwise, flag an owner whose
+        // last name shares an existing owner's soundex and postcode but whose identityKey differs.
         if (declaredHouseholdMember) {
             owner.setPossibleDuplicate(false);
             owner.setPossibleDuplicateOf(null);
