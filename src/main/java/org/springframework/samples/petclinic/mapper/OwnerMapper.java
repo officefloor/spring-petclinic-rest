@@ -40,13 +40,20 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region), preferring the postcode: a postcode
-     * falling in a known 4-digit range wins (NSW 2000-2099, VIC 3000-3099,
-     * QLD 4000-4099). When the postcode is absent or in no known range, it falls
-     * back to a fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
-     * Brisbane-&gt;QLD). Returns {@code UNKNOWN} when neither source resolves.
+     * Derives the owner's locality (region) from the region-and-hash identity: it is the
+     * {@code <REGION>} segment of the customerCode ({@code <REGION>-<HASH8>}), i.e. the region
+     * derived from the postcode at create time. When the customerCode is absent or malformed
+     * (e.g. legacy records), it falls back to the postcode range and then the fixed city-to-region
+     * table, returning {@code UNKNOWN} when neither source resolves.
      */
     default String locality(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
+        }
         String region = regionFromPostcode(owner);
         if (region != null) {
             return region;

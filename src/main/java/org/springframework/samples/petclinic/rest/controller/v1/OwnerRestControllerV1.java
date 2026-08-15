@@ -169,21 +169,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three
-     * letters of the city, LAST3 the upper-cased first three letters of the last name and NNNN a
-     * per-city 4-digit zero-padded sequence equal to one more than the owners already in that city
-     * (e.g. {@code SYD-SMI-0007}).
+     * Build the customer code {@code <REGION>-<HASH8>}: REGION is the region code derived from the
+     * owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN} when the postcode is absent or in no known
+     * range) and HASH8 is the first 8 upper-case hex characters of SHA-256 over the concatenation of
+     * the owner's normalized (E.164) telephone and last name (e.g. {@code NSW-3F9A0C17}). No sequence
+     * numbers are used, so the code is a pure function of the owner's region-and-hash identity.
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(java.util.Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
-        int sequence = 1;
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (city.equalsIgnoreCase(existing.getCity())) {
-                sequence++;
-            }
+    private String customerCodeFor(Owner owner) {
+        String region = ownerMapper.regionFromPostcode(owner);
+        if (region == null) {
+            region = "UNKNOWN";
         }
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        return region + "-" + hash8(owner.getTelephone(), owner.getLastName());
+    }
+
+    /**
+     * First 8 upper-case hex characters (the first 4 bytes) of SHA-256 over
+     * {@code normalizedTelephone + lastName}, treating a {@code null} component as empty.
+     */
+    private static String hash8(String normalizedTelephone, String lastName) {
+        String input = (normalizedTelephone == null ? "" : normalizedTelephone)
+            + (lastName == null ? "" : lastName);
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** Common street-type abbreviations expanded during address normalization. */
@@ -435,7 +453,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCodeFor(owner));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
