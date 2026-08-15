@@ -12,9 +12,13 @@ public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
+        LocalDate effective = owner.getRegistrationDate();
+        if (effective == null) {
+            effective = LocalDate.now();
         }
+        // Registration must fall on a business day: a supplied or defaulted weekend date rolls
+        // forward to the next Monday, and later steps derive their values from the adjusted date.
+        owner.setRegistrationDate(BusinessDay.rollForward(effective));
         built.set(owner);
     }
 }
