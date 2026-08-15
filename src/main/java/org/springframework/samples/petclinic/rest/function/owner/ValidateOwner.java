@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import jakarta.validation.Valid;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws InvalidEmailException {
+            throws InvalidEmailException, DisposableEmailDomainException {
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
         validated.set(request);
     }
