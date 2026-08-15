@@ -289,6 +289,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Roll a registration date forward onto a business day: a Saturday or Sunday is advanced to the
+     * following Monday, any weekday is returned unchanged. Applied to the effective registration date
+     * (supplied or defaulted) so that everything derived from it — the stored {@code registrationDate},
+     * the membership number's year segment and the per-day create limit — uses the adjusted date.
+     */
+    private static java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
+        switch (date.getDayOfWeek()) {
+            case SATURDAY:
+                return date.plusDays(2);
+            case SUNDAY:
+                return date.plusDays(1);
+            default:
+                return date;
+        }
+    }
+
+    /**
      * Count the existing owners whose registrationDate equals the given day. Used to enforce the
      * per-day create limit on create (before this owner is saved).
      */
@@ -319,8 +336,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
-        java.time.LocalDate registrationDate =
-            owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate();
+        java.time.LocalDate registrationDate = toBusinessDay(
+            owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
         if (ownersRegisteredOn(registrationDate) >= DAILY_CREATE_LIMIT) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
