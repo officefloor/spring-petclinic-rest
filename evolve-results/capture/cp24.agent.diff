@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index da839874..9c40d027 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,10 +26,6 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" "
+             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
+-            + ": owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\")")
+     @Mapping(target = "locality",
+         expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
+             + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9220a3ad..6b65be04 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -152,6 +152,23 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * The owner's membership level (1 to 3), derived from the creation-time facts it is assigned
++     * from: start at 1, add 1 when an email is present, add 1 when {@code namesakeCount} is 0, and
++     * cap at 3. Level 4 is reserved for tenure. Not persisted.
++     */
++    @Transient
++    public Integer getMembershipLevel() {
++        int level = 1;
++        if (this.email != null && !this.email.isBlank()) {
++            level++;
++        }
++        if (this.namesakeCount != null && this.namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+index e099c886..a02e8e48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdSize.java
+@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+  * share this owner's {@code householdId} plus one for the owner being created. Runs after
+  * {@link AssignHouseholdId} (so the householdId is set) and before {@link SaveOwner} (so the owner
+  * being created is not yet in the store and is counted exactly once via the {@code + 1}). Owners
+- * with no householdId are a household of one. This value drives the {@code GOLD} membership tier
+- * (3+ members).
++ * with no householdId are a household of one.
+  */
+ public class AssignHouseholdSize {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 486de83d..ffc8938d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -9,14 +9,16 @@ import org.springframework.samples.petclinic.model.Owner;
+ /**
+  * Step of {@code POST /api/owners} that records a successful create on the dedicated {@code AUDIT}
+  * logger. Runs after {@link SaveOwner} so the owner has its persisted id, and emits a single line
+- * carrying the owner id, the assigned {@code customerCode} and the effective {@code registrationDate}.
++ * carrying the owner id, the assigned {@code customerCode}, the effective {@code registrationDate}
++ * and the assigned {@code membershipLevel}.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 597c06a3..2dfc367b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2122,13 +2122,16 @@ components:
+               type: string
+               example: 'LON-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier. 'GOLD' when the owner's household has 3 or
+-                more members after this create; otherwise 'SILVER' when namesakeCount is 0 and an
+-                email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's membership level, a number from 1 to 3 assigned at creation.
++                Starts at 1, plus 1 when an email is present and plus 1 when namesakeCount is 0,
++                capped at 3. Level 4 is reserved for tenure.
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
