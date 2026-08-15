@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b3fc5891..0f717cf7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -153,6 +153,21 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    /**
++     * The derived identity key used for duplicate detection, formed as
++     * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}.
++     * The telephone and email are already stored in their normalized forms (E.164 and
++     * lower-cased), so the key is a straight concatenation of the stored values. Two owners
++     * are considered the same only when their whole identity keys are equal.
++     */
++    @Transient
++    public String getIdentityKey() {
++        String tel = this.telephone == null ? "" : this.telephone;
++        String mail = this.email == null ? "" : this.email;
++        String household = this.householdId == null ? "" : this.householdId;
++        return tel + "|" + mail + "|" + household;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 891a389e..97548c8e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -121,23 +121,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return true;
+     }
+ 
+-    /**
+-     * Return {@code true} when the given (already lower-cased) email is non-null and already used by
+-     * any existing owner, comparing case-insensitively on the lower-cased email.
+-     */
+-    private boolean isEmailAlreadyUsed(String email) {
+-        if (email == null) {
+-            return false;
+-        }
+-        for (Owner existing : this.clinicService.findAllOwners()) {
+-            String existingEmail = existing.getEmail();
+-            if (existingEmail != null && email.equals(existingEmail.toLowerCase(java.util.Locale.ROOT))) {
+-                return true;
+-            }
+-        }
+-        return false;
+-    }
+-
+     /**
+      * Normalize a telephone number to E.164 form: strip spaces, dashes and brackets; keep a leading
+      * '+' and country code when present, otherwise assume country code '+61' and drop a single leading
+@@ -378,6 +361,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+         owner.setAddress(address);
++        owner.setTelephone(telephone);
+         java.time.LocalDate registrationDate = toBusinessDay(
+             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
+         int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
+@@ -387,30 +371,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        for (Owner existing : this.clinicService.findAllOwners()) {
+-            String existingTelephone = toE164(existing.getTelephone());
+-            if (telephone.equals(existingTelephone)) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+-            }
+-        }
+-        if (isEmailAlreadyUsed(owner.getEmail())) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         List<Owner> householdMembers = householdMembers(owner);
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (!sharesHousehold && !householdMembers.isEmpty()) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         if (sharesHousehold && !householdMembers.isEmpty()) {
+-            String householdId = householdMembers.stream()
++            owner.setHouseholdId(householdMembers.stream()
+                 .map(Owner::getHouseholdId)
+                 .filter(id -> id != null && !id.isBlank())
+                 .findFirst()
+-                .orElseGet(() -> householdIdFor(owner));
+-            owner.setHouseholdId(householdId);
++                .orElseGet(() -> householdIdFor(owner)));
++        }
++        // Consolidated duplicate detection: the former separate telephone, email and household
++        // checks are now all expressed through the single derived identityKey, so a new owner is
++        // rejected only when its WHOLE identityKey equals an existing owner's. Because the telephone
++        // is part of the key, two members of the same household with different telephones have
++        // different identityKeys and are both allowed.
++        String identityKey = owner.getIdentityKey();
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (identityKey.equals(existing.getIdentityKey())) {
++                return new ResponseEntity<>(HttpStatus.CONFLICT);
++            }
++        }
++        if (owner.getHouseholdId() != null) {
+             for (Owner member : householdMembers) {
+                 if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+-                    member.setHouseholdId(householdId);
++                    member.setHouseholdId(owner.getHouseholdId());
+                     this.clinicService.saveOwner(member);
+                 }
+             }
+@@ -418,7 +402,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(namesakeCount(owner));
+         owner.setHouseholdSize(householdMembers.size() + 1);
+         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+-        owner.setTelephone(telephone);
+         owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 52ef6309..1e853b0b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,6 +2126,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'A1B2C3D4E5F6'
++            identityKey:
++              title: Identity key
++              description: >-
++                The derived key used for duplicate detection, formed as
++                'normalizedTelephone|<email or empty>|<householdId or empty>'.
++                A create is rejected with 409 only when a new owner's whole
++                identityKey equals an existing owner's.
++              type: string
++              readOnly: true
++              example: '+61412345678||A1B2C3D4E5F6'
+             namesakeCount:
+               title: Namesake count
+               description: >-
