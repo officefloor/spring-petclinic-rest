@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..4ce43a59
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,52 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * Canonical normalization for an owner's postal {@code address}, applied whenever an owner is
++ * created. The address is trimmed, its internal whitespace runs are collapsed to a single space,
++ * it is upper-cased, and common street-type abbreviations are expanded on a whole-token basis
++ * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++ *
++ * <p>The normalized value is what gets stored and returned, and it is the form every comparison of
++ * addresses uses — the required-field blank check, household-duplicate detection and the shared
++ * household id. Normalization is idempotent, so re-normalizing an already-normalized address is a
++ * no-op. A {@code null} or whitespace-only address normalizes to the empty string.
++ */
++final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(expand(tokens[i]));
++        }
++        return sb.toString();
++    }
++
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index 61b7039f..dfc15d58 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -33,11 +33,11 @@ public class AssignHousehold {
+             return;
+         }
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
++        String address = AddressNormalizer.normalize(owner.getAddress());
+         List<Owner> household = new ArrayList<>();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 household.add(existing);
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateHousehold.java
+index cbfcbea5..617e7a77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateHousehold.java
+@@ -26,10 +26,10 @@ public class RejectDuplicateHousehold {
+             return;
+         }
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index 0bd715f0..e83f4616 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -25,6 +25,7 @@ public class ValidateOwnerFields {
+     public void service(@RequestBody OwnerFieldsDto request, Validator validator, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException {
+         List<String> errors = new ArrayList<>();
++        normalizeAddress(request);
+         addIfBlank(errors, "firstName", request.getFirstName());
+         addIfBlank(errors, "lastName", request.getLastName());
+         addIfBlank(errors, "address", request.getAddress());
+@@ -55,6 +56,16 @@ public class ValidateOwnerFields {
+         }
+     }
+ 
++    /**
++     * Canonically normalize the address (trim, collapse whitespace, upper-case, expand common
++     * abbreviations) and write it back onto the request so it is stored and returned in normalized
++     * form. Running before the blank check means an address that is whitespace-only — and so blank
++     * after normalization — is rejected as an {@code address} required-field error (400).
++     */
++    private static void normalizeAddress(OwnerFieldsDto request) {
++        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
++    }
++
+     private static void addIfBlank(List<String> errors, String name, String value) {
+         if (value == null || value.isBlank()) {
+             errors.add(name);
