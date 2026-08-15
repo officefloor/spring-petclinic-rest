@@ -205,7 +205,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(owner);
         assignPossibleDuplicate(owner, sharesHousehold);
-        owner.setCustomerCode(generateCustomerCode(owner));
+        owner.setMemberId(generateMemberId(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
         owner.setMembershipLevel(computeMembershipLevel(owner));
@@ -216,9 +216,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             IDEMPOTENT_CREATES.put(idempotencyKey, owner.getId());
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
-            ownerDto.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
         emitOwnerCreatedEvent(owner, ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -323,12 +322,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Emits an immutable structured {@code OWNER_CREATED} event to the {@code AUDIT} logger, alongside the
      * human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code seq} is a process-wide,
+     * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code seq} is a process-wide,
      * monotonically increasing sequence number across all creates.
      *
-     * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em> — see
-     * {@link #primaryIdentifier(Owner)}. Today that is the {@code customerCode}; when the primary identifier
-     * is later unified into the member id, the event will carry the member id instead without any change here.
+     * <p>The {@code memberId} field carries the owner's <em>current primary identifier</em> — see
+     * {@link #primaryIdentifier(Owner)} — which is now the unified member id.
      *
      * @param owner    the freshly persisted owner
      * @param ownerDto its DTO projection, used for the derived membership level
@@ -337,7 +335,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", OWNER_CREATED_SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", primaryIdentifier(owner));
+        event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", ownerDto.getMembershipLevel());
         event.put("event", "OWNER_CREATED");
         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
@@ -345,14 +343,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Returns the owner's current primary identifier, which structured audit events must carry. This is the
-     * single point that decides which field is primary: today the {@code customerCode}, and whatever replaces
-     * it later (e.g. once the customer code is unified into the member id).
+     * single point that decides which field is primary: the unified {@code memberId}.
      *
      * @param owner the owner whose primary identifier is required
      * @return the current primary identifier
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
@@ -583,27 +580,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the customer code assigned to a newly created owner, formatted {@code '<REGION>-<HASH8>'}
-     * where {@code REGION} is the region derived from the owner's postcode (falling back to the city when
-     * the postcode resolves to no known region), the same derivation that yields the owner's locality, and
-     * {@code HASH8} is the first 8 upper-cased hex characters of the SHA-256 digest of the owner's
-     * normalized telephone concatenated with the owner's last name (e.g. {@code 'NSW-1A2B3C4D'}).
+     * Builds the unified member id assigned to a newly created owner, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the region derived from the owner's
+     * postcode (falling back to the city when the postcode resolves to no known region), the same
+     * derivation that yields the owner's locality; {@code FY} is the two-digit fiscal year of the owner's
+     * (business-day-adjusted) {@code registrationDate}; {@code HASH8} is the first 8 upper-cased hex
+     * characters of the SHA-256 digest of the owner's normalized telephone concatenated with the owner's
+     * last name; and {@code CHK} is a single Luhn check digit computed over the digits of
+     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW261A2B3C4D7'}).
      * <p>
-     * Should the computed code collide with an existing owner's {@code customerCode}, it is de-duplicated
-     * by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a value not already
-     * held by any existing owner; the de-duplicated code is returned.
+     * Should the computed id collide with an existing owner's {@code memberId}, it is de-duplicated by
+     * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a value not already
+     * held by any existing owner; the de-duplicated id is returned.
      *
-     * @param owner the owner being created, with normalized telephone and postcode already set
-     * @return the assigned, collision-free customer code
+     * @param owner the owner being created, with normalized telephone, postcode and registration date set
+     * @return the assigned, collision-free member id
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String region = OwnerLocality.of(owner.getCity(), owner.getPostcode());
+        String fiscalYear = fiscalYearSuffix(owner.getRegistrationDate());
         String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
             .substring(0, 8).toUpperCase(Locale.ROOT);
-        String base = region + "-" + hash8;
+        String core = region + fiscalYear + hash8;
+        String base = core + luhnCheckDigit(core);
         Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
-            .filter(code -> code != null)
+            .map(Owner::getMemberId)
+            .filter(id -> id != null)
             .collect(java.util.stream.Collectors.toSet());
         if (!existing.contains(base)) {
             return base;
@@ -613,6 +615,49 @@ public class OwnerRestControllerV1 implements OwnersApi {
             n++;
         }
         return base + "-" + n;
+    }
+
+    /**
+     * Returns the two-digit fiscal-year suffix ({@code '<YY>'}) for the given date: the last two digits of
+     * the calendar year in which that date's fiscal year (starting 1 July) begins. This is the same value
+     * carried by the DTO's {@code fiscalYear} and embedded as the {@code FY} segment of the member id.
+     *
+     * @param date the (business-day-adjusted) registration date
+     * @return the zero-padded two-digit fiscal-year suffix
+     */
+    private String fiscalYearSuffix(LocalDate date) {
+        int year = date.getYear();
+        int start = date.getMonthValue() >= 7 ? year : year - 1;
+        return String.format("%02d", start % 100);
+    }
+
+    /**
+     * Computes a single Luhn check digit (0-9) over the digits contained in {@code value}. Non-digit
+     * characters are skipped; the rightmost digit is doubled and every second digit thereafter, digits
+     * exceeding 9 after doubling have 9 subtracted, and the check digit is {@code (10 - sum % 10) % 10}.
+     *
+     * @param value the value whose contained digits are summed
+     * @return the Luhn check digit (between 0 and 9 inclusive)
+     */
+    private int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

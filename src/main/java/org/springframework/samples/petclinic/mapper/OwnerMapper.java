@@ -63,10 +63,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + fiscalYearSuffix(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : membershipLevel(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneOf(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -228,37 +226,6 @@ public abstract class OwnerMapper {
     protected int fiscalYearStart(LocalDate date) {
         int year = date.getYear();
         return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? year : year - 1;
-    }
-
-    /**
-     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits contained in
-     * the owner's {@code customerCode}. Non-digit characters (such as the letters and dashes in the code) are
-     * skipped; the rightmost digit is doubled and every second digit thereafter, digits exceeding 9 after
-     * doubling have 9 subtracted, and the check digit is {@code (10 - sum % 10) % 10}.
-     *
-     * @param owner the owner whose check digit is being computed
-     * @return the Luhn check digit (between 0 and 9 inclusive) over the customer code's digits
-     */
-    protected Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode() == null ? "" : owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
