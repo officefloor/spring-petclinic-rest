@@ -118,21 +118,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return true;
     }
 
+    /**
+     * Normalize a telephone number to E.164 form: strip spaces, dashes and brackets; keep a leading
+     * '+' and country code when present, otherwise assume country code '+61' and drop a single leading
+     * '0' from the national digits. The result must have 8 to 15 digits after the '+'.
+     *
+     * @return the E.164 string (e.g. {@code +61412345678}), or {@code null} when the input cannot form
+     *         a valid E.164 number.
+     */
+    private static String toE164(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String cleaned = raw.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            if (cleaned.startsWith("0")) {
+                cleaned = cleaned.substring(1);
+            }
+            digits = "61" + cleaned;
+        }
+        if (!digits.matches("\\d{8,15}")) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         if (!normalizeEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingTelephone = existing.getTelephone() == null ? ""
-                : existing.getTelephone().replaceAll("\\D", "");
+            String existingTelephone = toE164(existing.getTelephone());
             if (telephone.equals(existingTelephone)) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
