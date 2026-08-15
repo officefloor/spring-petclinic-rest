@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
@@ -30,6 +31,20 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's salutation: the {@code title} followed by a single space and the last
+     * name (e.g. {@code DR who}), or just the last name when no title is given (absent, empty or
+     * blank).
+     */
+    default String salutation(Owner owner) {
+        String lastName = owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
+    }
 
     /**
      * Formats the stored E.164 {@code telephone} for humans: the {@code '+'} and country code, a
