@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -106,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
+        rejectDuplicateTelephone(owner.getTelephone());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -254,5 +256,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(digits);
         }
         return digits;
+    }
+
+    /**
+     * Rejects a create request whose normalized telephone is already used by another owner. Owners store
+     * their telephone in normalized (digits-only) form, so an exact string comparison is sufficient.
+     *
+     * @param telephone the normalized telephone of the owner being created
+     * @throws DuplicateTelephoneException if any existing owner already uses the telephone
+     */
+    private void rejectDuplicateTelephone(String telephone) {
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
+        if (taken) {
+            throw new DuplicateTelephoneException(telephone);
+        }
     }
 }
