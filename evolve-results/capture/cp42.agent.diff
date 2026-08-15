@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
+index bc18e87f..b2482290 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerLocality.java
+@@ -50,6 +50,38 @@ public final class OwnerLocality {
+         };
+     }
+ 
++    /**
++     * Derives an owner's IANA timezone from its locality (region), preferring the postcode over the
++     * city, via the fixed region-to-timezone table: NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++     * QLD-&gt;Australia/Brisbane. The region is resolved with {@link #of(String, String)}.
++     *
++     * @param city the owner's city (may be {@code null})
++     * @param postcode the owner's postcode (may be {@code null})
++     * @return the IANA timezone name, or {@code null} when the region is not in the table
++     */
++    public static String timezoneOf(String city, String postcode) {
++        return timezoneOfRegion(of(city, postcode));
++    }
++
++    /**
++     * Maps a canonical region to its IANA timezone: NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++     * QLD-&gt;Australia/Brisbane.
++     *
++     * @param region the canonical region string (may be {@code null})
++     * @return the IANA timezone name, or {@code null} when the region is not in the table
++     */
++    public static String timezoneOfRegion(String region) {
++        if (region == null) {
++            return null;
++        }
++        return switch (region) {
++            case "NSW" -> "Australia/Sydney";
++            case "VIC" -> "Australia/Melbourne";
++            case "QLD" -> "Australia/Brisbane";
++            default -> null;
++        };
++    }
++
+     /**
+      * Resolves a region from a postcode range: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b1e49d0c..b7ae581e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -58,6 +58,7 @@ public abstract class OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity(), owner.getPostcode()))")
++    @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneOf(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 09f5cba1..04ac4587 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2221,6 +2221,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone, derived from the locality (region)
++                using the fixed region-to-timezone table (NSW->Australia/Sydney,
++                VIC->Australia/Melbourne, QLD->Australia/Brisbane). Absent when
++                the region is not in the table.
++              type: string
++              readOnly: true
++              example: 'Australia/Sydney'
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
