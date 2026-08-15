@@ -17,17 +17,17 @@
 package org.springframework.samples.petclinic.rest.controller;
 
 /**
- * Raised when a submitted telephone number does not contain exactly ten digits once every non-digit
- * character has been stripped. Carries the normalized (digits-only) value so the API can report the
- * rejection back to the client.
+ * Raised when a submitted telephone number cannot form a valid E.164 value (a '+' followed by 8 to 15
+ * digits) once spaces, dashes and brackets have been stripped and a country code applied. Carries the
+ * cleaned value so the API can report the rejection back to the client.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     private final String normalized;
 
     public InvalidTelephoneException(String normalized) {
-        super("Telephone must contain exactly 10 digits after stripping non-digit characters, but had "
-            + normalized.length() + ": '" + normalized + "'");
+        super("Telephone could not be converted to E.164 form (a '+' followed by 8 to 15 digits): '"
+            + normalized + "'");
         this.normalized = normalized;
     }
 
