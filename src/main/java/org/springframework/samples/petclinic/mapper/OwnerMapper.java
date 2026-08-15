@@ -18,7 +18,8 @@ import java.util.List;
 @Mapper(uses = PetMapper.class,
     imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
         org.springframework.samples.petclinic.util.MembershipLevel.class,
-        org.springframework.samples.petclinic.util.ContactPreference.class})
+        org.springframework.samples.petclinic.util.ContactPreference.class,
+        org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -32,6 +33,8 @@ public interface OwnerMapper {
         expression = "java(LocalityResolver.localityOf(owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(ContactPreference.preferenceOf(owner))")
+    @Mapping(target = "identityKey",
+        expression = "java(OwnerIdentityKey.forOwner(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

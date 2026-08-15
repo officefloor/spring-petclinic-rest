@@ -5,9 +5,9 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateOwnerEmailExceptionHandler {
+public class DuplicateOwnerIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateOwnerEmailException ex,
+    public void handle(@Parameter DuplicateOwnerIdentityException ex,
             ObjectResponse<ResponseEntity<Void>> response) {
         response.send(ResponseEntity.status(HttpStatus.CONFLICT).build());
     }
