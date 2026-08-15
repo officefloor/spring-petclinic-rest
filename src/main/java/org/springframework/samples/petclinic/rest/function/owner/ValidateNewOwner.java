@@ -13,11 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}. Rejects a request that is missing or blank in any
  * required field (firstName, lastName, address, city, telephone) with a 400 whose body lists
- * the offending field names. Then normalizes the telephone by stripping every non-digit
- * character and requires exactly 10 digits, storing the 10-digit value back on the request so
- * later steps persist and return it; a telephone that is not exactly 10 digits after stripping
- * is rejected with a 400. Runs before {@link BuildOwner} maps the body to an {@link
- * org.springframework.samples.petclinic.model.Owner}.
+ * the offending field names. Then normalizes the telephone to E.164 form (see {@link
+ * TelephoneE164}), storing the E.164 value back on the request so later steps persist and return
+ * it; a telephone that cannot form valid E.164 is rejected with a 400. Runs before {@link
+ * BuildOwner} maps the body to an {@link org.springframework.samples.petclinic.model.Owner}.
  */
 public class ValidateNewOwner {
 
@@ -42,11 +41,7 @@ public class ValidateNewOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String normalized = request.getTelephone().replaceAll("\\D", "");
-        if (normalized.length() != 10) {
-            throw new InvalidTelephoneException(request.getTelephone());
-        }
-        request.setTelephone(normalized);
+        request.setTelephone(TelephoneE164.normalize(request.getTelephone()));
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
         validated.set(request);
     }

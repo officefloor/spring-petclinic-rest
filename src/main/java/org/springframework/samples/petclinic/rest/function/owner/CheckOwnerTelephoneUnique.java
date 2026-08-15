@@ -5,26 +5,33 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * Rejects a create-owner request whose normalized telephone is already used by any existing
- * owner. Runs after {@link ValidateNewOwner} has normalized the request's telephone to its 10
- * digits, and before {@link BuildOwner}, so a duplicate is a 409 rather than a persisted record.
- * Each stored owner's telephone is normalized the same way (non-digits stripped) before comparing.
+ * Rejects a create-owner request whose E.164 telephone is already used by any existing owner.
+ * Runs after {@link ValidateNewOwner} has normalized the request's telephone to E.164 form, and
+ * before {@link BuildOwner}, so a duplicate is a 409 rather than a persisted record. Each stored
+ * owner's telephone is normalized to E.164 the same way before comparing; a stored value that
+ * cannot form valid E.164 simply cannot match the (valid E.164) request telephone.
  */
 public class CheckOwnerTelephoneUnique {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerTelephoneException {
-        String telephone = normalize(request.getTelephone());
+        String telephone = request.getTelephone();
         for (Owner owner : ownerRepository.findAll()) {
-            if (telephone.equals(normalize(owner.getTelephone()))) {
+            if (telephone.equals(normalizeOrNull(owner.getTelephone()))) {
                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
             }
         }
     }
 
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    private static String normalizeOrNull(String telephone) {
+        try {
+            return TelephoneE164.normalize(telephone);
+        }
+        catch (InvalidTelephoneException ex) {
+            return null;
+        }
     }
 }
