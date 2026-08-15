@@ -1,10 +1,12 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
@@ -21,14 +23,16 @@ import org.springframework.web.bind.annotation.RequestBody;
  * it; a telephone that cannot form valid E.164 is rejected with a 400. Finally, when a {@code
  * postcode} is supplied it is validated against the city's region (see {@link Postcode}); a
  * malformed or out-of-range postcode is rejected with a 400, while an absent postcode is accepted.
- * Runs before {@link BuildOwner} maps the body to an {@link
+ * A supplied {@code registrationDate} later than the server date is rejected with a 400, while an
+ * absent registration date (defaulted later to the server date) is accepted. Runs before
+ * {@link BuildOwner} maps the body to an {@link
  * org.springframework.samples.petclinic.model.Owner}.
  */
 public class ValidateNewOwner {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
-            InvalidPostcodeException {
+            InvalidPostcodeException, FutureRegistrationDateException {
         request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
@@ -53,6 +57,11 @@ public class ValidateNewOwner {
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
         // Postcode is optional; when present it must be a 4-digit code valid for the city's region.
         Postcode.validate(request.getPostcode(), request.getCity());
+        // Registration date is optional; when supplied it may be back-dated but never into the future.
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(registrationDate);
+        }
         validated.set(request);
     }
 
