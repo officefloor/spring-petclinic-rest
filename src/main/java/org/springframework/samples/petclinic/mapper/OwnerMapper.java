@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -146,6 +147,40 @@ public abstract class OwnerMapper {
         String email = owner.getEmail() == null ? "" : owner.getEmail();
         String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
         return telephone + "|" + email + "|" + householdId;
+    }
+
+    /**
+     * Formats the owner's stored E.164 {@code telephone} for humans: the country code, a space, then the
+     * national digits grouped in threes from the left (e.g. {@code '+61412345678'} becomes
+     * {@code '+61 412 345 678'}). The raw {@code telephone} is left untouched in E.164 form. Values that are
+     * {@code null} or not in E.164 form (no leading {@code '+'}) are returned unchanged.
+     * <p>
+     * The country code is split off using the codes the application recognises: {@code '+1'} (NANP) is a
+     * single digit and any other number is assumed to carry the default {@code '+61'}-style two-digit code.
+     *
+     * @param owner the owner whose telephone is being formatted
+     * @return the human-formatted telephone, or the raw value when it is {@code null} or not E.164
+     */
+    protected String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return telephone;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i++) {
+            if (i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return grouped.toString();
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
