@@ -6,6 +6,7 @@ import java.util.List;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,13 +18,17 @@ import org.springframework.web.bind.annotation.RequestBody;
  * being tested for blankness after normalization — with a 400 whose body lists the offending field
  * names. Then normalizes the telephone to E.164 form (see {@link
  * TelephoneE164}), storing the E.164 value back on the request so later steps persist and return
- * it; a telephone that cannot form valid E.164 is rejected with a 400. Runs before {@link
- * BuildOwner} maps the body to an {@link org.springframework.samples.petclinic.model.Owner}.
+ * it; a telephone that cannot form valid E.164 is rejected with a 400. Finally, when a {@code
+ * postcode} is supplied it is validated against the city's region (see {@link Postcode}); a
+ * malformed or out-of-range postcode is rejected with a 400, while an absent postcode is accepted.
+ * Runs before {@link BuildOwner} maps the body to an {@link
+ * org.springframework.samples.petclinic.model.Owner}.
  */
 public class ValidateNewOwner {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+            InvalidPostcodeException {
         request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
@@ -46,6 +51,8 @@ public class ValidateNewOwner {
         }
         request.setTelephone(TelephoneE164.normalize(request.getTelephone()));
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
+        // Postcode is optional; when present it must be a 4-digit code valid for the city's region.
+        Postcode.validate(request.getPostcode(), request.getCity());
         validated.set(request);
     }
 
