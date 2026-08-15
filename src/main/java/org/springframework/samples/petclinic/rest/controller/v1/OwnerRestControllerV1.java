@@ -336,6 +336,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return value >= range[0] && value <= range[1];
     }
 
+    /**
+     * Find an existing owner that makes this (already known to be non-hard-duplicate) owner a
+     * "possible duplicate": one that shares the owner's last name (case-insensitive) and postcode
+     * but carries a different (normalized) telephone. When several match, the one with the smallest
+     * id is chosen so the result is deterministic. Returns {@code null} when the owner has no
+     * postcode or no such existing owner exists.
+     */
+    private Owner possibleDuplicateOf(Owner owner) {
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        if (lastName == null || postcode == null || postcode.isEmpty()) {
+            return null;
+        }
+        Owner match = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName.equalsIgnoreCase(existing.getLastName())
+                && postcode.equals(existing.getPostcode())
+                && !java.util.Objects.equals(telephone, existing.getTelephone())) {
+                if (match == null || (existing.getId() != null && match.getId() != null
+                    && existing.getId() < match.getId())) {
+                    match = existing;
+                }
+            }
+        }
+        return match;
+    }
+
     /** Maximum number of owners permitted in a single city. */
     private static final int CITY_CAPACITY = 50;
 
@@ -453,6 +481,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        Owner duplicateOf = possibleDuplicateOf(owner);
+        owner.setPossibleDuplicate(duplicateOf != null);
+        owner.setPossibleDuplicateOf(duplicateOf == null ? null : duplicateOf.getId());
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
