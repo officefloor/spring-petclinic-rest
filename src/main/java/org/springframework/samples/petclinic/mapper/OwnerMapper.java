@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -21,10 +22,22 @@ import java.util.List;
 public abstract class OwnerMapper {
 
     /**
-     * The highest membership level derivable at creation. Level 4 is reserved for tenure and is never
-     * produced here, so the computed level is capped at this value.
+     * The highest membership level attainable. Levels up to {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} are
+     * derivable at creation; level {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than
+     * {@value #TENURE_LEVEL_DAYS} days.
      */
-    private static final int MAX_MEMBERSHIP_LEVEL = 3;
+    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+
+    /**
+     * The highest membership level derivable at creation, before any tenure is accrued. A newly created owner
+     * has zero tenure, so it can never exceed this value.
+     */
+    private static final int MAX_PRE_TENURE_MEMBERSHIP_LEVEL = 3;
+
+    /**
+     * Tenure, in days, that an owner must exceed to reach membership level {@value #MAX_MEMBERSHIP_LEVEL}.
+     */
+    private static final int TENURE_LEVEL_DAYS = 365;
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
@@ -49,9 +62,12 @@ public abstract class OwnerMapper {
     public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Computes an owner's numeric membership level, assigned at creation. The level starts at 1, gains 1
-     * when an email is present, gains a further 1 when {@code namesakeCount} is 0, and is capped at
-     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
+     * Computes an owner's numeric membership level. The level starts at 1, gains 1 when an email is present,
+     * gains a further 1 when {@code namesakeCount} is 0, and is capped at
+     * {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} before tenure is considered. Level
+     * {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than {@value #TENURE_LEVEL_DAYS}
+     * days (measured from {@code registrationDate}); because a newly created owner has zero tenure, a new
+     * owner never exceeds level {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL}.
      *
      * @param owner the owner whose level is being computed
      * @return the membership level (between 1 and {@value #MAX_MEMBERSHIP_LEVEL} inclusive)
@@ -64,7 +80,28 @@ public abstract class OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        level = Math.min(level, MAX_PRE_TENURE_MEMBERSHIP_LEVEL);
+        if (tenureDays(owner) > TENURE_LEVEL_DAYS) {
+            level = MAX_MEMBERSHIP_LEVEL;
+        }
+        return level;
+    }
+
+    /**
+     * Computes an owner's tenure in days: the number of days between {@code registrationDate} and today. A
+     * newly created owner (registered today) has zero tenure. Owners with no {@code registrationDate}, or a
+     * registration date in the future, are treated as having zero tenure.
+     *
+     * @param owner the owner whose tenure is being computed
+     * @return the owner's tenure in days, never negative
+     */
+    protected long tenureDays(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return Math.max(days, 0);
     }
 
     /**
