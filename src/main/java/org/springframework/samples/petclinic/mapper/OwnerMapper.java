@@ -3,10 +3,8 @@ package org.springframework.samples.petclinic.mapper;
 import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -21,18 +19,15 @@ import java.util.List;
 public abstract class OwnerMapper {
 
     /**
-     * The number of members a household must reach for its owners to be promoted to the {@code GOLD}
-     * membership tier. A household is the set of owners sharing the same non-blank {@code householdId}.
+     * The highest membership level derivable at creation. Level 4 is reserved for tenure and is never
+     * produced here, so the computed level is capped at this value.
      */
-    private static final int GOLD_HOUSEHOLD_SIZE = 3;
-
-    @Autowired
-    protected OwnerRepository ownerRepository;
+    private static final int MAX_MEMBERSHIP_LEVEL = 3;
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity()))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -47,42 +42,22 @@ public abstract class OwnerMapper {
     public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Computes an owner's membership tier. An owner is {@code GOLD} when its household (the owners sharing
-     * the same non-blank {@code householdId}) has {@value #GOLD_HOUSEHOLD_SIZE} or more members; otherwise
-     * the owner is {@code SILVER} when its {@code namesakeCount} is 0 and an email is present, and
-     * {@code BRONZE} in all remaining cases.
+     * Computes an owner's numeric membership level, assigned at creation. The level starts at 1, gains 1
+     * when an email is present, gains a further 1 when {@code namesakeCount} is 0, and is capped at
+     * {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure).
      *
-     * @param owner the owner whose tier is being computed
-     * @return the membership tier ({@code GOLD}, {@code SILVER} or {@code BRONZE})
+     * @param owner the owner whose level is being computed
+     * @return the membership level (between 1 and {@value #MAX_MEMBERSHIP_LEVEL} inclusive)
      */
-    protected String membershipTier(Owner owner) {
-        if (isGoldHousehold(owner)) {
-            return "GOLD";
+    protected Integer membershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            level++;
         }
-        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0
-            && owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            return "SILVER";
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
         }
-        return "BRONZE";
-    }
-
-    /**
-     * Determines whether the owner's household has reached the {@code GOLD} threshold, i.e. at least
-     * {@value #GOLD_HOUSEHOLD_SIZE} owners share the owner's non-blank {@code householdId}. An owner
-     * without a household id is never gold.
-     *
-     * @param owner the owner being evaluated
-     * @return {@code true} when the owner's household has {@value #GOLD_HOUSEHOLD_SIZE} or more members
-     */
-    private boolean isGoldHousehold(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null || householdId.isBlank()) {
-            return false;
-        }
-        long members = this.ownerRepository.findAll().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
-        return members >= GOLD_HOUSEHOLD_SIZE;
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
