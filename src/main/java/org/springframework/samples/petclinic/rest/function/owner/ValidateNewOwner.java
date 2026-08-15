@@ -34,7 +34,22 @@ public class ValidateNewOwner {
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
             InvalidPostcodeException, FutureRegistrationDateException, DisposableEmailDomainException {
-        request.setAddress(OwnerAddress.normalize(request.getAddress()));
+        // Address may arrive structured (addressLine1 [+ addressLine2]) or as the flat 'address'.
+        // The structured form is preferred whenever addressLine1 is non-blank; otherwise the flat
+        // value is used (backward-compatible). Whichever fields are supplied are normalized, and the
+        // flat 'address' everything downstream reads is composed from the structured fields when they
+        // win: normalized addressLine1 plus, when addressLine2 is present, a space and normalized
+        // addressLine2.
+        String addressLine1 = OwnerAddress.normalize(request.getAddressLine1());
+        if (!addressLine1.isEmpty()) {
+            String addressLine2 = OwnerAddress.normalize(request.getAddressLine2());
+            request.setAddressLine1(addressLine1);
+            request.setAddressLine2(addressLine2.isEmpty() ? null : addressLine2);
+            request.setAddress(addressLine2.isEmpty() ? addressLine1 : addressLine1 + " " + addressLine2);
+        }
+        else {
+            request.setAddress(OwnerAddress.normalize(request.getAddress()));
+        }
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
