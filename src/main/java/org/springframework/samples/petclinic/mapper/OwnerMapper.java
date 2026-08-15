@@ -9,10 +9,14 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -292,19 +296,88 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives an owner's {@code identityKey}: the normalized telephone, the email (or an empty string when
-     * absent) and the household id (or an empty string when absent), joined by {@code '|'} in that order
-     * (e.g. {@code '+61412345678||a1b2c3d4e5f6a7b8'}). This is the single key used for duplicate detection,
-     * so the value returned here matches the one the create endpoint compares.
+     * Derives an owner's {@code identityKey}: the lower-case hex SHA-256 digest of the normalized telephone,
+     * the lower-cased email (or an empty string when absent) and the {@link #soundex(String) soundex} of the
+     * last name, joined by {@code '|'} in that order before hashing. This is the single 64-hex key used for
+     * duplicate detection, so the value returned here matches the one the create endpoint compares.
      *
      * @param owner the owner whose identity key is being derived
-     * @return the owner's identity key
+     * @return the owner's identity key, a 64-character lower-case hex SHA-256 digest
      */
     protected String identityKey(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String soundex = soundex(owner.getLastName());
+        return sha256Hex(telephone + "|" + email + "|" + soundex);
+    }
+
+    /**
+     * Computes the full lower-case hex SHA-256 digest of the UTF-8 bytes of the given value.
+     *
+     * @param value the value to hash
+     * @return the 64-character lower-case hex SHA-256 digest
+     */
+    private String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
+        }
+    }
+
+    /**
+     * Computes the American Soundex code of the given value: the retained (upper-cased) first letter
+     * followed by three digits derived from the remaining consonants, right-padded with zeros or truncated
+     * to length four. Non-letters are ignored; adjacent letters mapping to the same digit are coded once
+     * (bridged across {@code 'H'}/{@code 'W'}), and vowels reset the run. A {@code null} or letter-free
+     * value yields an empty string. This matches the create endpoint's soundex so identity keys agree.
+     *
+     * @param value the value (typically a last name) to encode
+     * @return the four-character Soundex code, or an empty string when there are no letters
+     */
+    private String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        String letters = value.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder().append(letters.charAt(0));
+        char prev = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            prev = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    private char soundexDigit(char c) {
+        return switch (c) {
+            case 'B', 'F', 'P', 'V' -> '1';
+            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
+            case 'D', 'T' -> '3';
+            case 'L' -> '4';
+            case 'M', 'N' -> '5';
+            case 'R' -> '6';
+            default -> '0';
+        };
     }
 
     /**
