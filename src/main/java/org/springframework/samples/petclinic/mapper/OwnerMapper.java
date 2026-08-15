@@ -17,7 +17,8 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
-        org.springframework.samples.petclinic.util.MembershipLevel.class})
+        org.springframework.samples.petclinic.util.MembershipLevel.class,
+        org.springframework.samples.petclinic.util.ContactPreference.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -29,6 +30,8 @@ public interface OwnerMapper {
         expression = "java(MembershipLevel.levelOf(owner))")
     @Mapping(target = "locality",
         expression = "java(LocalityResolver.localityOf(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+        expression = "java(ContactPreference.preferenceOf(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
