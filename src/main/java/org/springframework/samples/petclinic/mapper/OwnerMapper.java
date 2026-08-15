@@ -22,6 +22,7 @@ import java.util.List;
         org.springframework.samples.petclinic.util.TelephoneDisplay.class,
         org.springframework.samples.petclinic.util.AgeBand.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
+        org.springframework.samples.petclinic.util.OwnerSegment.class,
         org.springframework.samples.petclinic.util.CheckDigit.class,
         org.springframework.samples.petclinic.util.Salutation.class,
         org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
@@ -50,6 +51,10 @@ public interface OwnerMapper {
             + "LocalityResolver.regionOfCustomerCode(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
         expression = "java(ContactPreference.preferenceOf(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(OwnerSegment.of("
+            + "MembershipLevel.levelOf(MembershipLevel.pointsOf(owner)), "
+            + "LocalityResolver.regionOfCustomerCode(owner.getCustomerCode())))")
     @Mapping(target = "ageBand",
         expression = "java(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",

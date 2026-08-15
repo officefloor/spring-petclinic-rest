@@ -75,6 +75,14 @@ public final class LocalityResolver {
     }
 
     /**
+     * Whether {@code region} is one of the known regions (NSW, VIC or QLD) rather than
+     * {@code "UNKNOWN"} or any unrecognised value (including {@code null}).
+     */
+    public static boolean isKnownRegion(String region) {
+        return REGION_TIMEZONE.containsKey(region);
+    }
+
+    /**
      * The IANA timezone name for {@code region} via the fixed region-to-timezone table
      * (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane).
      * Returns {@code null} when the region (including {@code null} or {@code "UNKNOWN"}) is not
