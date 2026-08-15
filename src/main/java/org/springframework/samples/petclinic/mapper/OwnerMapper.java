@@ -37,6 +37,9 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
             + "&& owner.getEmail() != null ? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "locality",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.Localities.region(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
