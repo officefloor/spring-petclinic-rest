@@ -23,6 +23,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -150,6 +151,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             assignHousehold(owner);
         }
         rejectDuplicateIdentity(owner);
+        assignPossibleDuplicate(owner);
         owner.setCustomerCode(generateCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
@@ -617,6 +619,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (taken) {
             throw new DuplicateIdentityException(key);
         }
+    }
+
+    /**
+     * Flags a soft (possible) duplicate on the owner being created. A soft match is an existing owner that,
+     * while not a hard {@code identityKey} duplicate (that stronger check has already run), shares this
+     * owner's last name (compared case-insensitively) and exact postcode but carries a different normalized
+     * telephone. When at least one such owner exists, {@code possibleDuplicate} is set {@code true} and
+     * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match, for
+     * determinism); otherwise {@code possibleDuplicate} is set {@code false} and no match id is recorded. A
+     * new owner with no postcode has nothing to match on and is never a possible duplicate.
+     *
+     * @param owner the owner being created, with normalized telephone and validated postcode already set
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        Integer matchId = null;
+        if (owner.getPostcode() != null) {
+            matchId = this.clinicService.findAllOwners().stream()
+                .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
+                    && owner.getPostcode().equals(existing.getPostcode())
+                    && !telephonesEqual(owner.getTelephone(), existing.getTelephone()))
+                .map(Owner::getId)
+                .filter(id -> id != null)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        }
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
+    }
+
+    private boolean telephonesEqual(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     /**
