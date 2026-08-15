@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ public class ValidateOwnerFields {
         normalizeTelephone(request, errors);
         OwnerEmail.normalize(request, errors);
         validatePostcode(request, errors);
+        validateRegistrationDate(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsValidationException(errors);
         }
@@ -151,6 +153,22 @@ public class ValidateOwnerFields {
         int value = Integer.parseInt(postcode);
         if (value < range[0] || value > range[1]) {
             errors.add("postcode");
+        }
+    }
+
+    /**
+     * Validates the optional {@code registrationDate}. When absent the field is left untouched
+     * (optional; the server defaults it later). When present it must not be later than the server's
+     * current date — a future date adds a {@code registrationDate} error (400), so a client cannot
+     * back-date the future.
+     */
+    private static void validateRegistrationDate(OwnerFieldsDto request, List<String> errors) {
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate == null) {
+            return;
+        }
+        if (registrationDate.isAfter(LocalDate.now())) {
+            errors.add("registrationDate");
         }
     }
 
