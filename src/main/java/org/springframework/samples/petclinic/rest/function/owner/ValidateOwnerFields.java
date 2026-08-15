@@ -90,9 +90,19 @@ public class ValidateOwnerFields {
     }
 
     /**
+     * Country codes with a fixed national-number length. When a number's country code appears here
+     * its national digits (everything after the code) must match exactly, otherwise it is rejected;
+     * country codes not listed fall back to the generic 8–15 total-digit rule. '+61' (Australia)
+     * requires 9 national digits, '+1' (NANP) requires 10.
+     */
+    private static final java.util.Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY =
+            java.util.Map.of("61", 9, "1", 10);
+
+    /**
      * Convert a raw telephone into E.164 form, or return {@code null} when it cannot form a valid
-     * E.164 number (fewer than 8 or more than 15 digits after the '+', or stray non-digit
-     * characters remaining after the allowed separators are stripped).
+     * E.164 number (fewer than 8 or more than 15 digits after the '+', a national-number length that
+     * is wrong for its country code, or stray non-digit characters remaining after the allowed
+     * separators are stripped).
      */
     static String toE164(String value) {
         if (value == null) {
@@ -110,6 +120,24 @@ public class ValidateOwnerFields {
         if (!digits.matches("[0-9]{8,15}")) {
             return null;
         }
+        if (!hasValidNationalLength(digits)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * For a country code with a fixed national-number length, check the national digits (everything
+     * after the code) match that length exactly. Unknown country codes pass (already bounded by the
+     * generic 8–15 total-digit rule).
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        for (java.util.Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY.entrySet()) {
+            String code = entry.getKey();
+            if (digits.startsWith(code)) {
+                return digits.length() - code.length() == entry.getValue();
+            }
+        }
+        return true;
     }
 }
