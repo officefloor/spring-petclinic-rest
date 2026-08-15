@@ -1,0 +1,145 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ef5c8b48..728228e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -63,6 +63,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -130,6 +133,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a43b86e9..a06c6246 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -149,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
++        owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+@@ -482,6 +483,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return date;
+     }
+ 
++    /**
++     * The number of owners that must already exist for a given day before a further create is flagged as a
++     * bulk sign-up surge. When more than this many owners already share the new owner's registration date,
++     * the created owner carries {@code bulkSignupWarning = true}.
++     */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
++    /**
++     * Determines whether the owner being created lands on a day that already holds a bulk sign-up surge,
++     * i.e. more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already share its {@code registrationDate}.
++     * The count is taken before the new owner is persisted, so it excludes the owner being created, mirroring
++     * the daily create-limit rule's accumulation path.
++     *
++     * @param registrationDate the registration date of the owner being created
++     * @return {@code true} when more than 80 owners were already created on that day, otherwise {@code false}
++     */
++    private boolean isBulkSignupDay(LocalDate registrationDate) {
++        long existing = this.clinicService.findAllOwners().stream()
++            .filter(owner -> registrationDate.equals(owner.getRegistrationDate()))
++            .count();
++        return existing > BULK_SIGNUP_WARNING_THRESHOLD;
++    }
++
+     private void rejectDailyLimitReached(LocalDate registrationDate) {
+         long existing = this.clinicService.findAllOwners().stream()
+             .filter(owner -> registrationDate.equals(owner.getRegistrationDate()))
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..2fe92913 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..6b29bf04 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6e..d2af22f8 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  bulk_signup_warning BIT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831a..9d354cb2 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INTEGER
++                                      namesake_count INTEGER,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 59b44751..a90276e6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2164,6 +2164,15 @@ components:
+               type: string
+               readOnly: true
+               example: 'NSW'
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when more than 80 owners had already been created on this
++                owner's registration day at the moment it was created (a bulk
++                sign-up surge), otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+           required:
+             - pets
+     OwnerPage:
