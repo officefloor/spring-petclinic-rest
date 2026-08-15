@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
@@ -45,6 +46,24 @@ final class Household {
      */
     static boolean sharesHousehold(OwnerFieldsDto request) {
         return Boolean.TRUE.equals(request.getSharesHousehold());
+    }
+
+    /**
+     * The number of stored owners in {@code owner}'s household — those sharing its
+     * {@code householdId}, the owner itself included. Zero when the owner has no household id.
+     */
+    static int memberCount(Owner owner, OwnerRepository ownerRepository) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Owner other : ownerRepository.findAll()) {
+            if (householdId.equals(other.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** First 12 upper-hex characters of SHA-256 over {@code lastName + "|" + postcode}. */

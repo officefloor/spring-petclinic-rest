@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.util.MembershipLevel;
 
 public class RespondWithOwnerCreated {
 
@@ -16,6 +17,9 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
+        int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
+        dto.setMembershipPoints(points);
+        dto.setMembershipLevel(MembershipLevel.levelOf(points));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
