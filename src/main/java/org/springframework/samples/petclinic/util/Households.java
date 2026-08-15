@@ -59,6 +59,24 @@ public final class Households {
         return "HH-" + sha256hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * Builds an owner's {@code identityKey}: the single derived value all duplicate detection is
+     * expressed through, formatted {@code '<telephone>|<email or empty>|<householdId>'} (a
+     * {@code null} telephone or email contributes an empty segment). Two owners are duplicates only
+     * when their whole identity keys are equal, so household members sharing a {@code householdId} but
+     * carrying different telephones have different keys and are not duplicates.
+     *
+     * @param telephone   the owner's normalized (E.164) telephone
+     * @param email       the owner's normalized email, or {@code null} when none
+     * @param householdId the owner's household identifier (see {@link #householdId})
+     * @return the derived identity key
+     */
+    public static String identityKey(String telephone, String email, String householdId) {
+        return (telephone == null ? "" : telephone) + "|"
+            + (email == null ? "" : email) + "|"
+            + (householdId == null ? "" : householdId);
+    }
+
     private static String sha256hex(String s) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));

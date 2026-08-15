@@ -28,6 +28,12 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Households.householdId("
             + "owner.getLastName(), owner.getAddress()))")
+    @Mapping(target = "identityKey",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.Households.identityKey("
+            + "owner.getTelephone(), owner.getEmail(), "
+            + "org.springframework.samples.petclinic.util.Households.householdId("
+            + "owner.getLastName(), owner.getAddress())))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner == null || owner.getCustomerCode() == null "
             + "|| owner.getRegistrationDate() == null ? null : "

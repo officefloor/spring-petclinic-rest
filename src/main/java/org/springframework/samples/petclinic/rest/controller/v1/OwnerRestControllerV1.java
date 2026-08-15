@@ -30,9 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -126,15 +124,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         rejectDailyLimitReached(registrationDate);
         rejectCityAtCapacity(owner.getCity());
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
-        }
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
-        rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
-        rejectDuplicateEmail(email);
         owner.setEmail(email);
+        rejectDuplicateIdentity(owner);
         owner.setCustomerCode(assignCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
@@ -429,48 +423,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose E.164 telephone is already used by another owner. Telephones of
-     * existing owners are normalized to E.164 the same way before comparison, so equivalent numbers
-     * submitted in different formats (e.g. national {@code "0412 345 678"} and international
-     * {@code "+61 412 345 678"}) are still treated as duplicates.
+     * Rejects creating an owner whose identity duplicates an existing owner's. All duplicate detection
+     * is consolidated here onto the identity-bearing part of the derived {@code identityKey}: two
+     * owners are duplicates when they share the same normalized telephone and the same normalized email
+     * (a {@code null} email compared as an empty segment). Existing telephones are re-normalized to
+     * E.164 and existing emails lower-cased before comparison, so equivalent values submitted in
+     * different formats (e.g. national {@code "0412 345 678"} and international {@code "+61 412 345 678"})
+     * still match.
+     * <p>
+     * The {@code householdId} is deliberately not part of this comparison: a household is a shared
+     * grouping, so two members of the same household with different telephones have different
+     * identities and are both allowed. Only owners with the same telephone and email collide.
      *
-     * @param telephone the E.164 telephone of the owner being created
-     * @throws DuplicateTelephoneException (409 Conflict) if another owner already uses this telephone
+     * @param owner the owner being created, with its telephone and email already normalized
+     * @throws DuplicateIdentityException (409 Conflict) if another owner has the same identity
      */
-    private void rejectDuplicateTelephone(String telephone) {
+    private void rejectDuplicateIdentity(Owner owner) {
+        String identity = personalIdentity(owner.getTelephone(), owner.getEmail());
         boolean duplicate = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(existing -> existing != null)
-            .map(this::toE164OrNull)
-            .filter(existing -> existing != null)
-            .anyMatch(telephone::equals);
+            .anyMatch(existing -> identity.equals(
+                personalIdentity(toE164OrNull(existing.getTelephone()), existing.getEmail())));
         if (duplicate) {
-            throw new DuplicateTelephoneException(telephone);
+            String householdId = Households.householdId(owner.getLastName(), owner.getAddress());
+            throw new DuplicateIdentityException(
+                Households.identityKey(owner.getTelephone(), owner.getEmail(), householdId));
         }
     }
 
     /**
-     * Rejects creating an owner whose email is already used by another owner. Emails are compared by
-     * their lower-cased form (the same form every owner's email is stored in, see
-     * {@link #normalizeEmail}), so addresses differing only in letter case still count as duplicates.
-     * Owners without an email are ignored, and an owner being created without an email is never
-     * rejected.
-     *
-     * @param email the lower-cased email of the owner being created, may be {@code null}
-     * @throws DuplicateEmailException (409 Conflict) if another owner already uses this email
+     * Builds the identity-bearing prefix of the {@code identityKey} used for duplicate detection:
+     * the normalized telephone and email joined with {@code '|'}, lower-casing the email (the form it
+     * is stored in, see {@link #normalizeEmail}) so addresses differing only in letter case still match.
      */
-    private void rejectDuplicateEmail(String email) {
-        if (email == null) {
-            return;
-        }
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .map(existing -> existing.toLowerCase(java.util.Locale.ROOT))
-            .anyMatch(email::equals);
-        if (duplicate) {
-            throw new DuplicateEmailException(email);
-        }
+    private String personalIdentity(String telephone, String email) {
+        String normalizedEmail = email == null ? "" : email.toLowerCase(java.util.Locale.ROOT);
+        return (telephone == null ? "" : telephone) + "|" + normalizedEmail;
     }
 
     /**
@@ -483,30 +470,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return normalizeTelephone(telephone);
         } catch (InvalidTelephoneException e) {
             return null;
-        }
-    }
-
-    /**
-     * Rejects creating an owner who shares a household with an existing owner, i.e. another owner
-     * already has the same last name and the same address. Last names are compared case-insensitively
-     * with whitespace collapsed; addresses are compared in their normalized form (see
-     * {@link #normalizeAddress}, which every owner's stored address already uses), so values that
-     * differ only in letter case, spacing or a common street-type abbreviation still count as a match.
-     * This check is skipped when the request sets {@code sharesHousehold} to {@code true}.
-     *
-     * @param lastName the last name of the owner being created
-     * @param address the normalized address of the owner being created
-     * @throws DuplicateHouseholdException (409 Conflict) if another owner shares this household
-     */
-    private void rejectDuplicateHousehold(String lastName, String address) {
-        String normalizedLastName = Households.normalize(lastName);
-        String normalizedAddress = Households.normalize(address);
-        boolean duplicate = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing ->
-                Households.normalize(existing.getLastName()).equals(normalizedLastName)
-                    && Households.normalize(existing.getAddress()).equals(normalizedAddress));
-        if (duplicate) {
-            throw new DuplicateHouseholdException(lastName, address);
         }
     }
 
