@@ -5,15 +5,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
-import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-
 /**
- * Canonical household logic shared by the create-owner pipeline: what counts as the same household
- * (same last name and address, compared case-insensitively with collapsed whitespace) and the stable
- * {@code householdId} derived from it. {@link RejectDuplicateIdentity} uses this to work out the
- * household component of a request's identity key, and {@link AssignHousehold} uses it to assign and
- * back-fill the shared id, so both compute the same value.
+ * Canonical household logic shared by the create-owner pipeline. A household is keyed on
+ * {@code (lastName, postcode)}: every owner with the same last name (compared case-insensitively
+ * with collapsed whitespace) and the same postcode belongs to the same household and so resolves to
+ * the same deterministic {@code householdId}. {@link RejectDuplicateIdentity} uses this to detect
+ * household duplicates and to fold the household component into a request's identity key, and
+ * {@link AssignHousehold} uses it to stamp the computed id onto the owner, so both compute the same
+ * value.
  */
 final class Households {
 
@@ -21,30 +20,25 @@ final class Households {
     }
 
     /**
-     * The {@code householdId} the given request would receive, or {@code null} when it gets none. An
-     * owner joins a household — and so shares its id — only when it opts in with
-     * {@code sharesHousehold: true} and an existing owner already occupies the same household. A lone
-     * owner, or one that does not opt in, has no household id.
+     * The deterministic {@code householdId} for the given last name and postcode: the first 12 hex
+     * characters of {@code SHA-256(normalizedLastName + '|' + postcode)}. It is computed for every
+     * owner regardless of {@code sharesHousehold}, so owners with the same last name and postcode
+     * share it automatically. Never {@code null}.
      */
-    static String resolve(String lastName, String address, boolean sharesHousehold,
-            OwnerRepository ownerRepository) {
-        if (!sharesHousehold) {
-            return null;
-        }
-        String normalizedLastName = normalizeName(lastName);
-        String normalizedAddress = AddressNormalizer.normalize(address);
-        for (Owner existing : ownerRepository.findAll()) {
-            if (sameHousehold(normalizedLastName, normalizedAddress, existing)) {
-                return householdId(normalizedLastName, normalizedAddress);
+    static String householdId(String lastName, String postcode) {
+        String key = normalizeName(lastName) + "|" + normalizePostcode(postcode);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02x", digest[i]));
             }
+            return sb.toString();
         }
-        return null;
-    }
-
-    /** Whether {@code existing} is in the household identified by the given normalized name/address. */
-    static boolean sameHousehold(String normalizedLastName, String normalizedAddress, Owner existing) {
-        return normalizedLastName.equals(normalizeName(existing.getLastName()))
-                && normalizedAddress.equals(AddressNormalizer.normalize(existing.getAddress()));
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /** Lower-case, trim and collapse internal whitespace runs to a single space. */
@@ -55,23 +49,8 @@ final class Households {
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    /**
-     * Derive the stable household identifier {@code 'H-' + first 12 upper-case hex characters of
-     * SHA-256(normalizedLastName + '\n' + normalizedAddress)}. Deterministic, so every owner in the
-     * same household resolves to the same value.
-     */
-    static String householdId(String normalizedLastName, String normalizedAddress) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + "\n" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return "H-" + sb;
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
+    /** Trim the postcode; a {@code null} value contributes the empty string. */
+    static String normalizePostcode(String value) {
+        return value == null ? "" : value.trim();
     }
 }

@@ -9,11 +9,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the owners sharing its {@code householdId} — once this create is accounted for, storing the total
  * on the owner as {@code householdMemberCount}.
  *
- * <p>Runs after {@link AssignHousehold} (which assigns the shared {@code householdId} and back-fills
- * existing members) and before {@link SaveOwner}, so the count sees the existing members already in
- * the repository plus this owner, which is not yet persisted and so is added explicitly. A lone owner
- * with no {@code householdId} has a household of one. The mapper reads this count to award the
- * {@code GOLD} membership tier at three or more members.
+ * <p>Runs after {@link AssignHousehold} (which stamps the deterministic {@code householdId} keyed on
+ * last name and postcode) and before {@link SaveOwner}, so the count sees the existing members already
+ * in the repository plus this owner, which is not yet persisted and so is added explicitly. Every
+ * owner now carries a computed {@code householdId}; a lone owner simply has a household of one.
  */
 public class AssignHouseholdSize {
 
