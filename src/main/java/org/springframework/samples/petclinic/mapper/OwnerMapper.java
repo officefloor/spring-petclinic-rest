@@ -57,10 +57,43 @@ public interface OwnerMapper {
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
-     * Derives the owner's locality (region) from city using the fixed {@link #CITY_REGIONS} table,
-     * returning the canonical region string or {@code 'UNKNOWN'} when the city is not in the table.
+     * Derives the region from a 4-digit postcode: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
+     * Returns {@code null} when the postcode is absent, non-numeric or in no known range, so the
+     * caller can fall back to the city-to-region table.
+     */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int code;
+        try {
+            code = Integer.parseInt(postcode.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (code >= 2000 && code <= 2099) {
+            return "NSW";
+        }
+        if (code >= 3000 && code <= 3099) {
+            return "VIC";
+        }
+        if (code >= 4000 && code <= 4099) {
+            return "QLD";
+        }
+        return null;
+    }
+
+    /**
+     * Derives the owner's locality (region), preferring the postcode range (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099) and only falling back to the {@link #CITY_REGIONS} city table
+     * when the postcode is absent or in no known range. Returns {@code 'UNKNOWN'} when neither
+     * source resolves a region. This disambiguates cities that share a name.
      */
     default String locality(Owner owner) {
+        String region = regionForPostcode(owner.getPostcode());
+        if (region != null) {
+            return region;
+        }
         return CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
