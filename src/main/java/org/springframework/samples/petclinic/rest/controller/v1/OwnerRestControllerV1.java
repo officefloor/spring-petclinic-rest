@@ -133,6 +133,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         owner.setCustomerCode(assignCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -165,6 +166,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (count >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitException(registrationDate);
         }
+    }
+
+    /**
+     * The threshold of owners already created on a business day beyond which a bulk-signup warning is
+     * raised on a new owner. Once strictly more than this many owners already carry the day as their
+     * {@code registrationDate}, the new owner's {@code bulkSignupWarning} is set to {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Computes the {@code bulkSignupWarning} for an owner being created: {@code true} when more than
+     * {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created today, otherwise
+     * {@code false}. Existing owners are counted the same way the daily-limit rule counts them (see
+     * {@link #rejectDailyLimitReached}), keyed by the business-day-adjusted registration date, and the
+     * owner being created is excluded (it has not yet been saved).
+     *
+     * @param registrationDate the business-day-adjusted registration date of the owner being created
+     * @return {@code true} if more than the threshold of owners already carry this business day
+     */
+    private boolean computeBulkSignupWarning(java.time.LocalDate registrationDate) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return count > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     /**
