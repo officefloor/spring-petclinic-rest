@@ -40,18 +40,34 @@ public class ValidateOwnerFields {
     }
 
     /**
-     * Normalizes the address to its canonical form (see {@link AddressNormalizer}) and stores it back
-     * on the request so later steps persist and return it, and so household comparisons use it. The
-     * required-field check happens here on the normalized value: an address that is blank after
-     * normalization adds an {@code address} error (400).
+     * Normalizes the supplied address to its canonical form (see {@link AddressNormalizer}) and stores
+     * it back on the request so later steps persist and return it, and so everything that reads the
+     * address uses the normalized value.
+     *
+     * <p>The structured form is preferred: when a non-blank {@code addressLine1} is supplied, the lines
+     * are normalized and the composed {@code address} becomes the normalized {@code addressLine1}, with
+     * a single space and the normalized {@code addressLine2} appended when the latter is present.
+     * Otherwise the flat {@code address} input is normalized and used (backward-compatible).
+     *
+     * <p>The required-field check happens here on the normalized values: a request that carries neither
+     * a non-blank {@code addressLine1} nor a non-blank flat {@code address} adds an {@code address}
+     * error (400).
      */
     private static void normalizeAddress(OwnerFieldsDto request, List<String> errors) {
-        String normalized = AddressNormalizer.normalize(request.getAddress());
-        if (normalized.isEmpty()) {
-            errors.add("address");
-            return;
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flat = AddressNormalizer.normalize(request.getAddress());
+        if (!line1.isEmpty()) {
+            request.setAddressLine1(line1);
+            request.setAddressLine2(line2.isEmpty() ? null : line2);
+            request.setAddress(line2.isEmpty() ? line1 : line1 + " " + line2);
         }
-        request.setAddress(normalized);
+        else if (!flat.isEmpty()) {
+            request.setAddress(flat);
+        }
+        else {
+            errors.add("address");
+        }
     }
 
     /**
@@ -145,7 +161,8 @@ public class ValidateOwnerFields {
             errors.add("postcode");
             return;
         }
-        String region = CITY_REGIONS.get(request.getCity());
+        String city = request.getCity();
+        String region = city == null ? null : CITY_REGIONS.get(city);
         if (region == null) {
             return; // no known region for this city — any 4-digit postcode is accepted
         }
