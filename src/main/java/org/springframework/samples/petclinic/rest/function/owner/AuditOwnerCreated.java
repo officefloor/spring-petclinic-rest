@@ -14,11 +14,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * Emits the audit for a newly created owner via the dedicated {@code AUDIT} logger. Two lines:
  *
  * <ol>
- *   <li>the human-readable audit line carrying the owner's id, customerCode, registrationDate,
- *       membershipLevel and membershipNumber; and</li>
+ *   <li>the human-readable audit line carrying the owner's id, memberId, registrationDate and
+ *       membershipLevel; and</li>
  *   <li>an immutable structured {@link OwnerCreatedEvent} as one JSON line
- *       ({@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}), where
- *       {@code seq} increases monotonically across creates and {@code customerCode} carries the
+ *       ({@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}), where
+ *       {@code seq} increases monotonically across creates and {@code memberId} carries the
  *       owner's current {@linkplain #primaryIdentifier(Owner) primary identifier}.</li>
  * </ol>
  *
@@ -34,11 +34,11 @@ public class AuditOwnerCreated {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    public void service(@Val Owner owner, OwnerMapper ownerMapper) {
+    public void service(@Val Owner owner) {
         AUDIT.info(
-                "Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                OwnerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+                "Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                OwnerMapper.membershipLevel(owner));
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
                 primaryIdentifier(owner), OwnerMapper.membershipLevel(owner));
@@ -46,11 +46,10 @@ public class AuditOwnerCreated {
     }
 
     /**
-     * The owner's current primary identifier carried by the structured event. Today this is the
-     * {@code customerCode}; when the customerCode is later unified into the memberId, change this
-     * single accessor so every {@code OWNER_CREATED} event carries the memberId instead.
+     * The owner's current primary identifier carried by the structured event: the unified
+     * {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

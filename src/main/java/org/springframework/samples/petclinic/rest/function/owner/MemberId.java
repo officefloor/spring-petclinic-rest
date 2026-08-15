@@ -3,46 +3,58 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.Map;
 
+import org.springframework.samples.petclinic.mapper.OwnerMapper;
+
 /**
- * Single source of truth for an owner's {@code customerCode}, the region-and-hash identity
- * {@code '<REGION>-<HASH8>'} where:
+ * Single source of truth for an owner's {@code memberId}, the unified identity
+ * {@code '<REGION><FY><HASH8><CHK>'} where:
  *
  * <ul>
  *   <li>{@code REGION} is the region code derived from the postcode range (NSW 2000-2099,
  *       VIC 3000-3099, QLD 4000-4099), falling back to the city table (Sydney→NSW, Melbourne→VIC,
- *       Brisbane→QLD) and finally {@code 'UNKNOWN'}; and</li>
+ *       Brisbane→QLD) and finally {@code 'UNKNOWN'};</li>
+ *   <li>{@code FY} is the two-digit fiscal year (the last two digits of the fiscal year, starting
+ *       1 July, that contains the registrationDate — the same year segment as
+ *       {@link org.springframework.samples.petclinic.mapper.OwnerMapper#fiscalYear});</li>
  *   <li>{@code HASH8} is the first 8 upper-case hex characters of the SHA-256 of
- *       {@code normalizedTelephone + lastName}.</li>
+ *       {@code normalizedTelephone + lastName} (the same HASH8 used by the region-and-hash
+ *       identity); and</li>
+ *   <li>{@code CHK} is a single Luhn check digit (0-9) computed over the digits of
+ *       {@code <REGION><FY><HASH8>}.</li>
  * </ul>
  *
- * <p>There is no per-city sequence: two owners with the same normalized telephone and last name in
- * the same region derive the same code. Everything downstream of the identity — the membership number
- * and its Luhn check digit, the create audit line and the {@code locality} — is derived from this
- * code (see {@link org.springframework.samples.petclinic.mapper.OwnerMapper}).
+ * <p>There is no per-city sequence: two owners with the same normalized telephone, last name,
+ * region and fiscal year derive the same memberId. Everything downstream of the identity — the
+ * create audit line and the {@code locality} — is derived from the same region (see
+ * {@link org.springframework.samples.petclinic.mapper.OwnerMapper}).
  */
-public final class CustomerCode {
+public final class MemberId {
 
     /** Fixed city-to-region table backing the {@code REGION} fallback when the postcode resolves none. */
     private static final Map<String, String> CITY_REGIONS = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
-    private CustomerCode() {
+    private MemberId() {
     }
 
     /**
-     * The full {@code '<REGION>-<HASH8>'} code for the given normalized telephone, last name, postcode
-     * and city.
+     * The full {@code '<REGION><FY><HASH8><CHK>'} memberId for the given normalized telephone, last
+     * name, postcode, city and registrationDate.
      */
-    public static String of(String normalizedTelephone, String lastName, String postcode, String city) {
-        return region(postcode, city) + "-" + hash8(normalizedTelephone, lastName);
+    public static String of(String normalizedTelephone, String lastName, String postcode, String city,
+            LocalDate registrationDate) {
+        String base = region(postcode, city) + fiscalYearSegment(registrationDate)
+                + hash8(normalizedTelephone, lastName);
+        return base + luhn(base);
     }
 
     /**
      * Derives {@code REGION}: the postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
      * then the {@link #CITY_REGIONS} city table, then {@code 'UNKNOWN'}. This disambiguates cities that
-     * share a name and is the region embedded in every {@code customerCode}.
+     * share a name and is the region embedded in every {@code memberId}.
      */
     public static String region(String postcode, String city) {
         String region = regionForPostcode(postcode);
@@ -52,23 +64,41 @@ public final class CustomerCode {
         return CITY_REGIONS.getOrDefault(city, "UNKNOWN");
     }
 
-    /**
-     * The {@code REGION} prefix carried by a {@code customerCode} of the form {@code '<REGION>-<HASH8>'},
-     * or {@code null} when the code is absent or malformed.
-     */
-    public static String regionOf(String customerCode) {
-        if (customerCode == null) {
-            return null;
-        }
-        int dash = customerCode.indexOf('-');
-        return dash > 0 ? customerCode.substring(0, dash) : null;
-    }
-
     /** {@code HASH8}: the first 8 upper-case hex characters of SHA-256 of {@code normalizedTelephone + lastName}. */
     public static String hash8(String normalizedTelephone, String lastName) {
         String tel = normalizedTelephone == null ? "" : normalizedTelephone;
         String last = lastName == null ? "" : lastName;
         return shaHex(tel + last, 8);
+    }
+
+    /** The two-digit fiscal-year segment for {@code registrationDate}, or {@code "00"} when absent. */
+    private static String fiscalYearSegment(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return "00";
+        }
+        return String.format("%02d", OwnerMapper.fiscalYearEnding(registrationDate) % 100);
+    }
+
+    /** Single Luhn check digit (0-9) over the digits contained in {@code value}. */
+    private static int luhn(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**

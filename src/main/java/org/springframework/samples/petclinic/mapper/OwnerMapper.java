@@ -27,8 +27,6 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(OwnerMapper.membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -57,8 +55,9 @@ public interface OwnerMapper {
      * The calendar year in which the fiscal year containing {@code date} ends. The fiscal year runs
      * from 1 July to 30 June, so a date on or after 1 July belongs to the fiscal year ending the
      * following calendar year (e.g. 15 Aug 2026 falls in the fiscal year ending 2027). All fiscal-year
-     * derived values — {@link #fiscalYear(Owner)}, the {@link #membershipNumber(Owner)} year segment and
-     * the tenure bonus in {@link #membershipPoints(Owner)} — go through this single definition.
+     * derived values — {@link #fiscalYear(Owner)}, the FY segment of the
+     * {@link org.springframework.samples.petclinic.rest.function.owner.MemberId} and the tenure bonus in
+     * {@link #membershipPoints(Owner)} — go through this single definition.
      */
     static int fiscalYearEnding(java.time.LocalDate date) {
         int year = date.getYear();
@@ -203,20 +202,14 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the region-and-hash {@code customerCode}: it is the
-     * {@code REGION} prefix of {@code '<REGION>-<HASH8>'} (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode}). When the code is
-     * absent it falls back to computing the region directly from the postcode range (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099) then the city table, yielding {@code 'UNKNOWN'} when neither
-     * resolves. Sharing the region with the identity keeps locality and customerCode consistent.
+     * Derives the owner's locality (region) from the postcode range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099), falling back to the city table, yielding {@code 'UNKNOWN'} when neither resolves
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.MemberId#region}). This is
+     * the same region embedded as the {@code REGION} segment of the owner's {@code memberId}, so
+     * locality and memberId stay consistent.
      */
     default String locality(Owner owner) {
-        String region = org.springframework.samples.petclinic.rest.function.owner.CustomerCode
-                .regionOf(owner.getCustomerCode());
-        if (region != null) {
-            return region;
-        }
-        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
+        return org.springframework.samples.petclinic.rest.function.owner.MemberId
                 .region(owner.getPostcode(), owner.getCity());
     }
 
@@ -305,56 +298,11 @@ public interface OwnerMapper {
         return 1;
     }
 
-    /**
-     * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the fiscal year (starting 1 July) that contains the registrationDate — the
-     * same year segment as {@link #fiscalYear(Owner)} (e.g. {@code 'NSW-1A2B3C4D-M27'} for a
-     * registrationDate of 15 Aug 2026). Returns {@code null} when either source field is absent, so
-     * owners without a customerCode or registrationDate map cleanly.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return owner.getCustomerCode() + "-M"
-                + String.format("%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Derives the owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over the
-     * digits contained in the {@code customerCode}. Returns {@code null} when the customerCode is
-     * absent, so owners without a customerCode map cleanly.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
     Owner toOwner(OwnerDto ownerDto);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "customerCode", ignore = true)
+    @Mapping(target = "memberId", ignore = true)
     @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "namesakeCount", ignore = true)
     @Mapping(target = "householdMemberCount", ignore = true)

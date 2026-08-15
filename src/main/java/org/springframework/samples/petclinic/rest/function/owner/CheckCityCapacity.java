@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.CityAtCapacityExcep
 
 /**
  * Rejects a create-owner request whose city already contains 50 or more owners, so the escalation
- * handler can respond 409. City is compared case-insensitively, matching how {@link AssignCustomerCode}
- * counts a city's owners. Runs within the same write transaction as the insert so the count reflects
+ * handler can respond 409. City is compared case-insensitively. Runs within the same write
+ * transaction as the insert so the count reflects
  * only owners already persisted (excluding this new, not-yet-saved one), giving each city a hard cap
  * of 50 owners.
  */
