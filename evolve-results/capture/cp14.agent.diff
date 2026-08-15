@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 222f19c2..7a274498 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -59,6 +59,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "membership_number")
++    private String membershipNumber;
++
+     @Column(name = "household_id")
+     private String householdId;
+ 
+@@ -116,6 +119,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getMembershipNumber() {
++        return this.membershipNumber;
++    }
++
++    public void setMembershipNumber(String membershipNumber) {
++        this.membershipNumber = membershipNumber;
++    }
++
+     public String getHouseholdId() {
+         return this.householdId;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+new file mode 100644
+index 00000000..cb37eee3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Step of {@code POST /api/owners} that assigns the owner's {@code membershipNumber}, formatted
++ * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
++ * {@code registrationDate} year, zero-padded (e.g. {@code 'SMI-0007-M26'}).
++ *
++ * <p>Runs after {@link AssignCustomerCode} has set the {@code customerCode} and after
++ * {@link BuildOwner} has set the {@code registrationDate}, and before {@link SaveOwner}. Derived
++ * entirely from the owner's own fields, so it is seed-independent. {@code @Val} yields the built
++ * owner so the number is mutated in place and persisted by the save step.
++ */
++public class AssignMembershipNumber {
++
++    public void service(@Val Owner owner) {
++        int yy = Math.floorMod(owner.getRegistrationDate().getYear(), 100);
++        owner.setMembershipNumber(String.format("%s-M%02d", owner.getCustomerCode(), yy));
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..53eda85c 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..2d3094f7 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INTEGER
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2ad0e1e7..a0c9389d 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  membership_number VARCHAR(30),
+   household_id VARCHAR(64),
+   namesake_count INT(11),
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6d493cfc..87c1060c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
++                                      membership_number TEXT,
+                                       household_id TEXT,
+                                       namesake_count INT
+ );
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 0131bc03..e1bb1901 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -24,6 +24,11 @@ build:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
++  next: assignMembershipNumber
++
++assignMembershipNumber:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignMembershipNumber
++  govern: [ transaction ]
+   next: assignHousehold
+ 
+ assignHousehold:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c68c95b7..2d719676 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2102,6 +2102,13 @@ components:
+               type: string
+               example: SMI-0007
+               readOnly: true
++            membershipNumber:
++              title: Membership number
++              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is
++                the last two digits of the registrationDate year.
++              type: string
++              example: SMI-0007-M26
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: A stable shared identifier for owners in the same household (same last name
