@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+new file mode 100644
+index 00000000..922da03f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Decides whether an owner's response should carry the capacity warning: it is raised once the
++ * owner's city already holds between 40 and 49 owners (inclusive), signalling the city is
++ * approaching the hard capacity limit of 50 enforced by {@link CheckOwnerCityCapacity}. At exactly
++ * 50 the city is full (creates are rejected) and no warning is raised. Counting mirrors
++ * {@link CheckOwnerCityCapacity}: the owner's city is compared case-insensitively across all
++ * owners (this one included), so the create and read responses agree.
++ */
++final class CapacityWarning {
++
++    /** Inclusive lower bound of the warning band. */
++    private static final long WARN_FROM = 40;
++
++    /** Inclusive upper bound of the warning band; 50 is the hard limit and is not a warning. */
++    private static final long WARN_TO = 49;
++
++    private CapacityWarning() {
++    }
++
++    /** True when the owner's city holds between 40 and 49 owners (this one included). */
++    static boolean warningFor(Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        long inCity = ownerRepository.findAll().stream()
++                .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
++                .count();
++        return inCity >= WARN_FROM && inCity <= WARN_TO;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 6e00abeb..d696c183 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.warningFor(owner, ownerRepository));
+         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
+         dto.setMembershipPoints(points);
+         dto.setMembershipLevel(MembershipCap.cappedLevelFor(owner,
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 30036bc6..9bd3385a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.warningFor(owner, ownerRepository));
+         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
+         dto.setMembershipPoints(points);
+         dto.setMembershipLevel(MembershipCap.cappedLevelFor(owner,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ba3611b2..9f31abf3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2247,6 +2247,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already holds between 40 and 49 owners
++                (inclusive), signalling it is approaching the hard capacity limit of 50; otherwise
++                false. The city is compared case-insensitively.
++              type: boolean
++              example: false
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: The owner's age band, derived from 'birthDate' as of the
