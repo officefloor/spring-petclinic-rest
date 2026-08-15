@@ -36,6 +36,10 @@ public interface OwnerMapper {
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
             + "OwnerLocality.timezoneForOwner(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(org.springframework.samples.petclinic.rest.dto.OwnerDto."
+            + "OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.rest.function."
+            + "owner.OwnerSegment.forOwner(owner)))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
             + "OwnerIdentityKey.forOwner(owner))")
