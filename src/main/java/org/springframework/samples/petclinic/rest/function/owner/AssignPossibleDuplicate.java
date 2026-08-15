@@ -33,6 +33,9 @@ public class AssignPossibleDuplicate {
         String telephone = normalizeTelephone(owner.getTelephone());
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is not a duplicate
+            }
             if (!householdId.equals(existing.getHouseholdId())) {
                 continue;
             }

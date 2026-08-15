@@ -26,6 +26,9 @@ public class RequireUniqueIdentity {
         String householdId = AssignHouseholdId.forRequest(request);
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner never blocks a create
+            }
             if (identityKey.equals(OwnerIdentityKey.forOwner(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }
