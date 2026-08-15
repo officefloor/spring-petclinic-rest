@@ -37,6 +37,9 @@ public class AssignPossibleDuplicate {
         Integer matchId = null;
         if (postcode != null && !postcode.isBlank()) {
             for (Owner other : ownerRepository.findAll()) {
+                if (other.isDeleted()) {
+                    continue; // a soft-deleted owner is not a possible-duplicate match
+                }
                 if (equalsIgnoreCase(owner.getLastName(), other.getLastName())
                         && postcode.equals(other.getPostcode())
                         && !equals(owner.getTelephone(), other.getTelephone())) {
