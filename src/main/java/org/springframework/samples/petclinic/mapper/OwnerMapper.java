@@ -69,6 +69,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -316,6 +317,17 @@ public abstract class OwnerMapper {
             return owner.getLastName();
         }
         return title + " " + owner.getLastName();
+    }
+
+    /**
+     * Derives an owner's {@code selfLink}: the canonical relative URL of the owner resource, formatted
+     * {@code '/api/owners/<id>'} from the owner's id. Returns {@code null} when the owner has no id yet.
+     *
+     * @param owner the owner whose self link is being derived
+     * @return the owner's self link, or {@code null} when the owner has no id
+     */
+    protected String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
