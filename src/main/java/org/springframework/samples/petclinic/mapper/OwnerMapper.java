@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
@@ -142,6 +143,20 @@ public interface OwnerMapper {
             return region;
         }
         return cityRegion(owner);
+    }
+
+    /**
+     * Derives the owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is
+     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the {@link #locality(Owner) locality} is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String region = locality(owner);
+        boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
+        String area = metro ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**
