@@ -412,6 +412,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setAddress(address);
         owner.setTelephone(telephone);
+        if (owner.getRegistrationDate() != null
+            && owner.getRegistrationDate().isAfter(java.time.LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         java.time.LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
         int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
