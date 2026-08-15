@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -9,42 +7,35 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The single duplicate check for the create-owner endpoint. It consolidates the former separate
- * telephone, email and household checks into one derived {@code identityKey}
- * ({@code normalizedTelephone|email|householdId}, see {@link OwnerIdentity}, also returned on the
- * owner) and rejects (409) when a new owner collides with an existing one on that identity.
+ * The single duplicate check for the create-owner endpoint. It rejects (409) when a new owner's
+ * derived {@code identityKey} — the SHA-256 hex of {@code normalizedTelephone|lowerEmail|soundex(lastName)}
+ * (see {@link OwnerIdentity}, also returned on the owner) — equals an existing owner's. This is now the
+ * only hard-duplicate check: the former separate household-duplicate block no longer applies.
  *
- * <p>The collision is driven by the normalized telephone (the leading, always-present component of
- * the key) together with the lower-cased email: two owners sharing both collide. Because the
- * telephone is part of the identity, two members of the same household (same {@code householdId})
- * with different telephones do <em>not</em> collide and are both allowed — a change from the former
- * household check, which rejected them regardless of telephone.
+ * <p>Because the normalized telephone is part of the hashed key, two owners sharing a last name and
+ * postcode but with different telephones have different keys and both create (the second flagged a soft
+ * match, see {@link AssignPossibleDuplicate}) — a change from the former household check, which rejected
+ * them regardless of telephone. Soft-deleted owners are ignored, and the email-domain blocklist has
+ * already run in {@link ValidateOwnerFields} (a rejected email is a 400 before this check).
  *
- * <p>Runs after {@link ValidateOwnerFields} has normalized the telephone (E.164), email (lower-cased)
- * and address, and within the write transaction so the check and the insert see one consistent view.
+ * <p>Runs after {@link ValidateOwnerFields} has normalized the telephone (E.164) and email
+ * (lower-cased), and within the write transaction so the check and the insert see one consistent view.
  */
 public class CheckIdentityUnique {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateIdentityException {
-        String telephone = request.getTelephone();
-        String email = normalizeEmail(request.getEmail());
+        String identityKey = OwnerIdentity.identityKey(
+                request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue; // soft-deleted owners are ignored by the identity check
             }
-            boolean sameTelephone = telephone != null && telephone.equals(existing.getTelephone());
-            boolean sameEmail = email.equals(normalizeEmail(existing.getEmail()));
-            if (sameTelephone && sameEmail) {
-                String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
-                throw new DuplicateIdentityException(
-                        OwnerIdentity.identityKey(telephone, request.getEmail(), householdId));
+            String existingKey = OwnerIdentity.identityKey(
+                    existing.getTelephone(), existing.getEmail(), existing.getLastName());
+            if (identityKey.equals(existingKey)) {
+                throw new DuplicateIdentityException(identityKey);
             }
         }
-    }
-
-    /** Lower-cased email, or {@code ""} when absent/blank, so the comparison is case-insensitive. */
-    private static String normalizeEmail(String email) {
-        return (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
     }
 }

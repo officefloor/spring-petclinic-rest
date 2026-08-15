@@ -15,25 +15,14 @@ validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: checkIdentityUnique
 
-# The single duplicate check: reject (409) only when the new owner's WHOLE derived identityKey
-# (normalizedTelephone|email|householdId) equals an existing owner's. This consolidates the former
-# separate telephone, email and household checks. Because the telephone is part of the key, two
-# members of the same household with different telephones have different identityKeys and are both
-# allowed. Reads within the same write transaction as the insert so the check and the insert see one
-# consistent view.
+# The single duplicate check: reject (409) only when the new owner's WHOLE derived identityKey — the
+# SHA-256 hex of normalizedTelephone|lowerEmail|soundex(lastName) — equals an existing owner's. This is
+# now the only hard-duplicate check; the former separate household-duplicate block no longer applies.
+# Because the telephone is part of the key, two members of the same household with different telephones
+# have different identityKeys and are both allowed (the second flagged a soft match downstream). Reads
+# within the same write transaction as the insert so the check and the insert see one consistent view.
 checkIdentityUnique:
   class: org.springframework.samples.petclinic.rest.function.owner.CheckIdentityUnique
-  govern: [ transaction ]
-  next: checkHouseholdUnique
-
-# Reject (409) when the request would join an existing household: the household is keyed on the
-# computed householdId (normalized lastName + postcode), so owners sharing a lastName and postcode
-# are the same household. A second such owner is a household duplicate unless it declares
-# 'sharesHousehold', which bypasses this block and creates it as a declared household member. Runs
-# after checkIdentityUnique so an exact identity collision is still a 409 even when sharesHousehold
-# is set, and within the write transaction so the check and the insert see one consistent view.
-checkHouseholdUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckHouseholdUnique
   govern: [ transaction ]
   next: checkCityCapacity
 
