@@ -2,31 +2,22 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code '<CITY3>-<LAST3>-<NNNN>'} where CITY3 is
- * the upper-cased first three letters of city, LAST3 the upper-cased first three letters of lastName
- * and NNNN is a per-city 4-digit zero-padded sequence equal to one more than the owners already in
- * that city (e.g. {@code 'SYD-SMI-0007'}).
+ * Assigns the owner's {@code customerCode}, the region-and-hash identity {@code '<REGION>-<HASH8>'}
+ * where REGION is the region code derived from the postcode (falling back to the city, then
+ * {@code 'UNKNOWN'}) and HASH8 is the first 8 upper-case hex characters of SHA-256 over
+ * {@code normalizedTelephone + lastName} (e.g. {@code 'NSW-1A2B3C4D'}). See {@link CustomerCode}.
  *
- * <p>Runs after {@link BuildOwner} has mapped the request onto the entity and before {@link SaveOwner},
- * within the same write transaction; it counts the same-city owners persisted so far (excluding this
- * new, not-yet-saved one) so each created owner gets the next sequence number for its city.
+ * <p>There are no sequence numbers: the code is a pure function of the owner's already-normalized
+ * telephone, last name, postcode and city. Runs after {@link BuildOwner} has mapped the request onto
+ * the entity (telephone already normalized to E.164 by {@link ValidateOwnerFields}) and before
+ * {@link SaveOwner}, within the same write transaction.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city = owner.getCity();
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String lastName = owner.getLastName();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = 1;
-        for (Owner other : ownerRepository.findAll()) {
-            if (city.equalsIgnoreCase(other.getCity())) {
-                sequence++;
-            }
-        }
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    public void service(@Val Owner owner) {
+        owner.setCustomerCode(CustomerCode.of(
+                owner.getTelephone(), owner.getLastName(), owner.getPostcode(), owner.getCity()));
     }
 }

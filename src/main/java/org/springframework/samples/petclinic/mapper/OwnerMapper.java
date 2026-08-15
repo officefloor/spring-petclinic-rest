@@ -51,51 +51,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Fixed city-to-region table backing the owner's {@code locality}: Sydney maps to {@code 'NSW'},
-     * Melbourne to {@code 'VIC'} and Brisbane to {@code 'QLD'}.
-     */
-    java.util.Map<String, String> CITY_REGIONS = java.util.Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /**
-     * Derives the region from a 4-digit postcode: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
-     * Returns {@code null} when the postcode is absent, non-numeric or in no known range, so the
-     * caller can fall back to the city-to-region table.
-     */
-    private static String regionForPostcode(String postcode) {
-        if (postcode == null) {
-            return null;
-        }
-        int code;
-        try {
-            code = Integer.parseInt(postcode.trim());
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-        if (code >= 2000 && code <= 2099) {
-            return "NSW";
-        }
-        if (code >= 3000 && code <= 3099) {
-            return "VIC";
-        }
-        if (code >= 4000 && code <= 4099) {
-            return "QLD";
-        }
-        return null;
-    }
-
-    /**
-     * Derives the owner's locality (region), preferring the postcode range (NSW 2000-2099,
-     * VIC 3000-3099, QLD 4000-4099) and only falling back to the {@link #CITY_REGIONS} city table
-     * when the postcode is absent or in no known range. Returns {@code 'UNKNOWN'} when neither
-     * source resolves a region. This disambiguates cities that share a name.
+     * Derives the owner's locality (region) from the region-and-hash {@code customerCode}: it is the
+     * {@code REGION} prefix of {@code '<REGION>-<HASH8>'} (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.CustomerCode}). When the code is
+     * absent it falls back to computing the region directly from the postcode range (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099) then the city table, yielding {@code 'UNKNOWN'} when neither
+     * resolves. Sharing the region with the identity keeps locality and customerCode consistent.
      */
     default String locality(Owner owner) {
-        String region = regionForPostcode(owner.getPostcode());
+        String region = org.springframework.samples.petclinic.rest.function.owner.CustomerCode
+                .regionOf(owner.getCustomerCode());
         if (region != null) {
             return region;
         }
-        return CITY_REGIONS.getOrDefault(owner.getCity(), "UNKNOWN");
+        return org.springframework.samples.petclinic.rest.function.owner.CustomerCode
+                .region(owner.getPostcode(), owner.getCity());
     }
 
     /**
@@ -117,7 +87,7 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registrationDate year (e.g. {@code 'SYD-SMI-0007-M26'}). Returns {@code null}
+     * last two digits of the registrationDate year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Returns {@code null}
      * when either source field is absent, so owners without a customerCode or registrationDate map cleanly.
      */
     default String membershipNumber(Owner owner) {
