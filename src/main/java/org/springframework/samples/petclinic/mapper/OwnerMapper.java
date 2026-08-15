@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.rest.function.common.CustomerCodes;
 import org.springframework.samples.petclinic.rest.function.common.FiscalYears;
 import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
 import org.springframework.samples.petclinic.rest.function.common.Membership;
+import org.springframework.samples.petclinic.rest.function.common.OwnerSegments;
 import org.springframework.samples.petclinic.rest.function.common.Telephones;
 import org.springframework.samples.petclinic.rest.function.common.Timezones;
 
@@ -26,7 +27,8 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
         imports = { AgeBands.class, CheckDigits.class, ContactPreferences.class, CustomerCodes.class,
-                FiscalYears.class, IdentityKeys.class, Membership.class, Telephones.class, Timezones.class })
+                FiscalYears.class, IdentityKeys.class, Membership.class, OwnerSegments.class,
+                Telephones.class, Timezones.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -48,6 +50,8 @@ public interface OwnerMapper {
             expression = "java(FiscalYears.labelOf(owner))")
     @Mapping(target = "locality",
             expression = "java(CustomerCodes.localityOf(owner))")
+    @Mapping(target = "ownerSegment",
+            expression = "java(OwnerSegments.of(owner))")
     @Mapping(target = "timezone",
             expression = "java(Timezones.ofOwner(owner))")
     @Mapping(target = "contactPreference",
