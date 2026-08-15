@@ -1,16 +1,15 @@
 package org.springframework.samples.petclinic.util;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Scores an owner's {@code membershipPoints} and maps them to a numeric {@code membershipLevel}.
  * Points start at 0 and accrue from the owner's factors: +2 when an email is present, +1 when its
- * {@code namesakeCount} is 0, +2 for a household of 3 or more members, and +3 when tenure — the days
- * from its {@code registrationDate} to today — exceeds 365. The total maps to a level: 1 for 0-1
- * points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
+ * {@code namesakeCount} is 0, +2 for a household of 3 or more members, and +3 when tenure — the
+ * fiscal years (starting 1 July) elapsed from its {@code registrationDate} to today — exceeds 1.
+ * The total maps to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
  *
  * <p>The household factor needs the number of owners sharing the household, which only the
  * repository knows; {@link #pointsOf(Owner)} scores the owner's own fields with no household bump,
@@ -27,14 +26,14 @@ public final class MembershipLevel {
     /** Points awarded when the owner's household has {@value #HOUSEHOLD_THRESHOLD} or more members. */
     private static final int HOUSEHOLD_POINTS = 2;
 
-    /** Points awarded when the owner's tenure exceeds {@value #TENURE_DAYS} days. */
+    /** Points awarded when the owner's tenure exceeds {@value #TENURE_FISCAL_YEARS} fiscal years. */
     private static final int TENURE_POINTS = 3;
 
     /** Household size, in members, at or above which {@link #HOUSEHOLD_POINTS} is awarded. */
     private static final int HOUSEHOLD_THRESHOLD = 3;
 
-    /** Tenure, in days, that an owner must exceed to earn {@link #TENURE_POINTS}. */
-    private static final long TENURE_DAYS = 365;
+    /** Tenure, in elapsed fiscal years, that an owner must exceed to earn {@link #TENURE_POINTS}. */
+    private static final int TENURE_FISCAL_YEARS = 1;
 
     private MembershipLevel() {
     }
@@ -78,11 +77,12 @@ public final class MembershipLevel {
         return 4;
     }
 
-    /** Whether {@code registrationDate} is more than {@value #TENURE_DAYS} days before today. */
+    /** Whether more than {@value #TENURE_FISCAL_YEARS} fiscal years have elapsed from
+     *  {@code registrationDate} to today. */
     private static boolean exceedsTenure(LocalDate registrationDate) {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+        return FiscalYear.elapsedYears(registrationDate, LocalDate.now()) > TENURE_FISCAL_YEARS;
     }
 }

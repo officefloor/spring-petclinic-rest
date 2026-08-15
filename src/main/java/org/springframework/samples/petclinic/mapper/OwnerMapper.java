@@ -18,6 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class,
     imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
         org.springframework.samples.petclinic.util.MembershipLevel.class,
+        org.springframework.samples.petclinic.util.FiscalYear.class,
         org.springframework.samples.petclinic.util.TelephoneDisplay.class,
         org.springframework.samples.petclinic.util.AgeBand.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
@@ -39,6 +40,9 @@ public interface OwnerMapper {
         expression = "java(MembershipLevel.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(MembershipLevel.levelOf(MembershipLevel.pointsOf(owner)))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(owner.getRegistrationDate() == null ? null "
+            + ": FiscalYear.labelOf(owner.getRegistrationDate()))")
     @Mapping(target = "locality",
         expression = "java(LocalityResolver.regionOfCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "timezone",
