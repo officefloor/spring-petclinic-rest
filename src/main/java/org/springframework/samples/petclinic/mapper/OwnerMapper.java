@@ -31,7 +31,57 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Registrable labels (the second-level domain, e.g. {@code mailinator} in
+     * {@code mailinator.com}) of known disposable email providers. An owner's email domain is
+     * considered <em>disposable-adjacent</em> when its registrable label matches one of these,
+     * regardless of the top-level domain — so a look-alike such as {@code mailinator.net} is
+     * flagged even though the exact {@code mailinator.com} would already have been rejected at
+     * create time.
+     */
+    java.util.Set<String> DISPOSABLE_ADJACENT_LABELS = java.util.Set.of(
+        "mailinator", "tempmail", "guerrillamail", "throwaway", "trashmail",
+        "yopmail", "sharklasers", "getnada");
+
+    /**
+     * Whether the owner's email domain is disposable-adjacent: its registrable label (the
+     * second-level domain) matches a known disposable provider (see {@link #DISPOSABLE_ADJACENT_LABELS}),
+     * regardless of the top-level domain. Returns {@code false} when the owner has no email or a
+     * domain with no discernible registrable label.
+     */
+    default boolean disposableAdjacentEmail(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(java.util.Locale.ROOT);
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return false;
+        }
+        String registrableLabel = labels[labels.length - 2];
+        return DISPOSABLE_ADJACENT_LABELS.contains(registrableLabel);
+    }
+
+    /**
+     * The owner's derived overall risk flag, computed on read. {@code true} when any of these hold:
+     * the owner is a possible duplicate ({@link Owner#getPossibleDuplicate()}), its email domain is
+     * {@link #disposableAdjacentEmail(Owner) disposable-adjacent}, or its city is over its soft
+     * capacity ({@link Owner#getCapacityWarning()}, set when the city was at or beyond the per-city
+     * soft-capacity threshold at create time); otherwise {@code false}.
+     */
+    default Boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || disposableAdjacentEmail(owner)
+            || Boolean.TRUE.equals(owner.getCapacityWarning());
+    }
 
     /**
      * Derives the owner's salutation: the {@code title} followed by a single space and the last
