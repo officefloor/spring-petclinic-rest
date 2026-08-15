@@ -70,11 +70,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Immutable structured audit event emitted (as JSON, on the {@code AUDIT} logger) for each
      * successful owner create. {@code seq} is the process-wide {@link #AUDIT_SEQ} counter, and
-     * {@code customerCode} carries the owner's current primary identifier — the customerCode today,
-     * and whatever replaces it later (e.g. once the customerCode is unified into the memberId, this
-     * carries the memberId instead). The component order matches the JSON field order.
+     * {@code memberId} carries the owner's primary identifier (the unified memberId). The component
+     * order matches the JSON field order.
      */
-    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId,
         Integer membershipLevel, String event) {
     }
 
@@ -212,37 +211,67 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code {@code <REGION>-<HASH8>}: REGION is the region code derived from the
-     * owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN} when the postcode is absent or in no known
-     * range) and HASH8 is the first 8 upper-case hex characters of SHA-256 over the concatenation of
-     * the owner's normalized (E.164) telephone and last name (e.g. {@code NSW-3F9A0C17}). No sequence
-     * numbers are used, so the base code is a pure function of the owner's region-and-hash identity.
-     * When that base code collides with an existing owner's customerCode, {@code -<n>} is appended with
-     * the smallest {@code n} of 2 or more that makes it unique, returning the de-duplicated code.
+     * Build the unified member id {@code <REGION><FY><HASH8><CHK>}: REGION is the region code derived
+     * from the owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN} when the postcode is absent or in no
+     * known range); FY is the two-digit fiscal year of the owner's (business-day-adjusted)
+     * registrationDate; HASH8 is the first 8 upper-case hex characters of SHA-256 over the
+     * concatenation of the owner's normalized (E.164) telephone and last name; and CHK is a single
+     * Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW273F9A0C177}).
+     * No sequence numbers are used, so the base id is a pure function of the owner's region, fiscal
+     * year and region-and-hash identity. When that base id collides with an existing owner's memberId,
+     * {@code -<n>} is appended with the smallest {@code n} of 2 or more that makes it unique, returning
+     * the de-duplicated id.
      */
-    private String customerCodeFor(Owner owner) {
+    private String memberIdFor(Owner owner) {
         String region = ownerMapper.regionFromPostcode(owner);
         if (region == null) {
             region = "UNKNOWN";
         }
-        String base = region + "-" + hash8(owner.getTelephone(), owner.getLastName());
+        String fy = String.format("%02d", ownerMapper.fiscalYearOf(owner.getRegistrationDate()) % 100);
+        String core = region + fy + hash8(owner.getTelephone(), owner.getLastName());
+        String base = core + luhn(core);
 
-        java.util.Set<String> existingCodes = new java.util.HashSet<>();
+        java.util.Set<String> existingIds = new java.util.HashSet<>();
         for (Owner existing : this.clinicService.findAllOwners()) {
-            String code = existing.getCustomerCode();
-            if (code != null) {
-                existingCodes.add(code);
+            String id = existing.getMemberId();
+            if (id != null) {
+                existingIds.add(id);
             }
         }
-        if (!existingCodes.contains(base)) {
+        if (!existingIds.contains(base)) {
             return base;
         }
         for (int n = 2; ; n++) {
             String candidate = base + "-" + n;
-            if (!existingCodes.contains(candidate)) {
+            if (!existingIds.contains(candidate)) {
                 return candidate;
             }
         }
+    }
+
+    /**
+     * A single Luhn check digit (0-9) over the digits contained in {@code value}; non-digit characters
+     * are ignored.
+     */
+    private static int luhn(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -548,13 +577,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The owner's current primary identifier, carried by the structured owner-created audit event.
-     * Today this is the {@code customerCode}; when the primary identifier is later unified into the
-     * memberId this returns that instead, so the emitted event automatically switches identifier
-     * without changing the emission site.
+     * The owner's primary identifier, carried by the structured owner-created audit event: the
+     * unified {@code memberId}.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -660,14 +687,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setCapacityWarning(cityOwnerCount >= CITY_CAPACITY_WARNING_THRESHOLD);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(customerCodeFor(owner));
+        owner.setMemberId(memberIdFor(owner));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             idempotentCreates.put(idempotencyKey, owner.getId());
         }
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerMapper.membershipLevel(owner));
         OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
             primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));

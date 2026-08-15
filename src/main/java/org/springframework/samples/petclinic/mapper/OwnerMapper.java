@@ -22,9 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -125,24 +123,40 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's locality (region) from the region-and-hash identity: it is the
-     * {@code <REGION>} segment of the customerCode ({@code <REGION>-<HASH8>}), i.e. the region
-     * derived from the postcode at create time. When the customerCode is absent or malformed
+     * {@code <REGION>} segment of the memberId ({@code <REGION><FY><HASH8><CHK>}), i.e. the region
+     * derived from the postcode at create time. When the memberId is absent or malformed
      * (e.g. legacy records), it falls back to the postcode range and then the fixed city-to-region
      * table, returning {@code UNKNOWN} when neither source resolves.
      */
     default String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
-            }
+        String region = memberRegion(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
-        String region = regionFromPostcode(owner);
+        region = regionFromPostcode(owner);
         if (region != null) {
             return region;
         }
         return cityRegion(owner);
+    }
+
+    /**
+     * The {@code <REGION>} segment of a memberId ({@code <REGION><FY><HASH8><CHK>}): its leading run
+     * of letters, which precedes the two-digit fiscal-year segment. Returns {@code null} when the
+     * memberId is absent or does not start with a letter.
+     *
+     * <p>Deliberately {@code private} so MapStruct does not treat it as a {@code String -> String}
+     * mapping method and apply it to every string property.
+     */
+    private String memberRegion(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? null : memberId.substring(0, i);
     }
 
     /**
@@ -307,58 +321,22 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the last two digits of the
-     * fiscal year of the {@code registrationDate} (which is stored business-day-adjusted). The
-     * fiscal year starts on 1 July. Returns {@code null} when no registrationDate is recorded.
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the two-digit {@code <FY>}
+     * segment of the memberId ({@code <REGION><FY><HASH8><CHK>}), i.e. the fiscal year of the
+     * business-day-adjusted registrationDate captured at create time (the fiscal year starts on
+     * 1 July). Returns {@code null} when the memberId is absent or carries no fiscal-year segment.
      */
     default String fiscalYear(Owner owner) {
-        if (owner.getRegistrationDate() == null) {
+        String memberId = owner.getMemberId();
+        String region = memberRegion(memberId);
+        if (region == null || memberId.length() < region.length() + 2) {
             return null;
         }
-        return "FY" + String.format("%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Builds the owner's membership number, formatted '&lt;customerCode&gt;-M&lt;YY&gt;'
-     * where YY is the last two digits of the fiscal year of the (business-day-adjusted)
-     * registrationDate. Returns {@code null} when either source field is absent.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+        String fy = memberId.substring(region.length(), region.length() + 2);
+        if (!fy.matches("\\d{2}")) {
             return null;
         }
-        return owner.getCustomerCode() + "-M"
-            + String.format("%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Computes a single Luhn check digit (0-9) over the digits contained in the
-     * owner's customerCode. Non-digit characters are ignored. Returns {@code null}
-     * when the customerCode is absent.
-     */
-    default Integer checkDigit(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = customerCode.length() - 1; i >= 0; i--) {
-            char c = customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return "FY" + fy;
     }
 
     /**
