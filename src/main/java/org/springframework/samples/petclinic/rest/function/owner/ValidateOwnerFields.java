@@ -62,18 +62,43 @@ public class ValidateOwnerFields {
     }
 
     /**
-     * Normalize the telephone by removing every non-digit character, then require exactly 10 digits.
-     * The stripped, 10-digit value is written back onto the request so it is stored and returned as
-     * {@code telephone}. Anything that is not exactly 10 digits after stripping is a {@code telephone}
-     * error (400).
+     * Normalize the telephone into E.164 form. Spaces, dashes and brackets are stripped. A leading
+     * '+' with country code is kept as-is; otherwise the number is assumed to be Australian ('+61')
+     * and a single leading '0' is dropped from the national digits. The result must have 8 to 15
+     * digits after the '+'. The E.164 value is written back onto the request so it is stored and
+     * returned as {@code telephone}. Anything that cannot form a valid E.164 number is a
+     * {@code telephone} error (400).
      */
     private static void normalizeTelephone(List<String> errors, OwnerFieldsDto request) {
-        String value = request.getTelephone();
-        String digits = value == null ? "" : value.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String e164 = toE164(request.getTelephone());
+        if (e164 == null) {
             errors.add("telephone");
             return;
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
+    }
+
+    /**
+     * Convert a raw telephone into E.164 form, or return {@code null} when it cannot form a valid
+     * E.164 number (fewer than 8 or more than 15 digits after the '+', or stray non-digit
+     * characters remaining after the allowed separators are stripped).
+     */
+    static String toE164(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.replaceAll("[\\s()-]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        }
+        else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        return "+" + digits;
     }
 }
