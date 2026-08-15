@@ -121,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectMissingOrBlankFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setAddress(normalizeAddress(owner.getAddress()));
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
         if (owner.getRegistrationDate() == null) {
@@ -239,8 +240,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Validation, which cannot reject whitespace-only values that still satisfy a minimum-length constraint.
      *
      * @param fields the submitted owner fields
-     * @throws RequiredFieldsMissingException if any of firstName, lastName, address, city or telephone is
-     *                                        {@code null} or blank
+     * @throws RequiredFieldsMissingException if any of firstName, lastName, city or telephone is
+     *                                        {@code null} or blank, or if address is blank after
+     *                                        normalization
      */
     private void rejectMissingOrBlankFields(OwnerFieldsDto fields) {
         List<String> missing = new ArrayList<>();
@@ -250,7 +252,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(fields.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(fields.getAddress())) {
+        if (isBlank(normalizeAddress(fields.getAddress()))) {
             missing.add("address");
         }
         if (isBlank(fields.getCity())) {
@@ -312,6 +314,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidEmailException(email);
         }
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Normalizes a submitted address into the form that is stored and returned. Leading and trailing
+     * whitespace is removed, internal runs of whitespace are collapsed to a single space, the value is
+     * upper-cased, and common street-type abbreviations are expanded ({@code ST -> STREET},
+     * {@code RD -> ROAD}, {@code AVE -> AVENUE}). Abbreviations are only expanded when they form a whole
+     * word, so an address such as {@code '  12  main  st '} normalizes to {@code '12 MAIN STREET'}.
+     *
+     * @param address the raw address value from the request (may be {@code null})
+     * @return the normalized address, or an empty string when {@code address} is {@code null} or blank
+     */
+    private String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(expandAddressAbbreviation(tokens[i]));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Expands a single upper-cased address token from its common abbreviation to its full form, or
+     * returns the token unchanged when it is not a recognised abbreviation.
+     *
+     * @param token an upper-cased whole-word address token
+     * @return the expanded form ({@code STREET}, {@code ROAD}, {@code AVENUE}) or the original token
+     */
+    private String expandAddressAbbreviation(String token) {
+        return switch (token) {
+            case "ST" -> "STREET";
+            case "RD" -> "ROAD";
+            case "AVE" -> "AVENUE";
+            default -> token;
+        };
     }
 
     /**
