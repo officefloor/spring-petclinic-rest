@@ -1,6 +1,20 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# An 'Idempotency-Key' header makes the create idempotent: a repeat with an already-seen key
+# replays the originally created owner (200) via the 'existing' branch instead of running the
+# create pipeline (which would otherwise 409 as a duplicate). An unseen key (or no header)
+# takes the 'create' branch — the normal validate-and-create chain below.
+route:
+  class: org.springframework.samples.petclinic.rest.function.owner.RouteIdempotentCreate
+  outputs:
+    create: validate
+    existing: respondExisting
+
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithExistingOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.RequireOwnerFields
   next: postcode
@@ -77,6 +91,13 @@ assignPossibleDuplicate:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: record
+
+# Remember this owner against the request's Idempotency-Key (when present) so a repeat replays it.
+# Runs after save so the owner has its persisted id; no-op when no key was supplied.
+record:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: audit
 
