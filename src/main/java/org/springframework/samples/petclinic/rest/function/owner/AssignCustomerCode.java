@@ -6,17 +6,23 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode} before it is saved. The code is formatted
- * {@code <LAST3>-<NNNN>}, where {@code LAST3} is the upper-cased first three letters of the
- * last name and {@code NNNN} is a global 4-digit zero-padded sequence equal to one more than
- * the current number of owners (e.g. {@code SMI-0007}). Mutates the entity in place so
+ * {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the upper-cased first three letters of
+ * the city, {@code LAST3} is the upper-cased first three letters of the last name and
+ * {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the number of
+ * owners already in that city (e.g. {@code LON-SMI-0007}). Mutates the entity in place so
  * {@link SaveOwner} persists it.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+        String city = owner.getCity();
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String lastName = owner.getLastName();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = ownerRepository.findAll().size() + 1;
-        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
+        long inCity = ownerRepository.findAll().stream()
+                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+                .count();
+        long sequence = inCity + 1;
+        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
     }
 }
