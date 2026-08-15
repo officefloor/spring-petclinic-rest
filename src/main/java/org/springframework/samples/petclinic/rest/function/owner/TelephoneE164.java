@@ -9,6 +9,10 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * present; otherwise assume country code '+61' and drop a single leading '0' from the national
  * digits. The result is '+' followed by 8 to 15 digits, so '0412 345 678' becomes
  * '+61412345678' and '+64 21 123 456' becomes '+6421123456'.
+ *
+ * <p>Country-specific national-number length: '+61' requires exactly 9 national digits and '+1'
+ * requires exactly 10; a number whose national part is the wrong length for its country code is
+ * rejected. Other country codes are only bound by the general 8-to-15 total-digit rule.
  */
 public final class TelephoneE164 {
 
@@ -54,6 +58,24 @@ public final class TelephoneE164 {
         if (e164.length() < 8 || e164.length() > 15) {
             return null;
         }
+        if (!hasValidNationalLength(e164)) {
+            return null;
+        }
         return "+" + e164;
+    }
+
+    /**
+     * Checks the national-number length for country codes with a fixed requirement: '+61' must
+     * have 9 national digits and '+1' must have 10. Any other country code passes (its length is
+     * only bound by the general 8-to-15 total-digit rule).
+     */
+    private static boolean hasValidNationalLength(String e164) {
+        if (e164.startsWith("61")) {
+            return e164.length() - 2 == 9;
+        }
+        if (e164.startsWith("1")) {
+            return e164.length() - 1 == 10;
+        }
+        return true;
     }
 }
