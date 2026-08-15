@@ -35,6 +35,9 @@ import java.util.*;
 @Entity
 @Table(name = "owners")
 public class Owner extends Person {
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "address")
     @NotEmpty
     private String address;
@@ -89,6 +92,26 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation, composed as the {@code title} followed by a single space and the
+     * {@code lastName} (e.g. {@code "DR who"}). Falls back to just the {@code lastName} when no
+     * title was supplied. Not persisted.
+     */
+    @Transient
+    public String getSalutation() {
+        return (this.title != null && !this.title.isBlank())
+                ? this.title + " " + getLastName()
+                : getLastName();
+    }
 
     public String getAddress() {
         return this.address;
