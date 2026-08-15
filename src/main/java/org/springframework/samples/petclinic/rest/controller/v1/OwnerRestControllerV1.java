@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -29,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        rejectMissingOrBlankFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -199,5 +202,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Rejects an owner payload that is missing or blank in any mandatory field. This complements Bean
+     * Validation, which cannot reject whitespace-only values that still satisfy a minimum-length constraint.
+     *
+     * @param fields the submitted owner fields
+     * @throws RequiredFieldsMissingException if any of firstName, lastName, address, city or telephone is
+     *                                        {@code null} or blank
+     */
+    private void rejectMissingOrBlankFields(OwnerFieldsDto fields) {
+        List<String> missing = new ArrayList<>();
+        if (isBlank(fields.getFirstName())) {
+            missing.add("firstName");
+        }
+        if (isBlank(fields.getLastName())) {
+            missing.add("lastName");
+        }
+        if (isBlank(fields.getAddress())) {
+            missing.add("address");
+        }
+        if (isBlank(fields.getCity())) {
+            missing.add("city");
+        }
+        if (isBlank(fields.getTelephone())) {
+            missing.add("telephone");
+        }
+        if (!missing.isEmpty()) {
+            throw new RequiredFieldsMissingException(missing);
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

@@ -29,9 +29,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -136,6 +138,11 @@ public class ExceptionControllerAdvice {
         BindingErrorsResponse errors = new BindingErrorsResponse();
         BindingResult bindingResult = e.getBindingResult();
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        List<String> invalidFields = bindingResult.getFieldErrors().stream()
+            .map(FieldError::getField)
+            .distinct()
+            .toList();
+        detail.setProperty("errors", invalidFields);
         if (bindingResult.hasErrors()) {
             errors.addAllErrors(bindingResult);
             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
@@ -159,6 +166,28 @@ public class ExceptionControllerAdvice {
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link RequiredFieldsMissingException} raised when a create/update request omits or blanks a
+     * mandatory owner field that Bean Validation cannot reject on its own (e.g. a whitespace-only value that
+     * still satisfies a minimum-length constraint).
+     *
+     * @param e The {@link RequiredFieldsMissingException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(RequiredFieldsMissingException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRequiredFieldsMissingException(RequiredFieldsMissingException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
+        logger.debug("Missing required fields at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
         return ResponseEntity.status(status).body(detail);
     }
 
