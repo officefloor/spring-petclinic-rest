@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
@@ -125,6 +126,36 @@ public interface OwnerMapper {
         }
         return owner.getCustomerCode() + "-M"
                 + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Derives the owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over the
+     * digits contained in the {@code customerCode}. Returns {@code null} when the customerCode is
+     * absent, so owners without a customerCode map cleanly.
+     */
+    default Integer checkDigit(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = customerCode.length() - 1; i >= 0; i--) {
+            char c = customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     Owner toOwner(OwnerDto ownerDto);
