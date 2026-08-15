@@ -32,6 +32,9 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
             + "OwnerIdentityKey.forOwner(owner))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner."
+            + "TelephoneDisplay.forOwner(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
