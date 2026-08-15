@@ -7,17 +7,17 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Step of {@code POST /api/owners} that flags a soft duplicate. The create has already passed
- * {@link RequireUniqueIdentity}, so it is neither a hard identity duplicate nor an undeclared
- * household duplicate. This step marks the owner when an existing owner shares its household (the
- * same deterministic {@code householdId}, i.e. the same lastName and postcode) but has a different
- * telephone (normalized to E.164, see {@link TelephoneE164}).
+ * {@link RequireUniqueIdentity}, so its {@link OwnerIdentityKey} is unique. This step marks the
+ * owner when an existing, non-deleted owner has a DIFFERENT identityKey yet shares both this owner's
+ * {@link Soundex} surname code and postcode — a phonetically-identical surname at the same postcode
+ * reached, typically, from a different telephone.
  *
  * <p>A declared household member — one whose request set {@code sharesHousehold=true} — is not a
  * suspected duplicate, so it is never flagged. Otherwise, when such an owner exists,
  * {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to that owner's id — the
  * earliest (lowest-id) match when several qualify; otherwise {@code possibleDuplicate} is false and
  * {@code possibleDuplicateOf} is left unset. Runs before {@link SaveOwner}, so the owner being
- * created is not matched against itself. An owner with no household (no postcode) never soft-matches.
+ * created is not matched against itself. An owner with no postcode never soft-matches.
  */
 public class AssignPossibleDuplicate {
 
@@ -26,21 +26,25 @@ public class AssignPossibleDuplicate {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // a declared household member is not a suspected duplicate
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return;
+        String postcode = normalizePostcode(owner.getPostcode());
+        if (postcode.isEmpty()) {
+            return; // an owner with no postcode has no household to match against
         }
-        String telephone = normalizeTelephone(owner.getTelephone());
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = OwnerIdentityKey.forOwner(owner);
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner is not a duplicate
             }
-            if (!householdId.equals(existing.getHouseholdId())) {
+            if (identityKey.equals(OwnerIdentityKey.forOwner(existing))) {
+                continue; // an exact identity match is a hard duplicate, not a soft one
+            }
+            if (!soundex.equals(Soundex.encode(existing.getLastName()))) {
                 continue;
             }
-            if (telephone.equals(normalizeTelephone(existing.getTelephone()))) {
-                continue; // same telephone would be a hard duplicate, not a soft match
+            if (!postcode.equals(normalizePostcode(existing.getPostcode()))) {
+                continue;
             }
             if (match == null || (existing.getId() != null && match.getId() != null
                     && existing.getId() < match.getId())) {
@@ -53,9 +57,7 @@ public class AssignPossibleDuplicate {
         }
     }
 
-    /** Canonical E.164 telephone, falling back to the raw value when it cannot be parsed. */
-    private static String normalizeTelephone(String telephone) {
-        String e164 = TelephoneE164.toE164(telephone);
-        return e164 != null ? e164 : (telephone == null ? "" : telephone);
+    private static String normalizePostcode(String postcode) {
+        return postcode == null ? "" : postcode.trim();
     }
 }

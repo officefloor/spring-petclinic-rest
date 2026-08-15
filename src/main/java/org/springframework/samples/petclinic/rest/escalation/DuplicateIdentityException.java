@@ -1,9 +1,9 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
 /**
- * Thrown when a create-owner request's derived identityKey (normalized telephone, email and
- * householdId) exactly matches an existing owner's, i.e. the whole key collides. Handled
- * globally by {@link DuplicateIdentityExceptionHandler}, which responds 409.
+ * Thrown when a create-owner request's derived identityKey (the SHA-256 hex over normalized
+ * telephone, email and soundex of the surname) exactly matches an existing owner's, i.e. the whole
+ * key collides. Handled globally by {@link DuplicateIdentityExceptionHandler}, which responds 409.
  */
 public class DuplicateIdentityException extends Exception {
 

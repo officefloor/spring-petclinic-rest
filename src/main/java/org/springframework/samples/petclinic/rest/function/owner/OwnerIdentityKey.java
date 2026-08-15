@@ -1,21 +1,25 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * The single derived key that consolidates all duplicate detection for
- * {@code POST /api/owners}. An owner's {@code identityKey} is
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}; a
- * create is a duplicate — and rejected with 409 — only when a new owner's WHOLE identityKey
- * equals an existing owner's. Because the telephone is part of the key, two members of the
- * same household (same {@code householdId}) with different telephones have different keys and
- * are both allowed; only an exact full-key match collides.
+ * {@code POST /api/owners}. An owner's {@code identityKey} is the lower-case hex SHA-256 of
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}; a create is a duplicate
+ * — and rejected with 409 — only when a new owner's WHOLE identityKey equals an existing owner's.
+ * Because the telephone is part of the key, two owners with the same surname and postcode but
+ * different telephones have different keys and are both allowed (the later one is flagged a soft
+ * match instead — see {@link AssignPossibleDuplicate}); only an exact full-key match collides.
  *
  * <p>Each component is normalized to the same canonical form the owner is stored with, so a
  * request and the owner it would duplicate produce identical keys regardless of input format:
- * the telephone to E.164 (see {@link TelephoneE164}), the email trimmed and lower-cased, and
- * the householdId derived exactly as {@link AssignHouseholdId} assigns it.
+ * the telephone to E.164 (see {@link TelephoneE164}), the email trimmed and lower-cased, and the
+ * surname reduced to its {@link Soundex} code so phonetically-identical surnames share the key.
  */
 public final class OwnerIdentityKey {
 
@@ -24,17 +28,18 @@ public final class OwnerIdentityKey {
 
     /** The identityKey a create request would have once its owner is built. */
     public static String forRequest(OwnerFieldsDto request) {
-        return of(request.getTelephone(), request.getEmail(), AssignHouseholdId.forRequest(request));
+        return of(request.getTelephone(), request.getEmail(), request.getLastName());
     }
 
     /** The identityKey of an already-stored owner. */
     public static String forOwner(Owner owner) {
-        return of(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 
-    private static String of(String telephone, String email, String householdId) {
-        return normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
-                + normalizeHousehold(householdId);
+    private static String of(String telephone, String email, String lastName) {
+        String raw = normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
+                + Soundex.encode(lastName);
+        return sha256Hex(raw);
     }
 
     private static String normalizeTelephone(String telephone) {
@@ -49,7 +54,17 @@ public final class OwnerIdentityKey {
         return email.trim().toLowerCase();
     }
 
-    private static String normalizeHousehold(String householdId) {
-        return householdId == null ? "" : householdId;
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }

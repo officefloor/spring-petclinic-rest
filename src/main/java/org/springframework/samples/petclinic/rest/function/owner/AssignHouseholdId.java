@@ -13,9 +13,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * Step of {@code POST /api/owners} that assigns the deterministic {@code householdId}. The id is
  * derived from the normalized lastName and the postcode, so any two owners with the same lastName
  * and postcode are automatically given the identical identifier and are treated as one household.
- * It is one component of the consolidated {@link OwnerIdentityKey}. The id no longer depends on
- * {@code sharesHousehold} (which now only bypasses the household duplicate block). Owners with no
- * postcode have no household and are left with no householdId.
+ * It drives the household size and membership-cap rules ({@link AssignHouseholdSize},
+ * {@link CapMembershipLevel}); duplicate detection no longer uses it (the {@link OwnerIdentityKey}
+ * is the single identity key). Owners with no postcode have no household and are left with no
+ * householdId.
  */
 public class AssignHouseholdId {
 
