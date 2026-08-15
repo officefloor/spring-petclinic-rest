@@ -27,9 +27,8 @@ public interface OwnerMapper {
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "locality",
-        expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
-            + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
-            + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner."
+            + "OwnerLocality.forOwner(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
             + "OwnerIdentityKey.forOwner(owner))")
