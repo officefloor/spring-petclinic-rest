@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
 
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +26,7 @@ import java.util.List;
         org.springframework.samples.petclinic.util.ContactPreference.class,
         org.springframework.samples.petclinic.util.OwnerSegment.class,
         org.springframework.samples.petclinic.util.Salutation.class,
+        org.springframework.samples.petclinic.util.IdentityVersion.class,
         org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
 public interface OwnerMapper {
 
@@ -44,23 +47,39 @@ public interface OwnerMapper {
         expression = "java(owner.getRegistrationDate() == null ? null "
             + ": FiscalYear.labelOf(owner.getRegistrationDate()))")
     @Mapping(target = "locality",
-        expression = "java(LocalityResolver.regionOfMemberId(owner.getMemberId()))")
+        expression = "java(LocalityResolver.localityOf(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "timezone",
         expression = "java(LocalityResolver.timezoneOfRegion("
-            + "LocalityResolver.regionOfMemberId(owner.getMemberId())))")
+            + "LocalityResolver.localityOf(owner.getPostcode(), owner.getCity())))")
     @Mapping(target = "contactPreference",
         expression = "java(ContactPreference.preferenceOf(owner))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerSegment.of("
             + "MembershipLevel.levelOf(MembershipLevel.pointsOf(owner)), "
-            + "LocalityResolver.regionOfMemberId(owner.getMemberId())))")
+            + "LocalityResolver.localityOf(owner.getPostcode(), owner.getCity())))")
     @Mapping(target = "ageBand",
         expression = "java(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
-    @Mapping(target = "identityKey",
-        expression = "java(OwnerIdentityKey.forOwner(owner))")
+    @Mapping(target = "apiVersion",
+        expression = "java(IdentityVersion.API_VERSION)")
+    @Mapping(target = "identity",
+        expression = "java(toOwnerIdentityDto(owner))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identity values ({@code memberId}, {@code identityKey} and
+     * {@code householdId}) into the nested {@code identity} object of the response. The
+     * {@code identityKey} is derived on read; the {@code memberId} and {@code householdId} are the
+     * stored values assigned when the owner was created.
+     */
+    default OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(OwnerIdentityKey.forOwner(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

@@ -7,11 +7,13 @@ import java.security.NoSuchAlgorithmException;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 
 /**
  * Shared derivation of an owner's {@code identityKey} — the single value that all duplicate detection
- * is now expressed through. The key is the lower-case hex SHA-256 digest of
- * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName)}, where:
+ * is now expressed through. Under the version-2 identity a fixed {@code "V2"} tag is mixed in, so the
+ * key is the lower-case hex SHA-256 digest of
+ * {@code normalizedTelephone + "|" + lowerEmail + "|" + soundex(lastName) + "|" + "V2"}, where:
  *
  * <ul>
  * <li>{@code normalizedTelephone} is the E.164 form (see {@link TelephoneE164});</li>
@@ -46,7 +48,7 @@ public final class OwnerIdentityKey {
 
     private static String build(String telephone, String email, String lastName) {
         String raw = normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
-                + Soundex.soundex(lastName);
+                + Soundex.soundex(lastName) + "|" + IdentityVersion.TAG;
         return sha256hex(raw);
     }
 

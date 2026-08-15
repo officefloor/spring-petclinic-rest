@@ -7,15 +7,17 @@ import java.security.NoSuchAlgorithmException;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 
 /**
  * Shared, deterministic household identity for the create-owner pipeline.
  *
  * <p>An owner's household is keyed purely on its last name and postcode: the {@code householdId} is
  * the first 12 hex characters (upper-case) of SHA-256 over {@code normalizedLastName + "|" +
- * postcode}. Because it is derived from nothing but those two values, every owner with the same last
- * name and postcode receives the same identifier automatically — no owner has to opt in, and the id
- * is identical before and after the owner is saved.
+ * postcode + "|" + "V2"}, where the trailing {@code "V2"} is the fixed version-2 identity tag.
+ * Because it is derived from nothing but those two values (plus the fixed tag), every owner with the
+ * same last name and postcode receives the same identifier automatically — no owner has to opt in,
+ * and the id is identical before and after the owner is saved.
  *
  * <p>The last name is normalized (trimmed, internal whitespace collapsed, lower-cased) so that
  * cosmetic differences do not split a household; the postcode is compared as its trimmed value.
@@ -66,11 +68,16 @@ final class Household {
         return count;
     }
 
-    /** First 12 upper-hex characters of SHA-256 over {@code lastName + "|" + postcode}. */
+    /**
+     * First 12 upper-hex characters of SHA-256 over
+     * {@code lastName + "|" + postcode + "|" + IdentityVersion.TAG}. The version-2 tag is mixed in
+     * so every household id differs from its version-1 value.
+     */
     private static String deriveId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest((lastName + "|" + postcode + "|" + IdentityVersion.TAG)
+                            .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));

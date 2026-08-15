@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.util.CheckDigit;
 import org.springframework.samples.petclinic.util.FiscalYear;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 import org.springframework.samples.petclinic.util.LocalityResolver;
 import org.springframework.samples.petclinic.util.Sha256Hash;
 
@@ -17,7 +18,9 @@ import org.springframework.samples.petclinic.util.Sha256Hash;
  * {@code <REGION><FY><HASH8><CHK>}, where:
  *
  * <ul>
- * <li>{@code REGION} is the region code derived from the postcode (see {@link LocalityResolver});</li>
+ * <li>{@code REGION} is the version-2 region code: the region derived from the postcode (see
+ * {@link LocalityResolver}) with the fixed {@link IdentityVersion#TAG} mixed in, so it never equals
+ * a version-1 region and the plain {@code locality} is no longer read back off it;</li>
  * <li>{@code FY} is the last two digits of the fiscal year (starting 1 July) of the
  * business-day-adjusted {@code registrationDate}, zero-padded;</li>
  * <li>{@code HASH8} is the first 8 upper-case hex characters of SHA-256 over the concatenation of
@@ -43,7 +46,8 @@ public class AssignMemberId {
     private static final int HASH_LENGTH = 8;
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
+        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity())
+                + IdentityVersion.TAG;
         String fy = String.format("%02d", FiscalYear.yearOf(owner.getRegistrationDate()) % 100);
         String hash8 = Sha256Hash.upperHex(owner.getTelephone() + owner.getLastName(), HASH_LENGTH);
         String body = region + fy + hash8;

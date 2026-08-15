@@ -58,11 +58,14 @@ public final class LocalityResolver {
     }
 
     /**
-     * The {@code REGION} component carried by a {@code memberId} of the form
-     * {@code <REGION><FY><HASH8><CHK>}. The region is the leading run of letters, terminated by the
-     * first digit of the fiscal-year segment. Now that the member id embeds the region, the owner's
-     * locality is read straight back off the identity rather than recomputed from postcode and city.
-     * Returns {@code "UNKNOWN"} when the id is absent or carries no region component.
+     * The leading run of letters of a {@code memberId} of the form {@code <REGION><FY><HASH8><CHK>},
+     * terminated by the first digit of the fiscal-year segment. Returns {@code "UNKNOWN"} when the id
+     * is absent or carries no leading-letter component.
+     *
+     * <p>Under the version-2 identity the member id's region component carries the fixed
+     * {@code "V2"} tag, so this no longer yields the plain region: the user-facing {@code locality},
+     * {@code timezone} and the {@code ownerSegment} region are recomputed straight from the postcode
+     * and city (see {@link #localityOf(String, String)}) rather than read back off the identity.
      */
     public static String regionOfMemberId(String memberId) {
         if (memberId == null || memberId.isBlank()) {

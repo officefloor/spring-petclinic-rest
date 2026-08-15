@@ -3,12 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.IdentityVersion;
 
 /**
  * Immutable structured audit event emitted alongside the human-readable audit line when a new owner
  * is created (see {@link AuditOwnerCreated}). Serialized to a single-line JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code event} is always
- * {@value #EVENT}.
+ * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event}} where {@code schemaVersion}
+ * is the fixed version-2 audit schema version and {@code event} is always {@value #EVENT}.
  *
  * <p>{@code seq} is a process-wide, monotonically increasing sequence number handed out by
  * {@link #of(Owner, int)} — one per created owner, ordering the events regardless of which request
@@ -62,7 +63,8 @@ final class OwnerCreatedEvent {
     /** This event as a compact, single-line JSON object. */
     String toJson() {
         return "{"
-                + "\"seq\":" + this.seq
+                + "\"schemaVersion\":" + IdentityVersion.AUDIT_SCHEMA_VERSION
+                + ",\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
                 + ",\"memberId\":" + quote(this.primaryIdentifier)
                 + ",\"membershipLevel\":" + this.membershipLevel
