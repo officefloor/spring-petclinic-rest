@@ -270,6 +270,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners permitted in a single city. */
     private static final int CITY_CAPACITY = 50;
 
+    /** Maximum number of owners that may be created (by registrationDate) on a single day. */
+    private static final int DAILY_CREATE_LIMIT = 100;
+
     /**
      * Count the existing owners whose city matches this owner's city, compared case-insensitively.
      * Used to enforce the per-city capacity on create (before this owner is saved).
@@ -279,6 +282,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int count = 0;
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (city != null && city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Count the existing owners whose registrationDate equals the given day. Used to enforce the
+     * per-day create limit on create (before this owner is saved).
+     */
+    private int ownersRegisteredOn(java.time.LocalDate day) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (day.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
@@ -302,6 +319,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
+        java.time.LocalDate registrationDate =
+            owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate();
+        if (ownersRegisteredOn(registrationDate) >= DAILY_CREATE_LIMIT) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -332,9 +354,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setTelephone(telephone);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
