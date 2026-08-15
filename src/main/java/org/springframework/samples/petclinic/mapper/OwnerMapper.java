@@ -18,6 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class,
     imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
         org.springframework.samples.petclinic.util.MembershipLevel.class,
+        org.springframework.samples.petclinic.util.TelephoneDisplay.class,
         org.springframework.samples.petclinic.util.AgeBand.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
         org.springframework.samples.petclinic.util.CheckDigit.class,
@@ -29,6 +30,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(TelephoneDisplay.format(owner.getTelephone()))")
     @Mapping(target = "membershipLevel",
         expression = "java(MembershipLevel.levelOf(owner))")
     @Mapping(target = "locality",
