@@ -152,6 +152,23 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * The owner's membership level (1 to 3), derived from the creation-time facts it is assigned
+     * from: start at 1, add 1 when an email is present, add 1 when {@code namesakeCount} is 0, and
+     * cap at 3. Level 4 is reserved for tenure. Not persisted.
+     */
+    @Transient
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isBlank()) {
+            level++;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

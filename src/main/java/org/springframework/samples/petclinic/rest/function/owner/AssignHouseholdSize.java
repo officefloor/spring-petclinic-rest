@@ -10,8 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * share this owner's {@code householdId} plus one for the owner being created. Runs after
  * {@link AssignHouseholdId} (so the householdId is set) and before {@link SaveOwner} (so the owner
  * being created is not yet in the store and is counted exactly once via the {@code + 1}). Owners
- * with no householdId are a household of one. This value drives the {@code GOLD} membership tier
- * (3+ members).
+ * with no householdId are a household of one.
  */
 public class AssignHouseholdSize {
 
