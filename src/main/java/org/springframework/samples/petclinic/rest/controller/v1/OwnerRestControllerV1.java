@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -44,6 +45,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.controller.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.controller.HouseholdDuplicateException;
@@ -81,6 +83,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@.]{2,}$");
+
+    /**
+     * Domains that supply disposable / throwaway mailboxes. An owner whose email domain matches one of
+     * these (compared case-insensitively) is rejected. Values are stored lower-cased for comparison.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
      * Dedicated audit logger. Successful side-effecting operations (such as creating an owner) emit a
@@ -388,7 +397,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException(email);
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailDomainException(domain);
+        }
+        return normalized;
     }
 
     /**
