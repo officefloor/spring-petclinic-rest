@@ -157,6 +157,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /**
+     * Normalize a value for household-duplicate comparison: {@code null} becomes empty, surrounding
+     * whitespace is trimmed, internal runs of whitespace are collapsed to a single space and the result
+     * is lower-cased, so the comparison is case-insensitive with collapsed whitespace.
+     */
+    private static String normalizeForHousehold(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Return {@code true} when another owner already shares this owner's household, i.e. has the same
+     * last name and address compared case-insensitively with collapsed whitespace.
+     */
+    private boolean sharesHouseholdWithExisting(Owner owner) {
+        String lastName = normalizeForHousehold(owner.getLastName());
+        String address = normalizeForHousehold(owner.getAddress());
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (normalizeForHousehold(existing.getLastName()).equals(lastName)
+                && normalizeForHousehold(existing.getAddress()).equals(address)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -174,6 +202,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (telephone.equals(existingTelephone)) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && sharesHouseholdWithExisting(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() == null) {
