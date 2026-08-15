@@ -170,19 +170,48 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Return the owners that already share this owner's household, i.e. have the same last name and
+     * address compared case-insensitively with collapsed whitespace.
+     */
+    private List<Owner> householdMembers(Owner owner) {
+        String lastName = normalizeForHousehold(owner.getLastName());
+        String address = normalizeForHousehold(owner.getAddress());
+        List<Owner> members = new java.util.ArrayList<>();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (normalizeForHousehold(existing.getLastName()).equals(lastName)
+                && normalizeForHousehold(existing.getAddress()).equals(address)) {
+                members.add(existing);
+            }
+        }
+        return members;
+    }
+
+    /**
      * Return {@code true} when another owner already shares this owner's household, i.e. has the same
      * last name and address compared case-insensitively with collapsed whitespace.
      */
     private boolean sharesHouseholdWithExisting(Owner owner) {
-        String lastName = normalizeForHousehold(owner.getLastName());
-        String address = normalizeForHousehold(owner.getAddress());
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (normalizeForHousehold(existing.getLastName()).equals(lastName)
-                && normalizeForHousehold(existing.getAddress()).equals(address)) {
-                return true;
+        return !householdMembers(owner).isEmpty();
+    }
+
+    /**
+     * A stable, shared household identifier derived from the normalized last name and address, so every
+     * owner in the same household deterministically resolves to the same value.
+     */
+    private static String householdIdFor(Owner owner) {
+        String key = normalizeForHousehold(owner.getLastName()) + "|" + normalizeForHousehold(owner.getAddress());
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(24);
+            for (int i = 0; i < 12; i++) {
+                sb.append(String.format("%02X", digest[i]));
             }
+            return sb.toString();
         }
-        return false;
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -203,8 +232,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && sharesHouseholdWithExisting(owner)) {
+        List<Owner> householdMembers = householdMembers(owner);
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold && !householdMembers.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (sharesHousehold && !householdMembers.isEmpty()) {
+            String householdId = householdMembers.stream()
+                .map(Owner::getHouseholdId)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst()
+                .orElseGet(() -> householdIdFor(owner));
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
+            }
         }
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() == null) {
