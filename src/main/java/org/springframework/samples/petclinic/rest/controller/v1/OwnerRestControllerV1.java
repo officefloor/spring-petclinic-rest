@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
@@ -119,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        rejectFutureRegistrationDate(registrationDate);
         if (registrationDate == null) {
             registrationDate = java.time.LocalDate.now();
         }
@@ -145,6 +147,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Rejects creating an owner whose supplied {@code registrationDate} is later than the server
+     * date (in the future). Only an explicitly supplied date is validated; a {@code null} date
+     * (which later defaults to the server date) is accepted. The check is against the raw supplied
+     * date, before any business-day adjustment.
+     *
+     * @param registrationDate the supplied registration date, or {@code null} when none was supplied
+     * @throws FutureRegistrationDateException (400 Bad Request) if the supplied date is in the future
+     */
+    private void rejectFutureRegistrationDate(java.time.LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(java.time.LocalDate.now())) {
+            throw new FutureRegistrationDateException(registrationDate);
+        }
     }
 
     /**
