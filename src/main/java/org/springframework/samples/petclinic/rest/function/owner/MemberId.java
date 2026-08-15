@@ -37,16 +37,25 @@ public final class MemberId {
     private static final Map<String, String> CITY_REGIONS = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /**
+     * The fixed version tag mixed into every version-2 identifier. It appears only <em>inside</em> the
+     * identifiers (the {@code memberId} REGION segment and the hashed inputs of the {@code identityKey}
+     * and {@code householdId}, see {@link OwnerIdentity}), never in the user-facing {@code locality},
+     * {@code timezone} or the owner segment's derived region.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private MemberId() {
     }
 
     /**
-     * The full {@code '<REGION><FY><HASH8><CHK>'} memberId for the given normalized telephone, last
-     * name, postcode, city and registrationDate.
+     * The full {@code '<REGIONV2><FY><HASH8><CHK>'} memberId for the given normalized telephone, last
+     * name, postcode, city and registrationDate, where {@code REGIONV2} is the version-2 region code
+     * (see {@link #regionV2}).
      */
     public static String of(String normalizedTelephone, String lastName, String postcode, String city,
             LocalDate registrationDate) {
-        String base = region(postcode, city) + fiscalYearSegment(registrationDate)
+        String base = regionV2(postcode, city) + fiscalYearSegment(registrationDate)
                 + hash8(normalizedTelephone, lastName);
         return base + luhn(base);
     }
@@ -54,7 +63,8 @@ public final class MemberId {
     /**
      * Derives {@code REGION}: the postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099),
      * then the {@link #CITY_REGIONS} city table, then {@code 'UNKNOWN'}. This disambiguates cities that
-     * share a name and is the region embedded in every {@code memberId}.
+     * share a name. It is the plain, user-facing region behind {@code locality}, {@code timezone} and
+     * the owner segment; the version-2 region embedded in the {@code memberId} is {@link #regionV2}.
      */
     public static String region(String postcode, String city) {
         String region = regionForPostcode(postcode);
@@ -62,6 +72,16 @@ public final class MemberId {
             return region;
         }
         return CITY_REGIONS.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Derives the version-2 region code embedded inside the identifiers: the plain {@link #region} with
+     * the fixed {@link #VERSION_TAG} appended (e.g. {@code NSW} becomes {@code NSWV2}). Because the tag
+     * follows the region letters where version 1 placed a fiscal-year digit, no version-2 memberId can
+     * equal a version-1 one. The plain {@link #region} (and therefore {@code locality}) is unchanged.
+     */
+    public static String regionV2(String postcode, String city) {
+        return region(postcode, city) + VERSION_TAG;
     }
 
     /** {@code HASH8}: the first 8 upper-case hex characters of SHA-256 of {@code normalizedTelephone + lastName}. */

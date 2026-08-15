@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -33,12 +34,31 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(API_VERSION)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(OwnerMapper.riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The version of the owner API contract this mapper produces. */
+    int API_VERSION = 2;
+
+    /**
+     * Builds the owner's version-2 {@code identity}: the nested object grouping the three derived
+     * identifiers — {@code memberId} and {@code householdId} (assigned and stored at create time) and
+     * the derived {@code identityKey} (see {@link #identityKey(Owner)}). Each is rederived under version
+     * 2 with the fixed {@code 'V2'} version tag mixed in; the user-facing {@code locality},
+     * {@code timezone} and {@code ownerSegment} stay the plain region code.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
 
     /**
      * Derives the owner's {@code riskFlag}: {@code true} when the owner warrants a manual risk
@@ -149,9 +169,10 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's {@code identityKey}, the single key all duplicate detection is expressed
-     * through: the SHA-256 hex of {@code normalizedTelephone|lowerEmail|soundex(lastName)}
-     * (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity}).
+     * Derives the owner's version-2 {@code identityKey}, the single key all duplicate detection is
+     * expressed through: the SHA-256 hex of {@code 'V2'|normalizedTelephone|lowerEmail|soundex(lastName)}
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity}). Returned
+     * inside the nested {@code identity} object, not at the top level.
      */
     default String identityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity

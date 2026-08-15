@@ -17,9 +17,10 @@ import org.springframework.samples.petclinic.model.Owner;
  *   <li>the human-readable audit line carrying the owner's id, memberId, registrationDate and
  *       membershipLevel; and</li>
  *   <li>an immutable structured {@link OwnerCreatedEvent} as one JSON line
- *       ({@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}), where
- *       {@code seq} increases monotonically across creates and {@code memberId} carries the
- *       owner's current {@linkplain #primaryIdentifier(Owner) primary identifier}.</li>
+ *       ({@code {seq, ownerId, memberId, membershipLevel, schemaVersion:2, event:'OWNER_CREATED'}}),
+ *       where {@code seq} increases monotonically across creates, {@code schemaVersion} is 2 and
+ *       {@code memberId} carries the owner's current {@linkplain #primaryIdentifier(Owner) primary
+ *       identifier} (the version-2 {@code identity.memberId}).</li>
  * </ol>
  *
  * <p>Runs after {@link SaveOwner} so the generated id is present, within the same write

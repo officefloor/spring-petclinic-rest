@@ -9,7 +9,10 @@ import java.util.Locale;
  * Single source of truth for an owner's <em>identity</em>. All duplicate detection on the create
  * endpoint is expressed through one derived {@code identityKey}:
  *
- * <pre>identityKey = SHA-256 hex over (normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName))</pre>
+ * <pre>identityKey = SHA-256 hex over ('V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName))</pre>
+ *
+ * <p>Both derived identifiers are version 2: the fixed {@link MemberId#VERSION_TAG} is mixed into the
+ * hashed input so every value differs from the version-1 key and no version-1 value recurs.</p>
  *
  * <p>The result is the full 64-character lower-case hex SHA-256 digest. A new owner is a duplicate
  * (409) only when its whole {@code identityKey} equals an existing owner's — see
@@ -31,25 +34,28 @@ public final class OwnerIdentity {
 
     /**
      * The shared {@code householdId} derived from the last name and postcode: the first 12 upper-cased
-     * hex characters of SHA-256 of {@code '<lastName>|<postcode>'}, with the last name normalized
+     * hex characters of SHA-256 of {@code 'V2|<lastName>|<postcode>'} (mixing in the fixed
+     * {@link MemberId#VERSION_TAG}), with the last name normalized
      * (lower-cased, runs of whitespace collapsed, trimmed) and a null/blank postcode contributing the
      * empty string. Because it is a pure function of {@code (lastName, postcode)}, two owners sharing
      * both deterministically receive the same value — they are, by definition, the same household.
      */
     public static String householdId(String lastName, String postcode) {
-        String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode.trim());
+        String key = MemberId.VERSION_TAG + "|" + normalizeName(lastName) + "|"
+                + (postcode == null ? "" : postcode.trim());
         return shaHex(key, 12);
     }
 
     /**
      * The derived {@code identityKey}: the full lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A null telephone and a
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, with the
+     * fixed {@link MemberId#VERSION_TAG} mixed in so no version-1 key recurs. A null telephone and a
      * blank/absent email each contribute the empty string.
      */
     public static String identityKey(String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
         String em = (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
-        String key = tel + "|" + em + "|" + soundex(lastName);
+        String key = MemberId.VERSION_TAG + "|" + tel + "|" + em + "|" + soundex(lastName);
         return sha256Hex(key);
     }
 
