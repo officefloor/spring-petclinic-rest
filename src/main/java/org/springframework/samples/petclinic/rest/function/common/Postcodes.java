@@ -20,6 +20,31 @@ public final class Postcodes {
     }
 
     /**
+     * The region whose inclusive range contains {@code postcode}, or {@code null} when the
+     * postcode is absent, cannot be parsed as an integer, or falls in no known range. Used to
+     * derive the locality from the postcode in preference to the city (see {@link Localities}).
+     */
+    public static String regionOf(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode);
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether {@code postcode} is acceptable for {@code city}. A null postcode is acceptable
      * (the field is optional). Assumes the 4-digit format has already been validated; a value
      * that cannot be parsed as an integer is treated as invalid. When the city's region has no
