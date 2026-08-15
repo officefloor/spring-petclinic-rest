@@ -1,0 +1,40 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d5c06699..27368d9a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -183,14 +183,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN} when the postcode is absent or in no known
+      * range) and HASH8 is the first 8 upper-case hex characters of SHA-256 over the concatenation of
+      * the owner's normalized (E.164) telephone and last name (e.g. {@code NSW-3F9A0C17}). No sequence
+-     * numbers are used, so the code is a pure function of the owner's region-and-hash identity.
++     * numbers are used, so the base code is a pure function of the owner's region-and-hash identity.
++     * When that base code collides with an existing owner's customerCode, {@code -<n>} is appended with
++     * the smallest {@code n} of 2 or more that makes it unique, returning the de-duplicated code.
+      */
+     private String customerCodeFor(Owner owner) {
+         String region = ownerMapper.regionFromPostcode(owner);
+         if (region == null) {
+             region = "UNKNOWN";
+         }
+-        return region + "-" + hash8(owner.getTelephone(), owner.getLastName());
++        String base = region + "-" + hash8(owner.getTelephone(), owner.getLastName());
++
++        java.util.Set<String> existingCodes = new java.util.HashSet<>();
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            String code = existing.getCustomerCode();
++            if (code != null) {
++                existingCodes.add(code);
++            }
++        }
++        if (!existingCodes.contains(base)) {
++            return base;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = base + "-" + n;
++            if (!existingCodes.contains(candidate)) {
++                return candidate;
++            }
++        }
+     }
+ 
+     /**
