@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
 import org.springframework.samples.petclinic.rest.function.common.MemberIds;
 import org.springframework.samples.petclinic.rest.function.common.Membership;
 import org.springframework.samples.petclinic.rest.function.common.OwnerSegments;
+import org.springframework.samples.petclinic.rest.function.common.RiskFlags;
 import org.springframework.samples.petclinic.rest.function.common.Telephones;
 import org.springframework.samples.petclinic.rest.function.common.Timezones;
 
@@ -26,8 +27,8 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
         imports = { AgeBands.class, ContactPreferences.class, FiscalYears.class, IdentityKeys.class,
-                MemberIds.class, Membership.class, OwnerSegments.class, Telephones.class,
-                Timezones.class })
+                MemberIds.class, Membership.class, OwnerSegments.class, RiskFlags.class,
+                Telephones.class, Timezones.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -61,6 +62,8 @@ public interface OwnerMapper {
             expression = "java(Telephones.displayOf(owner))")
     @Mapping(target = "selfLink",
             expression = "java(\"/api/owners/\" + owner.getId())")
+    @Mapping(target = "riskFlag",
+            expression = "java(RiskFlags.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
