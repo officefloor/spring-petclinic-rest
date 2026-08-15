@@ -53,6 +53,7 @@ public abstract class OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -255,6 +256,22 @@ public abstract class OwnerMapper {
             grouped.append(national.charAt(i));
         }
         return grouped.toString();
+    }
+
+    /**
+     * Composes the owner's salutation: the {@code title}, a single space and the last name (e.g.
+     * {@code 'DR Franklin'}) when a non-blank {@code title} was supplied, or just the last name when no
+     * title was given.
+     *
+     * @param owner the owner whose salutation is being composed
+     * @return {@code '<title> <lastName>'} when a title is present, otherwise the last name alone
+     */
+    protected String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
