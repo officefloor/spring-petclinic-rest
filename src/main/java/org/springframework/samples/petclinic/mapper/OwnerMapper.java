@@ -204,6 +204,17 @@ public interface OwnerMapper {
      * (starting 1 July) elapsed between {@code registrationDate} and today — exceeds 1.
      */
     static Integer membershipPoints(Owner owner) {
+        return membershipPoints(owner, owner.getHouseholdMemberCount());
+    }
+
+    /**
+     * As {@link #membershipPoints(Owner)}, but scoring the "household of 3 or more" bonus against the
+     * supplied {@code householdMemberCount} rather than the owner's stored one. Used when evaluating an
+     * existing household member against the household as it stands <em>now</em> (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel}), since a
+     * member's own count is frozen at its own create time.
+     */
+    static Integer membershipPoints(Owner owner, Integer householdMemberCount) {
         int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
@@ -213,8 +224,7 @@ public interface OwnerMapper {
         if (noNamesakes) {
             points += 1;
         }
-        boolean largeHousehold = owner.getHouseholdMemberCount() != null
-                && owner.getHouseholdMemberCount() >= 3;
+        boolean largeHousehold = householdMemberCount != null && householdMemberCount >= 3;
         if (largeHousehold) {
             points += 2;
         }
@@ -228,11 +238,38 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's membership level from 1 to 4 by mapping {@link #membershipPoints(Owner)}:
-     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more.
+     * The owner's effective membership level. When a level has been stored on the entity (assigned at
+     * create time by
+     * {@link org.springframework.samples.petclinic.rest.function.owner.AssignMembershipLevel}, which
+     * applies the household level ceiling) that value stands; otherwise it falls back to the level
+     * derived directly from points (see {@link #derivedMembershipLevel(Owner)}), so seed owners
+     * without a stored level still map cleanly.
      */
     static Integer membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return derivedMembershipLevel(owner);
+    }
+
+    /**
+     * Derives the owner's membership level from 1 to 4 by mapping {@link #membershipPoints(Owner)}:
+     * 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more. This is the uncapped level, before
+     * the household ceiling applied at create time.
+     */
+    static Integer derivedMembershipLevel(Owner owner) {
+        return levelForPoints(membershipPoints(owner));
+    }
+
+    /**
+     * As {@link #derivedMembershipLevel(Owner)}, but scoring the household bonus against the supplied
+     * {@code householdMemberCount} — the household's current size — rather than the owner's frozen one.
+     */
+    static Integer derivedMembershipLevel(Owner owner, Integer householdMemberCount) {
+        return levelForPoints(membershipPoints(owner, householdMemberCount));
+    }
+
+    private static Integer levelForPoints(int points) {
         if (points >= 6) {
             return 4;
         }
@@ -300,6 +337,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdMemberCount", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
+    @Mapping(target = "membershipLevel", ignore = true)
     @Mapping(target = "deleted", ignore = true)
     Owner toOwner(OwnerFieldsDto ownerDto);
 

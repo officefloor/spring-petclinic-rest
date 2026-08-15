@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       bulk_signup_warning BOOLEAN,
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
+                                      membership_level INTEGER,
                                       deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX ON owners (last_name);
