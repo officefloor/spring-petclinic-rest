@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7eba2210..cdfde054 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.rest.function.common.CustomerCodes;
+ import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
+ import org.springframework.samples.petclinic.rest.function.common.Membership;
+ import org.springframework.samples.petclinic.rest.function.common.Telephones;
++import org.springframework.samples.petclinic.rest.function.common.Timezones;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -24,7 +25,7 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+         imports = { AgeBands.class, CheckDigits.class, ContactPreferences.class, CustomerCodes.class,
+-                IdentityKeys.class, Membership.class, Telephones.class })
++                IdentityKeys.class, Membership.class, Telephones.class, Timezones.class })
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -40,6 +41,8 @@ public interface OwnerMapper {
+             expression = "java(Membership.levelOf(owner))")
+     @Mapping(target = "locality",
+             expression = "java(CustomerCodes.localityOf(owner))")
++    @Mapping(target = "timezone",
++            expression = "java(Timezones.ofOwner(owner))")
+     @Mapping(target = "contactPreference",
+             expression = "java(ContactPreferences.of(owner))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Timezones.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Timezones.java
+new file mode 100644
+index 00000000..70aec3da
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Timezones.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.common;
++
++import java.util.Map;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Fixed region-to-timezone lookup used to derive an owner's 'timezone' from its locality/region
++ * (see {@link Localities}). The mapping is pinned and expressed as IANA names: NSW ->
++ * Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane. A region not in the
++ * table (locality "UNKNOWN") has no timezone.
++ */
++public final class Timezones {
++
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
++    private Timezones() {
++    }
++
++    /** The IANA timezone for {@code region}, or {@code null} when the region has no known zone. */
++    public static String of(String region) {
++        return region == null ? null : REGION_TIMEZONE.get(region);
++    }
++
++    /**
++     * The owner's IANA timezone, derived from its locality/region (which prefers the postcode,
++     * falling back to the city, see {@link CustomerCodes#localityOf(Owner)}). {@code null} when the
++     * region is "UNKNOWN".
++     */
++    public static String ofOwner(Owner owner) {
++        return of(CustomerCodes.localityOf(owner));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4cae555b..ed553f59 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2192,6 +2192,14 @@ components:
+               type: string
+               example: NSW
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The owner's IANA timezone, derived at read time from the locality/region
++                using a fixed region-to-timezone table (NSW -> Australia/Sydney, VIC ->
++                Australia/Melbourne, QLD -> Australia/Brisbane). Absent when the region is 'UNKNOWN'.
++              type: string
++              example: Australia/Sydney
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: True when more than 80 owners had already been created for this owner's
