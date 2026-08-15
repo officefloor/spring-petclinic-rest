@@ -267,6 +267,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /** Maximum number of owners permitted in a single city. */
+    private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Count the existing owners whose city matches this owner's city, compared case-insensitively.
+     * Used to enforce the per-city capacity on create (before this owner is saved).
+     */
+    private int cityOwnerCount(Owner owner) {
+        String city = owner.getCity();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city != null && city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -284,6 +302,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
+        if (cityOwnerCount(owner) >= CITY_CAPACITY) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         for (Owner existing : this.clinicService.findAllOwners()) {
             String existingTelephone = toE164(existing.getTelephone());
             if (telephone.equals(existingTelephone)) {
