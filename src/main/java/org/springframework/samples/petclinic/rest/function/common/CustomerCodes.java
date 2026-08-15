@@ -28,6 +28,23 @@ public final class CustomerCodes {
     }
 
     /**
+     * De-duplicates {@code code} against {@code taken}: if no existing owner already uses it the code
+     * is returned unchanged, otherwise {@code '-<n>'} is appended with the smallest {@code n >= 2}
+     * that makes the result unique (e.g. {@code 'NSW-1A2B3C4D-2'}).
+     */
+    public static String deduplicate(String code, java.util.Collection<String> taken) {
+        if (!taken.contains(code)) {
+            return code;
+        }
+        for (int n = 2; ; n++) {
+            String candidate = code + "-" + n;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /**
      * The first eight upper-case hex characters of {@code SHA-256(telephone + lastName)}, over the
      * UTF-8 bytes of the concatenation. A {@code null} component contributes nothing.
      */
