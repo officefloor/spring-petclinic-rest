@@ -30,6 +30,9 @@ public class CheckIdentityUnique {
         String telephone = request.getTelephone();
         String email = normalizeEmail(request.getEmail());
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the identity check
+            }
             boolean sameTelephone = telephone != null && telephone.equals(existing.getTelephone());
             boolean sameEmail = email.equals(normalizeEmail(existing.getEmail()));
             if (sameTelephone && sameEmail) {

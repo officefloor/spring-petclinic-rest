@@ -31,6 +31,9 @@ public class CheckHouseholdUnique {
         }
         String householdId = OwnerIdentity.householdId(request.getLastName(), postcode);
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // soft-deleted owners are ignored by the household check
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateHouseholdException(householdId);
             }
