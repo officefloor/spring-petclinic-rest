@@ -157,6 +157,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /** Common street-type abbreviations expanded during address normalization. */
+    private static final java.util.Map<String, String> ADDRESS_ABBREVIATIONS =
+        java.util.Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Normalize an address: {@code null} becomes empty, surrounding whitespace is trimmed, internal
+     * runs of whitespace are collapsed to a single space, the value is upper-cased and common
+     * street-type abbreviations (ST-&gt;STREET, RD-&gt;ROAD, AVE-&gt;AVENUE) are expanded token by token.
+     */
+    private static String normalizeAddress(String value) {
+        if (value == null) {
+            return "";
+        }
+        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(java.util.Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
+    }
+
     /**
      * Normalize a value for household-duplicate comparison: {@code null} becomes empty, surrounding
      * whitespace is trimmed, internal runs of whitespace are collapsed to a single space and the result
@@ -226,6 +254,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        String address = normalizeAddress(owner.getAddress());
+        if (address.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         for (Owner existing : this.clinicService.findAllOwners()) {
             String existingTelephone = toE164(existing.getTelephone());
             if (telephone.equals(existingTelephone)) {
