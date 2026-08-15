@@ -11,7 +11,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -42,19 +41,25 @@ public abstract class OwnerMapper {
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
     /**
-     * Points added when the owner's tenure exceeds {@value #TENURE_POINTS_DAYS} days.
+     * Points added when the owner's tenure reaches {@value #TENURE_POINTS_FISCAL_YEARS} elapsed fiscal year(s).
      */
     private static final int TENURE_POINTS = 3;
 
     /**
-     * Tenure, in days, that an owner must exceed to earn the tenure points.
+     * Tenure, in elapsed fiscal years, that an owner must reach to earn the tenure points.
      */
-    private static final int TENURE_POINTS_DAYS = 365;
+    private static final int TENURE_POINTS_FISCAL_YEARS = 1;
+
+    /**
+     * The month (1 July) on which the fiscal year starts.
+     */
+    private static final int FISCAL_YEAR_START_MONTH = 7;
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + fiscalYearSuffix(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
@@ -80,9 +85,9 @@ public abstract class OwnerMapper {
      * Computes an owner's membership points. Points start at 0 and accumulate: {@value #EMAIL_POINTS} when an
      * email is present, {@value #NO_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
      * {@value #LARGE_HOUSEHOLD_POINTS} for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more members, and
-     * {@value #TENURE_POINTS} for tenure of more than {@value #TENURE_POINTS_DAYS} days (measured from
-     * {@code registrationDate}). Because a newly created owner has zero tenure, a new owner never earns the
-     * tenure points.
+     * {@value #TENURE_POINTS} for a tenure of at least {@value #TENURE_POINTS_FISCAL_YEARS} elapsed fiscal
+     * year(s) (measured from {@code registrationDate}). Because a newly created owner has zero elapsed fiscal
+     * years, a new owner never earns the tenure points.
      *
      * @param owner the owner whose points are being computed
      * @return the owner's membership points (0 or more)
@@ -98,7 +103,7 @@ public abstract class OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
-        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
+        if (tenureFiscalYears(owner) >= TENURE_POINTS_FISCAL_YEARS) {
             points += TENURE_POINTS;
         }
         return points;
@@ -126,20 +131,59 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Computes an owner's tenure in days: the number of days between {@code registrationDate} and today. A
-     * newly created owner (registered today) has zero tenure. Owners with no {@code registrationDate}, or a
-     * registration date in the future, are treated as having zero tenure.
+     * Computes an owner's tenure as the number of elapsed fiscal years between {@code registrationDate} and
+     * today: the difference between the fiscal year (starting 1 July) of today and that of the registration
+     * date. A newly created owner (registered in the current fiscal year) has zero tenure. Owners with no
+     * {@code registrationDate}, or a registration date in a later fiscal year, are treated as zero tenure.
      *
      * @param owner the owner whose tenure is being computed
-     * @return the owner's tenure in days, never negative
+     * @return the owner's tenure in elapsed fiscal years, never negative
      */
-    protected long tenureDays(Owner owner) {
+    protected long tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        long days = ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
-        return Math.max(days, 0);
+        long years = (long) fiscalYearStart(LocalDate.now()) - fiscalYearStart(registrationDate);
+        return Math.max(years, 0);
+    }
+
+    /**
+     * Derives an owner's {@code fiscalYear}, formatted {@code 'FY<YY>'}, from the (already
+     * business-day-adjusted) {@code registrationDate}. The fiscal year starts on 1 July and is labelled by
+     * the calendar year in which it starts, so a registration on or after 1 July belongs to that year's
+     * fiscal year and an earlier one to the previous year's (e.g. {@code 2026-08-15} yields {@code 'FY26'}).
+     *
+     * @param owner the owner whose fiscal year is being derived
+     * @return the owner's fiscal year as {@code 'FY<YY>'}
+     */
+    protected String fiscalYear(Owner owner) {
+        return "FY" + fiscalYearSuffix(owner.getRegistrationDate());
+    }
+
+    /**
+     * Returns the two-digit fiscal-year suffix ({@code '<YY>'}) for the given date: the last two digits of
+     * the calendar year in which that date's fiscal year (starting 1 July) begins. This is the shared segment
+     * used by both {@link #fiscalYear(Owner)} and the membership number.
+     *
+     * @param date the date whose fiscal-year suffix is computed
+     * @return the zero-padded two-digit fiscal-year suffix
+     */
+    protected String fiscalYearSuffix(LocalDate date) {
+        return String.format("%02d", fiscalYearStart(date) % 100);
+    }
+
+    /**
+     * Returns the calendar year in which the fiscal year containing {@code date} starts. The fiscal year
+     * starts on 1 July, so dates from July onward start their fiscal year in the same calendar year, while
+     * dates from January to June belong to the fiscal year that started in the previous calendar year.
+     *
+     * @param date the date whose fiscal-year start is computed
+     * @return the calendar year in which the containing fiscal year starts
+     */
+    protected int fiscalYearStart(LocalDate date) {
+        int year = date.getYear();
+        return date.getMonthValue() >= FISCAL_YEAR_START_MONTH ? year : year - 1;
     }
 
     /**
