@@ -39,7 +39,20 @@ public class ValidateOwnerFields {
         if (!errors.isEmpty()) {
             throw new MissingOwnerFieldsException(errors);
         }
+        normalizeEmail(request);
         validated.set(request);
+    }
+
+    /**
+     * Email is optional. When absent nothing is done; when present the schema {@code @Email}
+     * constraint (checked above) has already rejected a syntactically invalid address with a
+     * {@code 400}, so a value reaching here is valid and is stored and returned lower-cased.
+     */
+    private static void normalizeEmail(OwnerFieldsDto request) {
+        String email = request.getEmail();
+        if (email != null) {
+            request.setEmail(email.toLowerCase(java.util.Locale.ROOT));
+        }
     }
 
     private static void addIfBlank(List<String> errors, String name, String value) {
