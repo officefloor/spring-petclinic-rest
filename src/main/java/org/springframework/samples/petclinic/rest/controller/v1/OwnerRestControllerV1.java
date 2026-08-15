@@ -295,6 +295,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * value. Spaces, dashes and brackets are stripped. A leading {@code '+'} and its country code are
      * kept as supplied; otherwise country code {@code '+61'} is assumed and a single leading {@code '0'}
      * is dropped from the national digits. The result must be a {@code '+'} followed by 8 to 15 digits.
+     * <p>
+     * Where a per-country rule is defined the national-number length is validated against the country
+     * code: {@code '+61'} (Australia) requires exactly 9 national digits and {@code '+1'} (NANP)
+     * requires exactly 10.
      *
      * @param telephone the raw telephone value from the request
      * @return the E.164 telephone (a {@code '+'} followed by 8 to 15 digits)
@@ -311,6 +315,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             digits = "61" + national;
         }
         if (!digits.matches("[0-9]{8,15}")) {
+            throw new InvalidTelephoneException(cleaned);
+        }
+        // Validate the national-number length against the country code where a rule is defined.
+        if (digits.startsWith("61") && digits.length() - 2 != 9) {
+            throw new InvalidTelephoneException(cleaned);
+        }
+        if (digits.startsWith("1") && digits.length() - 1 != 10) {
             throw new InvalidTelephoneException(cleaned);
         }
         return "+" + digits;
