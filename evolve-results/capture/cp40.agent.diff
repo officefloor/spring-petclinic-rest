@@ -1,0 +1,276 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index df2eadb6..b1e49d0c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,26 +22,39 @@ import java.util.List;
+ public abstract class OwnerMapper {
+ 
+     /**
+-     * The highest membership level attainable. Levels up to {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} are
+-     * derivable at creation; level {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than
+-     * {@value #TENURE_LEVEL_DAYS} days.
++     * Points added when the owner has an email address.
+      */
+-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
++    private static final int EMAIL_POINTS = 2;
+ 
+     /**
+-     * The highest membership level derivable at creation, before any tenure is accrued. A newly created owner
+-     * has zero tenure, so it can never exceed this value.
++     * Points added when the owner has no namesakes ({@code namesakeCount} is 0).
+      */
+-    private static final int MAX_PRE_TENURE_MEMBERSHIP_LEVEL = 3;
++    private static final int NO_NAMESAKE_POINTS = 1;
+ 
+     /**
+-     * Tenure, in days, that an owner must exceed to reach membership level {@value #MAX_MEMBERSHIP_LEVEL}.
++     * Points added when the owner belongs to a household of {@value #LARGE_HOUSEHOLD_SIZE} or more members.
+      */
+-    private static final int TENURE_LEVEL_DAYS = 365;
++    private static final int LARGE_HOUSEHOLD_POINTS = 2;
++
++    /**
++     * The household size (members, including the owner) at which the large-household points are awarded.
++     */
++    private static final int LARGE_HOUSEHOLD_SIZE = 3;
++
++    /**
++     * Points added when the owner's tenure exceeds {@value #TENURE_POINTS_DAYS} days.
++     */
++    private static final int TENURE_POINTS = 3;
++
++    /**
++     * Tenure, in days, that an owner must exceed to earn the tenure points.
++     */
++    private static final int TENURE_POINTS_DAYS = 365;
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity(), owner.getPostcode()))")
+@@ -62,29 +75,52 @@ public abstract class OwnerMapper {
+     public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+     /**
+-     * Computes an owner's numeric membership level. The level starts at 1, gains 1 when an email is present,
+-     * gains a further 1 when {@code namesakeCount} is 0, and is capped at
+-     * {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} before tenure is considered. Level
+-     * {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than {@value #TENURE_LEVEL_DAYS}
+-     * days (measured from {@code registrationDate}); because a newly created owner has zero tenure, a new
+-     * owner never exceeds level {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL}.
++     * Computes an owner's membership points. Points start at 0 and accumulate: {@value #EMAIL_POINTS} when an
++     * email is present, {@value #NO_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
++     * {@value #LARGE_HOUSEHOLD_POINTS} for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more members, and
++     * {@value #TENURE_POINTS} for tenure of more than {@value #TENURE_POINTS_DAYS} days (measured from
++     * {@code registrationDate}). Because a newly created owner has zero tenure, a new owner never earns the
++     * tenure points.
+      *
+-     * @param owner the owner whose level is being computed
+-     * @return the membership level (between 1 and {@value #MAX_MEMBERSHIP_LEVEL} inclusive)
++     * @param owner the owner whose points are being computed
++     * @return the owner's membership points (0 or more)
+      */
+-    protected Integer membershipLevel(Owner owner) {
+-        int level = 1;
++    protected Integer membershipPoints(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+-            level++;
++            points += EMAIL_POINTS;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += NO_NAMESAKE_POINTS;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
++            points += LARGE_HOUSEHOLD_POINTS;
++        }
++        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
++            points += TENURE_POINTS;
++        }
++        return points;
++    }
++
++    /**
++     * Maps an owner's membership points to a numeric membership level: level 1 for 0-1 points, level 2 for
++     * 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more points.
++     *
++     * @param owner the owner whose level is being computed
++     * @return the membership level (between 1 and 4 inclusive)
++     */
++    protected Integer membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
+         }
+-        level = Math.min(level, MAX_PRE_TENURE_MEMBERSHIP_LEVEL);
+-        if (tenureDays(owner) > TENURE_LEVEL_DAYS) {
+-            level = MAX_MEMBERSHIP_LEVEL;
++        if (points >= 2) {
++            return 2;
+         }
+-        return level;
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5e11f30f..d8d5b59a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -66,6 +66,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "household_size")
++    private Integer householdSize;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -153,6 +156,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Integer getHouseholdSize() {
++        return this.householdSize;
++    }
++
++    public void setHouseholdSize(Integer householdSize) {
++        this.householdSize = householdSize;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 28f2d3e9..45c7277d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -166,6 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         assignPossibleDuplicate(owner, sharesHousehold);
+         owner.setCustomerCode(generateCustomerCode(owner));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
++        owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
+         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+@@ -505,6 +506,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Computes the size of the owner's household: the number of existing owners already sharing the given
++     * {@code householdId} plus the owner being created itself. The existing count is taken before the new
++     * owner is persisted, so adding one for the owner yields the household's total membership including it
++     * (e.g. two existing members give a household size of 3 for the third member). Households are keyed on
++     * the deterministic {@code householdId} (derived from last name and postcode).
++     *
++     * @param householdId the computed household identifier of the owner being created
++     * @return the household size including the owner being created (at least 1)
++     */
++    private int countHouseholdSize(String householdId) {
++        long existing = this.clinicService.findAllOwners().stream()
++            .filter(owner -> householdId.equals(owner.getHouseholdId()))
++            .count();
++        return (int) existing + 1;
++    }
++
+     /**
+      * The maximum number of owners permitted in a single city. A create request whose city already
+      * holds this many owners is rejected.
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 8f5600fd..81867f84 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode   VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 8c1ce749..25262fa4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  household_size INTEGER,
+   bulk_signup_warning BOOLEAN,
+   postcode   VARCHAR(4),
+   possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 1f7119f9..294608c5 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  household_size INT,
+   bulk_signup_warning BIT,
+   postcode VARCHAR(4),
+   possible_duplicate BIT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1f531fc7..8822fa85 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
++                                      household_size INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       postcode VARCHAR(4),
+                                       possible_duplicate BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 21223b22..09f5cba1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2177,19 +2177,30 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007-M26'
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points. Starts at 0 and gains 2 when an
++                email is present, 1 when namesakeCount is 0, 2 for a household of
++                3 or more members, and 3 for tenure of more than 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              readOnly: true
++              example: 3
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned at creation.
+-                Starts at 1, gains 1 when an email is present, gains a further 1
+-                when namesakeCount is 0, and is capped at 3 (level 4 is reserved
+-                for tenure).
++                The owner's numeric membership level, derived from
++                membershipPoints: level 1 for 0-1 points, level 2 for 2-3
++                points, level 3 for 4-5 points, and level 4 for 6 or more
++                points.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               readOnly: true
+-              example: 3
++              example: 2
+             checkDigit:
+               title: Check digit
+               description: >-
