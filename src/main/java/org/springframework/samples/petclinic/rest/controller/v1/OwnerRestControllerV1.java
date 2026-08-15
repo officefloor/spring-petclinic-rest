@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
@@ -108,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        rejectCityAtCapacity(owner.getCity());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
@@ -125,6 +127,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The maximum number of owners a single city may contain. Creating an owner in a city that
+     * already holds this many owners is rejected.
+     */
+    private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Rejects creating an owner whose city already contains {@value #CITY_CAPACITY} or more owners.
+     * Owners are counted per city comparing the city name case-insensitively (a {@code null} city is
+     * treated as empty), the same way {@link #assignCustomerCode} counts a city's owners.
+     *
+     * @param city the city of the owner being created
+     * @throws CityAtCapacityException (409 Conflict) if the city is already at capacity
+     */
+    private void rejectCityAtCapacity(String city) {
+        String cityValue = city == null ? "" : city;
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> cityValue.equalsIgnoreCase(
+                existing.getCity() == null ? "" : existing.getCity()))
+            .count();
+        if (count >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(city);
+        }
     }
 
     /**

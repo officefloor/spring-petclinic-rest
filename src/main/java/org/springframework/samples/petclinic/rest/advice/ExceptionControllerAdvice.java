@@ -236,6 +236,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link CityAtCapacityException} thrown when creating an owner whose city already
+     * contains the maximum number of owners.
+     *
+     * @param e The {@link CityAtCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("city"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Field 'city' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "city")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
