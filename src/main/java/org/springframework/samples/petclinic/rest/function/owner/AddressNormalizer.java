@@ -4,9 +4,9 @@ import java.util.Map;
 
 /**
  * Canonical address normalization applied whenever an owner is created. The create pipeline rewrites
- * the request's address to this form before it is stored and returned, and both household duplicate
- * detection ({@link CheckHouseholdUnique}) and the shared {@code householdId}
- * ({@link AssignHouseholdId}) compare addresses in this form.
+ * the request's address to this form before it is stored and returned, and the shared
+ * {@code householdId} ({@link AssignHouseholdId}, via {@link OwnerIdentity}) — the household
+ * component of the derived {@code identityKey} used for duplicate detection — derives from it.
  *
  * <p>Trims and collapses runs of whitespace to a single space, upper-cases, and expands common
  * abbreviations token by token: {@code ST->STREET}, {@code RD->ROAD}, {@code AVE->AVENUE}. So

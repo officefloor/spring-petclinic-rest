@@ -27,7 +27,18 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code identityKey}, the single key all duplicate detection is expressed
+     * through: {@code '<normalizedTelephone>|<email or empty>|<householdId>'}
+     * (see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity}).
+     */
+    default String identityKey(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity
+                .identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code 'EMAIL'} when an email is present,

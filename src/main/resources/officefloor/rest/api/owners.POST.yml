@@ -5,26 +5,16 @@ composition:
 # array. This step binds the body once and republishes it for BuildOwner.
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
-  next: checkTelephoneUnique
+  next: checkIdentityUnique
 
-# Reject a normalized telephone already used by another owner (409). Reads within the
-# same write transaction so the uniqueness check and the insert see one consistent view.
-checkTelephoneUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckTelephoneUnique
-  govern: [ transaction ]
-  next: checkEmailUnique
-
-# Reject a lower-cased email already used by another owner (409). Reads within the same write
-# transaction as the insert so the uniqueness check and the insert see one consistent view.
-checkEmailUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckEmailUnique
-  govern: [ transaction ]
-  next: checkHouseholdUnique
-
-# Reject a last name + address already used together by another owner (409), unless the request
-# opts in via 'sharesHousehold'. Reads within the same write transaction as the insert.
-checkHouseholdUnique:
-  class: org.springframework.samples.petclinic.rest.function.owner.CheckHouseholdUnique
+# The single duplicate check: reject (409) only when the new owner's WHOLE derived identityKey
+# (normalizedTelephone|email|householdId) equals an existing owner's. This consolidates the former
+# separate telephone, email and household checks. Because the telephone is part of the key, two
+# members of the same household with different telephones have different identityKeys and are both
+# allowed. Reads within the same write transaction as the insert so the check and the insert see one
+# consistent view.
+checkIdentityUnique:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdentityUnique
   govern: [ transaction ]
   next: checkCityCapacity
 
