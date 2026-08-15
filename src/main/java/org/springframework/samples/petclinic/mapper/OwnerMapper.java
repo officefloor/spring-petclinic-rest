@@ -33,6 +33,10 @@ public interface OwnerMapper {
             + "|| owner.getRegistrationDate() == null ? null : "
             + "owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipTier",
+        expression = "java(owner == null ? null : "
+            + "(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+            + "&& owner.getEmail() != null ? \"SILVER\" : \"BRONZE\"))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
