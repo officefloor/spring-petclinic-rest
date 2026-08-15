@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 834e6d39..e133776c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -56,6 +56,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit trail logger; carries a line for each successful owner create. */
+     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Process-wide monotonically increasing sequence stamped onto each structured owner-created
++     * audit event, so events can be totally ordered across creates.
++     */
++    private static final java.util.concurrent.atomic.AtomicInteger AUDIT_SEQ =
++        new java.util.concurrent.atomic.AtomicInteger(0);
++
++    /** Serializes the immutable structured audit events to JSON. */
++    private static final tools.jackson.databind.ObjectMapper AUDIT_MAPPER =
++        new tools.jackson.databind.json.JsonMapper();
++
++    /**
++     * Immutable structured audit event emitted (as JSON, on the {@code AUDIT} logger) for each
++     * successful owner create. {@code seq} is the process-wide {@link #AUDIT_SEQ} counter, and
++     * {@code customerCode} carries the owner's current primary identifier — the customerCode today,
++     * and whatever replaces it later (e.g. once the customerCode is unified into the memberId, this
++     * carries the memberId instead). The component order matches the JSON field order.
++     */
++    private record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode,
++        Integer membershipLevel, String event) {
++    }
++
+     /** HTTP header carrying the caller-supplied idempotency key for create requests. */
+     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+ 
+@@ -519,6 +541,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return null;
+     }
+ 
++    /**
++     * The owner's current primary identifier, carried by the structured owner-created audit event.
++     * Today this is the {@code customerCode}; when the primary identifier is later unified into the
++     * memberId this returns that instead, so the emitted event automatically switches identifier
++     * without changing the emission site.
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+@@ -628,6 +660,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
++            primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
++        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
