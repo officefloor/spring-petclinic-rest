@@ -35,7 +35,33 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The calendar year in which the fiscal year containing {@code date} ends. The fiscal year runs
+     * from 1 July to 30 June, so a date on or after 1 July belongs to the fiscal year ending the
+     * following calendar year (e.g. 15 Aug 2026 falls in the fiscal year ending 2027). All fiscal-year
+     * derived values — {@link #fiscalYear(Owner)}, the {@link #membershipNumber(Owner)} year segment and
+     * the tenure bonus in {@link #membershipPoints(Owner)} — go through this single definition.
+     */
+    static int fiscalYearEnding(java.time.LocalDate date) {
+        int year = date.getYear();
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? year + 1 : year;
+    }
+
+    /**
+     * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'} where YY is the last two
+     * digits of the fiscal year (starting 1 July) that contains the business-day-adjusted
+     * {@code registrationDate} — so 15 Aug 2026 yields {@code 'FY27'}. Returns {@code null} when the
+     * registrationDate is absent, so owners without one map cleanly.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
+    }
 
     /**
      * Derives the owner's {@code salutation}: the {@code title} and {@code lastName} joined by a
@@ -161,8 +187,8 @@ public interface OwnerMapper {
     /**
      * Derives the owner's membership points: starting at 0, plus 2 when an email is present, plus 1
      * when {@code namesakeCount} is 0, plus 2 for a household of 3 or more (its
-     * {@code householdMemberCount}), plus 3 when the owner's tenure — the number of days from
-     * {@code registrationDate} to today — exceeds 365.
+     * {@code householdMemberCount}), plus 3 when the owner's tenure — the number of fiscal years
+     * (starting 1 July) elapsed between {@code registrationDate} and today — exceeds 1.
      */
     static Integer membershipPoints(Owner owner) {
         int points = 0;
@@ -180,8 +206,8 @@ public interface OwnerMapper {
             points += 2;
         }
         boolean tenured = owner.getRegistrationDate() != null
-                && java.time.temporal.ChronoUnit.DAYS.between(
-                        owner.getRegistrationDate(), java.time.LocalDate.now()) > 365;
+                && (fiscalYearEnding(java.time.LocalDate.now())
+                        - fiscalYearEnding(owner.getRegistrationDate())) > 1;
         if (tenured) {
             points += 3;
         }
@@ -208,15 +234,17 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registrationDate year (e.g. {@code 'NSW-1A2B3C4D-M26'}). Returns {@code null}
-     * when either source field is absent, so owners without a customerCode or registrationDate map cleanly.
+     * last two digits of the fiscal year (starting 1 July) that contains the registrationDate — the
+     * same year segment as {@link #fiscalYear(Owner)} (e.g. {@code 'NSW-1A2B3C4D-M27'} for a
+     * registrationDate of 15 Aug 2026). Returns {@code null} when either source field is absent, so
+     * owners without a customerCode or registrationDate map cleanly.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return owner.getCustomerCode() + "-M"
-                + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                + String.format("%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
     }
 
     /**
