@@ -196,6 +196,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(generateCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
+        owner.setMembershipLevel(computeMembershipLevel(owner));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
@@ -616,6 +617,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(owner -> householdId.equals(owner.getHouseholdId()))
             .count();
         return (int) existing + 1;
+    }
+
+    /**
+     * Computes the membership level assigned to a newly created owner, applying the household level ceiling.
+     * The owner's own (uncapped) level cannot exceed one above the current maximum membership level among
+     * their existing household members, where every level is measured against the household's current size
+     * (the owner's just-computed {@code householdSize}). When the owner has no existing household member the
+     * ceiling does not apply and the uncapped level is returned. The count is taken before the new owner is
+     * persisted, so it excludes the owner being created; the existing members share the deterministic
+     * {@code householdId} and any soft-deleted owner is ignored.
+     *
+     * @param owner the owner being created, with its {@code householdId} and {@code householdSize} already set
+     * @return the owner's membership level, capped at one above the existing household maximum
+     */
+    private Integer computeMembershipLevel(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        Integer ownLevel = this.ownerMapper.membershipLevelForHouseholdSize(owner, householdSize);
+        String householdId = owner.getHouseholdId();
+        int maxExisting = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(existing -> this.ownerMapper.membershipLevelForHouseholdSize(existing, householdSize))
+            .max()
+            .orElse(-1);
+        if (maxExisting < 0) {
+            return ownLevel;
+        }
+        return Math.min(ownLevel, maxExisting + 1);
     }
 
     /**

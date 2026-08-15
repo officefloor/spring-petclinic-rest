@@ -61,7 +61,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + fiscalYearSuffix(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
-    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneOf(owner.getCity(), owner.getPostcode()))")
@@ -94,6 +94,20 @@ public abstract class OwnerMapper {
      * @return the owner's membership points (0 or more)
      */
     protected Integer membershipPoints(Owner owner) {
+        return membershipPoints(owner, owner.getHouseholdSize());
+    }
+
+    /**
+     * Computes an owner's membership points as {@link #membershipPoints(Owner)} does, but using the supplied
+     * {@code householdSize} in place of the owner's stored one when awarding the large-household points. This
+     * lets a caller evaluate an owner's points against the household's <em>current</em> size (for example when
+     * computing the new-owner level ceiling) without mutating the owner.
+     *
+     * @param owner the owner whose points are being computed
+     * @param householdSize the household size to measure the large-household points against
+     * @return the owner's membership points (0 or more) for the given household size
+     */
+    protected Integer membershipPoints(Owner owner, Integer householdSize) {
         int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
             points += EMAIL_POINTS;
@@ -101,7 +115,7 @@ public abstract class OwnerMapper {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             points += NO_NAMESAKE_POINTS;
         }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
+        if (householdSize != null && householdSize >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
         if (tenureFiscalYears(owner) >= TENURE_POINTS_FISCAL_YEARS) {
@@ -118,7 +132,31 @@ public abstract class OwnerMapper {
      * @return the membership level (between 1 and 4 inclusive)
      */
     protected Integer membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
+        return levelForPoints(membershipPoints(owner));
+    }
+
+    /**
+     * Computes an owner's membership level as {@link #membershipLevel(Owner)} does, but measuring the
+     * large-household points against the supplied {@code householdSize} rather than the owner's stored one.
+     * This is the uncapped level an owner would report were the household of the given size; it is the value
+     * the create endpoint compares between household members when computing a new owner's level ceiling.
+     *
+     * @param owner the owner whose level is being computed
+     * @param householdSize the household size to measure the large-household points against
+     * @return the membership level (between 1 and 4 inclusive) for the given household size
+     */
+    public Integer membershipLevelForHouseholdSize(Owner owner, Integer householdSize) {
+        return levelForPoints(membershipPoints(owner, householdSize));
+    }
+
+    /**
+     * Maps membership points to a numeric membership level: level 1 for 0-1 points, level 2 for 2-3 points,
+     * level 3 for 4-5 points, and level 4 for 6 or more points.
+     *
+     * @param points the membership points to map
+     * @return the membership level (between 1 and 4 inclusive)
+     */
+    private Integer levelForPoints(int points) {
         if (points >= 6) {
             return 4;
         }
