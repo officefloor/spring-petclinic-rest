@@ -24,10 +24,7 @@ public final class OwnerIdentityKey {
 
     /** The identityKey a create request would have once its owner is built. */
     public static String forRequest(OwnerFieldsDto request) {
-        String householdId = Boolean.TRUE.equals(request.getSharesHousehold())
-                ? AssignHouseholdId.householdId(request.getLastName(), request.getAddress())
-                : null;
-        return of(request.getTelephone(), request.getEmail(), householdId);
+        return of(request.getTelephone(), request.getEmail(), AssignHouseholdId.forRequest(request));
     }
 
     /** The identityKey of an already-stored owner. */
