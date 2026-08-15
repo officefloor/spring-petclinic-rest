@@ -74,6 +74,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -439,6 +440,25 @@ public abstract class OwnerMapper {
      */
     protected String selfLink(Owner owner) {
         return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
+
+    /**
+     * Derives an owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code 'PREMIUM'} when the owner's effective membership level is 3 or more, otherwise
+     * {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's locality is a known region (NSW,
+     * VIC or QLD), otherwise {@code 'REGIONAL'}. The result is one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}.
+     *
+     * @param owner the owner whose segment is being derived
+     * @return the owner's segment as {@code '<TIER>_<AREA>'}
+     */
+    protected String ownerSegment(Owner owner) {
+        Integer level = owner.getMembershipLevel() != null ? owner.getMembershipLevel() : membershipLevel(owner);
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String region = OwnerLocality.of(owner.getCity(), owner.getPostcode());
+        boolean known = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
+        String area = known ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
