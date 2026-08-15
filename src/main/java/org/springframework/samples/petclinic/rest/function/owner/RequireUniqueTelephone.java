@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneE
 
 /**
  * Step of {@code POST /api/owners} that runs after {@link RequireOwnerFields} has normalized
- * the telephone to 10 digits. Rejects the create with 409 when that normalized telephone is
- * already used by any existing owner, comparing each stored telephone in normalized form
- * (non-digit characters stripped) so differing formats still count as duplicates.
+ * the telephone to E.164 form. Rejects the create with 409 when that E.164 telephone is
+ * already used by any existing owner, comparing each stored telephone by its E.164 value so
+ * differing input formats for the same number still count as duplicates.
  */
 public class RequireUniqueTelephone {
 
@@ -25,6 +25,7 @@ public class RequireUniqueTelephone {
     }
 
     private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String e164 = TelephoneE164.toE164(telephone);
+        return e164 != null ? e164 : (telephone == null ? "" : telephone);
     }
 }

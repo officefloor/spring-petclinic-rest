@@ -15,10 +15,10 @@ import org.springframework.web.bind.annotation.RequestBody;
  * First step of {@code POST /api/owners}. Rejects a create whose firstName, lastName,
  * address, city or telephone is missing or blank before {@link BuildOwner} maps the body,
  * so an incomplete request is a 400 listing each field rather than a persisted owner.
- * Also normalizes the telephone by stripping every non-digit character and requires exactly
- * 10 digits, storing the 10-digit value on the body. An optional email, when present, must be
- * a syntactically valid address and is stored lower-cased. Publishes the validated body for
- * the later steps.
+ * Also normalizes the telephone to E.164 form (see {@link TelephoneE164}), storing the E.164
+ * value on the body and rejecting a number that cannot form a valid E.164 string. An optional
+ * email, when present, must be a syntactically valid address and is stored lower-cased.
+ * Publishes the validated body for the later steps.
  */
 public class RequireOwnerFields {
 
@@ -47,11 +47,7 @@ public class RequireOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        String digits = request.getTelephone().replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException(request.getTelephone());
-        }
-        request.setTelephone(digits);
+        request.setTelephone(TelephoneE164.normalize(request.getTelephone()));
         String email = request.getEmail();
         if (email != null && !email.isBlank()) {
             String normalized = email.trim().toLowerCase();

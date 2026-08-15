@@ -7,8 +7,8 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 400 to a create-owner request whose telephone is not exactly 10 digits after
- * stripping non-digit characters, with a JSON body whose 'errors' array names 'telephone'.
+ * Responds 400 to a create-owner request whose telephone cannot be converted to valid E.164
+ * form, with a JSON body whose 'errors' array names 'telephone'.
  */
 public class InvalidTelephoneExceptionHandler {
 
