@@ -61,11 +61,34 @@ public class ValidateOwnerFields {
     /**
      * Canonically normalize the address (trim, collapse whitespace, upper-case, expand common
      * abbreviations) and write it back onto the request so it is stored and returned in normalized
-     * form. Running before the blank check means an address that is whitespace-only — and so blank
-     * after normalization — is rejected as an {@code address} required-field error (400).
+     * form. The structured form is preferred: when {@code addressLine1} normalizes to a non-blank
+     * value the structured lines are normalized and the flat {@code address} is set to the composed
+     * value — the normalized {@code addressLine1} with a single space and the normalized
+     * {@code addressLine2} appended when {@code addressLine2} is present. Otherwise the flat
+     * {@code address} input is normalized and the structured lines are cleared, keeping earlier
+     * flat-only owners backward compatible. Running before the blank check means an owner that
+     * supplies neither form — and so has a blank composed {@code address} — is rejected as an
+     * {@code address} required-field error (400).
      */
     private static void normalizeAddress(OwnerFieldsDto request) {
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        if (!line1.isEmpty()) {
+            String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+            request.setAddressLine1(line1);
+            if (line2.isEmpty()) {
+                request.setAddressLine2(null);
+                request.setAddress(line1);
+            }
+            else {
+                request.setAddressLine2(line2);
+                request.setAddress(line1 + " " + line2);
+            }
+        }
+        else {
+            request.setAddressLine1(null);
+            request.setAddressLine2(null);
+            request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        }
     }
 
     /**
