@@ -190,6 +190,30 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateHouseholdException} thrown when creating an owner whose last name and
+     * address already match another owner (they share a household) without opting in via
+     * {@code sharesHousehold}.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("lastName", "address"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Fields 'lastName' and 'address' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "lastName")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
