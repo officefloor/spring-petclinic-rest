@@ -17,15 +17,15 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an owner's telephone is not exactly 10 digits after every non-digit character has been
- * stripped. Handled as a 400 Bad Request by {@link ExceptionControllerAdvice}.
+ * Thrown when an owner's telephone cannot be normalized into a valid E.164 number (a '+' followed by
+ * 8 to 15 digits). Handled as a 400 Bad Request by {@link ExceptionControllerAdvice}.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     private final transient Object rejectedValue;
 
     public InvalidTelephoneException(Object rejectedValue) {
-        super("telephone must be exactly 10 digits after removing non-digit characters");
+        super("must be a valid E.164 telephone number (8 to 15 digits after the '+')");
         this.rejectedValue = rejectedValue;
     }
 
