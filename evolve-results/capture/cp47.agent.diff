@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 446500d1..c81d5e13 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -611,28 +611,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param registrationDate the registration date of the owner being created
+      * @throws DailyOwnerLimitExceededException if the day already holds the maximum number of owners
+      */
++    /**
++     * The fixed list of public holidays that are not treated as business days. A registration date that
++     * lands on one of these dates is rolled forward, just as a weekend is.
++     */
++    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
++        LocalDate.of(2026, 1, 1),
++        LocalDate.of(2026, 1, 26),
++        LocalDate.of(2026, 4, 25),
++        LocalDate.of(2026, 12, 25),
++        LocalDate.of(2026, 12, 28));
++
+     /**
+      * Adjusts an effective registration date so that it always falls on a business day. When the given
+-     * date is a Saturday or Sunday it is rolled forward to the following Monday; a weekday is returned
+-     * unchanged. This applies equally to a date supplied in the request and to a date defaulted to the
+-     * server date, and the adjusted value is what becomes the owner's {@code registrationDate}, so every
+-     * value derived from it (the membership number's year segment, the daily create-limit count) uses the
+-     * business-day-adjusted date.
++     * date is a Saturday, a Sunday or a listed public holiday it is rolled forward one day at a time until
++     * it reaches the next non-holiday business day; a weekday that is not a holiday is returned unchanged.
++     * This applies equally to a date supplied in the request and to a date defaulted to the server date, and
++     * the adjusted value is what becomes the owner's {@code registrationDate}, so every value derived from it
++     * (the membership number's year segment, the daily create-limit count) uses the business-day-adjusted
++     * date.
+      *
+      * @param date the effective registration date, supplied or defaulted
+-     * @return the same date when it is a weekday, otherwise the next Monday
++     * @return the same date when it is a business day, otherwise the next non-holiday business day
+      */
+     private LocalDate rollToBusinessDay(LocalDate date) {
+-        DayOfWeek day = date.getDayOfWeek();
+-        if (day == DayOfWeek.SATURDAY) {
+-            return date.plusDays(2);
+-        }
+-        if (day == DayOfWeek.SUNDAY) {
+-            return date.plusDays(1);
++        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
++            date = date.plusDays(1);
+         }
+         return date;
+     }
+ 
++    private boolean isWeekend(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        return day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
++    }
++
+     /**
+      * The number of owners that must already exist for a given day before a further create is flagged as a
+      * bulk sign-up surge. When more than this many owners already share the new owner's registration date,
