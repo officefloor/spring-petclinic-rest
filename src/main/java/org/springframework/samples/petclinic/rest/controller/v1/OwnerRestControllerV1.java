@@ -582,12 +582,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
-        // Household duplicate: another owner already shares this (last name, postcode) household.
-        // Rejected as a duplicate unless the caller sets 'sharesHousehold', which now only bypasses
-        // this block (the shared householdId itself is already assigned deterministically above).
-        if (!householdMembers.isEmpty() && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
+        // Household member: another owner already shares this (last name, postcode) household. This
+        // is no longer rejected as a duplicate — an exact byte-for-byte identity match is already
+        // caught above, and a distinct additional household member is admitted with its membership
+        // level capped (see below) at one above the current household maximum. The 'sharesHousehold'
+        // flag now only signals that the caller vouches for the member, suppressing the
+        // possible-duplicate flagging below.
         // A declared household member is not a suspected duplicate. Otherwise, flag an owner that
         // shares an existing owner's last name and postcode with a different telephone.
         if (declaredHouseholdMember) {
@@ -601,6 +601,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
+        // Level ceiling: a new owner's membershipLevel cannot exceed one above the current maximum
+        // membershipLevel among their existing household members. With no existing member, no cap.
+        if (householdMembers.isEmpty()) {
+            owner.setMembershipLevelCap(null);
+        }
+        else {
+            int maxHouseholdLevel = householdMembers.stream()
+                .mapToInt(member -> ownerMapper.membershipLevel(member))
+                .max()
+                .getAsInt();
+            owner.setMembershipLevelCap(maxHouseholdLevel + 1);
+        }
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCodeFor(owner));
