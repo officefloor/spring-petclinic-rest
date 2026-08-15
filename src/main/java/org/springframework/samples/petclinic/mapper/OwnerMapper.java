@@ -30,6 +30,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -70,6 +71,22 @@ public abstract class OwnerMapper {
      */
     protected String contactPreference(Owner owner) {
         return (owner.getEmail() != null && !owner.getEmail().isBlank()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derives an owner's {@code identityKey}: the normalized telephone, the email (or an empty string when
+     * absent) and the household id (or an empty string when absent), joined by {@code '|'} in that order
+     * (e.g. {@code '+61412345678||a1b2c3d4e5f6a7b8'}). This is the single key used for duplicate detection,
+     * so the value returned here matches the one the create endpoint compares.
+     *
+     * @param owner the owner whose identity key is being derived
+     * @return the owner's identity key
+     */
+    protected String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
