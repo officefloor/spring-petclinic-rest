@@ -1,6 +1,24 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotency runs first: a repeat of a create with an already-seen 'Idempotency-Key'
+# replays the originally created owner (200) instead of creating a duplicate. A new or
+# keyless request proceeds to the normal create pipeline.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotencyKey
+  outputs:
+    replay: loadStored
+    proceed: validate
+
+loadStored:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadStoredOwner
+  govern: [ readonly-transaction ]
+  next: respondReplay
+
+respondReplay:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwner
+  govern: [ readonly-transaction ]
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateNewOwner
   govern: [ transaction ]
@@ -58,6 +76,11 @@ save:
 
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+  govern: [ transaction ]
+  next: recordIdempotency
+
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotencyKey
   govern: [ transaction ]
   next: respond
 
