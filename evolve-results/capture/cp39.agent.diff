@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c7041091..95329104 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -217,9 +217,11 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership level (1 to 3), derived from the creation-time facts it is assigned
+-     * from: start at 1, add 1 when an email is present, add 1 when {@code namesakeCount} is 0, and
+-     * cap at 3. Level 4 is reserved for tenure. Not persisted.
++     * The owner's membership level (1 to 4). Start at 1, add 1 when an email is present, add 1 when
++     * {@code namesakeCount} is 0, and cap the creation-time factors at 3. Level 4 is reserved for
++     * tenure: add a further 1 only when tenure exceeds 365 days, measured from
++     * {@code registrationDate} to the current date. A newly created owner has zero tenure, so it
++     * never exceeds level 3. Not persisted.
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+@@ -230,7 +232,12 @@ public class Owner extends Person {
+         if (this.namesakeCount != null && this.namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        if (this.registrationDate != null
++                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
++            level++;
++        }
++        return level;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d700dee0..a64fc43a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,13 +2159,14 @@ components:
+               readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's membership level, a number from 1 to 3 assigned at creation.
+-                Starts at 1, plus 1 when an email is present and plus 1 when namesakeCount is 0,
+-                capped at 3. Level 4 is reserved for tenure.
++              description: The owner's membership level, a number from 1 to 4. Starts at 1, plus 1
++                when an email is present and plus 1 when namesakeCount is 0, with these creation-time
++                factors capped at 3. Level 4 requires tenure of more than 365 days, so a newly
++                created owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
