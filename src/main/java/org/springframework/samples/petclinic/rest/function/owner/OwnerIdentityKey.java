@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
@@ -13,8 +12,8 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * <ul>
  * <li>{@code normalizedTelephone} is the E.164 form (see {@link TelephoneE164});</li>
  * <li>the email component is the lower-cased email, or empty when none is supplied; and</li>
- * <li>{@code householdId} is the owner's shared household identifier (see {@link Household}), or
- *     empty when the owner belongs to no shared household.</li>
+ * <li>{@code householdId} is the owner's deterministic household identifier, derived from its last
+ *     name and postcode (see {@link Household}).</li>
  * </ul>
  *
  * <p>Two owners are duplicates only when their <em>whole</em> keys are equal. Because the telephone
@@ -28,12 +27,11 @@ public final class OwnerIdentityKey {
 
     /**
      * Identity key for an incoming create-owner request (after {@link ValidateNewOwner}). The
-     * household component is the id the request would be assigned, so the key matches the one the
-     * owner will carry once saved.
+     * household component is the deterministic id derived from the request's last name and postcode,
+     * so the key matches the one the owner will carry once saved.
      */
-    public static String forRequest(OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        return build(request.getTelephone(), request.getEmail(),
-                Household.resolveId(request, ownerRepository));
+    public static String forRequest(OwnerFieldsDto request) {
+        return build(request.getTelephone(), request.getEmail(), Household.idFor(request));
     }
 
     /** Identity key for an existing, stored owner. */

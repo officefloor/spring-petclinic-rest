@@ -2,24 +2,20 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns a shared {@code householdId} when a create-owner request opts into a shared household
- * with {@code sharesHousehold} true and there is already an owner in the same household (same last
- * name and address, see {@link Household}). The identifier is stable: derived deterministically
- * from the normalized last name and address, so every owner in the same household receives the same
- * value. It is also written back onto the existing same-household owners so both sides of the join
- * carry the identifier. Runs after {@link BuildOwner} has produced the {@link Owner} and before
- * {@link SaveOwner} persists it, so the new owner is saved with the id.
+ * Assigns the owner's deterministic {@code householdId} before it is saved. The identifier is
+ * derived purely from the owner's last name and postcode (see {@link Household}), so every owner in
+ * the same household receives the same value automatically — no request has to opt in, and the
+ * {@code sharesHousehold} hint no longer creates the link (it only bypasses the duplicate block in
+ * {@link CheckOwnerIdentityUnique}).
  *
- * <p>When {@code sharesHousehold} is not set, or there is no existing same-household owner, no
- * identifier is assigned and the owner is saved without one.
+ * <p>Runs after {@link BuildOwner} has produced the {@link Owner} and before {@link SaveOwner}
+ * persists it. Mutates the entity in place so {@link SaveOwner} stores the id.
  */
 public class AssignHousehold {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner, OwnerRepository ownerRepository) {
-        Household.assign(owner, request, ownerRepository);
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(Household.idFor(owner));
     }
 }

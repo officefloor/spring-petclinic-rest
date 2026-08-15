@@ -7,11 +7,14 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerIdentityException;
 
 /**
- * The single duplicate-detection step of {@code POST /api/owners}. Rejects a create-owner request
- * whose derived {@code identityKey} exactly equals an existing owner's (see {@link
- * OwnerIdentityKey}). This subsumes the former separate telephone, email and household checks:
- * because the telephone is part of the key, only an exact full-key match — same normalized
- * telephone <em>and</em> email <em>and</em> household — is a duplicate.
+ * The duplicate-detection step of {@code POST /api/owners}. Because a household is now keyed on
+ * (last name, postcode), two owners that share a last name and postcode are the same household (see
+ * {@link Household}); creating a second owner in an existing household is therefore treated as a
+ * duplicate and rejected with 409.
+ *
+ * <p>The {@code sharesHousehold} hint bypasses this block: a request that declares itself a member
+ * of a shared household is allowed through and created as a legitimate second member (and is not
+ * flagged as a possible duplicate, see {@link AssignPossibleDuplicate}).
  *
  * <p>Runs after {@link ValidateNewOwner} has normalized the request and before {@link BuildOwner},
  * so a duplicate is a 409 rather than a persisted record.
@@ -20,10 +23,13 @@ public class CheckOwnerIdentityUnique {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerIdentityException {
-        String identityKey = OwnerIdentityKey.forRequest(request, ownerRepository);
+        if (Household.sharesHousehold(request)) {
+            return; // declared household member: bypass the duplicate block
+        }
+        String householdId = Household.idFor(request);
         for (Owner owner : ownerRepository.findAll()) {
-            if (identityKey.equals(OwnerIdentityKey.forOwner(owner))) {
-                throw new DuplicateOwnerIdentityException(identityKey);
+            if (householdId.equals(Household.idFor(owner))) {
+                throw new DuplicateOwnerIdentityException(householdId);
             }
         }
     }
