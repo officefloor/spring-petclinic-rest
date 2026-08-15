@@ -42,7 +42,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints",
             expression = "java(Membership.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
-            expression = "java(Membership.levelOf(owner))")
+            expression = "java(owner.getMembershipLevel() != null "
+                    + "? owner.getMembershipLevel() : Membership.levelOf(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(FiscalYears.labelOf(owner))")
     @Mapping(target = "locality",

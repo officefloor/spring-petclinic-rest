@@ -55,6 +55,7 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
   household_member_count INTEGER,
+  membership_level INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL

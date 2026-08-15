@@ -26,6 +26,17 @@ public final class Membership {
 
     /** The owner's membership points, from 0 upwards. */
     public static int pointsOf(Owner owner) {
+        return pointsOf(owner, owner.getHouseholdMemberCount());
+    }
+
+    /**
+     * The owner's membership points as if its household had {@code householdMemberCount} members —
+     * every factor except the household award is read from the owner as stored; the household award
+     * (+2 for {@value #HOUSEHOLD_SIZE_FOR_POINTS} or more members) is granted from the supplied count.
+     * Used to score existing household members in the household as it currently stands rather than as
+     * it stood when each was created.
+     */
+    public static int pointsOf(Owner owner, Integer householdMemberCount) {
         int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
             points += 2;
@@ -33,8 +44,7 @@ public final class Membership {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             points += 1;
         }
-        if (owner.getHouseholdMemberCount() != null
-                && owner.getHouseholdMemberCount() >= HOUSEHOLD_SIZE_FOR_POINTS) {
+        if (householdMemberCount != null && householdMemberCount >= HOUSEHOLD_SIZE_FOR_POINTS) {
             points += 2;
         }
         if (FiscalYears.elapsedSinceRegistration(owner) > TENURE_FISCAL_YEARS_FOR_POINTS) {
@@ -46,7 +56,17 @@ public final class Membership {
     /** The owner's numeric membership level, mapped from {@link #pointsOf(Owner)}: 1 for 0-1
      * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. */
     public static int levelOf(Owner owner) {
-        int points = pointsOf(owner);
+        return levelForPoints(pointsOf(owner));
+    }
+
+    /** The numeric membership level the owner would hold in a household of the given size (see
+     * {@link #pointsOf(Owner, Integer)}). */
+    public static int levelOf(Owner owner, Integer householdMemberCount) {
+        return levelForPoints(pointsOf(owner, householdMemberCount));
+    }
+
+    /** Map membership points to a level: 1 for 0-1, 2 for 2-3, 3 for 4-5, 4 for 6 or more. */
+    public static int levelForPoints(int points) {
         if (points >= 6) {
             return 4;
         }
