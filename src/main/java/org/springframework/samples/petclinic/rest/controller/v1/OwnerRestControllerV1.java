@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
@@ -140,6 +141,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         rejectDuplicateTelephone(owner.getTelephone());
+        rejectDuplicateEmail(owner.getEmail());
         rejectDailyLimitReached(owner.getRegistrationDate());
         rejectCityAtCapacity(owner.getCity());
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
@@ -520,6 +522,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> telephone.equals(existing.getTelephone()));
         if (taken) {
             throw new DuplicateTelephoneException(telephone);
+        }
+    }
+
+    /**
+     * Rejects a create request whose email is already used by another owner. Email is optional, so a
+     * {@code null} email (none supplied) is never a duplicate. Owners store their email in normalized
+     * (lower-cased) form, so an exact string comparison of the lower-cased values is sufficient.
+     *
+     * @param email the normalized (lower-cased) email of the owner being created, or {@code null} if none
+     * @throws DuplicateEmailException if any existing owner already uses the email
+     */
+    private void rejectDuplicateEmail(String email) {
+        if (email == null) {
+            return;
+        }
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> email.equals(existing.getEmail()));
+        if (taken) {
+            throw new DuplicateEmailException(email);
         }
     }
 

@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.controller.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
@@ -62,6 +63,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
+    private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT = "The maximum number of owners for today has already been reached";
 
@@ -280,6 +282,27 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
         detail.setProperty("errors", List.of("lastName", "address"));
         logger.debug("Duplicate household at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateEmailException} raised when a create request supplies an email address
+     * whose lower-cased value is already used by another owner.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_EMAIL);
+        detail.setProperty("errors", List.of("email"));
+        logger.debug("Duplicate email at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
