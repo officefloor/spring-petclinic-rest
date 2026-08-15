@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3a9d55d2..4534600e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -94,6 +94,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "deleted", nullable = false)
+     private boolean deleted = false;
+ 
+@@ -250,6 +253,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public boolean isDeleted() {
+         return this.deleted;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e133776c..1f3029ea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -464,6 +464,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners permitted in a single city. */
+     private static final int CITY_CAPACITY = 50;
+ 
++    /**
++     * Number of owners already in a city at or beyond which a capacity warning is flagged (the city
++     * is approaching the {@link #CITY_CAPACITY} hard limit). A city holding 40-49 owners warns.
++     */
++    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
++
+     /** Maximum number of owners that may be created (by registrationDate) on a single day. */
+     private static final int DAILY_CREATE_LIMIT = 100;
+ 
+@@ -594,7 +600,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        if (cityOwnerCount(owner) >= CITY_CAPACITY) {
++        int cityOwnerCount = cityOwnerCount(owner);
++        if (cityOwnerCount >= CITY_CAPACITY) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         // The householdId is deterministic (SHA-256 over normalized lastName + '|' + postcode), so
+@@ -651,6 +658,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setMembershipLevelCap(maxHouseholdLevel + 1);
+         }
+         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
++        owner.setCapacityWarning(cityOwnerCount >= CITY_CAPACITY_WARNING_THRESHOLD);
+         owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(customerCodeFor(owner));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d190cef2..cb946768 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   birth_date DATE,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ceb735ef..823bdb8a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,6 +56,7 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  capacity_warning BOOLEAN,
+   birth_date DATE,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 05256511..51a5f7dc 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
++  capacity_warning BOOLEAN,
+   birth_date DATE,
+   deleted BIT(1) NOT NULL DEFAULT 0,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index deed7bba..1cf80be0 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INT,
++                                      capacity_warning BOOLEAN,
+                                       birth_date DATE,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a4d13d5a..0c1db965 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2303,6 +2303,15 @@ components:
+               minimum: 0
+               readOnly: true
+               example: 1
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when, at the time this owner was created, its city already
++                held between 40 and 49 owners (approaching the per-city capacity
++                limit of 50); otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             locality:
+               title: Locality
+               description: >-
