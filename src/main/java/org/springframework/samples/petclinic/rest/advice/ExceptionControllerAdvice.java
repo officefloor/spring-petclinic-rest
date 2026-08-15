@@ -259,6 +259,29 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DailyOwnerLimitException} thrown when creating an owner after the daily limit of
+     * owner registrations has already been reached.
+     *
+     * @param e The {@link DailyOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitException(DailyOwnerLimitException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DATA_INTEGRITY);
+        detail.setProperty("errors", List.of("registrationDate"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Field 'registrationDate' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "registrationDate")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled
