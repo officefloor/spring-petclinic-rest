@@ -34,6 +34,10 @@ public class RejectDuplicateIdentity {
         String identityKey = IdentityKeys.of(request.getTelephone(), request.getEmail(), householdId);
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                // A soft-deleted owner is no longer a live identity; it cannot block a create.
+                continue;
+            }
             if (identityKey.equals(IdentityKeys.of(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }

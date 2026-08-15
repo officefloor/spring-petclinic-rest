@@ -39,6 +39,10 @@ public class AssignPossibleDuplicate {
         Integer match = null;
         if (postcode != null) {
             for (Owner existing : ownerRepository.findAll()) {
+                if (existing.isDeleted()) {
+                    // A soft-deleted owner is not a live duplicate to flag against.
+                    continue;
+                }
                 if (lastName.equals(Households.normalizeName(existing.getLastName()))
                         && postcode.equals(normalizePostcode(existing.getPostcode()))
                         && !equalsSafely(telephone, existing.getTelephone())
