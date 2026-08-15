@@ -13,16 +13,17 @@ import org.springframework.samples.petclinic.rest.function.common.Membership;
  * {@link RespondWithOwnerCreated}.
  *
  * <p>The line is published to the dedicated {@code AUDIT} logger and carries the owner id, the
- * assigned {@code customerCode}, the stored (business-day-adjusted) {@code registrationDate} and the
- * numeric {@code membershipLevel}.
+ * assigned {@code customerCode}, the stored (business-day-adjusted) {@code registrationDate}, the
+ * numeric {@code membershipLevel} and the assigned {@code membershipNumber}.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info(
+                "Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                Membership.levelOf(owner));
+                Membership.levelOf(owner), owner.getMembershipNumber());
     }
 }
