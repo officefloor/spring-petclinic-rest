@@ -95,7 +95,25 @@ public class ValidateOwnerFields {
         if (digits.length() < 8 || digits.length() > 15) {
             return null;
         }
+        if (!hasValidNationalLength(digits)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * Enforces the national-number length required by the country code: {@code +61} needs 9 national
+     * digits and {@code +1} needs 10. Other country codes carry no rule here, so only the general
+     * E.164 8..15 total-digit bound applies to them.
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 
     private static void requireText(String field, String value, List<String> errors) {
