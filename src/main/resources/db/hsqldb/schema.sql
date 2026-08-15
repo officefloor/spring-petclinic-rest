@@ -49,10 +49,9 @@ CREATE TABLE owners (
   email      VARCHAR(255),
   registration_date DATE,
   birth_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(30),
   household_id VARCHAR(64),
   namesake_count INTEGER,
-  membership_number VARCHAR(30),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   deleted BOOLEAN DEFAULT FALSE NOT NULL

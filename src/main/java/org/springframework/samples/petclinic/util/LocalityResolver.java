@@ -58,20 +58,24 @@ public final class LocalityResolver {
     }
 
     /**
-     * The {@code REGION} component carried by a {@code customerCode} of the form
-     * {@code <REGION>-<HASH8>}. Now that the customer code embeds the region, the owner's locality
-     * is read straight back off the identity rather than recomputed from postcode and city.
-     * Returns {@code "UNKNOWN"} when the code is absent or carries no region component.
+     * The {@code REGION} component carried by a {@code memberId} of the form
+     * {@code <REGION><FY><HASH8><CHK>}. The region is the leading run of letters, terminated by the
+     * first digit of the fiscal-year segment. Now that the member id embeds the region, the owner's
+     * locality is read straight back off the identity rather than recomputed from postcode and city.
+     * Returns {@code "UNKNOWN"} when the id is absent or carries no region component.
      */
-    public static String regionOfCustomerCode(String customerCode) {
-        if (customerCode == null || customerCode.isBlank()) {
+    public static String regionOfMemberId(String memberId) {
+        if (memberId == null || memberId.isBlank()) {
             return UNKNOWN;
         }
-        int dash = customerCode.indexOf('-');
-        if (dash <= 0) {
+        int end = 0;
+        while (end < memberId.length() && Character.isLetter(memberId.charAt(end))) {
+            end++;
+        }
+        if (end == 0) {
             return UNKNOWN;
         }
-        return customerCode.substring(0, dash);
+        return memberId.substring(0, end);
     }
 
     /**

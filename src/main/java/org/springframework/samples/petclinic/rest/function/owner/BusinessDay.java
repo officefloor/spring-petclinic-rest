@@ -9,8 +9,8 @@ import java.util.Set;
  * holiday advances to the next non-holiday weekday, a plain weekday is left unchanged. Applied to
  * the <em>effective</em> registration date — whether supplied on the request or defaulted to the
  * server date — so that the persisted {@code registrationDate} always falls on a business day and
- * every value derived from it (the membership number's year segment in
- * {@link AssignMembershipNumber}, the per-day create-limit bucket in {@link CheckOwnerDailyLimit})
+ * every value derived from it (the member id's fiscal-year segment in
+ * {@link AssignMemberId}, the per-day create-limit bucket in {@link CheckOwnerDailyLimit})
  * is computed from the same adjusted date.
  */
 final class BusinessDay {

@@ -23,7 +23,6 @@ import java.util.List;
         org.springframework.samples.petclinic.util.AgeBand.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
         org.springframework.samples.petclinic.util.OwnerSegment.class,
-        org.springframework.samples.petclinic.util.CheckDigit.class,
         org.springframework.samples.petclinic.util.Salutation.class,
         org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
 public interface OwnerMapper {
@@ -45,22 +44,20 @@ public interface OwnerMapper {
         expression = "java(owner.getRegistrationDate() == null ? null "
             + ": FiscalYear.labelOf(owner.getRegistrationDate()))")
     @Mapping(target = "locality",
-        expression = "java(LocalityResolver.regionOfCustomerCode(owner.getCustomerCode()))")
+        expression = "java(LocalityResolver.regionOfMemberId(owner.getMemberId()))")
     @Mapping(target = "timezone",
         expression = "java(LocalityResolver.timezoneOfRegion("
-            + "LocalityResolver.regionOfCustomerCode(owner.getCustomerCode())))")
+            + "LocalityResolver.regionOfMemberId(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java(ContactPreference.preferenceOf(owner))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerSegment.of("
             + "MembershipLevel.levelOf(MembershipLevel.pointsOf(owner)), "
-            + "LocalityResolver.regionOfCustomerCode(owner.getCustomerCode())))")
+            + "LocalityResolver.regionOfMemberId(owner.getMemberId())))")
     @Mapping(target = "ageBand",
         expression = "java(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(OwnerIdentityKey.forOwner(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(CheckDigit.luhnOf(owner.getCustomerCode()))")
     @Mapping(target = "selfLink",
         expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);

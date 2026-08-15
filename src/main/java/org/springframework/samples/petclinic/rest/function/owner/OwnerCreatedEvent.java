@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Immutable structured audit event emitted alongside the human-readable audit line when a new owner
  * is created (see {@link AuditOwnerCreated}). Serialized to a single-line JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code event} is always
+ * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code event} is always
  * {@value #EVENT}.
  *
  * <p>{@code seq} is a process-wide, monotonically increasing sequence number handed out by
@@ -15,9 +15,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * produced them.
  *
  * <p>The event carries the owner's <em>current primary identifier</em>, resolved once by
- * {@link #primaryIdentifierOf(Owner)}. Today that is the {@code customerCode}; when the customer
- * code is later unified into the {@code memberId}, only that accessor changes and every event then
- * carries the {@code memberId} instead — the callers and the serialized shape stay put.
+ * {@link #primaryIdentifierOf(Owner)} — the unified {@code memberId}.
  *
  * <p>Instances are immutable: all fields are captured at construction and never mutated.
  */
@@ -55,10 +53,10 @@ final class OwnerCreatedEvent {
 
     /**
      * The owner's current primary identifier. This is the single point that decides which field
-     * value the event carries: the {@code customerCode} today, and whatever replaces it later.
+     * value the event carries: the unified {@code memberId}.
      */
     private static String primaryIdentifierOf(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /** This event as a compact, single-line JSON object. */
@@ -66,7 +64,7 @@ final class OwnerCreatedEvent {
         return "{"
                 + "\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
-                + ",\"customerCode\":" + quote(this.primaryIdentifier)
+                + ",\"memberId\":" + quote(this.primaryIdentifier)
                 + ",\"membershipLevel\":" + this.membershipLevel
                 + ",\"event\":" + quote(EVENT)
                 + "}";

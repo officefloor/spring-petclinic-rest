@@ -1,10 +1,11 @@
 package org.springframework.samples.petclinic.util;
 
 /**
- * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over the
- * digits contained in the owner's {@code customerCode}. Non-digit characters (the separator and
- * letters of a code such as {@code NSW-3F1A9C2B}) are skipped, and the standard Luhn algorithm is
- * applied to the remaining digits, doubling every second digit from the right.
+ * Computes a single Luhn check digit (0-9) over the digits contained in a string. It supplies the
+ * {@code CHK} segment of an owner's {@code memberId}, computed over the digits of
+ * {@code <REGION><FY><HASH8>}. Non-digit characters (the letters of a value such as
+ * {@code NSW273F1A9C2B}) are skipped, and the standard Luhn algorithm is applied to the remaining
+ * digits, doubling every second digit from the right.
  */
 public final class CheckDigit {
 

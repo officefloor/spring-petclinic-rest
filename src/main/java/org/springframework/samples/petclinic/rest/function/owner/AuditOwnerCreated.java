@@ -13,9 +13,8 @@ import org.springframework.samples.petclinic.util.MembershipLevel;
  * persisted. Runs after {@link SaveOwner} so the generated id is available, and emits two events:
  *
  * <ul>
- * <li>a human-readable audit line carrying the owner id, the assigned {@code customerCode}, the
- * {@code registrationDate}, the derived {@code membershipLevel} and the assigned
- * {@code membershipNumber}; and
+ * <li>a human-readable audit line carrying the owner id, the assigned {@code memberId}, the
+ * {@code registrationDate} and the derived {@code membershipLevel}; and
  * <li>an immutable, structured {@link OwnerCreatedEvent} as JSON, keyed by a monotonically
  * increasing sequence number and carrying the owner's current primary identifier.
  * </ul>
@@ -27,9 +26,8 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
         int level = MembershipCap.cappedLevelFor(owner, MembershipLevel.levelOf(points), ownerRepository);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                level, owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), level);
         AUDIT.info("{}", OwnerCreatedEvent.of(owner, level).toJson());
     }
 }

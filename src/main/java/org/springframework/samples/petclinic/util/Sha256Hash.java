@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * SHA-256 helper for deriving short, stable identifiers. Hashes the UTF-8 bytes of the input and
- * exposes the leading hex characters in upper case, as used by the owner {@code customerCode}
+ * exposes the leading hex characters in upper case, as used by the owner {@code memberId}
  * (its {@code HASH8} component is the first 8 upper-case hex characters of SHA-256).
  */
 public final class Sha256Hash {
