@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
@@ -138,6 +139,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
         validatePostcode(owner.getPostcode(), owner.getCity());
+        rejectFutureRegistrationDate(owner.getRegistrationDate());
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -565,6 +567,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(owner -> registrationDate.equals(owner.getRegistrationDate()))
             .count();
         return existing > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
+     * Rejects a create request whose supplied {@code registrationDate} is later than the server date. A
+     * registration cannot be dated in the future. The check applies only to a date supplied in the request;
+     * a {@code null} value (which is later defaulted to the server date) is accepted, and the comparison is
+     * made against the supplied value before any business-day adjustment.
+     *
+     * @param registrationDate the registration date supplied in the request, or {@code null} when omitted
+     * @throws FutureRegistrationDateException if a supplied registration date is later than the server date
+     */
+    private void rejectFutureRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return;
+        }
+        LocalDate today = LocalDate.now();
+        if (registrationDate.isAfter(today)) {
+            throw new FutureRegistrationDateException(registrationDate, today);
+        }
     }
 
     private void rejectDailyLimitReached(LocalDate registrationDate) {
