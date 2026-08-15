@@ -25,10 +25,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -66,6 +68,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
@@ -97,6 +102,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * line here so audit trails can be captured independently of application logging.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED} event.
+     * Shared across all creates so the events can be totally ordered independently of timestamps.
+     */
+    private static final AtomicLong OWNER_CREATED_SEQUENCE = new AtomicLong();
+
+    /**
+     * Serializes structured audit events to compact JSON. Configured once and reused; it is thread-safe.
+     */
+    private static final ObjectMapper AUDIT_EVENT_MAPPER = JsonMapper.builder().build();
 
     /**
      * The request header carrying a client-supplied idempotency key for the create endpoint. When a create
@@ -202,6 +218,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
             ownerDto.getMembershipNumber());
+        emitOwnerCreatedEvent(owner, ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -300,6 +317,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Emits an immutable structured {@code OWNER_CREATED} event to the {@code AUDIT} logger, alongside the
+     * human-readable audit line. The event is a JSON object
+     * {@code {seq, ownerId, customerCode, membershipLevel, event}} where {@code seq} is a process-wide,
+     * monotonically increasing sequence number across all creates.
+     *
+     * <p>The {@code customerCode} field carries the owner's <em>current primary identifier</em> — see
+     * {@link #primaryIdentifier(Owner)}. Today that is the {@code customerCode}; when the primary identifier
+     * is later unified into the member id, the event will carry the member id instead without any change here.
+     *
+     * @param owner    the freshly persisted owner
+     * @param ownerDto its DTO projection, used for the derived membership level
+     */
+    private void emitOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("seq", OWNER_CREATED_SEQUENCE.incrementAndGet());
+        event.put("ownerId", owner.getId());
+        event.put("customerCode", primaryIdentifier(owner));
+        event.put("membershipLevel", ownerDto.getMembershipLevel());
+        event.put("event", "OWNER_CREATED");
+        AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * Returns the owner's current primary identifier, which structured audit events must carry. This is the
+     * single point that decides which field is primary: today the {@code customerCode}, and whatever replaces
+     * it later (e.g. once the customer code is unified into the member id).
+     *
+     * @param owner the owner whose primary identifier is required
+     * @return the current primary identifier
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
