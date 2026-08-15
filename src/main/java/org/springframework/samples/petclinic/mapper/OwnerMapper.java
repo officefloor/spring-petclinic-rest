@@ -25,7 +25,31 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's age band from {@code birthDate} measured against {@code registrationDate}:
+     * {@code MINOR} when under 18, {@code ADULT} from 18 to 64, and {@code SENIOR} at 65 or older.
+     * Returns {@code null} when no birthDate is recorded. When the registrationDate is absent (e.g.
+     * legacy records) the current date is used as the reference point.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        java.time.LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        int age = java.time.Period.between(birthDate, reference).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code EMAIL} when an email is
