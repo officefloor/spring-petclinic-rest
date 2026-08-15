@@ -262,6 +262,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Resolve and normalize the owner's postal address, preferring the structured form.
+     *
+     * <p>When a non-blank {@code addressLine1} is supplied the structured form is used: it, and the
+     * optional {@code addressLine2}, are normalized in place and the composed address is the
+     * normalized addressLine1 with a single space and the normalized addressLine2 appended when
+     * addressLine2 is present. Otherwise the flat {@code address} input is normalized. Returns
+     * {@code null} when neither form yields a non-empty address, so the caller can reject the
+     * request.
+     */
+    private String composeAddress(Owner owner) {
+        String line1 = owner.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine1 = normalizeAddress(line1);
+            owner.setAddressLine1(normalizedLine1);
+            String line2 = owner.getAddressLine2();
+            if (line2 != null && !line2.isBlank()) {
+                String normalizedLine2 = normalizeAddress(line2);
+                owner.setAddressLine2(normalizedLine2);
+                return normalizedLine1 + " " + normalizedLine2;
+            }
+            owner.setAddressLine2(null);
+            return normalizedLine1.isEmpty() ? null : normalizedLine1;
+        }
+        String normalized = normalizeAddress(owner.getAddress());
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
      * Normalize a value for household-duplicate comparison: {@code null} becomes empty, surrounding
      * whitespace is trimmed, internal runs of whitespace are collapsed to a single space and the result
      * is lower-cased, so the comparison is case-insensitive with collapsed whitespace.
@@ -465,8 +493,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!normalizeEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
-        String address = normalizeAddress(owner.getAddress());
-        if (address.isEmpty()) {
+        String address = composeAddress(owner);
+        if (address == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
