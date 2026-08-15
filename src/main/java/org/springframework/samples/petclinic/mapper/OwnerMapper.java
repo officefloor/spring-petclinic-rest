@@ -22,9 +22,12 @@ import java.util.List;
         org.springframework.samples.petclinic.util.AgeBand.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
         org.springframework.samples.petclinic.util.CheckDigit.class,
+        org.springframework.samples.petclinic.util.Salutation.class,
         org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation",
+        expression = "java(Salutation.of(owner.getTitle(), owner.getLastName()))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
