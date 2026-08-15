@@ -223,6 +223,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Count the existing owners that share this owner's first name and last name, compared
+     * case-insensitively. Used to populate {@code namesakeCount} on create (before this owner is saved).
+     */
+    private int namesakeCount(Owner owner) {
+        String firstName = owner.getFirstName();
+        String lastName = owner.getLastName();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (firstName != null && lastName != null
+                && firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
      * A stable, shared household identifier derived from the normalized last name and address, so every
      * owner in the same household deterministically resolves to the same value.
      */
@@ -284,6 +302,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        owner.setNamesakeCount(namesakeCount(owner));
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
