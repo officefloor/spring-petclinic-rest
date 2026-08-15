@@ -26,7 +26,47 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Formats the stored E.164 {@code telephone} for humans: the {@code '+'} and country code, a
+     * space, then the national digits grouped in threes (e.g. {@code +61412345678} -&gt;
+     * {@code +61 412 345 678}). The country code is taken as {@code 61} (Australia) or {@code 1}
+     * (NANP) when recognised, otherwise a single leading digit. Returns {@code null} when the
+     * telephone is absent, and the value unchanged when it is not a {@code '+'}-prefixed E.164
+     * number.
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || telephone.isEmpty()) {
+            return null;
+        }
+        if (!telephone.startsWith("+") || !telephone.substring(1).matches("\\d+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int countryCodeLength;
+        if (digits.startsWith("61")) {
+            countryCodeLength = 2;
+        }
+        else if (digits.startsWith("1")) {
+            countryCodeLength = 1;
+        }
+        else {
+            countryCodeLength = 1;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + (national.isEmpty() ? "" : " " + grouped);
+    }
 
     /**
      * Derives the owner's age band from {@code birthDate} measured against {@code registrationDate}:
