@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" "
                     + "+ owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(OwnerMapper.membershipPoints(owner))")
@@ -35,6 +36,19 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code salutation}: the {@code title} and {@code lastName} joined by a
+     * single space ({@code '<title> <lastName>'}) when a title is present, otherwise just the
+     * {@code lastName}. So an owner titled 'DR' named 'Who' yields {@code 'DR Who'}.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
+    }
 
     /**
      * Derives the owner's {@code ageBand} from {@code birthDate}, computed against the
