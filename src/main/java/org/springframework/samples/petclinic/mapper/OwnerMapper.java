@@ -12,6 +12,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -37,6 +38,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -74,6 +76,27 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("FY%02d", fiscalYearEnding(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * The fixed set of known regions (localities) treated as METRO; any other locality
+     * (including 'UNKNOWN') is REGIONAL.
+     */
+    Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code 'PREMIUM'} when {@link #membershipLevel(Owner)} is 3 or more, otherwise
+     * {@code 'STANDARD'}. AREA is {@code 'METRO'} when the {@link #locality(Owner)} is a known
+     * region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'} — so the result is one of
+     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
+     * {@code 'STANDARD_REGIONAL'}.
+     */
+    default String ownerSegment(Owner owner) {
+        Integer level = membershipLevel(owner);
+        String tier = level != null && level >= 3 ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(locality(owner)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
     }
 
     /**
