@@ -19,7 +19,8 @@ public class RespondWithOwnerCreated {
         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
         dto.setMembershipPoints(points);
-        dto.setMembershipLevel(MembershipLevel.levelOf(points));
+        dto.setMembershipLevel(MembershipCap.cappedLevelFor(owner,
+                MembershipLevel.levelOf(points), ownerRepository));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

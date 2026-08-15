@@ -20,8 +20,9 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
+        int level = MembershipCap.cappedLevelFor(owner, MembershipLevel.levelOf(points), ownerRepository);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.levelOf(points), owner.getMembershipNumber());
+                level, owner.getMembershipNumber());
     }
 }

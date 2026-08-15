@@ -7,10 +7,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerIdentityException;
 
 /**
- * The duplicate-detection step of {@code POST /api/owners}. Because a household is now keyed on
- * (last name, postcode), two owners that share a last name and postcode are the same household (see
- * {@link Household}); creating a second owner in an existing household is therefore treated as a
- * duplicate and rejected with 409.
+ * The duplicate-detection step of {@code POST /api/owners}. Duplicate detection is expressed through
+ * the owner's {@code identityKey} (see {@link OwnerIdentityKey}): a request is a duplicate only when
+ * an existing owner carries the <em>same whole key</em> — normalized telephone, email and
+ * {@code householdId} all equal. Because the telephone is part of the key, two members of the same
+ * household (same last name and postcode) with different telephones have different keys and are both
+ * allowed; only a genuine re-submission of the same owner is rejected with 409.
  *
  * <p>The {@code sharesHousehold} hint bypasses this block: a request that declares itself a member
  * of a shared household is allowed through and created as a legitimate second member (and is not
@@ -26,13 +28,13 @@ public class CheckOwnerIdentityUnique {
         if (Household.sharesHousehold(request)) {
             return; // declared household member: bypass the duplicate block
         }
-        String householdId = Household.idFor(request);
+        String identityKey = OwnerIdentityKey.forRequest(request);
         for (Owner owner : ownerRepository.findAll()) {
             if (owner.isDeleted()) {
                 continue; // a soft-deleted owner no longer blocks a new create
             }
-            if (householdId.equals(Household.idFor(owner))) {
-                throw new DuplicateOwnerIdentityException(householdId);
+            if (identityKey.equals(OwnerIdentityKey.forOwner(owner))) {
+                throw new DuplicateOwnerIdentityException(Household.idFor(request));
             }
         }
     }
