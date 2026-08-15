@@ -245,16 +245,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Return the owners that already share this owner's household, i.e. have the same last name and
-     * address compared case-insensitively with collapsed whitespace.
+     * Return the owners that already share this owner's household, i.e. resolve to the same
+     * deterministic {@link #householdIdFor(Owner) householdId} (same normalized last name and
+     * postcode).
      */
     private List<Owner> householdMembers(Owner owner) {
-        String lastName = normalizeForHousehold(owner.getLastName());
-        String address = normalizeForHousehold(owner.getAddress());
+        String householdId = householdIdFor(owner);
         List<Owner> members = new java.util.ArrayList<>();
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (normalizeForHousehold(existing.getLastName()).equals(lastName)
-                && normalizeForHousehold(existing.getAddress()).equals(address)) {
+            if (householdId.equals(householdIdFor(existing))) {
                 members.add(existing);
             }
         }
@@ -262,8 +261,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Return {@code true} when another owner already shares this owner's household, i.e. has the same
-     * last name and address compared case-insensitively with collapsed whitespace.
+     * Return {@code true} when another owner already shares this owner's household, i.e. resolves to
+     * the same deterministic {@link #householdIdFor(Owner) householdId}.
      */
     private boolean sharesHouseholdWithExisting(Owner owner) {
         return !householdMembers(owner).isEmpty();
@@ -288,16 +287,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * A stable, shared household identifier derived from the normalized last name and address, so every
-     * owner in the same household deterministically resolves to the same value.
+     * A stable, shared household identifier: the first 12 hex characters of SHA-256 over
+     * {@code normalizedLastName + '|' + postcode} (an absent postcode contributes an empty string).
+     * Because it is a pure function of the last name and postcode, every owner in the same household
+     * deterministically resolves to the same value.
      */
     private static String householdIdFor(Owner owner) {
-        String key = normalizeForHousehold(owner.getLastName()) + "|" + normalizeForHousehold(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = normalizeForHousehold(owner.getLastName()) + "|" + postcode;
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(24);
-            for (int i = 0; i < 12; i++) {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();
@@ -453,37 +455,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        // The householdId is deterministic (SHA-256 over normalized lastName + '|' + postcode), so
+        // owners with the same last name and postcode automatically share it. The link is no longer
+        // created by copying an existing owner's id around.
+        owner.setHouseholdId(householdIdFor(owner));
         List<Owner> householdMembers = householdMembers(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold && !householdMembers.isEmpty()) {
-            owner.setHouseholdId(householdMembers.stream()
-                .map(Owner::getHouseholdId)
-                .filter(id -> id != null && !id.isBlank())
-                .findFirst()
-                .orElseGet(() -> householdIdFor(owner)));
-        }
-        // Consolidated duplicate detection: the former separate telephone, email and household
-        // checks are now all expressed through the single derived identityKey, so a new owner is
-        // rejected only when its WHOLE identityKey equals an existing owner's. Because the telephone
-        // is part of the key, two members of the same household with different telephones have
-        // different identityKeys and are both allowed.
+        boolean declaredHouseholdMember = sharesHousehold && !householdMembers.isEmpty();
+
+        // Hard duplicate: a new owner whose WHOLE identityKey (telephone|email|householdId) equals an
+        // existing owner's is a byte-for-byte identity match and is always rejected.
         String identityKey = owner.getIdentityKey();
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (identityKey.equals(existing.getIdentityKey())) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
-        if (owner.getHouseholdId() != null) {
-            for (Owner member : householdMembers) {
-                if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
-                    member.setHouseholdId(owner.getHouseholdId());
-                    this.clinicService.saveOwner(member);
-                }
-            }
+        // Household duplicate: another owner already shares this (last name, postcode) household.
+        // Rejected as a duplicate unless the caller sets 'sharesHousehold', which now only bypasses
+        // this block (the shared householdId itself is already assigned deterministically above).
+        if (!householdMembers.isEmpty() && !sharesHousehold) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        Owner duplicateOf = possibleDuplicateOf(owner);
-        owner.setPossibleDuplicate(duplicateOf != null);
-        owner.setPossibleDuplicateOf(duplicateOf == null ? null : duplicateOf.getId());
+        // A declared household member is not a suspected duplicate. Otherwise, flag an owner that
+        // shares an existing owner's last name and postcode with a different telephone.
+        if (declaredHouseholdMember) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+        }
+        else {
+            Owner duplicateOf = possibleDuplicateOf(owner);
+            owner.setPossibleDuplicate(duplicateOf != null);
+            owner.setPossibleDuplicateOf(duplicateOf == null ? null : duplicateOf.getId());
+        }
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
