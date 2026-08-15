@@ -464,6 +464,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners permitted in a single city. */
     private static final int CITY_CAPACITY = 50;
 
+    /**
+     * Number of owners already in a city at or beyond which a capacity warning is flagged (the city
+     * is approaching the {@link #CITY_CAPACITY} hard limit). A city holding 40-49 owners warns.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be created (by registrationDate) on a single day. */
     private static final int DAILY_CREATE_LIMIT = 100;
 
@@ -594,7 +600,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (cityOwnerCount(owner) >= CITY_CAPACITY) {
+        int cityOwnerCount = cityOwnerCount(owner);
+        if (cityOwnerCount >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         // The householdId is deterministic (SHA-256 over normalized lastName + '|' + postcode), so
@@ -651,6 +658,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setMembershipLevelCap(maxHouseholdLevel + 1);
         }
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+        owner.setCapacityWarning(cityOwnerCount >= CITY_CAPACITY_WARNING_THRESHOLD);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(customerCodeFor(owner));
         this.clinicService.saveOwner(owner);

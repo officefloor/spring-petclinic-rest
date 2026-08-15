@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
   bulk_signup_warning BOOLEAN,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  capacity_warning BOOLEAN,
   birth_date DATE,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
