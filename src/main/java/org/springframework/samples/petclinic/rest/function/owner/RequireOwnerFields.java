@@ -2,10 +2,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
@@ -26,8 +28,13 @@ public class RequireOwnerFields {
      *  a dot, and a top-level label. Rejects inputs such as "not-an-email". */
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
+    /** Disposable/throwaway email domains a create-owner request may not use. */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+            DisposableEmailException {
         List<String> missing = new ArrayList<>();
         // Normalize the address up-front so the blank check below rejects an address that is
         // empty only after normalization (e.g. all-whitespace), and so the stored/returned value
@@ -57,6 +64,10 @@ public class RequireOwnerFields {
             String normalized = email.trim().toLowerCase();
             if (!EMAIL.matcher(normalized).matches()) {
                 throw new InvalidEmailException(email);
+            }
+            String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
+            if (DISPOSABLE_DOMAINS.contains(domain)) {
+                throw new DisposableEmailException(email);
             }
             request.setEmail(normalized);
         }
