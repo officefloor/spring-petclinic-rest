@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -106,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -127,6 +129,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(telephone);
         }
         return digits;
+    }
+
+    /**
+     * Syntactic email pattern: a non-empty local part, an '@', a domain with at least one dot and a
+     * multi-character top-level label. Deliberately lenient about the exact character set while still
+     * rejecting values that are clearly not addresses (e.g. missing '@').
+     */
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+        java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$");
+
+    /**
+     * Normalizes an owner's email. Email is optional: a {@code null} or blank value is left as
+     * {@code null} (no email). When present it must be a syntactically valid address; the value is
+     * lower-cased before being stored and returned.
+     *
+     * @param email the raw email as submitted, may be {@code null}
+     * @return the lower-cased email, or {@code null} when none was supplied
+     * @throws InvalidEmailException (400 Bad Request) if a non-blank value is not a valid address
+     */
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidEmailException(email);
+        }
+        return trimmed.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -161,6 +191,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
