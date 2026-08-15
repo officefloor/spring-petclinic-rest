@@ -73,6 +73,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -426,6 +427,59 @@ public abstract class OwnerMapper {
         boolean known = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
         String area = known ? "METRO" : "REGIONAL";
         return tier + "_" + area;
+    }
+
+    /**
+     * The second-level labels of the known disposable email providers (the exact-match blocklist is
+     * {@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}). A domain that carries one of
+     * these labels but is not itself on the exact blocklist is treated as <em>disposable-adjacent</em>.
+     */
+    private static final java.util.Set<String> DISPOSABLE_PROVIDER_LABELS =
+        java.util.Set.of("mailinator", "tempmail", "guerrillamail");
+
+    /**
+     * Derives an owner's {@code riskFlag}: {@code true} when the owner warrants a manual risk review, i.e.
+     * when any of the following hold, otherwise {@code false}:
+     * <ul>
+     *   <li>the owner is a possible duplicate ({@code possibleDuplicate} is {@code true});</li>
+     *   <li>the owner's email domain is {@link #disposableAdjacent(String) disposable-adjacent};</li>
+     *   <li>the owner's city is over its soft capacity ({@code capacityWarning} is {@code true}).</li>
+     * </ul>
+     *
+     * @param owner the owner whose risk flag is being derived
+     * @return {@code true} when any risk condition holds, otherwise {@code false}
+     */
+    protected Boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        return possibleDuplicate || overSoftCapacity || disposableAdjacent(owner.getEmail());
+    }
+
+    /**
+     * Reports whether an email address is <em>disposable-adjacent</em>: its domain carries a known disposable
+     * provider's name (see {@link #DISPOSABLE_PROVIDER_LABELS}) as one of its dot-separated labels, without
+     * being an exact blocklisted domain (those are rejected at creation and never stored). So
+     * {@code x@mailinator.net} and {@code x@sub.mailinator.com} are disposable-adjacent, while a plain domain
+     * such as {@code x@example.test} is not. A {@code null} or blank email is never disposable-adjacent.
+     *
+     * @param email the owner's stored (already normalized) email, or {@code null} when absent
+     * @return {@code true} when the email's domain carries a disposable provider label, otherwise {@code false}
+     */
+    protected boolean disposableAdjacent(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_PROVIDER_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
