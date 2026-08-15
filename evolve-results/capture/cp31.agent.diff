@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fdb6f113..e7274530 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,10 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : "
+             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
++    @Mapping(target = "checkDigit",
++        expression = "java(owner == null ? null : "
++            + "org.springframework.samples.petclinic.util.CheckDigits.luhn("
++            + "owner.getCustomerCode()))")
+     @Mapping(target = "householdId",
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Households.householdId("
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+new file mode 100644
+index 00000000..303c13ca
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Helper for the Luhn check digit assigned to a pet owner. The check digit is computed over the
++ * decimal digits contained in the owner's {@code customerCode}; any non-digit characters (such as
++ * the '-' separators) are ignored.
++ */
++public final class CheckDigits {
++
++    private CheckDigits() {
++    }
++
++    /**
++     * Computes the Luhn check digit (0-9) over the decimal digits contained in {@code value}. Digits
++     * are processed right to left with every second digit (starting from the rightmost) doubled and
++     * its digits summed; non-digit characters are ignored.
++     *
++     * @param value the string whose digits are checked, or {@code null}
++     * @return the Luhn check digit, from 0 to 9 ({@code null} and digit-free values yield 0)
++     */
++    public static int luhn(String value) {
++        if (value == null) {
++            return 0;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a58146ee..1559af79 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2119,6 +2119,18 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                The Luhn check digit computed over the decimal digits contained
++                in the owner's customerCode (non-digit characters are ignored),
++                from 0 to 9.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
