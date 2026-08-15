@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
@@ -123,6 +124,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         rejectDuplicateTelephone(owner.getTelephone());
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
+        }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -333,5 +337,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (taken) {
             throw new DuplicateTelephoneException(telephone);
         }
+    }
+
+    /**
+     * Rejects a create request whose owner shares both last name and address with an existing owner.
+     * Last name and address are compared case-insensitively with runs of whitespace collapsed to a
+     * single space and leading/trailing whitespace removed, so cosmetic differences (extra spaces,
+     * differing case) still count as the same household.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the address of the owner being created
+     * @throws DuplicateHouseholdException if an existing owner has the same last name and address
+     */
+    private void rejectDuplicateHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForComparison(lastName);
+        String normalizedAddress = normalizeForComparison(address);
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+                && normalizedAddress.equals(normalizeForComparison(existing.getAddress())));
+        if (taken) {
+            throw new DuplicateHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Normalizes a value for household-identity comparison: leading and trailing whitespace is
+     * removed, internal runs of whitespace are collapsed to a single space, and the result is
+     * lower-cased.
+     *
+     * @param value the raw value to normalize (may be {@code null})
+     * @return the normalized value, or an empty string when {@code value} is {@code null}
+     */
+    private String normalizeForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
