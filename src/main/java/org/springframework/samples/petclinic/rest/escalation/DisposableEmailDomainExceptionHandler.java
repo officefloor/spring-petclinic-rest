@@ -5,17 +5,16 @@ import java.util.List;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class DisposableEmailDomainExceptionHandler {
 
-    /** Body shape: {@code {"errors": ["email"]}}. */
-    public record InvalidField(List<String> errors) {
-    }
-
     public void handle(@Parameter DisposableEmailDomainException ex,
-            ObjectResponse<ResponseEntity<InvalidField>> response) {
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new InvalidField(List.of("email"))));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+                "The email address uses a disposable domain that is not accepted");
+        detail.setProperty("errors", List.of("email"));
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }

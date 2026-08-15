@@ -5,17 +5,16 @@ import java.util.List;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class FutureRegistrationDateExceptionHandler {
 
-    /** Body shape: {@code {"errors": ["registrationDate"]}}. */
-    public record InvalidField(List<String> errors) {
-    }
-
     public void handle(@Parameter FutureRegistrationDateException ex,
-            ObjectResponse<ResponseEntity<InvalidField>> response) {
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new InvalidField(List.of("registrationDate"))));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+                "The registration date cannot be in the future");
+        detail.setProperty("errors", List.of("registrationDate"));
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
