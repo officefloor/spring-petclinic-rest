@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -106,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
@@ -202,6 +204,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Common street-type abbreviations expanded to their full word during address normalization.
+     */
+    private static final java.util.Map<String, String> ADDRESS_ABBREVIATIONS = java.util.Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
+    /**
+     * Normalizes an owner's address on create. Surrounding whitespace is trimmed and internal runs of
+     * whitespace collapse to a single space, the value is upper-cased and common street-type
+     * abbreviations are expanded to their full word ({@code ST} to {@code STREET}, {@code RD} to
+     * {@code ROAD}, {@code AVE} to {@code AVENUE}). For example {@code "  12  main  st "} becomes
+     * {@code "12 MAIN STREET"}. The normalized value is stored and returned, and is also the form used
+     * for every address comparison (household duplicate detection and the shared household id).
+     *
+     * @param address the raw address as submitted
+     * @return the normalized address
+     * @throws InvalidAddressException (400 Bad Request) if the address is blank after normalization
+     */
+    private String normalizeAddress(String address) {
+        String collapsed = (address == null ? "" : address).trim().replaceAll("\\s+", " ");
+        if (collapsed.isEmpty()) {
+            throw new InvalidAddressException(address);
+        }
+        String[] tokens = collapsed.toUpperCase(java.util.Locale.ROOT).split(" ");
+        StringBuilder normalized = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                normalized.append(' ');
+            }
+            normalized.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return normalized.toString();
+    }
+
+    /**
      * Rejects creating an owner whose E.164 telephone is already used by another owner. Telephones of
      * existing owners are normalized to E.164 the same way before comparison, so equivalent numbers
      * submitted in different formats (e.g. national {@code "0412 345 678"} and international
@@ -236,13 +274,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner who shares a household with an existing owner, i.e. another owner
-     * already has the same last name and the same address. Both fields are compared
-     * case-insensitively and with runs of whitespace collapsed to a single space (and surrounding
-     * whitespace trimmed), so values that differ only in letter case or spacing still count as a
-     * match. This check is skipped when the request sets {@code sharesHousehold} to {@code true}.
+     * already has the same last name and the same address. Last names are compared case-insensitively
+     * with whitespace collapsed; addresses are compared in their normalized form (see
+     * {@link #normalizeAddress}, which every owner's stored address already uses), so values that
+     * differ only in letter case, spacing or a common street-type abbreviation still count as a match.
+     * This check is skipped when the request sets {@code sharesHousehold} to {@code true}.
      *
      * @param lastName the last name of the owner being created
-     * @param address the address of the owner being created
+     * @param address the normalized address of the owner being created
      * @throws DuplicateHouseholdException (409 Conflict) if another owner shares this household
      */
     private void rejectDuplicateHousehold(String lastName, String address) {

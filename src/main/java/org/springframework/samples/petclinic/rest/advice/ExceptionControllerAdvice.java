@@ -167,6 +167,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidAddressException} thrown while normalizing an owner's address on create.
+     *
+     * @param e The {@link InvalidAddressException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidAddressException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidAddressException(InvalidAddressException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("address"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Field 'address' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "address")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} thrown when creating an owner whose normalized
      * telephone is already used by another owner.
      *
