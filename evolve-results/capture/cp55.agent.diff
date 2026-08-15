@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0ccdf4cb..8d9cb080 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+@@ -144,6 +145,20 @@ public interface OwnerMapper {
+         return cityRegion(owner);
+     }
+ 
++    /**
++     * Derives the owner's marketing segment, formatted {@code <TIER>_<AREA>}. TIER is
++     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise
++     * {@code STANDARD}. AREA is {@code METRO} when the {@link #locality(Owner) locality} is a known
++     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++     */
++    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
++        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
++        String region = locality(owner);
++        boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
++        String area = metro ? "METRO" : "REGIONAL";
++        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
++    }
++
+     /**
+      * Derives the owner's IANA timezone from the {@link #locality(Owner) locality/region}
+      * via the fixed region-to-timezone table (NSW-&gt;Australia/Sydney,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0c1db965..7a4a5dce 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2331,6 +2331,21 @@ components:
+               type: string
+               readOnly: true
+               example: 'Australia/Sydney'
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, derived on read and formatted
++                '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or
++                more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is
++                a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              readOnly: true
++              example: 'STANDARD_METRO'
+             contactPreference:
+               title: Contact preference
+               description: >-
