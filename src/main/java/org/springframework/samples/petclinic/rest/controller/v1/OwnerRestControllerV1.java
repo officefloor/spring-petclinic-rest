@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -32,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.OwnerLocality;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -43,6 +45,7 @@ import org.springframework.samples.petclinic.rest.controller.CityOwnerLimitExcee
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -134,6 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setAddress(normalizeAddress(owner.getAddress()));
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        validatePostcode(owner.getPostcode(), owner.getCity());
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
@@ -283,6 +287,44 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Inclusive 4-digit postcode ranges permitted per city region, keyed by the region derived from the
+     * city via {@link OwnerLocality}: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099. A region absent from
+     * this table (i.e. {@code "UNKNOWN"}) imposes no range constraint, so any 4-digit postcode is accepted.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's {@code postcode} when present. Postcode is optional: a {@code null} value is
+     * accepted and left absent, keeping the create contract backward-compatible. When supplied it must be
+     * a 4-digit value, and it must fall within the inclusive range for the city's region (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit postcode.
+     *
+     * @param postcode the submitted postcode, or {@code null} when omitted
+     * @param city the owner's city, used to derive the region whose range constrains the postcode
+     * @throws InvalidPostcodeException if a supplied postcode is not 4 digits or is out of range for the
+     *                                  city's region
+     */
+    private void validatePostcode(String postcode, String city) {
+        if (postcode == null) {
+            return;
+        }
+        if (!postcode.matches("[0-9]{4}")) {
+            throw new InvalidPostcodeException(postcode);
+        }
+        int[] range = REGION_POSTCODE_RANGE.get(OwnerLocality.of(city));
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(postcode);
+        }
     }
 
     /**
