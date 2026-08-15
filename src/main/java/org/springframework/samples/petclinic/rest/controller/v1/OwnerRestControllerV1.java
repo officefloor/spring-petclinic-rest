@@ -105,6 +105,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String existingTelephone = existing.getTelephone() == null ? ""
+                : existing.getTelephone().replaceAll("\\D", "");
+            if (telephone.equals(existingTelephone)) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
         owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
