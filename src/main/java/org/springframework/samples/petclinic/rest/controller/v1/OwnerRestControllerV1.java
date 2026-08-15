@@ -276,6 +276,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners that may be created (by registrationDate) on a single day. */
     private static final int DAILY_CREATE_LIMIT = 100;
 
+    /** Number of owners already created on a day beyond which a bulk-signup warning is flagged. */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     /**
      * Count the existing owners whose city matches this owner's city, compared case-insensitively.
      * Used to enforce the per-city capacity on create (before this owner is saved).
@@ -341,7 +344,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setAddress(address);
         java.time.LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
-        if (ownersRegisteredOn(registrationDate) >= DAILY_CREATE_LIMIT) {
+        int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
+        if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
@@ -373,6 +377,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setNamesakeCount(namesakeCount(owner));
+        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setTelephone(telephone);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
