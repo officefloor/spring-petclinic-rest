@@ -98,6 +98,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /**
+     * The fixed version tag mixed into every version-2 identifier assigned at creation (the
+     * {@code memberId}'s region code, the {@code householdId} and the {@code identityKey}). Mixing it in
+     * makes every version-2 identifier disjoint from its version-1 counterpart, so no value produced under
+     * version 1 is produced again. It is never mixed into the user-facing {@code locality} or
+     * {@code timezone}, nor into the owner segment's derived region.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The schema version stamped onto each structured {@code OWNER_CREATED} audit event. Version 2 adds the
+     * {@code schemaVersion} field and carries the version-2 {@code memberId} as the primary identifier.
+     */
+    private static final int AUDIT_EVENT_SCHEMA_VERSION = 2;
+
+    /**
      * Dedicated audit logger. Successful side-effecting operations (such as creating an owner) emit a
      * line here so audit trails can be captured independently of application logging.
      */
@@ -329,18 +344,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits an immutable structured {@code OWNER_CREATED} event to the {@code AUDIT} logger, alongside the
-     * human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event}} where {@code seq} is a process-wide,
-     * monotonically increasing sequence number across all creates.
+     * human-readable audit line. The event is a schema-version-2 JSON object
+     * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event}} where {@code schemaVersion}
+     * is {@value #AUDIT_EVENT_SCHEMA_VERSION} and {@code seq} is a process-wide, monotonically increasing
+     * sequence number across all creates.
      *
      * <p>The {@code memberId} field carries the owner's <em>current primary identifier</em> — see
-     * {@link #primaryIdentifier(Owner)} — which is now the unified member id.
+     * {@link #primaryIdentifier(Owner)} — which is now the version-2 unified member id.
      *
      * @param owner    the freshly persisted owner
      * @param ownerDto its DTO projection, used for the derived membership level
      */
     private void emitOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
         Map<String, Object> event = new LinkedHashMap<>();
+        event.put("schemaVersion", AUDIT_EVENT_SCHEMA_VERSION);
         event.put("seq", OWNER_CREATED_SEQUENCE.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifier(owner));
@@ -601,13 +618,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the unified member id assigned to a newly created owner, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the region derived from the owner's
-     * postcode (falling back to the city when the postcode resolves to no known region), the same
-     * derivation that yields the owner's locality; {@code FY} is the two-digit fiscal year of the owner's
-     * (business-day-adjusted) {@code registrationDate}; {@code HASH8} is the first 8 upper-cased hex
+     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the version-2 region code (see
+     * {@link #regionCodeV2(Owner)}): the plain region derived from the owner's postcode (falling back to the
+     * city when the postcode resolves to no known region) with the fixed {@code 'V2'} version tag mixed in,
+     * so the id is disjoint from every version-1 member id; {@code FY} is the two-digit fiscal year of the
+     * owner's (business-day-adjusted) {@code registrationDate}; {@code HASH8} is the first 8 upper-cased hex
      * characters of the SHA-256 digest of the owner's normalized telephone concatenated with the owner's
      * last name; and {@code CHK} is a single Luhn check digit computed over the digits of
-     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSW261A2B3C4D7'}).
+     * {@code '<REGION><FY><HASH8>'} (e.g. {@code 'NSWV2261A2B3C4D7'}).
      * <p>
      * Should the computed id collide with an existing owner's {@code memberId}, it is de-duplicated by
      * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that yields a value not already
@@ -617,7 +635,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the assigned, collision-free member id
      */
     private String generateMemberId(Owner owner) {
-        String region = OwnerLocality.of(owner.getCity(), owner.getPostcode());
+        String region = regionCodeV2(owner);
         String fiscalYear = fiscalYearSuffix(owner.getRegistrationDate());
         String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
             .substring(0, 8).toUpperCase(Locale.ROOT);
@@ -635,6 +653,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             n++;
         }
         return base + "-" + n;
+    }
+
+    /**
+     * Derives the version-2 region code embedded inside the member id: the plain region derived from the
+     * owner's postcode (falling back to the city) via {@link OwnerLocality}, with the fixed
+     * {@link #IDENTITY_VERSION_TAG version tag} appended. The version tag is embedded only here, inside the
+     * identifier; the user-facing {@code locality} and {@code timezone} and the owner segment's derived
+     * region continue to use the plain region.
+     *
+     * @param owner the owner whose version-2 region code is being derived
+     * @return the plain region with the {@code 'V2'} version tag appended (e.g. {@code 'NSWV2'})
+     */
+    private String regionCodeV2(Owner owner) {
+        return OwnerLocality.of(owner.getCity(), owner.getPostcode()) + IDENTITY_VERSION_TAG;
     }
 
     /**
@@ -977,11 +1009,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives an owner's {@code identityKey}: the lower-case hex SHA-256 digest of the normalized
-     * telephone, the lower-cased email (or an empty string when absent) and the {@link #soundex(String)
-     * soundex} of the last name, joined by {@code '|'} in that order before hashing (e.g. the digest of
-     * {@code '+61412345678||F650'}). Telephone and email are stored already normalized, so the stored
-     * values are used directly. This single 64-hex key is what duplicate detection compares.
+     * Derives an owner's version-2 {@code identityKey}: the lower-case hex SHA-256 digest of the fixed
+     * {@link #IDENTITY_VERSION_TAG version tag}, the normalized telephone, the lower-cased email (or an empty
+     * string when absent) and the {@link #soundex(String) soundex} of the last name, joined by {@code '|'} in
+     * that order before hashing (e.g. the digest of {@code 'V2|+61412345678||F650'}). Mixing in the
+     * {@code 'V2'} tag makes the key disjoint from every version-1 key. Telephone and email are stored
+     * already normalized, so the stored values are used directly. This single 64-hex key is what duplicate
+     * detection compares, and it matches the value the read mapper returns.
      *
      * @param owner the owner whose identity key is being derived
      * @return the owner's identity key, a 64-character lower-case hex SHA-256 digest
@@ -990,7 +1024,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
         String soundex = soundex(owner.getLastName());
-        return sha256Hex(telephone + "|" + email + "|" + soundex);
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + telephone + "|" + email + "|" + soundex);
     }
 
     /**
@@ -1050,11 +1084,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Computes the owner's deterministic {@code householdId}: the first 12 hex characters of the SHA-256
-     * digest of {@code '<normalizedLastName>|<postcode>'}, where the last name is normalized with
-     * {@link #normalizeForComparison} and an absent postcode contributes an empty string. Because the
-     * identifier is a pure function of last name and postcode, any two owners sharing those values share
-     * the household automatically, with no cross-owner mutation. The value is assigned to every owner,
+     * Computes the owner's deterministic version-2 {@code householdId}: the first 12 hex characters of the
+     * SHA-256 digest of {@code '<versionTag>|<normalizedLastName>|<postcode>'}, where the version tag is the
+     * fixed {@link #IDENTITY_VERSION_TAG 'V2'} tag, the last name is normalized with
+     * {@link #normalizeForComparison} and an absent postcode contributes an empty string. Mixing in the
+     * {@code 'V2'} tag makes the identifier disjoint from every version-1 household id. Because the
+     * identifier is still a pure function of last name and postcode, any two owners sharing those values
+     * share the household automatically, with no cross-owner mutation. The value is assigned to every owner,
      * whether or not {@code sharesHousehold} was requested.
      *
      * @param owner the owner being created, with its validated postcode already set
@@ -1063,7 +1099,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private String computeHouseholdId(Owner owner) {
         String normalizedLastName = normalizeForComparison(owner.getLastName());
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        return sha256Hex(normalizedLastName + "|" + postcode).substring(0, 12);
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + normalizedLastName + "|" + postcode).substring(0, 12);
     }
 
     /**

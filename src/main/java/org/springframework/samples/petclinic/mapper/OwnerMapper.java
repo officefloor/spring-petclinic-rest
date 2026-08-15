@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.nio.charset.StandardCharsets;
@@ -59,6 +60,20 @@ public abstract class OwnerMapper {
      */
     private static final int FISCAL_YEAR_START_MONTH = 7;
 
+    /**
+     * The API version of the owner identity contract this mapper produces. Version 2 groups the derived
+     * identifiers under the nested {@code identity} object.
+     */
+    static final int API_VERSION = 2;
+
+    /**
+     * The fixed version tag mixed into every version-2 identifier ({@code memberId}, {@code identityKey},
+     * {@code householdId}). It is combined into each identifier's derivation so no value produced under
+     * version 1 is produced again; it never appears in the user-facing {@code locality} or {@code timezone},
+     * nor in the owner segment's derived region.
+     */
+    static final String IDENTITY_VERSION_TAG = "V2";
+
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
@@ -69,7 +84,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.timezoneOf(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(API_VERSION)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
@@ -265,10 +281,29 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Derives an owner's {@code identityKey}: the lower-case hex SHA-256 digest of the normalized telephone,
-     * the lower-cased email (or an empty string when absent) and the {@link #soundex(String) soundex} of the
-     * last name, joined by {@code '|'} in that order before hashing. This is the single 64-hex key used for
-     * duplicate detection, so the value returned here matches the one the create endpoint compares.
+     * Assembles an owner's version-2 {@code identity}: the group of derived identifiers — the stored
+     * {@code memberId} and {@code householdId} (both computed with the version-2 algorithm at creation) and
+     * the {@link #identityKey(Owner) identityKey} rederived here — grouped under the response's nested
+     * {@code identity} object. These three are no longer exposed at the top level of the owner response.
+     *
+     * @param owner the owner whose identity group is being assembled
+     * @return the owner's version-2 identity group
+     */
+    protected OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
+
+    /**
+     * Derives an owner's version-2 {@code identityKey}: the lower-case hex SHA-256 digest of the fixed
+     * {@link #IDENTITY_VERSION_TAG version tag}, the normalized telephone, the lower-cased email (or an empty
+     * string when absent) and the {@link #soundex(String) soundex} of the last name, joined by {@code '|'} in
+     * that order before hashing. Mixing in the {@code 'V2'} tag makes the key disjoint from every version-1
+     * key. This is the single 64-hex key used for duplicate detection, so the value returned here matches the
+     * one the create endpoint compares.
      *
      * @param owner the owner whose identity key is being derived
      * @return the owner's identity key, a 64-character lower-case hex SHA-256 digest
@@ -277,7 +312,7 @@ public abstract class OwnerMapper {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
         String soundex = soundex(owner.getLastName());
-        return sha256Hex(telephone + "|" + email + "|" + soundex);
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + telephone + "|" + email + "|" + soundex);
     }
 
     /**
