@@ -132,7 +132,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(email);
         owner.setPostcode(validatePostcode(owner.getCity(), ownerFieldsDto.getPostcode()));
         rejectDuplicateIdentity(owner);
-        owner.setCustomerCode(assignCustomerCode(owner.getCity(), owner.getLastName()));
+        String region = Localities.region(owner.getPostcode(), owner.getCity());
+        owner.setCustomerCode(assignCustomerCode(region, owner.getTelephone(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
@@ -221,7 +222,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects creating an owner whose city already contains {@value #CITY_CAPACITY} or more owners.
      * Owners are counted per city comparing the city name case-insensitively (a {@code null} city is
-     * treated as empty), the same way {@link #assignCustomerCode} counts a city's owners.
+     * treated as empty).
      *
      * @param city the city of the owner being created
      * @throws CityAtCapacityException (409 Conflict) if the city is already at capacity
@@ -238,34 +239,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns an owner's {@code customerCode} on create, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
-     * where CITY3 is the upper-cased first three letters of the city, LAST3 the upper-cased first
-     * three letters of the last name and NNNN a per-city 4-digit zero-padded sequence equal to one
-     * more than the number of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+     * Assigns an owner's {@code customerCode} on create, formatted {@code '<REGION>-<HASH8>'} where
+     * REGION is the owner's canonical region (derived by preferring the postcode, see
+     * {@link Localities#region(String, String)} — the same region derivation shared with the
+     * {@code locality}) and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest of
+     * the normalized (E.164) telephone concatenated with the last name (e.g. {@code 'NSW-3A7F9C2E'}).
+     * There are no sequence numbers: the code is fully derived from the owner's own identity fields.
      *
-     * @param city the owner's city
+     * @param region the owner's canonical region (the identity's REGION, shared with the locality)
+     * @param telephone the owner's normalized (E.164) telephone
      * @param lastName the owner's last name
      * @return the assigned customer code
      */
-    private String assignCustomerCode(String city, String lastName) {
-        String city3 = prefix3(city);
-        String last3 = prefix3(lastName);
-        String cityValue = city == null ? "" : city;
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> cityValue.equalsIgnoreCase(
-                existing.getCity() == null ? "" : existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String assignCustomerCode(String region, String telephone, String lastName) {
+        String basis = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
+        String hash8 = sha256UpperHex(basis).substring(0, 8);
+        return region + "-" + hash8;
     }
 
     /**
-     * Returns the upper-cased first three letters of the given value, or fewer if the value is
-     * shorter, treating {@code null} as empty.
+     * Returns the full upper-case hex SHA-256 digest of the UTF-8 bytes of {@code value}.
      */
-    private String prefix3(String value) {
-        String name = value == null ? "" : value;
-        return name.substring(0, Math.min(3, name.length()))
-            .toUpperCase(java.util.Locale.ROOT);
+    private static String sha256UpperHex(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.toString();
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
