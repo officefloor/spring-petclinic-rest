@@ -149,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -480,6 +481,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return date.plusDays(1);
         }
         return date;
+    }
+
+    /**
+     * The number of owners that must already exist for a given day before a further create is flagged as a
+     * bulk sign-up surge. When more than this many owners already share the new owner's registration date,
+     * the created owner carries {@code bulkSignupWarning = true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Determines whether the owner being created lands on a day that already holds a bulk sign-up surge,
+     * i.e. more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already share its {@code registrationDate}.
+     * The count is taken before the new owner is persisted, so it excludes the owner being created, mirroring
+     * the daily create-limit rule's accumulation path.
+     *
+     * @param registrationDate the registration date of the owner being created
+     * @return {@code true} when more than 80 owners were already created on that day, otherwise {@code false}
+     */
+    private boolean isBulkSignupDay(LocalDate registrationDate) {
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(owner -> registrationDate.equals(owner.getRegistrationDate()))
+            .count();
+        return existing > BULK_SIGNUP_WARNING_THRESHOLD;
     }
 
     private void rejectDailyLimitReached(LocalDate registrationDate) {
