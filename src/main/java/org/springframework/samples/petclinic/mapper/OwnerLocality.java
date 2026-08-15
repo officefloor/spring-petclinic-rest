@@ -51,6 +51,38 @@ public final class OwnerLocality {
     }
 
     /**
+     * Derives an owner's IANA timezone from its locality (region), preferring the postcode over the
+     * city, via the fixed region-to-timezone table: NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane. The region is resolved with {@link #of(String, String)}.
+     *
+     * @param city the owner's city (may be {@code null})
+     * @param postcode the owner's postcode (may be {@code null})
+     * @return the IANA timezone name, or {@code null} when the region is not in the table
+     */
+    public static String timezoneOf(String city, String postcode) {
+        return timezoneOfRegion(of(city, postcode));
+    }
+
+    /**
+     * Maps a canonical region to its IANA timezone: NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
+     * QLD-&gt;Australia/Brisbane.
+     *
+     * @param region the canonical region string (may be {@code null})
+     * @return the IANA timezone name, or {@code null} when the region is not in the table
+     */
+    public static String timezoneOfRegion(String region) {
+        if (region == null) {
+            return null;
+        }
+        return switch (region) {
+            case "NSW" -> "Australia/Sydney";
+            case "VIC" -> "Australia/Melbourne";
+            case "QLD" -> "Australia/Brisbane";
+            default -> null;
+        };
+    }
+
+    /**
      * Resolves a region from a postcode range: NSW 2000-2099, VIC 3000-3099, QLD 4000-4099.
      *
      * @param postcode the owner's postcode (may be {@code null})
