@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -28,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(OwnerMapper.membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
@@ -97,6 +99,22 @@ public interface OwnerMapper {
             grouped.append(national.charAt(i));
         }
         return "+" + countryCode + " " + grouped;
+    }
+
+    /**
+     * Fixed region-to-timezone table mapping each locality (region) to its IANA timezone name.
+     */
+    Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * Derives the owner's {@code timezone}: the IANA timezone name for the owner's {@link #locality(Owner)}
+     * (region) from the fixed region-to-timezone table (NSW→Australia/Sydney, VIC→Australia/Melbourne,
+     * QLD→Australia/Brisbane). Returns {@code null} when the locality is not in the table (e.g. 'UNKNOWN'),
+     * so owners outside the known regions map cleanly.
+     */
+    default String timezone(Owner owner) {
+        return REGION_TIMEZONE.get(locality(owner));
     }
 
     /**
