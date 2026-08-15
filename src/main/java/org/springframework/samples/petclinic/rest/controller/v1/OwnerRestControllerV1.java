@@ -310,7 +310,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!postcode.matches("\\d{4}")) {
             return false;
         }
-        int[] range = REGION_POSTCODE_RANGES.get(ownerMapper.locality(owner));
+        int[] range = REGION_POSTCODE_RANGES.get(ownerMapper.cityRegion(owner));
         if (range == null) {
             return true;
         }

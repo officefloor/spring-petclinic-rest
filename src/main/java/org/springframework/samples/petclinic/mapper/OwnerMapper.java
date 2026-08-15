@@ -39,11 +39,26 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from its city using a fixed
-     * city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD).
-     * Returns {@code UNKNOWN} when the city is absent or not in the table.
+     * Derives the owner's locality (region), preferring the postcode: a postcode
+     * falling in a known 4-digit range wins (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099). When the postcode is absent or in no known range, it falls
+     * back to a fixed city-to-region table (Sydney-&gt;NSW, Melbourne-&gt;VIC,
+     * Brisbane-&gt;QLD). Returns {@code UNKNOWN} when neither source resolves.
      */
     default String locality(Owner owner) {
+        String region = regionFromPostcode(owner);
+        if (region != null) {
+            return region;
+        }
+        return cityRegion(owner);
+    }
+
+    /**
+     * Maps the owner's city to its region via the fixed city-to-region table
+     * (Sydney-&gt;NSW, Melbourne-&gt;VIC, Brisbane-&gt;QLD). Returns {@code UNKNOWN}
+     * when the city is absent or not in the table.
+     */
+    default String cityRegion(Owner owner) {
         String city = owner.getCity();
         if (city == null) {
             return "UNKNOWN";
@@ -58,6 +73,34 @@ public interface OwnerMapper {
             default:
                 return "UNKNOWN";
         }
+    }
+
+    /**
+     * Resolves the region from the owner's 4-digit postcode range, or {@code null}
+     * when the postcode is absent, malformed, or in no known range.
+     */
+    default String regionFromPostcode(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        int code;
+        try {
+            code = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        if (code >= 2000 && code <= 2099) {
+            return "NSW";
+        }
+        if (code >= 3000 && code <= 3099) {
+            return "VIC";
+        }
+        if (code >= 4000 && code <= 4099) {
+            return "QLD";
+        }
+        return null;
     }
 
     /**
