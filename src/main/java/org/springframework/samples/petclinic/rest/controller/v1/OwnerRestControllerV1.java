@@ -146,7 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectMissingOrBlankFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setAddress(normalizeAddress(owner.getAddress()));
+        applyAddress(owner);
         owner.setTelephone(normalizeTelephone(owner.getTelephone()));
         owner.setEmail(normalizeEmail(owner.getEmail()));
         validatePostcode(owner.getPostcode(), owner.getCity());
@@ -278,8 +278,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *
      * @param fields the submitted owner fields
      * @throws RequiredFieldsMissingException if any of firstName, lastName, city or telephone is
-     *                                        {@code null} or blank, or if address is blank after
-     *                                        normalization
+     *                                        {@code null} or blank, or if the owner supplies no address
+     *                                        in either form (a blank structured {@code addressLine1} and a
+     *                                        blank flat {@code address}, each measured after normalization)
      */
     private void rejectMissingOrBlankFields(OwnerFieldsDto fields) {
         List<String> missing = new ArrayList<>();
@@ -289,7 +290,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(fields.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(normalizeAddress(fields.getAddress()))) {
+        boolean hasStructuredAddress = !isBlank(normalizeAddress(fields.getAddressLine1()));
+        boolean hasFlatAddress = !isBlank(normalizeAddress(fields.getAddress()));
+        if (!hasStructuredAddress && !hasFlatAddress) {
             missing.add("address");
         }
         if (isBlank(fields.getCity())) {
@@ -405,6 +408,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DisposableEmailDomainException(domain);
         }
         return normalized;
+    }
+
+    /**
+     * Applies the owner's address in whichever form the request supplied, preferring the structured
+     * fields. When a non-blank {@code addressLine1} is present, {@code addressLine1} and (when present)
+     * {@code addressLine2} are normalized in place and the flat {@code address} is set to the composed
+     * value: the normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when an {@code addressLine2} is present. Otherwise the structured
+     * lines are cleared and the flat {@code address} is normalized on its own, keeping the earlier
+     * flat-address contract backward-compatible.
+     *
+     * @param owner the owner being created, mapped straight from the request
+     */
+    private void applyAddress(Owner owner) {
+        if (!isBlank(owner.getAddressLine1())) {
+            String line1 = normalizeAddress(owner.getAddressLine1());
+            owner.setAddressLine1(line1);
+            String composed = line1;
+            if (!isBlank(owner.getAddressLine2())) {
+                String line2 = normalizeAddress(owner.getAddressLine2());
+                owner.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            } else {
+                owner.setAddressLine2(null);
+            }
+            owner.setAddress(composed);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(owner.getAddress()));
+        }
     }
 
     /**
