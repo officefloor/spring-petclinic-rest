@@ -274,8 +274,9 @@ public class Owner extends Person {
 
     /**
      * The owner's membership points. Start at 0, add 2 when an email is present, add 1 when
-     * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3 when tenure
-     * exceeds 365 days, measured from {@code registrationDate} to the current date. Not persisted.
+     * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3 when at least
+     * one whole fiscal year (starting 1 July) has elapsed from {@code registrationDate} to the current
+     * date. Not persisted.
      */
     @Transient
     public Integer getMembershipPoints() {
@@ -290,10 +291,23 @@ public class Owner extends Person {
             points += 2;
         }
         if (this.registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+                && elapsedFiscalYears(this.registrationDate, LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;
+    }
+
+    /**
+     * Whole fiscal years elapsed between two dates. The fiscal year starts on 1 July and is named by
+     * the calendar year in which it ends, so a date in July to December belongs to the next calendar
+     * year's fiscal year; the count is the difference of those ending years (0 within one fiscal year).
+     */
+    private static int elapsedFiscalYears(LocalDate from, LocalDate to) {
+        return fiscalEndingYear(to) - fiscalEndingYear(from);
+    }
+
+    private static int fiscalEndingYear(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**

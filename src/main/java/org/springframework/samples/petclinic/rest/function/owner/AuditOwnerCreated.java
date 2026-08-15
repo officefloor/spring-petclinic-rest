@@ -18,7 +18,7 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner) {
         String membershipNumber = owner.getCustomerCode() + "-M"
-                + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                + FiscalYear.twoDigit(owner.getRegistrationDate());
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} "
                         + "membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
