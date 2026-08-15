@@ -56,6 +56,8 @@ public interface OwnerMapper {
         expression = "java(OwnerIdentityKey.forOwner(owner))")
     @Mapping(target = "checkDigit",
         expression = "java(CheckDigit.luhnOf(owner.getCustomerCode()))")
+    @Mapping(target = "selfLink",
+        expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
