@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -124,7 +127,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         rejectDuplicateTelephone(owner.getTelephone());
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            assignHousehold(owner);
+        } else {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
         }
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
@@ -357,6 +362,64 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && normalizedAddress.equals(normalizeForComparison(existing.getAddress())));
         if (taken) {
             throw new DuplicateHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Assigns the owner being created into a shared household. When at least one existing owner has the
+     * same last name and address (compared with {@link #normalizeForComparison}), the joining owner and
+     * those existing owners are all given the same stable {@code householdId}. An existing member's id is
+     * reused when present; otherwise a deterministic id derived from the household's last name and address
+     * is minted, so independently created members of the same household converge on one value. When no
+     * existing owner shares the household, no id is assigned (the owner simply founds a new address).
+     *
+     * @param owner the owner being created, already opted in via {@code sharesHousehold}
+     */
+    private void assignHousehold(Owner owner) {
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String normalizedAddress = normalizeForComparison(owner.getAddress());
+        List<Owner> housemates = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizedLastName.equals(normalizeForComparison(existing.getLastName()))
+                && normalizedAddress.equals(normalizeForComparison(existing.getAddress())))
+            .toList();
+        if (housemates.isEmpty()) {
+            return;
+        }
+        String householdId = housemates.stream()
+            .map(Owner::getHouseholdId)
+            .filter(id -> id != null && !id.isBlank())
+            .findFirst()
+            .orElseGet(() -> householdIdFor(normalizedLastName, normalizedAddress));
+        owner.setHouseholdId(householdId);
+        for (Owner housemate : housemates) {
+            if (!householdId.equals(housemate.getHouseholdId())) {
+                housemate.setHouseholdId(householdId);
+                this.clinicService.saveOwner(housemate);
+            }
+        }
+    }
+
+    /**
+     * Derives a stable household identifier from the normalized last name and address of a household, as
+     * the first 16 hex characters of the SHA-256 digest of {@code '<lastName>|<address>'}. The value is
+     * deterministic, so any owner independently joining the same household computes the same identifier.
+     *
+     * @param normalizedLastName the household's last name, already normalized for comparison
+     * @param normalizedAddress the household's address, already normalized for comparison
+     * @return a stable, shareable household identifier
+     */
+    private String householdIdFor(String normalizedLastName, String normalizedAddress) {
+        String key = normalizedLastName + "|" + normalizedAddress;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 16);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required but unavailable", e);
         }
     }
 
