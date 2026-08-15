@@ -9,11 +9,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.common.AgeBands;
-import org.springframework.samples.petclinic.rest.function.common.CheckDigits;
 import org.springframework.samples.petclinic.rest.function.common.ContactPreferences;
-import org.springframework.samples.petclinic.rest.function.common.CustomerCodes;
 import org.springframework.samples.petclinic.rest.function.common.FiscalYears;
 import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
+import org.springframework.samples.petclinic.rest.function.common.MemberIds;
 import org.springframework.samples.petclinic.rest.function.common.Membership;
 import org.springframework.samples.petclinic.rest.function.common.OwnerSegments;
 import org.springframework.samples.petclinic.rest.function.common.Telephones;
@@ -26,9 +25,9 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class,
-        imports = { AgeBands.class, CheckDigits.class, ContactPreferences.class, CustomerCodes.class,
-                FiscalYears.class, IdentityKeys.class, Membership.class, OwnerSegments.class,
-                Telephones.class, Timezones.class })
+        imports = { AgeBands.class, ContactPreferences.class, FiscalYears.class, IdentityKeys.class,
+                MemberIds.class, Membership.class, OwnerSegments.class, Telephones.class,
+                Timezones.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -39,8 +38,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "checkDigit",
-            expression = "java(CheckDigits.luhnOf(owner.getCustomerCode()))")
     @Mapping(target = "membershipPoints",
             expression = "java(Membership.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
@@ -49,7 +46,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear",
             expression = "java(FiscalYears.labelOf(owner))")
     @Mapping(target = "locality",
-            expression = "java(CustomerCodes.localityOf(owner))")
+            expression = "java(MemberIds.localityOf(owner))")
     @Mapping(target = "ownerSegment",
             expression = "java(OwnerSegments.of(owner))")
     @Mapping(target = "timezone",

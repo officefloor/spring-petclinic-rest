@@ -28,10 +28,10 @@ public final class Timezones {
 
     /**
      * The owner's IANA timezone, derived from its locality/region (which prefers the postcode,
-     * falling back to the city, see {@link CustomerCodes#localityOf(Owner)}). {@code null} when the
+     * falling back to the city, see {@link MemberIds#localityOf(Owner)}). {@code null} when the
      * region is "UNKNOWN".
      */
     public static String ofOwner(Owner owner) {
-        return of(CustomerCodes.localityOf(owner));
+        return of(MemberIds.localityOf(owner));
     }
 }
