@@ -33,8 +33,20 @@ public final class OwnerLocality {
     private OwnerLocality() {
     }
 
-    /** The locality of an already-stored owner. */
+    /**
+     * The locality of an already-stored owner: the REGION segment of its {@code customerCode}
+     * identity ({@code <REGION>-<HASH8>}, see {@link AssignCustomerCode}). Falls back to deriving
+     * the region straight from the postcode/city for an owner whose {@code customerCode} has not
+     * been assigned or is not in the region-and-hash form.
+     */
     public static String forOwner(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
+        }
         return of(owner.getCity(), owner.getPostcode());
     }
 
