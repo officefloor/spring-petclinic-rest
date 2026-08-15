@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -66,6 +67,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -97,6 +99,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /**
+     * The request header carrying a client-supplied idempotency key for the create endpoint. When a create
+     * repeats with a key already seen, the originally created owner is returned instead of a duplicate.
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers the id of the owner originally created for each seen {@code Idempotency-Key}. A repeated
+     * create carrying an already-seen key is answered from this map with the original owner rather than
+     * creating a duplicate.
+     */
+    private static final Map<String, Integer> IDEMPOTENT_CREATES = new ConcurrentHashMap<>();
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -105,14 +120,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final HttpServletRequest request;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -143,6 +162,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = idempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = IDEMPOTENT_CREATES.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         rejectMissingOrBlankFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -169,6 +198,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            IDEMPOTENT_CREATES.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(),
@@ -283,6 +315,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *                                        in either form (a blank structured {@code addressLine1} and a
      *                                        blank flat {@code address}, each measured after normalization)
      */
+    /**
+     * Reads the client-supplied {@code Idempotency-Key} header for the current create request, if any.
+     *
+     * @return the trimmed idempotency key, or {@code null} when the header is absent or blank
+     */
+    private String idempotencyKey() {
+        String key = this.request.getHeader(IDEMPOTENCY_KEY_HEADER);
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return key.strip();
+    }
+
     private void rejectMissingOrBlankFields(OwnerFieldsDto fields) {
         List<String> missing = new ArrayList<>();
         if (isBlank(fields.getFirstName())) {
