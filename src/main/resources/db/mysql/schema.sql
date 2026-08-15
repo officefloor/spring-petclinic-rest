@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS owners (
   title VARCHAR(10),
   deleted BIT DEFAULT 0,
   membership_level_cap INTEGER,
+  capacity_warning BIT,
   INDEX(last_name)
 ) engine=InnoDB;
 
