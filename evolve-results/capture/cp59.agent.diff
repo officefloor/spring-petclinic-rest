@@ -1,0 +1,185 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a9c36eea..95373cae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -26,6 +26,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+@@ -72,6 +73,31 @@ public class ExceptionControllerAdvice {
+         return problemDetail;
+     }
+ 
++    /**
++     * Handles {@link RestApiRejectionException}, the uniform signal controllers raise to reject a
++     * request (400, 409, 429). Renders an RFC7807 {@code application/problem+json} body carrying the
++     * {@code type}, {@code title}, {@code status} and {@code detail} members with the status unchanged.
++     *
++     * @param e The {@link RestApiRejectionException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the RFC7807 problem detail and the requested status
++     */
++    @ExceptionHandler(RestApiRejectionException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRestApiRejectionException(RestApiRejectionException e, HttpServletRequest request) {
++        HttpStatus status = e.getStatus();
++        logger.warn("Request rejected at {} {}: {} {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            status.value(),
++            e.getMessage());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        detail.setTitle(status.getReasonPhrase());
++        return ResponseEntity.status(status)
++            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
++            .body(detail);
++    }
++
+     /**
+      * Re-throws {@link AccessDeniedException} so Spring Security's {@code ExceptionTranslationFilter}
+      * translates it as it normally would - 403 for an authenticated user lacking the required role,
+@@ -163,9 +189,13 @@ public class ExceptionControllerAdvice {
+                 request.getRequestURI(),
+                 bindingResult.getFieldErrors());
+             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+-            return ResponseEntity.status(status).body(detail);
++            return ResponseEntity.status(status)
++                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
++                .body(detail);
+         }
+-        return ResponseEntity.status(status).body(detail);
++        return ResponseEntity.status(status)
++            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
++            .body(detail);
+     }
+ 
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiRejectionException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiRejectionException.java
+new file mode 100644
+index 00000000..54db0435
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/RestApiRejectionException.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.http.HttpStatus;
++
++/**
++ * Signals that a REST request was rejected with a client-facing status (e.g. 400, 409, 429).
++ * Thrown by controllers instead of returning a bare status so that {@link ExceptionControllerAdvice}
++ * renders a uniform RFC7807 {@code application/problem+json} body.
++ */
++public class RestApiRejectionException extends RuntimeException {
++
++    private final HttpStatus status;
++
++    public RestApiRejectionException(HttpStatus status, String detail) {
++        super(detail);
++        this.status = status;
++    }
++
++    public HttpStatus getStatus() {
++        return this.status;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d1132e82..96ea1683 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.RestApiRejectionException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -605,34 +606,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         if (!isPostcodeValid(owner)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The postcode is invalid for the owner's city");
+         }
+         String telephone = toE164(owner.getTelephone());
+         if (telephone == null || !hasValidNationalLength(telephone)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The telephone number is missing or not a valid number");
+         }
+         if (!normalizeEmail(owner)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The email address is not valid");
+         }
+         String address = composeAddress(owner);
+         if (address == null) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The address is missing or incomplete");
+         }
+         owner.setAddress(address);
+         owner.setTelephone(telephone);
+         if (owner.getRegistrationDate() != null
+             && owner.getRegistrationDate().isAfter(java.time.LocalDate.now())) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The registration date cannot be in the future");
+         }
+         java.time.LocalDate registrationDate = toBusinessDay(
+             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
+         int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
+         if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new RestApiRejectionException(HttpStatus.TOO_MANY_REQUESTS,
++                "The daily owner creation limit has been reached");
+         }
+         int cityOwnerCount = cityOwnerCount(owner);
+         if (cityOwnerCount >= CITY_CAPACITY) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new RestApiRejectionException(HttpStatus.CONFLICT,
++                "The owner's city has reached its capacity");
+         }
+         // The householdId is deterministic (SHA-256 over normalized lastName + '|' + postcode), so
+         // owners with the same last name and postcode automatically share it. The link is no longer
+@@ -653,7 +661,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 continue;
+             }
+             if (identityKey.equals(existing.getIdentityKey())) {
+-                return new ResponseEntity<>(HttpStatus.CONFLICT);
++                throw new RestApiRejectionException(HttpStatus.CONFLICT,
++                    "An owner with the same identity already exists");
+             }
+         }
+         // Household member: another owner already shares this (last name, postcode) household. This
+@@ -723,7 +732,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+         currentOwner.setEmail(ownerFieldsDto.getEmail());
+         if (!normalizeEmail(currentOwner)) {
+-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
++                "The email address is not valid");
+         }
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
