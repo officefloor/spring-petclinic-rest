@@ -138,6 +138,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setTelephone(telephone);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
