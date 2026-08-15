@@ -9,10 +9,16 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 /**
- * Emits an audit trail line to the dedicated {@code AUDIT} logger once a new owner has been
- * persisted. Runs after {@link SaveOwner} so the generated id is available, and carries the
- * owner id, the assigned {@code customerCode}, the {@code registrationDate}, the derived
- * {@code membershipLevel} and the assigned {@code membershipNumber}.
+ * Emits the audit side-effects to the dedicated {@code AUDIT} logger once a new owner has been
+ * persisted. Runs after {@link SaveOwner} so the generated id is available, and emits two events:
+ *
+ * <ul>
+ * <li>a human-readable audit line carrying the owner id, the assigned {@code customerCode}, the
+ * {@code registrationDate}, the derived {@code membershipLevel} and the assigned
+ * {@code membershipNumber}; and
+ * <li>an immutable, structured {@link OwnerCreatedEvent} as JSON, keyed by a monotonically
+ * increasing sequence number and carrying the owner's current primary identifier.
+ * </ul>
  */
 public class AuditOwnerCreated {
 
@@ -24,5 +30,6 @@ public class AuditOwnerCreated {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
                 level, owner.getMembershipNumber());
+        AUDIT.info("{}", OwnerCreatedEvent.of(owner, level).toJson());
     }
 }
