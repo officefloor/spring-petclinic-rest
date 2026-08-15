@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.rest.function.common.ContactPrefere
 import org.springframework.samples.petclinic.rest.function.common.CustomerCodes;
 import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
 import org.springframework.samples.petclinic.rest.function.common.Membership;
+import org.springframework.samples.petclinic.rest.function.common.Telephones;
 
 import java.util.Collection;
 import java.util.List;
@@ -23,7 +24,7 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
         imports = { AgeBands.class, CheckDigits.class, ContactPreferences.class, CustomerCodes.class,
-                IdentityKeys.class, Membership.class })
+                IdentityKeys.class, Membership.class, Telephones.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -43,6 +44,8 @@ public interface OwnerMapper {
             expression = "java(IdentityKeys.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBands.of(owner))")
+    @Mapping(target = "telephoneDisplay",
+            expression = "java(Telephones.displayOf(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
