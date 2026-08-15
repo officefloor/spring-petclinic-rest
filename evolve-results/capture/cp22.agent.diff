@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f43bab23..74cd1eea 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -64,6 +64,9 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "bulk_signup_warning")
++    private Boolean bulkSignupWarning;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -131,6 +134,14 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getBulkSignupWarning() {
++        return this.bulkSignupWarning;
++    }
++
++    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
++        this.bulkSignupWarning = bulkSignupWarning;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 761eb1a3..ac547f02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -276,6 +276,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners that may be created (by registrationDate) on a single day. */
+     private static final int DAILY_CREATE_LIMIT = 100;
+ 
++    /** Number of owners already created on a day beyond which a bulk-signup warning is flagged. */
++    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
++
+     /**
+      * Count the existing owners whose city matches this owner's city, compared case-insensitively.
+      * Used to enforce the per-city capacity on create (before this owner is saved).
+@@ -341,7 +344,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setAddress(address);
+         java.time.LocalDate registrationDate = toBusinessDay(
+             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
+-        if (ownersRegisteredOn(registrationDate) >= DAILY_CREATE_LIMIT) {
++        int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
++        if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
+@@ -373,6 +377,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+         }
+         owner.setNamesakeCount(namesakeCount(owner));
++        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+         owner.setTelephone(telephone);
+         owner.setRegistrationDate(registrationDate);
+         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..2fe92913 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..6b29bf04 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -46,7 +46,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6e..b4e12af5 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INT,
++  bulk_signup_warning BIT(1),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 6d493cfc..63ac7bfd 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+-                                      namesake_count INT
++                                      namesake_count INT,
++                                      bulk_signup_warning BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 07f4cba8..cc025d98 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2145,6 +2145,14 @@ components:
+               type: string
+               readOnly: true
+               example: 'SILVER'
++            bulkSignupWarning:
++              title: Bulk signup warning
++              description: >-
++                True when, at the time this owner was created, more than 80 owners
++                had already been created on the same day; otherwise false.
++              type: boolean
++              readOnly: true
++              example: false
+             locality:
+               title: Locality
+               description: >-
