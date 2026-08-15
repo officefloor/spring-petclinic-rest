@@ -11,9 +11,11 @@ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsE
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
- * First step of {@code POST /api/owners}. Rejects a request that is missing or blank in any
- * required field (firstName, lastName, address, city, telephone) with a 400 whose body lists
- * the offending field names. Then normalizes the telephone to E.164 form (see {@link
+ * First step of {@code POST /api/owners}. Normalizes the address to its canonical form (see
+ * {@link OwnerAddress}) and stores it back on the request, then rejects a request that is missing
+ * or blank in any required field (firstName, lastName, address, city, telephone) — the address
+ * being tested for blankness after normalization — with a 400 whose body lists the offending field
+ * names. Then normalizes the telephone to E.164 form (see {@link
  * TelephoneE164}), storing the E.164 value back on the request so later steps persist and return
  * it; a telephone that cannot form valid E.164 is rejected with a 400. Runs before {@link
  * BuildOwner} maps the body to an {@link org.springframework.samples.petclinic.model.Owner}.
@@ -22,6 +24,7 @@ public class ValidateNewOwner {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+        request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");

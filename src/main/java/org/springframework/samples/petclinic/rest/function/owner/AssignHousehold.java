@@ -14,8 +14,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Assigns a shared {@code householdId} when a create-owner request opts into a shared household
  * with {@code sharesHousehold} true and there is already an owner with the same last name and
- * address (compared case-insensitively with collapsed whitespace). The identifier is stable:
- * derived deterministically from the normalized last name and address, so every owner in the same
+ * address (the last name compared case-insensitively with collapsed whitespace and the address by
+ * its normalized form, see {@link OwnerAddress}). The identifier is stable: derived
+ * deterministically from the normalized last name and address, so every owner in the same
  * household receives the same value. It is also written back onto the existing same-household
  * owners so both sides of the join carry the identifier. Runs after {@link BuildOwner} has produced
  * the {@link Owner} and before {@link SaveOwner} persists it, so the new owner is saved with the id.
@@ -30,12 +31,12 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = OwnerAddress.normalize(request.getAddress());
         List<Owner> household = new ArrayList<>();
         String existingId = null;
         for (Owner other : ownerRepository.findAll()) {
             if (lastName.equals(normalize(other.getLastName()))
-                    && address.equals(normalize(other.getAddress()))) {
+                    && address.equals(OwnerAddress.normalize(other.getAddress()))) {
                 household.add(other);
                 if (other.getHouseholdId() != null && !other.getHouseholdId().isBlank()) {
                     existingId = other.getHouseholdId();
