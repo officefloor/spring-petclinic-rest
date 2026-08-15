@@ -33,11 +33,11 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 household.add(existing);
             }
         }

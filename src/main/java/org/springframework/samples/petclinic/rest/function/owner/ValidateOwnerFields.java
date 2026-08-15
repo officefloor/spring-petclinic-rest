@@ -25,6 +25,7 @@ public class ValidateOwnerFields {
     public void service(@RequestBody OwnerFieldsDto request, Validator validator, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
         List<String> errors = new ArrayList<>();
+        normalizeAddress(request);
         addIfBlank(errors, "firstName", request.getFirstName());
         addIfBlank(errors, "lastName", request.getLastName());
         addIfBlank(errors, "address", request.getAddress());
@@ -53,6 +54,16 @@ public class ValidateOwnerFields {
         if (email != null) {
             request.setEmail(email.toLowerCase(java.util.Locale.ROOT));
         }
+    }
+
+    /**
+     * Canonically normalize the address (trim, collapse whitespace, upper-case, expand common
+     * abbreviations) and write it back onto the request so it is stored and returned in normalized
+     * form. Running before the blank check means an address that is whitespace-only — and so blank
+     * after normalization — is rejected as an {@code address} required-field error (400).
+     */
+    private static void normalizeAddress(OwnerFieldsDto request) {
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
     }
 
     private static void addIfBlank(List<String> errors, String name, String value) {
