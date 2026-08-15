@@ -5,6 +5,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
+
 /**
  * Canonical household logic shared by the create-owner pipeline. A household is keyed on
  * {@code (lastName, postcode)}: every owner with the same last name (compared case-insensitively
@@ -21,12 +23,14 @@ final class Households {
 
     /**
      * The deterministic {@code householdId} for the given last name and postcode: the first 12 hex
-     * characters of {@code SHA-256(normalizedLastName + '|' + postcode)}. It is computed for every
+     * characters of {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}, mixing in the
+     * version-2 tag so no value equals one produced under version 1. It is computed for every
      * owner regardless of {@code sharesHousehold}, so owners with the same last name and postcode
      * share it automatically. Never {@code null}.
      */
     static String householdId(String lastName, String postcode) {
-        String key = normalizeName(lastName) + "|" + normalizePostcode(postcode);
+        String key = IdentityVersion.TAG + "|" + normalizeName(lastName) + "|"
+                + normalizePostcode(postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

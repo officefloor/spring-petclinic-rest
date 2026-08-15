@@ -1,10 +1,14 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
+
 /**
  * Immutable structured audit event emitted on a successful owner create, alongside the human-readable
- * audit line. Serialised to a compact JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} and published to the
- * dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}.
+ * audit line. Serialised to a compact schema-version-2 JSON object
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} and
+ * published to the dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}. The {@code memberId}
+ * carried here is the version-2 identifier and the {@code schemaVersion} is
+ * {@link IdentityVersion#VERSION}.
  *
  * <p>The {@code seq} is a monotonically increasing sequence across creates. The {@code identifier} is
  * the owner's primary identifier, the {@code memberId}, serialised under the {@code memberId} key.
@@ -20,7 +24,8 @@ public record OwnerCreatedEvent(long seq, int ownerId, String identifier, int me
     /** This event as a compact JSON object string. */
     public String toJson() {
         return "{"
-                + "\"seq\":" + this.seq
+                + "\"schemaVersion\":" + IdentityVersion.VERSION
+                + ",\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
                 + ",\"memberId\":" + quote(this.identifier)
                 + ",\"membershipLevel\":" + this.membershipLevel

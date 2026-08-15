@@ -7,11 +7,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.common.AgeBands;
 import org.springframework.samples.petclinic.rest.function.common.ContactPreferences;
 import org.springframework.samples.petclinic.rest.function.common.FiscalYears;
 import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
+import org.springframework.samples.petclinic.rest.function.common.IdentityVersion;
 import org.springframework.samples.petclinic.rest.function.common.MemberIds;
 import org.springframework.samples.petclinic.rest.function.common.Membership;
 import org.springframework.samples.petclinic.rest.function.common.OwnerSegments;
@@ -27,8 +29,8 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
         imports = { AgeBands.class, ContactPreferences.class, FiscalYears.class, IdentityKeys.class,
-                MemberIds.class, Membership.class, OwnerSegments.class, RiskFlags.class,
-                Telephones.class, Timezones.class })
+                IdentityVersion.class, MemberIds.class, Membership.class, OwnerSegments.class,
+                RiskFlags.class, Telephones.class, Timezones.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -54,8 +56,10 @@ public interface OwnerMapper {
             expression = "java(Timezones.ofOwner(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(ContactPreferences.of(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(IdentityKeys.of(owner))")
+    @Mapping(target = "apiVersion",
+            expression = "java(IdentityVersion.VERSION)")
+    @Mapping(target = "identity",
+            expression = "java(toIdentity(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBands.of(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -67,6 +71,19 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * The owner's version-2 identifiers grouped under the response's {@code identity} object: the
+     * stored {@code memberId} and {@code householdId} (both assigned at create time) and the
+     * {@code identityKey} rederived at read time (see {@link IdentityKeys}).
+     */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(IdentityKeys.of(owner));
+        return identity;
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)

@@ -27,10 +27,20 @@ public final class MemberIds {
 
     /** The {@code '<REGION><FY><HASH8><CHK>'} member id for {@code owner}. */
     public static String of(Owner owner) {
-        String base = Localities.of(owner.getPostcode(), owner.getCity())
+        String base = identityRegionOf(owner)
                 + fiscalYearSegment(owner.getRegistrationDate())
                 + hash8(owner.getTelephone(), owner.getLastName());
         return base + CheckDigits.luhnOf(base);
+    }
+
+    /**
+     * The version-2 region code embedded in the {@code memberId}: the plain region (see
+     * {@link #localityOf(Owner)}) with the fixed {@link IdentityVersion#TAG version tag} appended, so
+     * the id can never equal one produced under version 1. This is the region code used <em>inside</em>
+     * the identifier only; the user-facing {@code locality} keeps the plain region.
+     */
+    private static String identityRegionOf(Owner owner) {
+        return Localities.of(owner.getPostcode(), owner.getCity()) + IdentityVersion.TAG;
     }
 
     /**

@@ -32,8 +32,8 @@ public final class IdentityKeys {
 
     /** The identity key for the given components; a {@code null} component contributes an empty part. */
     public static String of(String telephone, String email, String lastName) {
-        String input = safe(telephone) + "|" + safe(email).toLowerCase(Locale.ROOT) + "|"
-                + Soundex.of(lastName);
+        String input = IdentityVersion.TAG + "|" + safe(telephone) + "|"
+                + safe(email).toLowerCase(Locale.ROOT) + "|" + Soundex.of(lastName);
         return sha256hex(input);
     }
 
