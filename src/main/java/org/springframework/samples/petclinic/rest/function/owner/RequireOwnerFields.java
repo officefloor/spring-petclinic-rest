@@ -16,7 +16,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * First step of {@code POST /api/owners}. Rejects a create whose firstName, lastName,
  * address, city or telephone is missing or blank before {@link BuildOwner} maps the body,
- * so an incomplete request is a 400 listing each field rather than a persisted owner.
+ * so an incomplete request is a 400 listing each field rather than a persisted owner. The
+ * address may be supplied in structured form (a non-blank {@code addressLine1}, an optional
+ * {@code addressLine2}) or as the flat {@code address}; the structured form is preferred and the
+ * canonical {@code address} is composed from it (normalized addressLine1, plus a single space and
+ * the normalized addressLine2 when present). An owner is valid when it supplies an address in
+ * either form, plus a city.
  * Also normalizes the telephone to E.164 form (see {@link TelephoneE164}), storing the E.164
  * value on the body and rejecting a number that cannot form a valid E.164 string. An optional
  * email, when present, must be a syntactically valid address and is stored lower-cased.
@@ -36,10 +41,32 @@ public class RequireOwnerFields {
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
             DisposableEmailException {
         List<String> missing = new ArrayList<>();
-        // Normalize the address up-front so the blank check below rejects an address that is
-        // empty only after normalization (e.g. all-whitespace), and so the stored/returned value
-        // and every later address comparison use the one canonical form.
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+        // Normalize whichever address fields are supplied, then settle on ONE canonical address.
+        // The structured form (a non-blank addressLine1) is preferred; the flat 'address' input
+        // remains accepted for backward compatibility. The composed 'address' is the normalized
+        // addressLine1 with the normalized addressLine2 appended after a single space when an
+        // addressLine2 is present. Doing this up-front means the blank check below rejects an
+        // address supplied in neither form, and every later step that reads getAddress() sees the
+        // one canonical value (structured when present, flat otherwise).
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flat = AddressNormalizer.normalize(request.getAddress());
+        if (!line1.isEmpty()) {
+            request.setAddressLine1(line1);
+            if (line2.isEmpty()) {
+                request.setAddressLine2(null);
+                request.setAddress(line1);
+            }
+            else {
+                request.setAddressLine2(line2);
+                request.setAddress(line1 + " " + line2);
+            }
+        }
+        else {
+            request.setAddressLine1(null);
+            request.setAddressLine2(null);
+            request.setAddress(flat);
+        }
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
         }
