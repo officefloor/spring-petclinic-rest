@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -60,6 +61,41 @@ public interface OwnerMapper {
     default String identityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity
                 .identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
+    }
+
+    /**
+     * Derives the owner's {@code telephoneDisplay}: the stored E.164 {@code telephone} formatted for
+     * humans as the country code, a space, then the national digits grouped left-to-right in threes
+     * (e.g. {@code '+61412345678'} becomes {@code '+61 412 345 678'}). The known country codes are
+     * {@code +61} (2 digits, matching the normalization in
+     * {@link org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields}) and
+     * {@code +1} (1 digit); any other leading digit is treated as a two-digit country code. Returns
+     * {@code null} when the telephone is absent or not a {@code +}-prefixed run of digits, so the raw
+     * {@code telephone} is left untouched in E.164 form.
+     */
+    default String telephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return null;
+        }
+        String digits = telephone.substring(1);
+        if (!digits.matches("\\d+")) {
+            return null;
+        }
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        if (digits.length() <= countryCodeLength) {
+            return null;
+        }
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     /**
