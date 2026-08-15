@@ -1,0 +1,199 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e7274530..0919a485 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -54,6 +54,10 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference",
+         expression = "java(owner == null ? null : "
+             + "(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\"))")
++    @Mapping(target = "ageBand",
++        expression = "java(owner == null ? null : "
++            + "org.springframework.samples.petclinic.util.AgeBands.ageBand("
++            + "owner.getBirthDate(), owner.getRegistrationDate()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8505bf46..3a72ae46 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -120,6 +123,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AgeBands.java b/src/main/java/org/springframework/samples/petclinic/util/AgeBands.java
+new file mode 100644
+index 00000000..abb415c5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/AgeBands.java
+@@ -0,0 +1,64 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * Helpers for the age band a pet owner falls into, derived from their birth date relative to their
++ * registration date.
++ */
++public final class AgeBands {
++
++    /**
++     * The age (inclusive) at which an owner is no longer a {@code MINOR}.
++     */
++    public static final int ADULT_AGE = 18;
++
++    /**
++     * The age (inclusive) at which an owner becomes a {@code SENIOR}.
++     */
++    public static final int SENIOR_AGE = 65;
++
++    private AgeBands() {
++    }
++
++    /**
++     * Computes an owner's age band from their birth date relative to their registration date:
++     * {@code 'MINOR'} when under {@value #ADULT_AGE}, {@code 'ADULT'} from {@value #ADULT_AGE} to
++     * {@value #SENIOR_AGE} minus one, {@code 'SENIOR'} at {@value #SENIOR_AGE} or older. Returns
++     * {@code null} when either date is absent (no birth date was supplied).
++     *
++     * @param birthDate        the owner's birth date, or {@code null} when absent
++     * @param registrationDate the owner's registration date the age is measured against
++     * @return the age band, or {@code null} when it cannot be derived
++     */
++    public static String ageBand(LocalDate birthDate, LocalDate registrationDate) {
++        if (birthDate == null || registrationDate == null) {
++            return null;
++        }
++        int age = Period.between(birthDate, registrationDate).getYears();
++        if (age < ADULT_AGE) {
++            return "MINOR";
++        }
++        if (age < SENIOR_AGE) {
++            return "ADULT";
++        }
++        return "SENIOR";
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c8444b6d..47f76ba0 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 1b680660..4105eef3 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 52ef728d..500b429e 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   postcode VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 7cbddf43..e8a0d4ec 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       email      TEXT,
+                                       postcode   TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1559af79..c3e27c87 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2064,6 +2064,15 @@ components:
+           type: string
+           format: date
+           example: '2026-08-16'
++        birthDate:
++          title: Birth date
++          description: >-
++            The pet owner's date of birth, in ISO 'YYYY-MM-DD' format. Optional;
++            when present it is stored and used to derive the owner's ageBand
++            relative to their registrationDate.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: >-
+@@ -2212,6 +2221,16 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: >-
++                The owner's age band, derived from their birthDate relative to
++                their registrationDate: 'MINOR' when under 18, 'ADULT' from 18 to
++                64, 'SENIOR' at 65 or older. Present only when a birthDate was
++                supplied.
++              type: string
++              example: 'ADULT'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
