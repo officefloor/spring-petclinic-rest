@@ -147,14 +147,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code {@code <LAST3>-<NNNN>}: LAST3 is the upper-cased first three letters of
-     * the last name and NNNN is a global 4-digit zero-padded sequence equal to one more than the
-     * current number of owners (e.g. {@code SMI-0007}).
+     * Build the customer code {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three
+     * letters of the city, LAST3 the upper-cased first three letters of the last name and NNNN a
+     * per-city 4-digit zero-padded sequence equal to one more than the owners already in that city
+     * (e.g. {@code SYD-SMI-0007}).
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(java.util.Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = 1;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                sequence++;
+            }
+        }
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /** Common street-type abbreviations expanded during address normalization. */
@@ -307,7 +314,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
