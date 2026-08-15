@@ -1,0 +1,169 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 21b0453f..28b8226c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -73,6 +73,12 @@ public class Owner extends Person {
+     @Column(name = "membership_number")
+     private String membershipNumber;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -164,6 +170,22 @@ public class Owner extends Person {
+         this.membershipNumber = membershipNumber;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+new file mode 100644
+index 00000000..4366aa1d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+@@ -0,0 +1,49 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Assigns the owner's soft-match flags {@code possibleDuplicate} / {@code possibleDuplicateOf}. A
++ * hard duplicate (identical {@link OwnerIdentityKey}) has already been rejected with 409 by {@link
++ * CheckOwnerIdentityUnique}, so every owner reaching this step is being created. This step flags the
++ * weaker overlap: an owner that shares an existing owner's {@code lastName} (compared
++ * case-insensitively) and {@code postcode} but carries a <em>different</em> telephone. When such a
++ * match exists {@code possibleDuplicate} is set true and {@code possibleDuplicateOf} to the matching
++ * owner's id (the lowest id when several match, for determinism); otherwise {@code possibleDuplicate}
++ * is false and {@code possibleDuplicateOf} left absent.
++ *
++ * <p>Runs after {@link BuildOwner} has produced the {@link Owner} and before {@link SaveOwner}
++ * persists it, so {@link OwnerRepository#findAll()} returns only the pre-existing owners and the new
++ * owner never matches itself. Mutates the entity in place so {@link SaveOwner} stores the values and
++ * later reads return them.
++ */
++public class AssignPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String postcode = owner.getPostcode();
++        Integer matchId = null;
++        if (postcode != null && !postcode.isBlank()) {
++            for (Owner other : ownerRepository.findAll()) {
++                if (equalsIgnoreCase(owner.getLastName(), other.getLastName())
++                        && postcode.equals(other.getPostcode())
++                        && !equals(owner.getTelephone(), other.getTelephone())) {
++                    if (matchId == null || (other.getId() != null && other.getId() < matchId)) {
++                        matchId = other.getId();
++                    }
++                }
++            }
++        }
++        owner.setPossibleDuplicate(matchId != null);
++        owner.setPossibleDuplicateOf(matchId);
++    }
++
++    private static boolean equalsIgnoreCase(String a, String b) {
++        return (a == null) ? (b == null) : a.equalsIgnoreCase(b);
++    }
++
++    private static boolean equals(String a, String b) {
++        return (a == null) ? (b == null) : a.equals(b);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index e19fdccb..d2696355 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  membership_number VARCHAR(30)
++  membership_number VARCHAR(30),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 286f7fbd..6f03da0e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,9 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+-  membership_number VARCHAR(30)
++  membership_number VARCHAR(30),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e76ec400..91e7af00 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -44,6 +44,11 @@ assignHousehold:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignNamesakeCount
+   govern: [ transaction ]
++  next: assignPossibleDuplicate
++
++assignPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bf661b13..8897f40b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2199,6 +2199,23 @@ components:
+               type: string
+               example: '+61412345678|george.franklin@example.com|A1B2C3D4E5F60718'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner, though not a hard duplicate, was created sharing an
++                existing owner's lastName and postcode while carrying a different telephone;
++                otherwise false. Computed once at creation, then stored and returned.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: When 'possibleDuplicate' is true, the id of the existing owner whose
++                lastName and postcode this owner shares; absent otherwise.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
