@@ -1,6 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException;
@@ -18,10 +17,6 @@ final class OwnerEmail {
     /** Syntactic address check: non-empty local part, one '@', and a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile(
             "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
-
-    /** Disposable email domains that are never accepted (compared case-insensitively). */
-    private static final Set<String> DISPOSABLE_DOMAINS = Set.of(
-            "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmail() {
     }
@@ -42,7 +37,7 @@ final class OwnerEmail {
         }
         String normalized = trimmed.toLowerCase();
         String domain = normalized.substring(normalized.indexOf('@') + 1);
-        if (DISPOSABLE_DOMAINS.contains(domain)) {
+        if (DisposableDomains.BLOCKED.contains(domain)) {
             throw new DisposableEmailDomainException(email);
         }
         return normalized;

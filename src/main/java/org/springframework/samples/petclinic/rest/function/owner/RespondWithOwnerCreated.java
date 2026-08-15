@@ -18,6 +18,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
         dto.setCapacityWarning(CapacityWarning.warningFor(owner, ownerRepository));
+        dto.setRiskFlag(RiskFlag.riskFor(owner, ownerRepository));
         int points = MembershipLevel.pointsOf(owner, Household.memberCount(owner, ownerRepository));
         dto.setMembershipPoints(points);
         dto.setMembershipLevel(MembershipCap.cappedLevelFor(owner,
