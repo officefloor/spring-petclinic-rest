@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f0a12a54..3a1f258e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,7 +17,7 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+     imports = {OwnerLocality.class, AgeBand.class, TelephoneDisplay.class,
+-        FiscalYear.class, IdentityKey.class, OwnerSegment.class})
++        FiscalYear.class, IdentityKey.class, OwnerSegment.class, RiskFlag.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "selfLink",
+@@ -47,6 +47,9 @@ public interface OwnerMapper {
+         expression = "java(FiscalYear.of(owner.getRegistrationDate()))")
+     @Mapping(target = "identityKey",
+         expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
++    @Mapping(target = "riskFlag",
++        expression = "java(RiskFlag.of(owner.getPossibleDuplicate(), owner.getEmail(), "
++            + "owner.getCapacityWarning()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+new file mode 100644
+index 00000000..eb904944
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/RiskFlag.java
+@@ -0,0 +1,83 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Derives an owner's {@code riskFlag}: a single boolean that is {@code true} when any one of three
++ * risk signals holds, otherwise {@code false}.
++ *
++ * <ol>
++ * <li>the owner is a possible duplicate ({@code possibleDuplicate} is {@code true});</li>
++ * <li>the owner's email domain is <em>disposable-adjacent</em> - equal to, a subdomain of, or
++ * sharing the second-level label of a known disposable domain (the exact disposable domains are
++ * rejected at create, so this catches the near-misses that slip past that block, e.g. a subdomain
++ * {@code mail.mailinator.com} or the same brand on another TLD {@code mailinator.net});</li>
++ * <li>the owner's city is over its soft capacity ({@code capacityWarning} is {@code true}).</li>
++ * </ol>
++ *
++ * <p>Kept as a standalone helper rather than a method on {@link OwnerMapper}: a single-argument
++ * method declared on a MapStruct mapper would be picked up as an implicit conversion and applied to
++ * every matching property mapping.
++ */
++public final class RiskFlag {
++
++    /**
++     * Known disposable email domains. Kept in sync with the create-time block list; an email whose
++     * domain equals, is a subdomain of, or shares the second-level label of one of these is
++     * considered disposable-adjacent.
++     */
++    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private RiskFlag() {
++    }
++
++    /**
++     * Returns {@code true} when the owner is a possible duplicate, has a disposable-adjacent email
++     * domain, or is over its city's soft capacity; otherwise {@code false}.
++     */
++    public static boolean of(Boolean possibleDuplicate, String email, Boolean capacityWarning) {
++        return Boolean.TRUE.equals(possibleDuplicate)
++            || disposableAdjacent(email)
++            || Boolean.TRUE.equals(capacityWarning);
++    }
++
++    /**
++     * Whether {@code email}'s domain is adjacent to a known disposable domain: an exact match, a
++     * subdomain of one, or a domain sharing the same second-level label (the brand label before the
++     * TLD). Case-insensitive; {@code null}/blank or address-less values are not adjacent.
++     */
++    static boolean disposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++        if (domain.isEmpty()) {
++            return false;
++        }
++        String secondLevel = secondLevelLabel(domain);
++        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
++            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
++                return true;
++            }
++            if (secondLevel.equals(secondLevelLabel(disposable))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /** The second-level label of a domain (the label immediately before the TLD). */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return domain;
++        }
++        return labels[labels.length - 2];
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b7430fc2..be1410f2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2351,6 +2351,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Derived risk indicator: true when any of the following hold - the
++                owner is a possible duplicate (possibleDuplicate is true), the
++                email domain is disposable-adjacent (equal to, a subdomain of, or
++                sharing the second-level label of a known disposable domain), or
++                the owner's city is over its soft capacity (capacityWarning is
++                true). Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
