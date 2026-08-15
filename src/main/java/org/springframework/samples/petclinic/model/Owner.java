@@ -217,27 +217,46 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level (1 to 4). Start at 1, add 1 when an email is present, add 1 when
-     * {@code namesakeCount} is 0, and cap the creation-time factors at 3. Level 4 is reserved for
-     * tenure: add a further 1 only when tenure exceeds 365 days, measured from
-     * {@code registrationDate} to the current date. A newly created owner has zero tenure, so it
-     * never exceeds level 3. Not persisted.
+     * The owner's membership points. Start at 0, add 2 when an email is present, add 1 when
+     * {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3 when tenure
+     * exceeds 365 days, measured from {@code registrationDate} to the current date. Not persisted.
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            points += 1;
+        }
+        if (this.householdSize != null && this.householdSize >= 3) {
+            points += 2;
+        }
+        if (this.registrationDate != null
+                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's membership level (1 to 4), derived from {@link #getMembershipPoints()}: level 1
+     * for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Not persisted.
      */
     @Transient
     public Integer getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points <= 1) {
+            return 1;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        level = Math.min(level, 3);
-        if (this.registrationDate != null
-                && java.time.temporal.ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return level;
+        return 4;
     }
 
     /**
