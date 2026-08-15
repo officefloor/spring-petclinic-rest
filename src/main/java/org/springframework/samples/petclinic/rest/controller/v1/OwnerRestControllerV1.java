@@ -110,7 +110,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
-        rejectDailyLimitReached();
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            registrationDate = java.time.LocalDate.now();
+        }
+        registrationDate = toBusinessDay(registrationDate);
+        owner.setRegistrationDate(registrationDate);
+        rejectDailyLimitReached(registrationDate);
         rejectCityAtCapacity(owner.getCity());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             rejectDuplicateHousehold(owner.getLastName(), owner.getAddress());
@@ -119,9 +125,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
         owner.setCustomerCode(assignCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -138,20 +141,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int DAILY_OWNER_LIMIT = 100;
 
     /**
-     * Rejects creating an owner once {@value #DAILY_OWNER_LIMIT} or more owners have already been
-     * created today, counted by {@code registrationDate} equal to the current date. Owners with no
-     * {@code registrationDate} are ignored.
+     * Rejects creating an owner once {@value #DAILY_OWNER_LIMIT} or more owners already carry the
+     * given business day as their {@code registrationDate}. The count is keyed by the
+     * business-day-adjusted registration date of the owner being created (see
+     * {@link #toBusinessDay}), so all owners falling on the same business day count together. Owners
+     * with no {@code registrationDate} are ignored.
      *
+     * @param registrationDate the business-day-adjusted registration date of the owner being created
      * @throws DailyOwnerLimitException (429 Too Many Requests) if the daily limit is already reached
      */
-    private void rejectDailyLimitReached() {
-        java.time.LocalDate today = java.time.LocalDate.now();
+    private void rejectDailyLimitReached(java.time.LocalDate registrationDate) {
         long count = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         if (count >= DAILY_OWNER_LIMIT) {
-            throw new DailyOwnerLimitException(today);
+            throw new DailyOwnerLimitException(registrationDate);
         }
+    }
+
+    /**
+     * Rolls a registration date forward onto a business day: a Saturday or Sunday is moved forward to
+     * the following Monday; a weekday is returned unchanged. This applies to the effective
+     * registration date whether it was supplied in the request or defaulted to the server date, and
+     * every value derived from the registration date uses the adjusted result.
+     *
+     * @param date the effective registration date
+     * @return {@code date} itself when it is a weekday, otherwise the following Monday
+     */
+    private java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
+        while (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+            || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            date = date.plusDays(1);
+        }
+        return date;
     }
 
     /**
