@@ -139,6 +139,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
+        Integer possibleDuplicateOf = findPossibleDuplicateOf(owner);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -327,6 +330,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> householdId.equals(
                 Households.householdId(existing.getLastName(), existing.getAddress())))
             .count();
+    }
+
+    /**
+     * Finds the existing owner, if any, that the owner being created is a soft duplicate of: an owner
+     * sharing this owner's last name (compared case-insensitively) and postcode (an exact match of the
+     * stored 4-digit value) while carrying a <em>different</em> telephone. A soft match is distinct from
+     * the hard duplicate rejected earlier by {@link #rejectDuplicateIdentity}: the owner is still
+     * created, but flagged. When more than one existing owner matches, the earliest (lowest id) is
+     * returned so the reference is deterministic. An owner with no postcode can never soft-match.
+     *
+     * @param owner the owner being created, with its telephone and postcode already normalized/validated
+     * @return the id of the matching existing owner, or {@code null} when there is no soft match
+     */
+    private Integer findPossibleDuplicateOf(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
+        String telephone = owner.getTelephone();
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
+            .map(Owner::getId)
+            .filter(java.util.Objects::nonNull)
+            .min(java.util.Comparator.naturalOrder())
+            .orElse(null);
     }
 
     /**
