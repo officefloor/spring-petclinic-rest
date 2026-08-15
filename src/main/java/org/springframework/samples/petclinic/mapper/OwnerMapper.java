@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.common.CheckDigits;
 import org.springframework.samples.petclinic.rest.function.common.ContactPreferences;
 import org.springframework.samples.petclinic.rest.function.common.IdentityKeys;
 import org.springframework.samples.petclinic.rest.function.common.Localities;
@@ -20,7 +21,8 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class,
-        imports = { ContactPreferences.class, IdentityKeys.class, Localities.class, Membership.class })
+        imports = { CheckDigits.class, ContactPreferences.class, IdentityKeys.class, Localities.class,
+                Membership.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -28,6 +30,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "checkDigit",
+            expression = "java(CheckDigits.luhnOf(owner.getCustomerCode()))")
     @Mapping(target = "membershipLevel",
             expression = "java(Membership.levelOf(owner))")
     @Mapping(target = "locality",
