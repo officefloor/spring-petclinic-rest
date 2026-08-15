@@ -96,6 +96,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
+    /** Matches a syntactically valid email address: a local part and domain (with at least one dot)
+     *  separated by '@', none of which contain whitespace or a second '@'. */
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+        java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Normalize the optional email: absent stays absent; when present it must be syntactically
+     * valid and is lower-cased. Returns {@code false} if present but invalid.
+     */
+    private boolean normalizeEmail(Owner owner) {
+        String email = owner.getEmail();
+        if (email == null || email.isEmpty()) {
+            owner.setEmail(null);
+            return true;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            return false;
+        }
+        owner.setEmail(email.toLowerCase(java.util.Locale.ROOT));
+        return true;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -103,6 +125,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
         if (telephone.length() != 10) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (!normalizeEmail(owner)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         for (Owner existing : this.clinicService.findAllOwners()) {
@@ -132,6 +157,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(ownerFieldsDto.getEmail());
+        if (!normalizeEmail(currentOwner)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
