@@ -28,7 +28,27 @@ public final class OwnerLocality {
         "VIC", "Australia/Melbourne",
         "QLD", "Australia/Brisbane");
 
+    /**
+     * The fixed version-2 identity version tag. It is mixed into the region code embedded inside the
+     * owner's identifiers (memberId, householdId and identityKey) so every version-2 identifier
+     * differs from and never reproduces a version-1 value. The tag stays confined to the identifiers:
+     * it never appears in the user-facing {@code locality}, {@code timezone} or owner segment.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private OwnerLocality() {
+    }
+
+    /**
+     * Returns the version-2 region code embedded inside the owner's identifiers: the plain region
+     * code (see {@link #derive}) with the fixed {@link #IDENTITY_VERSION_TAG} appended (for example
+     * {@code "NSW"} -&gt; {@code "NSWV2"}). The plain region stays the leading segment, so
+     * {@link #fromMemberId} still reads the plain region back for the user-facing locality; the
+     * version tag only ever rides inside the identifiers, never in the locality, timezone or owner
+     * segment.
+     */
+    public static String regionCodeV2(String region) {
+        return region + IDENTITY_VERSION_TAG;
     }
 
     /**

@@ -792,21 +792,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assigns the owner's unified {@code memberId} on create, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'} where {@code REGION} is the region the owner's identity
-     * derives to from its postcode (falling back to the city table when the postcode is absent or in
-     * no known range), {@code FY} is the two-digit fiscal year of the business-day-adjusted
+     * {@code '<REGIONV2><FY><HASH8><CHK>'} where {@code REGIONV2} is the version-2 region code (the
+     * region the owner's identity derives to from its postcode, falling back to the city table when
+     * the postcode is absent or in no known range, with the fixed {@code 'V2'} version tag mixed in
+     * via {@link OwnerLocality#regionCodeV2} so the member id never reproduces a version-1 value),
+     * {@code FY} is the two-digit fiscal year of the business-day-adjusted
      * {@code registrationDate} (the fiscal year starts on 1 July, e.g. a registration on 2026-08-03
      * falls in fiscal year 2027 and yields {@code '27'}), {@code HASH8} is the first eight upper-case
      * hex characters of the SHA-256 digest of the normalized telephone concatenated with the last
      * name, and {@code CHK} is a single Luhn check digit over the digits of the
-     * {@code '<REGION><FY><HASH8>'} body (e.g. {@code 'NSW271A2B3C4D4'}). The telephone has already
+     * {@code '<REGIONV2><FY><HASH8>'} body (e.g. {@code 'NSWV271A2B3C4D4'}). The telephone has already
      * been normalized to E.164 form by {@link #normalizeTelephone} and {@code registrationDate} has
      * been defaulted, so both inputs are present. The identity is a pure function of region, fiscal
      * year, telephone and last name; the check digit is computed over the body before any
      * collision-handling suffix is applied.
      */
     private void assignMemberId(Owner owner) {
-        String region = OwnerLocality.derive(owner.getCity(), owner.getPostcode());
+        String region = OwnerLocality.regionCodeV2(OwnerLocality.derive(owner.getCity(), owner.getPostcode()));
         String fy = String.format("%02d", FiscalYear.yearOf(owner.getRegistrationDate()) % 100);
         String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName(), 8);
         String body = region + fy + hash8;
@@ -1015,7 +1017,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Computes the new owner's deterministic {@code householdId}: the first twelve upper-case hex
-     * characters of the SHA-256 digest of {@code "<normalizedLastName>|<postcode>"}, where the last
+     * characters of the SHA-256 digest of {@code "V2|<normalizedLastName>|<postcode>"}, where the
+     * leading {@code V2} is the fixed version-2 tag ({@link OwnerLocality#IDENTITY_VERSION_TAG}) mixed
+     * in so no version-1 household id is reproduced, and the last
      * name is normalized for comparison (trimmed, internal whitespace collapsed, lower-cased) and the
      * postcode is the already-validated 4-digit value. Because it is a pure function of the last name
      * and postcode, any two owners sharing those - regardless of creation order or whether they opted
@@ -1030,7 +1034,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String lastName = normalizeForComparison(ownerFieldsDto.getLastName());
-        return shaHexUpper(lastName + "|" + postcode, 12);
+        return shaHexUpper(OwnerLocality.IDENTITY_VERSION_TAG + "|" + lastName + "|" + postcode, 12);
     }
 
     /**

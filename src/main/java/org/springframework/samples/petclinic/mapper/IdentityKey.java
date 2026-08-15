@@ -23,7 +23,9 @@ import java.util.Locale;
 
 /**
  * Derives an owner's {@code identityKey}: the full lower-case hexadecimal SHA-256 digest of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The telephone is
+ * {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+ * leading {@code V2} is the fixed version-2 tag ({@link OwnerLocality#IDENTITY_VERSION_TAG}) mixed in
+ * so no version-1 identity key is reproduced. The telephone is
  * expected to already be in its normalized (E.164) form; the email is lower-cased and the last
  * name is reduced to its American Soundex code here, so two owners whose surnames sound alike
  * share the {@code soundex(lastName)} component. A {@code null} telephone or email contributes the
@@ -44,7 +46,7 @@ public final class IdentityKey {
     public static String of(String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
         String mail = email == null ? "" : email.toLowerCase(Locale.ROOT);
-        return sha256Hex(tel + "|" + mail + "|" + soundex(lastName));
+        return sha256Hex(OwnerLocality.IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + soundex(lastName));
     }
 
     /**

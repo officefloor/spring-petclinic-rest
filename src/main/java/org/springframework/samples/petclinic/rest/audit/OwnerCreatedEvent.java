@@ -22,8 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Immutable structured audit event emitted on a successful owner create, alongside the
  * human-readable audit line. It is rendered to a stable JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event}} - the component declaration order is
- * the serialized field order - and published to the dedicated {@code AUDIT} logger.
+ * {@code {seq, ownerId, memberId, membershipLevel, event, schemaVersion}} - the component
+ * declaration order is the serialized field order - and published to the dedicated {@code AUDIT}
+ * logger. The event is at schema version 2, carried by the {@code schemaVersion} field, and its
+ * {@code memberId} is the version-2 identity assigned at creation.
  *
  * <p>{@code seq} is a monotonically increasing sequence number assigned across creates, so events
  * carry a total order independent of the owner id.
@@ -35,25 +37,29 @@ import tools.jackson.databind.json.JsonMapper;
  * published event is a faithful, tamper-proof snapshot of the create.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-                                String event) {
+                                String event, int schemaVersion) {
 
     /** The fixed {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT_TYPE = "OWNER_CREATED";
+
+    /** The fixed audit schema version carried by every owner-created event. */
+    public static final int SCHEMA_VERSION = 2;
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
     /**
      * Creates an {@code OWNER_CREATED} event with the given sequence number, owner id, primary
      * identifier and membership level. The {@code event} discriminator is fixed to
-     * {@link #EVENT_TYPE}.
+     * {@link #EVENT_TYPE} and the {@code schemaVersion} to {@link #SCHEMA_VERSION}.
      */
     public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
-        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE);
+        this(seq, ownerId, memberId, membershipLevel, EVENT_TYPE, SCHEMA_VERSION);
     }
 
     /**
      * Renders this event as a compact JSON object with fields in declaration order:
-     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED"}}.
+     * {@code {"seq":..,"ownerId":..,"memberId":..,"membershipLevel":..,"event":"OWNER_CREATED",
+     * "schemaVersion":2}}.
      */
     public String toJson() {
         return MAPPER.writeValueAsString(this);

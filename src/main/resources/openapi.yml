@@ -2123,6 +2123,55 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's grouped version-2 identity. All three identifiers are derived
+        under the version-2 algorithm that mixes a fixed 'V2' version tag into the
+        region code used inside them, so no value reproduces a version-1 identifier.
+        The version tag stays confined to these identifiers and never appears in the
+        user-facing 'locality', 'timezone' or 'ownerSegment'.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            The owner's unified member id, formatted '<REGIONV2><FY><HASH8><CHK>'
+            where REGIONV2 is the version-2 region code (the region the owner's
+            postcode derives to - falling back to the city table when the postcode is
+            absent or in no known range - with the fixed 'V2' version tag mixed in),
+            FY is the two-digit fiscal year of the business-day-adjusted
+            registrationDate, HASH8 is the first eight upper-case hex characters of
+            the SHA-256 digest of the normalized telephone concatenated with the last
+            name, and CHK is a single Luhn check digit over the digit characters of
+            the body. Assigned at creation.
+          type: string
+          example: 'NSWV227A2B3C4D4'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: >-
+            A stable identifier shared by owners that live in the same household,
+            derived deterministically under the version-2 algorithm as the first 12
+            upper-case hex characters of the SHA-256 digest of the fixed 'V2' version
+            tag, the normalized last name and the postcode joined with '|'. Any two
+            owners with the same last name and postcode therefore carry the same value
+            automatically, regardless of creation order. Absent for owners created
+            without a postcode.
+          type: string
+          example: 'A1B2C3D4E5F6'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: >-
+            The owner's derived duplicate-detection key: the full lower-case
+            hexadecimal SHA-256 digest of the fixed 'V2' version tag, the normalized
+            telephone, the lower-cased email (empty when absent) and the Soundex code
+            of the last name, joined with '|'. Two owners are duplicates only when
+            their whole identityKey is equal; a create whose identityKey matches an
+            existing owner's is rejected with 409.
+          type: string
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2179,43 +2228,27 @@ components:
               type: string
               example: 'G.F.'
               readOnly: true
-            memberId:
-              title: Member ID
+            identity:
+              title: Identity
               description: >-
-                The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>'
-                where REGION is the region the owner's postcode derives to (falling
-                back to the city table when the postcode is absent or in no known
-                range), FY is the two-digit fiscal year of the business-day-adjusted
-                registrationDate, HASH8 is the first eight upper-case hex characters
-                of the SHA-256 digest of the normalized telephone concatenated with
-                the last name, and CHK is a single Luhn check digit over the digit
-                characters of '<REGION><FY><HASH8>'. Assigned at creation.
-              type: string
-              example: 'NSW271A2B3C4D4'
+                The owner's version-2 identity: the memberId, householdId and
+                identityKey grouped together. Every identifier is derived under the
+                version-2 algorithm, which mixes a fixed 'V2' version tag into the
+                region code embedded inside the identifiers, so each value differs
+                from and never reproduces a version-1 identifier. The version tag
+                stays inside these identifiers and never appears in the user-facing
+                'locality', 'timezone' or 'ownerSegment'.
               readOnly: true
-            householdId:
-              title: Household ID
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
+            apiVersion:
+              title: API version
               description: >-
-                A stable identifier shared by owners that live in the same
-                household, derived deterministically as the first 12 upper-case
-                hex characters of the SHA-256 digest of the normalized last name,
-                a '|' separator and the postcode. Any two owners with the same
-                last name and postcode therefore carry the same value
-                automatically, regardless of creation order. Absent for owners
-                created without a postcode.
-              type: string
-              example: 'A1B2C3D4E5F6'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: >-
-                The owner's derived duplicate-detection key, formed at read time
-                as normalizedTelephone + '|' + (email or empty) + '|' +
-                (householdId or empty). Two owners are duplicates only when their
-                whole identityKey is equal; a create whose identityKey matches an
-                existing owner's is rejected with 409.
-              type: string
-              example: '+61412345678||A1B2C3D4E5F6'
+                The version of the owner representation, fixed at 2 for the
+                version-2 identity release.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
             namesakeCount:
               title: Namesake count
