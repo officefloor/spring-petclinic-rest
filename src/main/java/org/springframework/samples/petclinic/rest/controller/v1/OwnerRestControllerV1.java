@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -102,7 +103,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String telephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateTelephone(telephone);
+        owner.setTelephone(telephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -124,6 +127,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(telephone);
         }
         return digits;
+    }
+
+    /**
+     * Rejects creating an owner whose normalized telephone is already used by another owner.
+     * Telephones of existing owners are normalized the same way (all non-digit characters stripped)
+     * before comparison, so equivalent numbers submitted in different formats are still treated as
+     * duplicates.
+     *
+     * @param telephone the normalized 10-digit telephone of the owner being created
+     * @throws DuplicateTelephoneException (409 Conflict) if another owner already uses this telephone
+     */
+    private void rejectDuplicateTelephone(String telephone) {
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(telephone::equals);
+        if (duplicate) {
+            throw new DuplicateTelephoneException(telephone);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
