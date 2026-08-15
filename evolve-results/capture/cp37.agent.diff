@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5ce5311c..f71bf71e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,9 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
+             + "OwnerIdentityKey.forOwner(owner))")
++    @Mapping(target = "telephoneDisplay",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner."
++            + "TelephoneDisplay.forOwner(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java
+new file mode 100644
+index 00000000..b5f9a62d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java
+@@ -0,0 +1,51 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Formats a stored E.164 telephone number for human display: the country code, a space, then the
++ * national digits grouped in threes ('+61412345678' becomes '+61 412 345 678'). The raw
++ * {@code telephone} field keeps its E.164 form; this is the derived {@code telephoneDisplay}.
++ */
++public final class TelephoneDisplay {
++
++    private TelephoneDisplay() {
++    }
++
++    /** The display form of an already-stored owner's telephone. */
++    public static String forOwner(Owner owner) {
++        return format(owner.getTelephone());
++    }
++
++    /**
++     * Formats an E.164 number ('+' followed by digits) as the country code, a space, then the
++     * national digits grouped in threes. Anything that is not a well-formed E.164 string is
++     * returned unchanged.
++     */
++    public static String format(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        if (digits.isEmpty() || !digits.chars().allMatch(c -> c >= '0' && c <= '9')) {
++            return e164;
++        }
++        int ccLength = countryCodeLength(digits);
++        StringBuilder display = new StringBuilder("+").append(digits, 0, ccLength);
++        for (int i = ccLength; i < digits.length(); i += 3) {
++            display.append(' ').append(digits, i, Math.min(i + 3, digits.length()));
++        }
++        return display.toString();
++    }
++
++    /**
++     * The E.164 country-code length within the given digit string: 1 for the NANP ('+1'),
++     * otherwise 2 (covers '+61' and its neighbours), mirroring {@link TelephoneE164}.
++     */
++    private static int countryCodeLength(String digits) {
++        if (digits.startsWith("1")) {
++            return 1;
++        }
++        return 2;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 71af1cac..d700dee0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2106,6 +2106,14 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans - the country code,
++                a space, then the national digits grouped in threes (e.g. '+61412345678' becomes
++                '+61 412 345 678'). The raw 'telephone' field keeps its E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where
