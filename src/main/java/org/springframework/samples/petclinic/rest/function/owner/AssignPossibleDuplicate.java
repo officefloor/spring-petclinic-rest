@@ -3,11 +3,14 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Assigns the owner's soft-duplicate signal. The pipeline only reaches this step once
- * {@link CheckIdentityUnique} has passed, so the new owner is never a <em>hard</em> duplicate here.
- * When it nonetheless shares an existing owner's last name and postcode while carrying a
+ * {@link CheckIdentityUnique} and {@link CheckHouseholdUnique} have passed, so the new owner is never
+ * a <em>hard</em> duplicate here. A declared household member (one that set {@code sharesHousehold})
+ * is never a suspected duplicate — it deliberately shares its household — so it is left unflagged.
+ * Otherwise, when it shares an existing owner's last name and postcode while carrying a
  * <em>different</em> telephone, it is flagged as a possible duplicate: {@code possibleDuplicate} true
  * with {@code possibleDuplicateOf} set to the matching owner's id. Otherwise {@code possibleDuplicate}
  * is false and {@code possibleDuplicateOf} is left null.
@@ -18,8 +21,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
         owner.setPossibleDuplicate(false);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = owner.getLastName();
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();

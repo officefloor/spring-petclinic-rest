@@ -33,7 +33,7 @@ public class CheckIdentityUnique {
             boolean sameTelephone = telephone != null && telephone.equals(existing.getTelephone());
             boolean sameEmail = email.equals(normalizeEmail(existing.getEmail()));
             if (sameTelephone && sameEmail) {
-                String householdId = OwnerIdentity.householdId(request.getLastName(), request.getAddress());
+                String householdId = OwnerIdentity.householdId(request.getLastName(), request.getPostcode());
                 throw new DuplicateIdentityException(
                         OwnerIdentity.identityKey(telephone, request.getEmail(), householdId));
             }

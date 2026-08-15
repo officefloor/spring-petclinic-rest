@@ -16,6 +16,17 @@ validate:
 checkIdentityUnique:
   class: org.springframework.samples.petclinic.rest.function.owner.CheckIdentityUnique
   govern: [ transaction ]
+  next: checkHouseholdUnique
+
+# Reject (409) when the request would join an existing household: the household is keyed on the
+# computed householdId (normalized lastName + postcode), so owners sharing a lastName and postcode
+# are the same household. A second such owner is a household duplicate unless it declares
+# 'sharesHousehold', which bypasses this block and creates it as a declared household member. Runs
+# after checkIdentityUnique so an exact identity collision is still a 409 even when sharesHousehold
+# is set, and within the write transaction so the check and the insert see one consistent view.
+checkHouseholdUnique:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckHouseholdUnique
+  govern: [ transaction ]
   next: checkCityCapacity
 
 # Reject (409) when the request's city already contains 50 or more owners. Reads within the same
@@ -54,8 +65,8 @@ assignCustomerCode:
   govern: [ transaction ]
   next: assignHouseholdId
 
-# Assign the stable, shared householdId derived from the normalized last name + address, so owners
-# in the same household (accepted via 'sharesHousehold') share one identifier. Runs before save so
+# Assign the stable, shared householdId computed from the normalized last name + postcode, so owners
+# with the same last name and postcode deterministically share one identifier. Runs before save so
 # the id is persisted and returned.
 assignHouseholdId:
   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId

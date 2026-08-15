@@ -16,8 +16,8 @@ import java.security.NoSuchAlgorithmException;
  * different keys and are both allowed; only an exact full-key match collides.
  *
  * <p>The {@code householdId} is the stable identifier shared by owners living in the same household
- * (same normalized last name and address): the first 12 upper-cased hex characters of the SHA-256 of
- * {@code '<lastName>|<address>'}. {@link AssignHouseholdId} assigns it and {@link OwnerMapper} returns
+ * (same normalized last name and postcode): the first 12 upper-cased hex characters of the SHA-256 of
+ * {@code '<lastName>|<postcode>'}. {@link AssignHouseholdId} assigns it and {@link OwnerMapper} returns
  * both it and the {@code identityKey}.
  */
 public final class OwnerIdentity {
@@ -26,13 +26,14 @@ public final class OwnerIdentity {
     }
 
     /**
-     * The shared {@code householdId} derived from the last name and address: the first 12 upper-cased
-     * hex characters of SHA-256 of {@code '<lastName>|<address>'}, with the last name normalized
-     * (lower-cased, runs of whitespace collapsed, trimmed) and the address normalized to its canonical
-     * form (see {@link AddressNormalizer}).
+     * The shared {@code householdId} derived from the last name and postcode: the first 12 upper-cased
+     * hex characters of SHA-256 of {@code '<lastName>|<postcode>'}, with the last name normalized
+     * (lower-cased, runs of whitespace collapsed, trimmed) and a null/blank postcode contributing the
+     * empty string. Because it is a pure function of {@code (lastName, postcode)}, two owners sharing
+     * both deterministically receive the same value — they are, by definition, the same household.
      */
-    public static String householdId(String lastName, String address) {
-        String key = normalizeName(lastName) + "|" + AddressNormalizer.normalize(address);
+    public static String householdId(String lastName, String postcode) {
+        String key = normalizeName(lastName) + "|" + (postcode == null ? "" : postcode.trim());
         return shaHex(key, 12);
     }
 
