@@ -146,6 +146,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return "+" + digits;
     }
 
+    /**
+     * Build the customer code {@code <LAST3>-<NNNN>}: LAST3 is the upper-cased first three letters of
+     * the last name and NNNN is a global 4-digit zero-padded sequence equal to one more than the
+     * current number of owners (e.g. {@code SMI-0007}).
+     */
+    private String nextCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(java.util.Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -168,6 +179,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
