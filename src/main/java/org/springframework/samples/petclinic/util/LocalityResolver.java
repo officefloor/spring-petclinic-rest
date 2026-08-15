@@ -51,6 +51,23 @@ public final class LocalityResolver {
         return localityOf(city);
     }
 
+    /**
+     * The {@code REGION} component carried by a {@code customerCode} of the form
+     * {@code <REGION>-<HASH8>}. Now that the customer code embeds the region, the owner's locality
+     * is read straight back off the identity rather than recomputed from postcode and city.
+     * Returns {@code "UNKNOWN"} when the code is absent or carries no region component.
+     */
+    public static String regionOfCustomerCode(String customerCode) {
+        if (customerCode == null || customerCode.isBlank()) {
+            return UNKNOWN;
+        }
+        int dash = customerCode.indexOf('-');
+        if (dash <= 0) {
+            return UNKNOWN;
+        }
+        return customerCode.substring(0, dash);
+    }
+
     /** The region whose range contains {@code postcode}, or {@code null} when absent/unplaced. */
     private static String regionForPostcode(String postcode) {
         if (postcode == null || postcode.isBlank()) {

@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerCityFullExcept
 
 /**
  * Rejects a create-owner request whose city is already at capacity: a city that already contains
- * 50 or more owners cannot take another. The city is compared case-insensitively (matching how
- * {@link AssignCustomerCode} counts a city's owners). Runs after {@link ValidateNewOwner} has
+ * 50 or more owners cannot take another. The city is compared case-insensitively. Runs after
+ * {@link ValidateNewOwner} has
  * published the request, and before {@link BuildOwner}, so a full city is a 409 rather than a
  * persisted record.
  */

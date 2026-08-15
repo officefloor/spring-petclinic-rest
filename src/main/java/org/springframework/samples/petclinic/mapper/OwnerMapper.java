@@ -31,7 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(MembershipLevel.levelOf(owner))")
     @Mapping(target = "locality",
-        expression = "java(LocalityResolver.localityOf(owner.getPostcode(), owner.getCity()))")
+        expression = "java(LocalityResolver.regionOfCustomerCode(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(ContactPreference.preferenceOf(owner))")
     @Mapping(target = "identityKey",
