@@ -1,0 +1,113 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9dc0c609..a4b2205f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -37,8 +37,25 @@ public interface OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
++    @Mapping(target = "riskFlag", expression = "java(OwnerMapper.riskFlag(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * Derives the owner's {@code riskFlag}: {@code true} when the owner warrants a manual risk
++     * review because any of these hold — the owner is a possible duplicate
++     * ({@code possibleDuplicate}), the email domain is disposable-adjacent (see
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerEmail#isDisposableAdjacent}),
++     * or the city is over its soft capacity ({@code capacityWarning}, i.e. the city held 40-49 owners
++     * when this one was created). Otherwise {@code false}.
++     */
++    static boolean riskFlag(Owner owner) {
++        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
++        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
++        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner.OwnerEmail
++                .isDisposableAdjacent(owner.getEmail());
++        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
++    }
++
+     /**
+      * Derives the owner's {@code selfLink}: the canonical relative URL of this owner, formatted
+      * {@code '/api/owners/<id>'}. Returns {@code null} when the id is absent, so owners without an
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index 8326559b..98988f9d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -14,7 +14,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+  * <p>Used by both create ({@link ValidateOwnerFields}) and update ({@link ValidateOwner}) so the two
+  * endpoints treat email identically.
+  */
+-final class OwnerEmail {
++public final class OwnerEmail {
+ 
+     /**
+      * Practical RFC-5322-ish syntactic check: a non-empty local part, an {@code @}, and a dotted
+@@ -35,6 +35,45 @@ final class OwnerEmail {
+     private OwnerEmail() {
+     }
+ 
++    /**
++     * Second-level labels of the known disposable domains (the label immediately before the final
++     * TLD, e.g. {@code mailinator} for {@code mailinator.com}). Derived from
++     * {@link #DISPOSABLE_DOMAINS} so the two stay in step.
++     */
++    private static final Set<String> DISPOSABLE_BASE_LABELS = DISPOSABLE_DOMAINS.stream()
++        .map(OwnerEmail::secondLevelLabel)
++        .collect(java.util.stream.Collectors.toUnmodifiableSet());
++
++    /**
++     * The second-level label of a domain: the label immediately before the final dot (so
++     * {@code mailinator.net} and {@code sub.mailinator.net} both yield {@code mailinator}). A
++     * dot-less value is returned unchanged.
++     */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length >= 2 ? labels[labels.length - 2] : domain;
++    }
++
++    /**
++     * True when the email's domain is <em>disposable-adjacent</em>: it shares its second-level label
++     * with one of the known disposable domains ({@link #DISPOSABLE_DOMAINS}) — for example a sibling
++     * on a different TLD such as {@code mailinator.net}. Exact blocklisted domains are rejected at
++     * validation (400) and so never reach a persisted owner, but they share the same base label and
++     * are covered by this definition too. Absent, blank or unparseable email is not adjacent.
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        String normalized = email.toLowerCase(Locale.ROOT);
++        int at = normalized.lastIndexOf('@');
++        if (at < 0 || at == normalized.length() - 1) {
++            return false;
++        }
++        String domain = normalized.substring(at + 1);
++        return DISPOSABLE_BASE_LABELS.contains(secondLevelLabel(domain));
++    }
++
+     /**
+      * Validates and normalizes the email on the request in place. When an email is present but not
+      * syntactically valid, or its domain is on the disposable-domain blocklist, adds {@code "email"}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c743f0fb..038a6506 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2270,6 +2270,19 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner warrants a manual risk review because any of the
++                following hold: the owner is a possible duplicate (possibleDuplicate),
++                the email domain is disposable-adjacent (shares its second-level label
++                with a known disposable domain, e.g. a sibling TLD such as
++                'mailinator.net'), or the city is over its soft capacity
++                (capacityWarning). Otherwise false. Derived from the owner's own
++                fields and returned.
++              type: boolean
++              example: false
++              readOnly: true
+             locality:
+               title: Locality
+               description: >-
