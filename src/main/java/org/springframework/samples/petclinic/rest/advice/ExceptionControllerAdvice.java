@@ -123,6 +123,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidTelephoneException} thrown while normalizing an owner's telephone on create.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("telephone"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Field 'telephone' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "telephone")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled

@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -101,11 +102,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalizes an owner's telephone on create: strips every non-digit character and requires the
+     * result to be exactly 10 digits. The normalized 10-digit value is stored and returned.
+     *
+     * @param telephone the raw telephone as submitted
+     * @return the normalized 10-digit telephone
+     * @throws InvalidTelephoneException (400 Bad Request) if the value is not exactly 10 digits after stripping
+     */
+    private String normalizeTelephone(String telephone) {
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            throw new InvalidTelephoneException(telephone);
+        }
+        return digits;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
