@@ -210,6 +210,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
         owner.setMembershipLevel(computeMembershipLevel(owner));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
+        owner.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
             IDEMPOTENT_CREATES.put(idempotencyKey, owner.getId());
@@ -717,6 +718,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (existing >= CITY_OWNER_LIMIT) {
             throw new CityOwnerLimitExceededException(city, CITY_OWNER_LIMIT);
         }
+    }
+
+    /**
+     * The number of owners a city must already hold before a create request is flagged as approaching the
+     * per-city capacity limit. Once the count reaches this threshold (but is still below
+     * {@link #CITY_OWNER_LIMIT}) the created owner carries {@code capacityWarning = true}.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Reports whether the given city is approaching its per-city capacity limit, i.e. already holds between
+     * {@link #CITY_CAPACITY_WARNING_THRESHOLD} and {@link #CITY_OWNER_LIMIT} (exclusive) owners. Cities are
+     * matched case-insensitively, mirroring {@link #rejectCityAtCapacity(String)}. The count is taken before
+     * the new owner is persisted, so it excludes the owner being created.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} when the city already holds 40 to 49 owners inclusive, otherwise {@code false}
+     */
+    private boolean isCityApproachingCapacity(String city) {
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(owner -> city.equalsIgnoreCase(owner.getCity()))
+            .count();
+        return existing >= CITY_CAPACITY_WARNING_THRESHOLD && existing < CITY_OWNER_LIMIT;
     }
 
     /**
