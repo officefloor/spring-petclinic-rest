@@ -31,13 +31,13 @@ public interface OwnerMapper {
     @Mapping(target = "householdId",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Households.householdId("
-            + "owner.getLastName(), owner.getAddress()))")
+            + "owner.getLastName(), owner.getPostcode()))")
     @Mapping(target = "identityKey",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Households.identityKey("
             + "owner.getTelephone(), owner.getEmail(), "
             + "org.springframework.samples.petclinic.util.Households.householdId("
-            + "owner.getLastName(), owner.getAddress())))")
+            + "owner.getLastName(), owner.getPostcode())))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner == null || owner.getCustomerCode() == null "
             + "|| owner.getRegistrationDate() == null ? null : "

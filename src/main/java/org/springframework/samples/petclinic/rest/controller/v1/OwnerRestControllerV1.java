@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
@@ -133,13 +134,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String email = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(email);
         owner.setPostcode(validatePostcode(owner.getCity(), ownerFieldsDto.getPostcode()));
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(owner);
+        rejectDuplicateHousehold(owner, sharesHousehold);
         String region = Localities.region(owner.getPostcode(), owner.getCity());
         owner.setCustomerCode(assignCustomerCode(region, owner.getTelephone(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
-        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
-        Integer possibleDuplicateOf = findPossibleDuplicateOf(owner);
+        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getPostcode()) + 1);
+        // A declared household member (sharesHousehold) is created but is not a suspected duplicate.
+        Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(owner);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         this.clinicService.saveOwner(owner);
@@ -317,19 +321,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Counts how many existing owners belong to the same household as the owner being created, i.e.
      * share its {@code householdId} (derived by {@link Households#householdId} from the normalized last
-     * name and address). The value excludes the owner being created (which has not yet been saved), so
+     * name and postcode). The value excludes the owner being created (which has not yet been saved), so
      * the household's size after this create is this count plus one. It is stored on the new owner.
      *
      * @param lastName the last name of the owner being created
-     * @param address the normalized address of the owner being created
+     * @param postcode the postcode of the owner being created
      * @return the number of existing owners sharing this owner's household
      */
-    private int countHouseholdMembers(String lastName, String address) {
-        String householdId = Households.householdId(lastName, address);
+    private int countHouseholdMembers(String lastName, String postcode) {
+        String householdId = Households.householdId(lastName, postcode);
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> householdId.equals(
-                Households.householdId(existing.getLastName(), existing.getAddress())))
+                Households.householdId(existing.getLastName(), existing.getPostcode())))
             .count();
+    }
+
+    /**
+     * Rejects creating an owner that would join an existing household without opting in. The household
+     * is keyed on the computed {@code householdId} (see {@link Households#householdId}, derived from the
+     * normalized last name and postcode), so an owner sharing an existing owner's last name and postcode
+     * is the same household. When another owner already belongs to that household the create is rejected,
+     * unless the request opts in with {@code sharesHousehold}, which bypasses this block and creates the
+     * owner as a declared household member. An owner with no postcode is never treated as a household
+     * duplicate.
+     *
+     * @param owner the owner being created, with its last name and postcode already set
+     * @param sharesHousehold whether the request opted in via {@code sharesHousehold}
+     * @throws DuplicateHouseholdException (409 Conflict) if the owner joins an existing household and did
+     *         not opt in
+     */
+    private void rejectDuplicateHousehold(Owner owner, boolean sharesHousehold) {
+        if (sharesHousehold) {
+            return;
+        }
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        String householdId = Households.householdId(owner.getLastName(), postcode);
+        boolean exists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(
+                Households.householdId(existing.getLastName(), existing.getPostcode())));
+        if (exists) {
+            throw new DuplicateHouseholdException(owner.getLastName(), postcode);
+        }
     }
 
     /**
@@ -542,7 +577,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> identity.equals(
                 personalIdentity(toE164OrNull(existing.getTelephone()), existing.getEmail())));
         if (duplicate) {
-            String householdId = Households.householdId(owner.getLastName(), owner.getAddress());
+            String householdId = Households.householdId(owner.getLastName(), owner.getPostcode());
             throw new DuplicateIdentityException(
                 Households.identityKey(owner.getTelephone(), owner.getEmail(), householdId));
         }

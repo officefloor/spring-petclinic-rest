@@ -23,9 +23,10 @@ import java.util.Locale;
 
 /**
  * Helpers for the "household" a pet owner belongs to. Two owners share a household when they have
- * the same last name at the same address; the identity is keyed on those two values normalized the
- * same way (surrounding whitespace trimmed, internal whitespace runs collapsed to a single space,
- * lower-cased) so values that differ only in letter case or spacing map to one household.
+ * the same last name and postcode; the identity is derived deterministically from the normalized
+ * last name (surrounding whitespace trimmed, internal whitespace runs collapsed to a single space,
+ * lower-cased) and the postcode, so values that differ only in letter case or spacing of the last
+ * name map to one household.
  */
 public final class Households {
 
@@ -46,17 +47,18 @@ public final class Households {
 
     /**
      * Returns the stable, shared identifier for the household of the owner with the given last name
-     * and address. The value is derived deterministically from the normalized last name and address,
-     * so every owner in the same household (same normalized last name and address) is assigned the
-     * same identifier, formatted {@code 'HH-<12 upper-case hex chars>'} (e.g. {@code 'HH-3A7F9C2E1B08'}).
+     * and postcode. The value is the first 12 hex characters of the SHA-256 digest of the normalized
+     * last name, a {@code '|'} separator and the postcode, so every owner sharing a last name and
+     * postcode (the two values the household is keyed on) is deterministically assigned the same
+     * identifier.
      *
      * @param lastName the owner's last name
-     * @param address  the owner's address
+     * @param postcode the owner's postcode, or {@code null} when none
      * @return the household identifier
      */
-    public static String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "\n" + normalize(address);
-        return "HH-" + sha256hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    public static String householdId(String lastName, String postcode) {
+        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        return sha256hex(key).substring(0, 12);
     }
 
     /**
