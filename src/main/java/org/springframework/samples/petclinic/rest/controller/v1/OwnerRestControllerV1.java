@@ -314,10 +314,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * assumed and a single leading '0' is dropped from the national digits. The resulting number must
      * have 8 to 15 digits after the '+'. For example {@code "0412 345 678"} becomes
      * {@code "+61412345678"}. The E.164 value is stored and returned.
+     * <p>
+     * The national-number length (the digits after the country code) is additionally validated for
+     * country codes with a fixed length: '+61' requires exactly 9 national digits and '+1' requires
+     * exactly 10. Numbers of other country codes are only bound by the overall 8-to-15-digit limit.
      *
      * @param telephone the raw telephone as submitted
      * @return the normalized E.164 telephone (a '+' followed by 8 to 15 digits)
      * @throws InvalidTelephoneException (400 Bad Request) if the value cannot form a valid E.164 number
+     *         or its national-number length is wrong for its country code
      */
     private String normalizeTelephone(String telephone) {
         String raw = telephone == null ? "" : telephone.trim();
@@ -335,10 +340,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             digits = "61" + cleaned;
         }
-        if (!digits.matches("[0-9]{8,15}")) {
+        if (!digits.matches("[0-9]{8,15}") || !hasValidNationalLength(digits)) {
             throw new InvalidTelephoneException(telephone);
         }
         return "+" + digits;
+    }
+
+    /**
+     * Checks the national-number length of an E.164 digit string against its country code for the
+     * country codes whose national number has a fixed length: '+61' requires 9 national digits and
+     * '+1' requires 10. Any other country code passes, leaving it bound only by the overall length.
+     *
+     * @param digits the E.164 digits (the country code followed by the national number, without '+')
+     * @return {@code true} if the national-number length is acceptable for the country code
+     */
+    private boolean hasValidNationalLength(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 
     /**
@@ -452,7 +475,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Normalizes an existing owner's telephone to E.164 for duplicate comparison, returning
-     * {@code null} instead of throwing when the stored value cannot form a valid E.164 number.
+     * {@code null} instead of throwing when the stored value cannot form a valid E.164 number, or
+     * when its national-number length does not match its country code.
      */
     private String toE164OrNull(String telephone) {
         try {
