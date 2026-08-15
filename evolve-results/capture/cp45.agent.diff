@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b7ae581e..3decfc4a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -53,6 +53,7 @@ public abstract class OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
++    @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+@@ -257,6 +258,22 @@ public abstract class OwnerMapper {
+         return grouped.toString();
+     }
+ 
++    /**
++     * Composes the owner's salutation: the {@code title}, a single space and the last name (e.g.
++     * {@code 'DR Franklin'}) when a non-blank {@code title} was supplied, or just the last name when no
++     * title was given.
++     *
++     * @param owner the owner whose salutation is being composed
++     * @return {@code '<title> <lastName>'} when a title is present, otherwise the last name alone
++     */
++    protected String salutation(Owner owner) {
++        String title = owner.getTitle();
++        if (title == null || title.isBlank()) {
++            return owner.getLastName();
++        }
++        return title + " " + owner.getLastName();
++    }
++
+     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fccb805b..2642d9c8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -35,6 +35,9 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "address")
+     @NotEmpty
+     private String address;
+@@ -90,6 +93,14 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index c630a7a7..60a925dc 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
++  title VARCHAR(10),
+   address VARCHAR(255) NOT NULL,
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index b610c114..2e4a420d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -39,6 +39,7 @@ CREATE TABLE owners (
+   id         INTEGER IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
++  title      VARCHAR(10),
+   address    VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index a58c09b6..5ebda639 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
++  title VARCHAR(10),
+   address VARCHAR(255),
+   address_line1 VARCHAR(255),
+   address_line2 VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d5cf8df0..0223e045 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                                       first_name TEXT,
+                                       last_name  TEXT,
++                                      title      TEXT,
+                                       address    TEXT,
+                                       address_line1 TEXT,
+                                       address_line2 TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d9e36233..d0b65f39 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2001,6 +2001,15 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}$"
+           example: George
++        title:
++          title: Title
++          description: >-
++            The optional honorific title of the pet owner (e.g. MR, MRS, MS or
++            DR). When supplied it is used to compose the owner's 'salutation';
++            stored and returned as given.
++          type: string
++          maxLength: 10
++          example: DR
+         lastName:
+           title: Last name
+           description: The last name of the pet owner.
+@@ -2150,6 +2159,15 @@ components:
+               type: string
+               readOnly: true
+               example: 'G.F.'
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, composed as 'title lastName' (the title, a
++                single space, then the last name) when a 'title' was supplied, or
++                just the last name when no title was given.
++              type: string
++              readOnly: true
++              example: 'DR Franklin'
+             telephoneDisplay:
+               title: Telephone display
+               description: >-
