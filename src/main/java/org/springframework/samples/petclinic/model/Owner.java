@@ -153,6 +153,21 @@ public class Owner extends Person {
         this.bulkSignupWarning = bulkSignupWarning;
     }
 
+    /**
+     * The derived identity key used for duplicate detection, formed as
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}.
+     * The telephone and email are already stored in their normalized forms (E.164 and
+     * lower-cased), so the key is a straight concatenation of the stored values. Two owners
+     * are considered the same only when their whole identity keys are equal.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String tel = this.telephone == null ? "" : this.telephone;
+        String mail = this.email == null ? "" : this.email;
+        String household = this.householdId == null ? "" : this.householdId;
+        return tel + "|" + mail + "|" + household;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

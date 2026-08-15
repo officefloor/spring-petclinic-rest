@@ -122,23 +122,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Return {@code true} when the given (already lower-cased) email is non-null and already used by
-     * any existing owner, comparing case-insensitively on the lower-cased email.
-     */
-    private boolean isEmailAlreadyUsed(String email) {
-        if (email == null) {
-            return false;
-        }
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingEmail = existing.getEmail();
-            if (existingEmail != null && email.equals(existingEmail.toLowerCase(java.util.Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Normalize a telephone number to E.164 form: strip spaces, dashes and brackets; keep a leading
      * '+' and country code when present, otherwise assume country code '+61' and drop a single leading
      * '0' from the national digits. The result must have 8 to 15 digits after the '+'.
@@ -378,6 +361,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
+        owner.setTelephone(telephone);
         java.time.LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
         int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
@@ -387,30 +371,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwnerCount(owner) >= CITY_CAPACITY) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingTelephone = toE164(existing.getTelephone());
-            if (telephone.equals(existingTelephone)) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
-        if (isEmailAlreadyUsed(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         List<Owner> householdMembers = householdMembers(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold && !householdMembers.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (sharesHousehold && !householdMembers.isEmpty()) {
-            String householdId = householdMembers.stream()
+            owner.setHouseholdId(householdMembers.stream()
                 .map(Owner::getHouseholdId)
                 .filter(id -> id != null && !id.isBlank())
                 .findFirst()
-                .orElseGet(() -> householdIdFor(owner));
-            owner.setHouseholdId(householdId);
+                .orElseGet(() -> householdIdFor(owner)));
+        }
+        // Consolidated duplicate detection: the former separate telephone, email and household
+        // checks are now all expressed through the single derived identityKey, so a new owner is
+        // rejected only when its WHOLE identityKey equals an existing owner's. Because the telephone
+        // is part of the key, two members of the same household with different telephones have
+        // different identityKeys and are both allowed.
+        String identityKey = owner.getIdentityKey();
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (identityKey.equals(existing.getIdentityKey())) {
+                return new ResponseEntity<>(HttpStatus.CONFLICT);
+            }
+        }
+        if (owner.getHouseholdId() != null) {
             for (Owner member : householdMembers) {
                 if (member.getHouseholdId() == null || member.getHouseholdId().isBlank()) {
-                    member.setHouseholdId(householdId);
+                    member.setHouseholdId(owner.getHouseholdId());
                     this.clinicService.saveOwner(member);
                 }
             }
@@ -418,7 +402,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
-        owner.setTelephone(telephone);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
