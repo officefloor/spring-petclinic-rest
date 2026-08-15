@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index fb7ca078..b4d18247 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -1,25 +1,36 @@
+ package org.springframework.samples.petclinic.util;
+ 
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's numeric {@code membershipLevel} (1 to 3) from its stored fields. The level is
+- * fixed by the values captured at creation: it starts at 1, gains 1 when the owner has an email,
+- * gains 1 when its {@code namesakeCount} is 0, and is capped at 3. Level 4 is reserved for tenure
+- * and is never produced here.
++ * Derives an owner's numeric {@code membershipLevel} (1 to 4) from its stored fields. Levels 1 to 3
++ * come from values captured at creation: the level starts at 1, gains 1 when the owner has an email,
++ * gains 1 when its {@code namesakeCount} is 0, and is capped at 3 before tenure is considered. Level
++ * 4 is reserved for tenure: an owner already at that cap advances to 4 only once its tenure — the
++ * days from its {@code registrationDate} to today — exceeds 365. A newly created owner has zero
++ * tenure, so it never exceeds level 3.
+  */
+ public final class MembershipLevel {
+ 
+     /** The lowest level every owner starts at. */
+     private static final int BASE = 1;
+ 
+-    /** The highest level this rule may award; level 4 is reserved for tenure. */
+-    private static final int CAP = 3;
++    /** The highest level awarded from creation-time fields, before tenure is considered. */
++    private static final int PRE_TENURE_CAP = 3;
++
++    /** The highest level this rule may award; reaching it requires tenure. */
++    private static final int CAP = 4;
++
++    /** Tenure, in days, that an owner must exceed to reach level 4. */
++    private static final long TENURE_DAYS = 365;
+ 
+     private MembershipLevel() {
+     }
+ 
+-    /** Returns the membership level (1 to 3) for {@code owner} from its stored fields. */
++    /** Returns the membership level (1 to 4) for {@code owner} from its stored fields. */
+     public static int levelOf(Owner owner) {
+         int level = BASE;
+         String email = owner.getEmail();
+@@ -30,6 +41,18 @@ public final class MembershipLevel {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, CAP);
++        level = Math.min(level, PRE_TENURE_CAP);
++        if (level == PRE_TENURE_CAP && exceedsTenure(owner.getRegistrationDate())) {
++            level = CAP;
++        }
++        return level;
++    }
++
++    /** Whether {@code registrationDate} is more than {@value #TENURE_DAYS} days before today. */
++    private static boolean exceedsTenure(LocalDate registrationDate) {
++        if (registrationDate == null) {
++            return false;
++        }
++        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+     }
+ }
