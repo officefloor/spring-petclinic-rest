@@ -24,6 +24,10 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "householdId",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.Households.householdId("
+            + "owner.getLastName(), owner.getAddress()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

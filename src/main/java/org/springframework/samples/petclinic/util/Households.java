@@ -1,0 +1,75 @@
+/*
+ * Copyright 2016-2017 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.util;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
+
+/**
+ * Helpers for the "household" a pet owner belongs to. Two owners share a household when they have
+ * the same last name at the same address; the identity is keyed on those two values normalized the
+ * same way (surrounding whitespace trimmed, internal whitespace runs collapsed to a single space,
+ * lower-cased) so values that differ only in letter case or spacing map to one household.
+ */
+public final class Households {
+
+    private Households() {
+    }
+
+    /**
+     * Normalizes a value for household comparison: {@code null} becomes an empty string, surrounding
+     * whitespace is trimmed, internal runs of whitespace collapse to a single space and the result is
+     * lower-cased.
+     */
+    public static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Returns the stable, shared identifier for the household of the owner with the given last name
+     * and address. The value is derived deterministically from the normalized last name and address,
+     * so every owner in the same household (same normalized last name and address) is assigned the
+     * same identifier, formatted {@code 'HH-<12 upper-case hex chars>'} (e.g. {@code 'HH-3A7F9C2E1B08'}).
+     *
+     * @param lastName the owner's last name
+     * @param address  the owner's address
+     * @return the household identifier
+     */
+    public static String householdId(String lastName, String address) {
+        String key = normalize(lastName) + "\n" + normalize(address);
+        return "HH-" + sha256hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
+    }
+
+    private static String sha256hex(String s) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+}

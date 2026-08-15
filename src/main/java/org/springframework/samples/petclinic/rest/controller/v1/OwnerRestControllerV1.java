@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.Households;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -245,27 +246,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DuplicateHouseholdException (409 Conflict) if another owner shares this household
      */
     private void rejectDuplicateHousehold(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = normalizeForHousehold(address);
+        String normalizedLastName = Households.normalize(lastName);
+        String normalizedAddress = Households.normalize(address);
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .anyMatch(existing ->
-                normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                    && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
+                Households.normalize(existing.getLastName()).equals(normalizedLastName)
+                    && Households.normalize(existing.getAddress()).equals(normalizedAddress));
         if (duplicate) {
             throw new DuplicateHouseholdException(lastName, address);
         }
-    }
-
-    /**
-     * Normalizes a value for household-duplicate comparison: {@code null} becomes an empty string,
-     * surrounding whitespace is trimmed, internal runs of whitespace collapse to a single space and
-     * the result is lower-cased.
-     */
-    private String normalizeForHousehold(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
