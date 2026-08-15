@@ -1,0 +1,117 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 6af9a733..3d54d31c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -349,6 +349,29 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link FutureRegistrationDateException} thrown when creating an owner whose supplied
++     * {@code registrationDate} is later than the server date.
++     *
++     * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(FutureRegistrationDateException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("registrationDate"));
++        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
++        detail.setProperty("schemaValidationErrors", List.of(
++            new ValidationMessageDto("Field 'registrationDate' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
++                .putAdditionalProperty("field", "registrationDate")
++                .putAdditionalProperty("rejectedValue", rejectedValue)
++                .putAdditionalProperty("defaultMessage", e.getMessage())));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+new file mode 100644
+index 00000000..49d9ffa2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/FutureRegistrationDateException.java
+@@ -0,0 +1,35 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when an owner is created with a supplied {@code registrationDate} that is later than the
++ * server date (in the future). Handled as a 400 Bad Request by {@link ExceptionControllerAdvice}.
++ */
++public class FutureRegistrationDateException extends RuntimeException {
++
++    private final transient Object rejectedValue;
++
++    public FutureRegistrationDateException(Object registrationDate) {
++        super("must not be later than the server date");
++        this.rejectedValue = registrationDate;
++    }
++
++    public Object getRejectedValue() {
++        return this.rejectedValue;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 145df018..da0766ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -31,6 +31,7 @@ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
++import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
+@@ -119,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+         java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        rejectFutureRegistrationDate(registrationDate);
+         if (registrationDate == null) {
+             registrationDate = java.time.LocalDate.now();
+         }
+@@ -147,6 +149,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Rejects creating an owner whose supplied {@code registrationDate} is later than the server
++     * date (in the future). Only an explicitly supplied date is validated; a {@code null} date
++     * (which later defaults to the server date) is accepted. The check is against the raw supplied
++     * date, before any business-day adjustment.
++     *
++     * @param registrationDate the supplied registration date, or {@code null} when none was supplied
++     * @throws FutureRegistrationDateException (400 Bad Request) if the supplied date is in the future
++     */
++    private void rejectFutureRegistrationDate(java.time.LocalDate registrationDate) {
++        if (registrationDate != null && registrationDate.isAfter(java.time.LocalDate.now())) {
++            throw new FutureRegistrationDateException(registrationDate);
++        }
++    }
++
+     /**
+      * The maximum number of owners that may be created in a single day. Creating an owner once this
+      * many owners already carry today's {@code registrationDate} is rejected.
