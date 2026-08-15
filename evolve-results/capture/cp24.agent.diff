@@ -1,0 +1,191 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 913321f0..f46b3473 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -16,7 +16,8 @@ import java.util.List;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class,
+-    imports = org.springframework.samples.petclinic.util.LocalityResolver.class)
++    imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
++        org.springframework.samples.petclinic.util.MembershipLevel.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -24,9 +25,8 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-        expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isEmpty()) ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "membershipLevel",
++        expression = "java(MembershipLevel.levelOf(owner))")
+     @Mapping(target = "locality",
+         expression = "java(LocalityResolver.localityOf(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index a2e0e744..88348aa8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -5,18 +5,21 @@ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.MembershipLevel;
+ 
+ /**
+  * Emits an audit trail line to the dedicated {@code AUDIT} logger once a new owner has been
+  * persisted. Runs after {@link SaveOwner} so the generated id is available, and carries the
+- * owner id, the assigned {@code customerCode} and the {@code registrationDate}.
++ * owner id, the assigned {@code customerCode}, the {@code registrationDate} and the derived
++ * {@code membershipLevel}.
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+     public void service(@Val Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++                MembershipLevel.levelOf(owner));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembership.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembership.java
+deleted file mode 100644
+index 902b7f7b..00000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdMembership.java
++++ /dev/null
+@@ -1,33 +0,0 @@
+-package org.springframework.samples.petclinic.rest.function.owner;
+-
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-
+-/**
+- * Decides whether an owner's response should carry the {@code GOLD} membership tier: it is raised
+- * once the owner's household (the owners sharing its {@code householdId}, see
+- * {@link AssignHousehold}) has three or more members, this owner included. The count is by the
+- * stored {@code householdId}, so the create response for the member that completes a three-member
+- * household and later reads of that owner agree. When GOLD does not apply the existing SILVER and
+- * BRONZE rules stand (see {@link org.springframework.samples.petclinic.mapper.OwnerMapper}).
+- */
+-final class HouseholdMembership {
+-
+-    /** Raise GOLD once a household reaches this many members. */
+-    private static final long GOLD_AT = 3;
+-
+-    private HouseholdMembership() {
+-    }
+-
+-    /** True when the owner belongs to a household of three or more members. */
+-    static boolean isGold(Owner owner, OwnerRepository ownerRepository) {
+-        String householdId = owner.getHouseholdId();
+-        if (householdId == null || householdId.isBlank()) {
+-            return false;
+-        }
+-        long members = ownerRepository.findAll().stream()
+-                .filter(existing -> householdId.equals(existing.getHouseholdId()))
+-                .count();
+-        return members >= GOLD_AT;
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 7801e7d9..5271b1e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -12,9 +12,6 @@ public class RespondWithOwner {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        if (HouseholdMembership.isGold(owner, ownerRepository)) {
+-            dto.setMembershipTier("GOLD");
+-        }
+         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
+         response.send(dto);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 2ea3fa75..8164587f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -15,9 +15,6 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        if (HouseholdMembership.isGold(owner, ownerRepository)) {
+-            dto.setMembershipTier("GOLD");
+-        }
+         dto.setBulkSignupWarning(BulkSignup.warningFor(owner, ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+new file mode 100644
+index 00000000..fb7ca078
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.util;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's numeric {@code membershipLevel} (1 to 3) from its stored fields. The level is
++ * fixed by the values captured at creation: it starts at 1, gains 1 when the owner has an email,
++ * gains 1 when its {@code namesakeCount} is 0, and is capped at 3. Level 4 is reserved for tenure
++ * and is never produced here.
++ */
++public final class MembershipLevel {
++
++    /** The lowest level every owner starts at. */
++    private static final int BASE = 1;
++
++    /** The highest level this rule may award; level 4 is reserved for tenure. */
++    private static final int CAP = 3;
++
++    private MembershipLevel() {
++    }
++
++    /** Returns the membership level (1 to 3) for {@code owner} from its stored fields. */
++    public static int levelOf(Owner owner) {
++        int level = BASE;
++        String email = owner.getEmail();
++        if (email != null && !email.isEmpty()) {
++            level++;
++        }
++        Integer namesakeCount = owner.getNamesakeCount();
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, CAP);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3ce8e8eb..dc323a2f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2123,13 +2123,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier, derived from the stored fields. 'GOLD' when
+-                the owner's household (owners sharing the same householdId) has 3 or more members;
+-                otherwise 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's numeric membership level, derived from the stored fields.
++                Starts at 1, gains 1 when an email is present, gains 1 when namesakeCount is 0, and
++                is capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
