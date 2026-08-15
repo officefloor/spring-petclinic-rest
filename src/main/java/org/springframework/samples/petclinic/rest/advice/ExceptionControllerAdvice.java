@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
@@ -70,6 +71,31 @@ public class ExceptionControllerAdvice {
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
+    }
+
+    /**
+     * Handles {@link RestApiRejectionException}, the uniform signal controllers raise to reject a
+     * request (400, 409, 429). Renders an RFC7807 {@code application/problem+json} body carrying the
+     * {@code type}, {@code title}, {@code status} and {@code detail} members with the status unchanged.
+     *
+     * @param e The {@link RestApiRejectionException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the RFC7807 problem detail and the requested status
+     */
+    @ExceptionHandler(RestApiRejectionException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRestApiRejectionException(RestApiRejectionException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        logger.warn("Request rejected at {} {}: {} {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            status.value(),
+            e.getMessage());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        detail.setTitle(status.getReasonPhrase());
+        return ResponseEntity.status(status)
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(detail);
     }
 
     /**
@@ -163,9 +189,13 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
-            return ResponseEntity.status(status).body(detail);
+            return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(detail);
         }
-        return ResponseEntity.status(status).body(detail);
+        return ResponseEntity.status(status)
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(detail);
     }
 
 }

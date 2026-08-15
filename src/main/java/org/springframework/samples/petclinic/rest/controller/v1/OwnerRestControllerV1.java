@@ -28,6 +28,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RestApiRejectionException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -605,34 +606,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!isPostcodeValid(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The postcode is invalid for the owner's city");
         }
         String telephone = toE164(owner.getTelephone());
         if (telephone == null || !hasValidNationalLength(telephone)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The telephone number is missing or not a valid number");
         }
         if (!normalizeEmail(owner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The email address is not valid");
         }
         String address = composeAddress(owner);
         if (address == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The address is missing or incomplete");
         }
         owner.setAddress(address);
         owner.setTelephone(telephone);
         if (owner.getRegistrationDate() != null
             && owner.getRegistrationDate().isAfter(java.time.LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The registration date cannot be in the future");
         }
         java.time.LocalDate registrationDate = toBusinessDay(
             owner.getRegistrationDate() == null ? java.time.LocalDate.now() : owner.getRegistrationDate());
         int ownersRegisteredToday = ownersRegisteredOn(registrationDate);
         if (ownersRegisteredToday >= DAILY_CREATE_LIMIT) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RestApiRejectionException(HttpStatus.TOO_MANY_REQUESTS,
+                "The daily owner creation limit has been reached");
         }
         int cityOwnerCount = cityOwnerCount(owner);
         if (cityOwnerCount >= CITY_CAPACITY) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new RestApiRejectionException(HttpStatus.CONFLICT,
+                "The owner's city has reached its capacity");
         }
         // The householdId is deterministic (SHA-256 over normalized lastName + '|' + postcode), so
         // owners with the same last name and postcode automatically share it. The link is no longer
@@ -653,7 +661,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 continue;
             }
             if (identityKey.equals(existing.getIdentityKey())) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
+                throw new RestApiRejectionException(HttpStatus.CONFLICT,
+                    "An owner with the same identity already exists");
             }
         }
         // Household member: another owner already shares this (last name, postcode) household. This
@@ -723,7 +732,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         currentOwner.setEmail(ownerFieldsDto.getEmail());
         if (!normalizeEmail(currentOwner)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new RestApiRejectionException(HttpStatus.BAD_REQUEST,
+                "The email address is not valid");
         }
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
