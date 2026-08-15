@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.common.Localities;
+import org.springframework.samples.petclinic.rest.function.common.Membership;
 
 import java.util.Collection;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = Localities.class)
+@Mapper(uses = PetMapper.class, imports = { Localities.class, Membership.class })
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -24,10 +25,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipTier",
-            expression = "java(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 ? \"GOLD\" "
-                    + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
-                    + "&& owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(Membership.levelOf(owner))")
     @Mapping(target = "locality",
             expression = "java(Localities.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
