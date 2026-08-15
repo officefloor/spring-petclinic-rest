@@ -37,7 +37,24 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(OwnerMapper.riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code riskFlag}: {@code true} when the owner warrants a manual risk
+     * review because any of these hold — the owner is a possible duplicate
+     * ({@code possibleDuplicate}), the email domain is disposable-adjacent (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerEmail#isDisposableAdjacent}),
+     * or the city is over its soft capacity ({@code capacityWarning}, i.e. the city held 40-49 owners
+     * when this one was created). Otherwise {@code false}.
+     */
+    static boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner.OwnerEmail
+                .isDisposableAdjacent(owner.getEmail());
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
+    }
 
     /**
      * Derives the owner's {@code selfLink}: the canonical relative URL of this owner, formatted

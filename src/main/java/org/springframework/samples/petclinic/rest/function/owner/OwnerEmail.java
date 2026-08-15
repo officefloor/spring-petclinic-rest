@@ -14,7 +14,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * <p>Used by both create ({@link ValidateOwnerFields}) and update ({@link ValidateOwner}) so the two
  * endpoints treat email identically.
  */
-final class OwnerEmail {
+public final class OwnerEmail {
 
     /**
      * Practical RFC-5322-ish syntactic check: a non-empty local part, an {@code @}, and a dotted
@@ -33,6 +33,45 @@ final class OwnerEmail {
         "mailinator.com", "tempmail.com", "guerrillamail.com");
 
     private OwnerEmail() {
+    }
+
+    /**
+     * Second-level labels of the known disposable domains (the label immediately before the final
+     * TLD, e.g. {@code mailinator} for {@code mailinator.com}). Derived from
+     * {@link #DISPOSABLE_DOMAINS} so the two stay in step.
+     */
+    private static final Set<String> DISPOSABLE_BASE_LABELS = DISPOSABLE_DOMAINS.stream()
+        .map(OwnerEmail::secondLevelLabel)
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    /**
+     * The second-level label of a domain: the label immediately before the final dot (so
+     * {@code mailinator.net} and {@code sub.mailinator.net} both yield {@code mailinator}). A
+     * dot-less value is returned unchanged.
+     */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        return labels.length >= 2 ? labels[labels.length - 2] : domain;
+    }
+
+    /**
+     * True when the email's domain is <em>disposable-adjacent</em>: it shares its second-level label
+     * with one of the known disposable domains ({@link #DISPOSABLE_DOMAINS}) — for example a sibling
+     * on a different TLD such as {@code mailinator.net}. Exact blocklisted domains are rejected at
+     * validation (400) and so never reach a persisted owner, but they share the same base label and
+     * are covered by this definition too. Absent, blank or unparseable email is not adjacent.
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        String normalized = email.toLowerCase(Locale.ROOT);
+        int at = normalized.lastIndexOf('@');
+        if (at < 0 || at == normalized.length() - 1) {
+            return false;
+        }
+        String domain = normalized.substring(at + 1);
+        return DISPOSABLE_BASE_LABELS.contains(secondLevelLabel(domain));
     }
 
     /**
