@@ -310,6 +310,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String householdId = householdIdFor(owner);
         List<Owner> members = new java.util.ArrayList<>();
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (householdId.equals(householdIdFor(existing))) {
                 members.add(existing);
             }
@@ -524,6 +527,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // existing owner's is a byte-for-byte identity match and is always rejected.
         String identityKey = owner.getIdentityKey();
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (identityKey.equals(existing.getIdentityKey())) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
@@ -588,7 +594,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft-delete: flag the owner deleted and retain the record so it can still be read back.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 

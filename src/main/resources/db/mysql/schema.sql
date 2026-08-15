@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   possible_duplicate BIT(1),
   possible_duplicate_of INT,
   birth_date DATE,
+  deleted BIT(1) NOT NULL DEFAULT 0,
   INDEX(last_name)
 ) engine=InnoDB;
 
