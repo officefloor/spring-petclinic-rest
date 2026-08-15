@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
@@ -209,6 +210,27 @@ public class ExceptionControllerAdvice {
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         detail.setProperty("errors", List.of("telephone"));
         logger.debug("Invalid telephone at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidEmailException} raised when a submitted owner {@code email} is present but is
+     * not a syntactically valid address.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        logger.debug("Invalid email at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
