@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       address_line1 TEXT,
                                       address_line2 TEXT,
                                       title      VARCHAR(10),
-                                      deleted    BOOLEAN DEFAULT FALSE
+                                      deleted    BOOLEAN DEFAULT FALSE,
+                                      membership_level_cap INTEGER
 );
 CREATE INDEX ON owners (last_name);
 

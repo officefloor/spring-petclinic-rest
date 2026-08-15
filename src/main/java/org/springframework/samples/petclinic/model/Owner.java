@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -240,6 +243,20 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    /**
+     * The ceiling applied to this owner's {@link #getMembershipLevel() membershipLevel}: one above the
+     * maximum membershipLevel among the other members of this owner's household at creation time.
+     * {@code null} means no cap (the owner had no existing household member), so the natural derived
+     * level applies unchanged.
+     */
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public Boolean getBulkSignupWarning() {
         return this.bulkSignupWarning;
     }
@@ -312,10 +329,20 @@ public class Owner extends Person {
 
     /**
      * The owner's membership level (1 to 4), derived from {@link #getMembershipPoints()}: level 1
-     * for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Not persisted.
+     * for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Capped at
+     * {@link #getMembershipLevelCap() membershipLevelCap} when set, so the level cannot exceed one
+     * above the household maximum recorded at creation time. Not persisted (the cap is).
      */
     @Transient
     public Integer getMembershipLevel() {
+        int level = naturalMembershipLevel();
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
+    }
+
+    private int naturalMembershipLevel() {
         int points = getMembershipPoints();
         if (points <= 1) {
             return 1;
