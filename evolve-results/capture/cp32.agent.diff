@@ -1,0 +1,173 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5a990b89..0ab72c81 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,7 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel",
+         expression = "java(MembershipLevel.levelOf(owner))")
+     @Mapping(target = "locality",
+-        expression = "java(LocalityResolver.localityOf(owner.getPostcode(), owner.getCity()))")
++        expression = "java(LocalityResolver.regionOfCustomerCode(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(ContactPreference.preferenceOf(owner))")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index b9de9de1..a3552540 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -2,27 +2,28 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.util.LocalityResolver;
++import org.springframework.samples.petclinic.util.Sha256Hash;
+ 
+ /**
+  * Assigns the owner's {@code customerCode} before it is saved. The code is formatted
+- * {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the upper-cased first three letters of
+- * the city, {@code LAST3} is the upper-cased first three letters of the last name and
+- * {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the number of
+- * owners already in that city (e.g. {@code LON-SMI-0007}). Mutates the entity in place so
++ * {@code <REGION>-<HASH8>}, where {@code REGION} is the region code derived from the postcode
++ * (see {@link LocalityResolver}) and {@code HASH8} is the first 8 upper-case hex characters of
++ * SHA-256 over the concatenation of the normalized telephone and the last name
++ * (e.g. {@code NSW-3F1A9C2B}). It carries no sequence number, so it depends only on the owner's own
++ * data. The telephone was normalized to E.164 by {@link ValidateNewOwner}, so
++ * {@code owner.getTelephone()} is already the normalized value. Mutates the entity in place so
+  * {@link SaveOwner} persists it.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String city = owner.getCity();
+-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
+-        String lastName = owner.getLastName();
+-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        long inCity = ownerRepository.findAll().stream()
+-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+-                .count();
+-        long sequence = inCity + 1;
+-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    /** Number of upper-case hex characters taken from the SHA-256 digest. */
++    private static final int HASH_LENGTH = 8;
++
++    public void service(@Val Owner owner) {
++        String region = LocalityResolver.localityOf(owner.getPostcode(), owner.getCity());
++        String normalizedTelephone = owner.getTelephone();
++        String hash8 = Sha256Hash.upperHex(normalizedTelephone + owner.getLastName(), HASH_LENGTH);
++        owner.setCustomerCode(region + "-" + hash8);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+index a50e61c4..09db0e7d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
+  * Assigns the owner's {@code membershipNumber} before it is saved. The number is formatted
+  * {@code <customerCode>-M<YY>}, where {@code customerCode} is the owner's customer code and
+  * {@code YY} is the last two digits of the {@code registrationDate} year, zero-padded
+- * (e.g. {@code LON-SMI-0007-M26}). Runs after {@link AssignCustomerCode} has set the customer code
++ * (e.g. {@code NSW-3F1A9C2B-M26}). Runs after {@link AssignCustomerCode} has set the customer code
+  * and {@link BuildOwner} has set the registration date, so both inputs are present. Mutates the
+  * entity in place so {@link SaveOwner} persists it.
+  */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+index 6d6bec91..c640f226 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerCityCapacity.java
+@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerCityFullExcept
+ 
+ /**
+  * Rejects a create-owner request whose city is already at capacity: a city that already contains
+- * 50 or more owners cannot take another. The city is compared case-insensitively (matching how
+- * {@link AssignCustomerCode} counts a city's owners). Runs after {@link ValidateNewOwner} has
++ * 50 or more owners cannot take another. The city is compared case-insensitively. Runs after
++ * {@link ValidateNewOwner} has
+  * published the request, and before {@link BuildOwner}, so a full city is a 409 rather than a
+  * persisted record.
+  */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+index 110d34b1..cc1606cd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+@@ -2,8 +2,8 @@ package org.springframework.samples.petclinic.util;
+ 
+ /**
+  * Derives an owner's {@code checkDigit}: a single Luhn check digit (0-9) computed over the
+- * digits contained in the owner's {@code customerCode}. Non-digit characters (the separators and
+- * letters of a code such as {@code LON-SMI-0007}) are skipped, and the standard Luhn algorithm is
++ * digits contained in the owner's {@code customerCode}. Non-digit characters (the separator and
++ * letters of a code such as {@code NSW-3F1A9C2B}) are skipped, and the standard Luhn algorithm is
+  * applied to the remaining digits, doubling every second digit from the right.
+  */
+ public final class CheckDigit {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+index a9e423df..330303fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/LocalityResolver.java
+@@ -51,6 +51,23 @@ public final class LocalityResolver {
+         return localityOf(city);
+     }
+ 
++    /**
++     * The {@code REGION} component carried by a {@code customerCode} of the form
++     * {@code <REGION>-<HASH8>}. Now that the customer code embeds the region, the owner's locality
++     * is read straight back off the identity rather than recomputed from postcode and city.
++     * Returns {@code "UNKNOWN"} when the code is absent or carries no region component.
++     */
++    public static String regionOfCustomerCode(String customerCode) {
++        if (customerCode == null || customerCode.isBlank()) {
++            return UNKNOWN;
++        }
++        int dash = customerCode.indexOf('-');
++        if (dash <= 0) {
++            return UNKNOWN;
++        }
++        return customerCode.substring(0, dash);
++    }
++
+     /** The region whose range contains {@code postcode}, or {@code null} when absent/unplaced. */
+     private static String regionForPostcode(String postcode) {
+         if (postcode == null || postcode.isBlank()) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Sha256Hash.java b/src/main/java/org/springframework/samples/petclinic/util/Sha256Hash.java
+new file mode 100644
+index 00000000..91c7649f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Sha256Hash.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.util;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * SHA-256 helper for deriving short, stable identifiers. Hashes the UTF-8 bytes of the input and
++ * exposes the leading hex characters in upper case, as used by the owner {@code customerCode}
++ * (its {@code HASH8} component is the first 8 upper-case hex characters of SHA-256).
++ */
++public final class Sha256Hash {
++
++    private Sha256Hash() {
++    }
++
++    /** The first {@code n} UPPER-case hex characters of SHA-256 over the UTF-8 bytes of {@code s}. */
++    public static String upperHex(String s, int n) {
++        byte[] digest = digest(s);
++        StringBuilder sb = new StringBuilder(n);
++        for (int i = 0; i < digest.length && sb.length() < n; i++) {
++            sb.append(String.format("%02X", digest[i]));
++        }
++        return sb.substring(0, n);
++    }
++
++    private static byte[] digest(String s) {
++        try {
++            return MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 not available", ex);
++        }
++    }
++}
