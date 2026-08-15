@@ -19,6 +19,7 @@ import java.util.List;
     imports = {org.springframework.samples.petclinic.util.LocalityResolver.class,
         org.springframework.samples.petclinic.util.MembershipLevel.class,
         org.springframework.samples.petclinic.util.ContactPreference.class,
+        org.springframework.samples.petclinic.util.CheckDigit.class,
         org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.class})
 public interface OwnerMapper {
 
@@ -35,6 +36,8 @@ public interface OwnerMapper {
         expression = "java(ContactPreference.preferenceOf(owner))")
     @Mapping(target = "identityKey",
         expression = "java(OwnerIdentityKey.forOwner(owner))")
+    @Mapping(target = "checkDigit",
+        expression = "java(CheckDigit.luhnOf(owner.getCustomerCode()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
