@@ -6,7 +6,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Step of {@code POST /api/owners} that assigns the owner's {@code membershipNumber}, formatted
  * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
- * {@code registrationDate} year, zero-padded (e.g. {@code 'SMI-0007-M26'}).
+ * {@code registrationDate} year, zero-padded (e.g. {@code 'SYD-SMI-0007-M26'}).
  *
  * <p>Runs after {@link AssignCustomerCode} has set the {@code customerCode} and after
  * {@link BuildOwner} has set the {@code registrationDate}, and before {@link SaveOwner}. Derived
