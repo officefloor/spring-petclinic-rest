@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -129,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         rejectDuplicateTelephone(owner.getTelephone());
         rejectDailyLimitReached(owner.getRegistrationDate());
         rejectCityAtCapacity(owner.getCity());
@@ -448,6 +450,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param registrationDate the registration date of the owner being created
      * @throws DailyOwnerLimitExceededException if the day already holds the maximum number of owners
      */
+    /**
+     * Adjusts an effective registration date so that it always falls on a business day. When the given
+     * date is a Saturday or Sunday it is rolled forward to the following Monday; a weekday is returned
+     * unchanged. This applies equally to a date supplied in the request and to a date defaulted to the
+     * server date, and the adjusted value is what becomes the owner's {@code registrationDate}, so every
+     * value derived from it (the membership number's year segment, the daily create-limit count) uses the
+     * business-day-adjusted date.
+     *
+     * @param date the effective registration date, supplied or defaulted
+     * @return the same date when it is a weekday, otherwise the next Monday
+     */
+    private LocalDate rollToBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (day == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
+    }
+
     private void rejectDailyLimitReached(LocalDate registrationDate) {
         long existing = this.clinicService.findAllOwners().stream()
             .filter(owner -> registrationDate.equals(owner.getRegistrationDate()))
