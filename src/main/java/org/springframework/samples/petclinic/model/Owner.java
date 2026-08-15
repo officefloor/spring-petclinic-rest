@@ -269,18 +269,23 @@ public class Owner extends Person {
         this.deleted = deleted;
     }
 
+    /** Fixed version tag mixed into the version-2 owner identifiers, so no version-2 value ever
+     *  equals one produced under version 1. */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     /**
      * The derived identity key used for duplicate detection: the full lower-case hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, treating a
-     * {@code null} telephone or email as empty. The telephone is already stored in its normalized
-     * (E.164) form and the email is lower-cased here for safety. Two owners are considered the same
-     * only when their whole identity keys are equal.
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, treating
+     * a {@code null} telephone or email as empty. The leading {@code 'V2'} version tag is mixed in so
+     * the version-2 key never equals the version-1 key for the same owner. The telephone is already
+     * stored in its normalized (E.164) form and the email is lower-cased here for safety. Two owners
+     * are considered the same only when their whole identity keys are equal.
      */
     @Transient
     public String getIdentityKey() {
         String tel = this.telephone == null ? "" : this.telephone;
         String mail = this.email == null ? "" : this.email.toLowerCase(Locale.ROOT);
-        String input = tel + "|" + mail + "|" + soundex(this.lastName);
+        String input = IDENTITY_VERSION_TAG + "|" + tel + "|" + mail + "|" + soundex(this.lastName);
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -32,7 +33,23 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Groups the owner's version-2 identifiers — the memberId, identityKey and householdId — under a
+     * single nested {@code identity} object in the owner response. Each value is carried through
+     * unchanged; the version-2 derivation (mixing a fixed {@code 'V2'} tag into the region code used
+     * inside the identifiers) happens where each identifier is assigned.
+     */
+    default OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     /**
      * Registrable labels (the second-level domain, e.g. {@code mailinator} in
@@ -172,41 +189,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality (region) from the region-and-hash identity: it is the
-     * {@code <REGION>} segment of the memberId ({@code <REGION><FY><HASH8><CHK>}), i.e. the region
-     * derived from the postcode at create time. When the memberId is absent or malformed
-     * (e.g. legacy records), it falls back to the postcode range and then the fixed city-to-region
-     * table, returning {@code UNKNOWN} when neither source resolves.
+     * Derives the owner's locality (region) as the plain region code. This is <em>not</em> an
+     * identifier: it never carries the version-2 {@code 'V2'} tag that is mixed into the region code
+     * used inside the identifiers. It is resolved directly from the owner's postcode range and then
+     * the fixed city-to-region table, returning {@code UNKNOWN} when neither source resolves — never
+     * from the memberId, whose region segment now carries the {@code 'V2'} tag.
      */
     default String locality(Owner owner) {
-        String region = memberRegion(owner.getMemberId());
-        if (region != null) {
-            return region;
-        }
-        region = regionFromPostcode(owner);
+        String region = regionFromPostcode(owner);
         if (region != null) {
             return region;
         }
         return cityRegion(owner);
-    }
-
-    /**
-     * The {@code <REGION>} segment of a memberId ({@code <REGION><FY><HASH8><CHK>}): its leading run
-     * of letters, which precedes the two-digit fiscal-year segment. Returns {@code null} when the
-     * memberId is absent or does not start with a letter.
-     *
-     * <p>Deliberately {@code private} so MapStruct does not treat it as a {@code String -> String}
-     * mapping method and apply it to every string property.
-     */
-    private String memberRegion(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? null : memberId.substring(0, i);
     }
 
     /**
@@ -371,22 +365,18 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the two-digit {@code <FY>}
-     * segment of the memberId ({@code <REGION><FY><HASH8><CHK>}), i.e. the fiscal year of the
-     * business-day-adjusted registrationDate captured at create time (the fiscal year starts on
-     * 1 July). Returns {@code null} when the memberId is absent or carries no fiscal-year segment.
+     * The owner's fiscal year, formatted 'FY&lt;YY&gt;' where YY is the last two digits of the fiscal
+     * year of the (business-day-adjusted) registrationDate captured at create time (the fiscal year
+     * starts on 1 July). Derived directly from the stored registrationDate rather than parsed out of
+     * the memberId, whose region segment now carries the version-2 {@code 'V2'} tag. Returns
+     * {@code null} when no registrationDate is recorded.
      */
     default String fiscalYear(Owner owner) {
-        String memberId = owner.getMemberId();
-        String region = memberRegion(memberId);
-        if (region == null || memberId.length() < region.length() + 2) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
             return null;
         }
-        String fy = memberId.substring(region.length(), region.length() + 2);
-        if (!fy.matches("\\d{2}")) {
-            return null;
-        }
-        return "FY" + fy;
+        return String.format("FY%02d", fiscalYearOf(registrationDate) % 100);
     }
 
     /**

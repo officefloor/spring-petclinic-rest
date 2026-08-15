@@ -73,12 +73,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Immutable structured audit event emitted (as JSON, on the {@code AUDIT} logger) for each
-     * successful owner create. {@code seq} is the process-wide {@link #AUDIT_SEQ} counter, and
-     * {@code memberId} carries the owner's primary identifier (the unified memberId). The component
-     * order matches the JSON field order.
+     * successful owner create. {@code schemaVersion} is the audit-event schema version (2 since the
+     * version-2 owner identity release), {@code seq} is the process-wide {@link #AUDIT_SEQ} counter,
+     * {@code memberId} carries the owner's primary identifier (the version-2 unified memberId) and
+     * {@code ownerSegment} carries the owner's marketing segment recomputed from the version-2
+     * identity. The component order matches the JSON field order.
      */
-    private record OwnerCreatedEvent(int seq, Integer ownerId, String memberId,
-        Integer membershipLevel, String event) {
+    private record OwnerCreatedEvent(int schemaVersion, int seq, Integer ownerId, String memberId,
+        Integer membershipLevel, String ownerSegment, String event) {
     }
 
     /** HTTP header carrying the caller-supplied idempotency key for create requests. */
@@ -215,22 +217,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the unified member id {@code <REGION><FY><HASH8><CHK>}: REGION is the region code derived
-     * from the owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN} when the postcode is absent or in no
-     * known range); FY is the two-digit fiscal year of the owner's (business-day-adjusted)
-     * registrationDate; HASH8 is the first 8 upper-case hex characters of SHA-256 over the
-     * concatenation of the owner's normalized (E.164) telephone and last name; and CHK is a single
-     * Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW273F9A0C177}).
-     * No sequence numbers are used, so the base id is a pure function of the owner's region, fiscal
-     * year and region-and-hash identity. When that base id collides with an existing owner's memberId,
-     * {@code -<n>} is appended with the smallest {@code n} of 2 or more that makes it unique, returning
-     * the de-duplicated id.
+     * The version-2 region code embedded inside the identifiers: the fixed {@code 'V2'} version tag
+     * mixed with the region code derived from the owner's postcode (NSW/VIC/QLD, or {@code UNKNOWN}
+     * when the postcode is absent or in no known range), e.g. {@code V2NSW} or {@code V2UNKNOWN}.
+     * Because it always carries the {@code 'V2'} prefix it never equals a version-1 (plain) region,
+     * so every identifier derived from it changes and no version-1 value is produced again. This is
+     * only the region code used <em>inside</em> the identifiers; the user-facing {@code locality},
+     * {@code timezone} and owner-segment region stay the plain region code (see {@link OwnerMapper}).
      */
-    private String memberIdFor(Owner owner) {
+    private String identityRegion(Owner owner) {
         String region = ownerMapper.regionFromPostcode(owner);
         if (region == null) {
             region = "UNKNOWN";
         }
+        return Owner.IDENTITY_VERSION_TAG + region;
+    }
+
+    /**
+     * Build the unified member id {@code <REGION><FY><HASH8><CHK>}: REGION is the version-2 region
+     * code ({@link #identityRegion(Owner)} — the {@code 'V2'} tag mixed with the postcode-derived
+     * region, e.g. {@code V2NSW} or {@code V2UNKNOWN}); FY is the two-digit fiscal year of the owner's
+     * (business-day-adjusted) registrationDate; HASH8 is the first 8 upper-case hex characters of
+     * SHA-256 over the concatenation of the owner's normalized (E.164) telephone and last name; and
+     * CHK is a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g.
+     * {@code V2NSW273F9A0C177}). No sequence numbers are used, so the base id is a pure function of
+     * the owner's region, fiscal year and region-and-hash identity. When that base id collides with an
+     * existing owner's memberId, {@code -<n>} is appended with the smallest {@code n} of 2 or more that
+     * makes it unique, returning the de-duplicated id.
+     */
+    private String memberIdFor(Owner owner) {
+        String region = identityRegion(owner);
         String fy = String.format("%02d", ownerMapper.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String core = region + fy + hash8(owner.getTelephone(), owner.getLastName());
         String base = core + luhn(core);
@@ -414,13 +430,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * A stable, shared household identifier: the first 12 hex characters of SHA-256 over
-     * {@code normalizedLastName + '|' + postcode} (an absent postcode contributes an empty string).
-     * Because it is a pure function of the last name and postcode, every owner in the same household
-     * deterministically resolves to the same value.
+     * {@code 'V2' + '|' + normalizedLastName + '|' + postcode} (an absent postcode contributes an
+     * empty string). The leading {@code 'V2'} version tag is mixed in so the version-2 value never
+     * equals the version-1 value, yet the id stays a pure function of the last name and postcode, so
+     * every owner in the same household still deterministically resolves to the same value.
      */
     private static String householdIdFor(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalizeForHousehold(owner.getLastName()) + "|" + postcode;
+        String key = Owner.IDENTITY_VERSION_TAG + "|" + normalizeForHousehold(owner.getLastName()) + "|" + postcode;
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -707,8 +724,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerMapper.membershipLevel(owner));
-        OwnerCreatedEvent event = new OwnerCreatedEvent(AUDIT_SEQ.incrementAndGet(), owner.getId(),
-            primaryIdentifier(owner), ownerMapper.membershipLevel(owner), "OWNER_CREATED");
+        OwnerCreatedEvent event = new OwnerCreatedEvent(2, AUDIT_SEQ.incrementAndGet(), owner.getId(),
+            primaryIdentifier(owner), ownerMapper.membershipLevel(owner),
+            ownerMapper.ownerSegment(owner).getValue(), "OWNER_CREATED");
         AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
         // Enqueue a welcome notification carrying the owner id and the memberId.
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
