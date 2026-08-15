@@ -122,6 +122,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Return {@code true} when the given (already lower-cased) email is non-null and already used by
+     * any existing owner, comparing case-insensitively on the lower-cased email.
+     */
+    private boolean isEmailAlreadyUsed(String email) {
+        if (email == null) {
+            return false;
+        }
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String existingEmail = existing.getEmail();
+            if (existingEmail != null && email.equals(existingEmail.toLowerCase(java.util.Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Normalize a telephone number to E.164 form: strip spaces, dashes and brackets; keep a leading
      * '+' and country code when present, otherwise assume country code '+61' and drop a single leading
      * '0' from the national digits. The result must have 8 to 15 digits after the '+'.
@@ -356,6 +373,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (telephone.equals(existingTelephone)) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
+        }
+        if (isEmailAlreadyUsed(owner.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         List<Owner> householdMembers = householdMembers(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
