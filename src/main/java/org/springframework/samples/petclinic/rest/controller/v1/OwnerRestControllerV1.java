@@ -289,6 +289,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /** Region -&gt; inclusive 4-digit postcode range {low, high}. */
+    private static final java.util.Map<String, int[]> REGION_POSTCODE_RANGES = java.util.Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validate the optional postcode. Absent (null/empty) is valid — postcode is optional. When
+     * present it must be exactly 4 digits; and when the owner's city maps to a known region (via the
+     * mapper's fixed city-to-region table) it must fall inside that region's inclusive range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit
+     * postcode.
+     */
+    private boolean isPostcodeValid(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isEmpty()) {
+            return true;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODE_RANGES.get(ownerMapper.locality(owner));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(postcode);
+        return value >= range[0] && value <= range[1];
+    }
+
     /** Maximum number of owners permitted in a single city. */
     private static final int CITY_CAPACITY = 50;
 
@@ -349,6 +378,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (!isPostcodeValid(owner)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         String telephone = toE164(owner.getTelephone());
         if (telephone == null || !hasValidNationalLength(telephone)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
