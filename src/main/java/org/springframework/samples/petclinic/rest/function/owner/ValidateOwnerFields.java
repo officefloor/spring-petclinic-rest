@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -29,6 +30,7 @@ public class ValidateOwnerFields {
         requireText("telephone", request.getTelephone(), errors);
         normalizeTelephone(request, errors);
         OwnerEmail.normalize(request, errors);
+        validatePostcode(request, errors);
         if (!errors.isEmpty()) {
             throw new OwnerFieldsValidationException(errors);
         }
@@ -114,6 +116,42 @@ public class ValidateOwnerFields {
             return digits.length() - 1 == 10;
         }
         return true;
+    }
+
+    /** Fixed city-to-region table backing the postcode range check. */
+    private static final Map<String, String> CITY_REGIONS = Map.of(
+            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** Region -> inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates the optional {@code postcode}. When absent the field is left untouched (optional, so
+     * the request contract stays backward-compatible). When present it must be exactly four digits;
+     * a malformed value adds a {@code postcode} error (400). For a city with a known region the
+     * postcode must also fall within that region's range (NSW 2000-2099, VIC 3000-3099, QLD
+     * 4000-4099); an out-of-range value adds a {@code postcode} error (400). A city with no known
+     * region accepts any 4-digit postcode.
+     */
+    private static void validatePostcode(OwnerFieldsDto request, List<String> errors) {
+        String postcode = request.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        if (!postcode.matches("\\d{4}")) {
+            errors.add("postcode");
+            return;
+        }
+        String region = CITY_REGIONS.get(request.getCity());
+        if (region == null) {
+            return; // no known region for this city — any 4-digit postcode is accepted
+        }
+        int[] range = REGION_POSTCODES.get(region);
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            errors.add("postcode");
+        }
     }
 
     private static void requireText(String field, String value, List<String> errors) {
