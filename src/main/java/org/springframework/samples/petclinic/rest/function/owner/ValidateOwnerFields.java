@@ -29,7 +29,7 @@ public class ValidateOwnerFields {
         addIfBlank(errors, "lastName", request.getLastName());
         addIfBlank(errors, "address", request.getAddress());
         addIfBlank(errors, "city", request.getCity());
-        addIfBlank(errors, "telephone", request.getTelephone());
+        normalizeTelephone(errors, request);
         for (ConstraintViolation<OwnerFieldsDto> violation : validator.validate(request)) {
             String field = violation.getPropertyPath().toString();
             if (!field.isEmpty() && !errors.contains(field)) {
@@ -46,5 +46,21 @@ public class ValidateOwnerFields {
         if (value == null || value.isBlank()) {
             errors.add(name);
         }
+    }
+
+    /**
+     * Normalize the telephone by removing every non-digit character, then require exactly 10 digits.
+     * The stripped, 10-digit value is written back onto the request so it is stored and returned as
+     * {@code telephone}. Anything that is not exactly 10 digits after stripping is a {@code telephone}
+     * error (400).
+     */
+    private static void normalizeTelephone(List<String> errors, OwnerFieldsDto request) {
+        String value = request.getTelephone();
+        String digits = value == null ? "" : value.replaceAll("\\D", "");
+        if (digits.length() != 10) {
+            errors.add("telephone");
+            return;
+        }
+        request.setTelephone(digits);
     }
 }
