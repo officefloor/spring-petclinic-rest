@@ -1,0 +1,45 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 03845eef..212c7a55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -103,6 +103,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Dedicated notification logger. A newly created owner enqueues a welcome notification by emitting a
++     * line here carrying the owner id and the assigned member id, so notification side-effects can be
++     * captured independently of application and audit logging.
++     */
++    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
++
+     /**
+      * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED} event.
+      * Shared across all creates so the events can be totally ordered independently of timestamps.
+@@ -219,6 +226,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), ownerDto.getMembershipLevel());
+         emitOwnerCreatedEvent(owner, ownerDto);
++        enqueueWelcomeNotification(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -341,6 +349,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info(AUDIT_EVENT_MAPPER.writeValueAsString(event));
+     }
+ 
++    /**
++     * Enqueues a welcome notification for a freshly created owner by emitting a line to the {@code NOTIFY}
++     * logger carrying the owner id and the assigned member id. Downstream notification delivery consumes
++     * this signal; capturing the logger lets the side-effect be asserted without an implementation hook.
++     *
++     * @param owner the freshly persisted owner
++     */
++    private void enqueueWelcomeNotification(Owner owner) {
++        NOTIFY.info("welcome notification enqueued ownerId={} memberId={}",
++            owner.getId(), owner.getMemberId());
++    }
++
+     /**
+      * Returns the owner's current primary identifier, which structured audit events must carry. This is the
+      * single point that decides which field is primary: the unified {@code memberId}.
