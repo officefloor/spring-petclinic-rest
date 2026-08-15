@@ -27,7 +27,7 @@ public class AssignHouseholdId {
 
     /** Stable identifier for the household sharing {@code lastName} at {@code address}. */
     static String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "|" + normalize(address);
+        String key = normalize(lastName) + "|" + AddressNormalizer.normalize(address);
         return "HH-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 

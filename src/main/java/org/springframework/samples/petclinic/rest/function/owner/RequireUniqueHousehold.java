@@ -10,9 +10,10 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Step of {@code POST /api/owners} that rejects a create with 409 when another owner already
- * has the same lastName and the same address, comparing both case-insensitively with collapsed
- * whitespace. Skipped when the request sets {@code sharesHousehold=true}, so people who
- * explicitly share a household can still be registered.
+ * has the same lastName and the same address. The lastName is compared case-insensitively with
+ * collapsed whitespace; the address is compared through {@link AddressNormalizer}, the same
+ * canonical form the owner is stored with. Skipped when the request sets
+ * {@code sharesHousehold=true}, so people who explicitly share a household can still be registered.
  */
 public class RequireUniqueHousehold {
 
@@ -22,10 +23,10 @@ public class RequireUniqueHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
