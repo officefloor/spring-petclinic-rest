@@ -63,7 +63,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. On a successful owner create an audit line is emitted here carrying the
-     * new owner's id, its assigned {@code customerCode} and its {@code registrationDate}.
+     * new owner's id, its assigned {@code customerCode}, its {@code registrationDate} and its
+     * numeric {@code membershipLevel}.
      */
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
 
@@ -136,9 +137,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -289,8 +291,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Counts how many existing owners belong to the same household as the owner being created, i.e.
      * share its {@code householdId} (derived by {@link Households#householdId} from the normalized last
      * name and address). The value excludes the owner being created (which has not yet been saved), so
-     * the household's size after this create is this count plus one. It is stored on the new owner and
-     * drives the {@code GOLD} membership tier once the household reaches three or more members.
+     * the household's size after this create is this count plus one. It is stored on the new owner.
      *
      * @param lastName the last name of the owner being created
      * @param address the normalized address of the owner being created

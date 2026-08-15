@@ -33,11 +33,10 @@ public interface OwnerMapper {
             + "|| owner.getRegistrationDate() == null ? null : "
             + "owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipTier",
+    @Mapping(target = "membershipLevel",
         expression = "java(owner == null ? null : "
-            + "(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" : "
-            + "(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
-            + "&& owner.getEmail() != null ? \"SILVER\" : \"BRONZE\")))")
+            + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
+            + "owner.getEmail(), owner.getNamesakeCount()))")
     @Mapping(target = "locality",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Localities.region(owner.getCity()))")
