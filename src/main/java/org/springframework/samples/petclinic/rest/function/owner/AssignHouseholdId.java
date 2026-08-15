@@ -12,9 +12,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Step of {@code POST /api/owners} that assigns a stable shared {@code householdId} when the
  * request sets {@code sharesHousehold=true}. The id is derived deterministically from the
- * normalized lastName and address — the same normalization {@link RequireUniqueHousehold} uses
- * to detect a shared household — so every owner joining the same household is given the identical
- * identifier. Owners that do not share a household are left with no householdId.
+ * normalized lastName and address, so every owner joining the same household is given the
+ * identical identifier. It is one component of the consolidated {@link OwnerIdentityKey}.
+ * Owners that do not share a household are left with no householdId.
  */
 public class AssignHouseholdId {
 

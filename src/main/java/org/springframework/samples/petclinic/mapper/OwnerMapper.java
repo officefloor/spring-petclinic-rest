@@ -30,6 +30,9 @@ public interface OwnerMapper {
         expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
             + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
             + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+    @Mapping(target = "identityKey",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner."
+            + "OwnerIdentityKey.forOwner(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

@@ -9,14 +9,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /**
- * Responds 409 to a create-owner request whose lower-cased email is already used by
- * another owner, with a JSON body whose 'errors' array names 'email'.
+ * Responds 409 to a create-owner request whose derived identityKey already matches an existing
+ * owner, with a JSON body whose 'errors' array names 'identityKey'.
  */
-public class DuplicateEmailExceptionHandler {
+public class DuplicateIdentityExceptionHandler {
 
-    public void handle(@Parameter DuplicateEmailException ex,
+    public void handle(@Parameter DuplicateIdentityException ex,
             ObjectResponse<ResponseEntity<Map<String, Object>>> response) {
         response.send(ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("errors", List.of("email"))));
+                .body(Map.of("errors", List.of("identityKey"))));
     }
 }
