@@ -8,6 +8,7 @@ import jakarta.validation.Validator;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
+import org.springframework.samples.petclinic.rest.function.common.Postcodes;
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
@@ -37,6 +38,7 @@ public class ValidateOwnerFields {
                 errors.add(field);
             }
         }
+        validatePostcode(errors, request);
         if (!errors.isEmpty()) {
             throw new MissingOwnerFieldsException(errors);
         }
@@ -64,6 +66,21 @@ public class ValidateOwnerFields {
      */
     private static void normalizeAddress(OwnerFieldsDto request) {
         request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+    }
+
+    /**
+     * Postcode is optional and validated only when present. Its 4-digit format is enforced by the
+     * schema {@code @Pattern} (checked above, so a malformed value is already a {@code postcode}
+     * error). When it is well-formed it must also be in range for the region derived from the
+     * owner's city (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city with no known region
+     * accepts any 4-digit postcode. An out-of-range postcode is a {@code postcode} error (400).
+     */
+    private static void validatePostcode(List<String> errors, OwnerFieldsDto request) {
+        String postcode = request.getPostcode();
+        if (postcode != null && !errors.contains("postcode")
+                && !Postcodes.isValidForCity(postcode, request.getCity())) {
+            errors.add("postcode");
+        }
     }
 
     private static void addIfBlank(List<String> errors, String name, String value) {
