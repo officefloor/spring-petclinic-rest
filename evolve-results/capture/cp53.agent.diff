@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 520a972e..2fdd2b41 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,16 +1,26 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+ import net.officefloor.plugin.variable.Val;
++import tools.jackson.databind.ObjectMapper;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Emits an audit line for a newly created owner via the dedicated {@code AUDIT} logger,
+- * carrying the owner's id, customerCode, registrationDate, membershipLevel and
+- * membershipNumber.
++ * Emits the audit for a newly created owner via the dedicated {@code AUDIT} logger. Two lines:
++ *
++ * <ol>
++ *   <li>the human-readable audit line carrying the owner's id, customerCode, registrationDate,
++ *       membershipLevel and membershipNumber; and</li>
++ *   <li>an immutable structured {@link OwnerCreatedEvent} as one JSON line
++ *       ({@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}), where
++ *       {@code seq} increases monotonically across creates and {@code customerCode} carries the
++ *       owner's current {@linkplain #primaryIdentifier(Owner) primary identifier}.</li>
++ * </ol>
+  *
+  * <p>Runs after {@link SaveOwner} so the generated id is present, within the same write
+  * transaction as the insert.
+@@ -19,10 +29,28 @@ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Process-wide, monotonically increasing sequence stamped on each {@link OwnerCreatedEvent}. */
++    private static final AtomicLong SEQ = new AtomicLong();
++
++    private static final ObjectMapper JSON = new ObjectMapper();
++
+     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
+         AUDIT.info(
+                 "Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                 OwnerMapper.membershipLevel(owner), ownerMapper.membershipNumber(owner));
++
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
++                primaryIdentifier(owner), OwnerMapper.membershipLevel(owner));
++        AUDIT.info(JSON.writeValueAsString(event));
++    }
++
++    /**
++     * The owner's current primary identifier carried by the structured event. Today this is the
++     * {@code customerCode}; when the customerCode is later unified into the memberId, change this
++     * single accessor so every {@code OWNER_CREATED} event carries the memberId instead.
++     */
++    private static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 00000000..f90d9ede
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Immutable structured audit event emitted once per successful owner create, serialized to a single
++ * JSON line on the dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}.
++ *
++ * <p>Shape: {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
++ *
++ * <ul>
++ *   <li>{@code seq} — a process-wide, monotonically increasing sequence across all creates, so the
++ *       relative order of events is recoverable from the log.</li>
++ *   <li>{@code customerCode} — the owner's <em>current primary identifier</em>. Today that is the
++ *       {@code customerCode}; when the customerCode is later unified into the memberId, the single
++ *       {@code AuditOwnerCreated#primaryIdentifier} accessor changes and this field then carries the
++ *       memberId instead.</li>
++ * </ul>
++ *
++ * <p>A record: its components are final, so a published event cannot be mutated after the fact.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
++        String event) {
++
++    /** The constant discriminator carried by every owner-create event. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    /** Builds an {@code OWNER_CREATED} event; the {@code event} discriminator is fixed. */
++    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++        this(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 18e6a305..a7fdb5da 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -126,8 +126,9 @@ recordIdempotency:
+   govern: [ transaction ]
+   next: audit
+ 
+-# On successful create, emit an audit line via the dedicated AUDIT logger carrying the
+-# owner id, customerCode and registrationDate. Runs after save so the generated id exists.
++# On successful create, emit the audit via the dedicated AUDIT logger: the human-readable line plus
++# an immutable structured OWNER_CREATED event {seq, ownerId, customerCode, membershipLevel} whose
++# seq increases monotonically across creates. Runs after save so the generated id exists.
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
