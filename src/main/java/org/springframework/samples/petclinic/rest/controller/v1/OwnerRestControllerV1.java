@@ -167,6 +167,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Validate the national-number length of a canonical E.164 string against its country code:
+     * '+61' (Australia) requires 9 national digits and '+1' (NANP) requires 10. Numbers carrying any
+     * other country code are not length-checked here and are accepted. Expects the '+'-prefixed digit
+     * string produced by {@link #toE164}.
+     *
+     * @return {@code true} when the national-number length is correct for the country code.
+     */
+    private static boolean hasValidNationalLength(String e164) {
+        String digits = e164.substring(1);
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
+    }
+
+    /**
      * Build the customer code {@code <CITY3>-<LAST3>-<NNNN>}: CITY3 is the upper-cased first three
      * letters of the city, LAST3 the upper-cased first three letters of the last name and NNNN a
      * per-city 4-digit zero-padded sequence equal to one more than the owners already in that city
@@ -348,7 +367,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String telephone = toE164(owner.getTelephone());
-        if (telephone == null) {
+        if (telephone == null || !hasValidNationalLength(telephone)) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         if (!normalizeEmail(owner)) {
