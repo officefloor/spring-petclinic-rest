@@ -34,6 +34,8 @@ public interface OwnerMapper {
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "checkDigit",
             expression = "java(CheckDigits.luhnOf(owner.getCustomerCode()))")
+    @Mapping(target = "membershipPoints",
+            expression = "java(Membership.pointsOf(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(Membership.levelOf(owner))")
     @Mapping(target = "locality",
