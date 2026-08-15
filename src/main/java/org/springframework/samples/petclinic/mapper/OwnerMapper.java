@@ -19,6 +19,7 @@ import java.util.Map;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
@@ -37,6 +38,18 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code selfLink}: the canonical relative URL of this owner, formatted
+     * {@code '/api/owners/<id>'}. Returns {@code null} when the id is absent, so owners without an
+     * id map cleanly.
+     */
+    default String selfLink(Owner owner) {
+        if (owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * The calendar year in which the fiscal year containing {@code date} ends. The fiscal year runs
