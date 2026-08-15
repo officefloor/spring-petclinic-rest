@@ -108,6 +108,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(telephone);
         owner.setTelephone(telephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
