@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "namesake_count")
+    private Integer namesakeCount;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -106,6 +109,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public Integer getNamesakeCount() {
+        return this.namesakeCount;
+    }
+
+    public void setNamesakeCount(Integer namesakeCount) {
+        this.namesakeCount = namesakeCount;
     }
 
     protected Set<Pet> getPetsInternal() {
