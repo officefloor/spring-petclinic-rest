@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -74,6 +76,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@.]{2,}$");
+
+    /**
+     * Dedicated audit logger. Successful side-effecting operations (such as creating an owner) emit a
+     * line here so audit trails can be captured independently of application logging.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -142,6 +150,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
