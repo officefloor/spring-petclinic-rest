@@ -57,6 +57,8 @@ public interface OwnerMapper {
             expression = "java(AgeBands.of(owner))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(Telephones.displayOf(owner))")
+    @Mapping(target = "selfLink",
+            expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
