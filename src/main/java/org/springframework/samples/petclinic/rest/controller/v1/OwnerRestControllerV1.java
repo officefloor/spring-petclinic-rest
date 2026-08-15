@@ -134,6 +134,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(assignCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
+        owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getAddress()) + 1);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -281,6 +282,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> first.equalsIgnoreCase(existing.getFirstName())
                 && last.equalsIgnoreCase(existing.getLastName()))
+            .count();
+    }
+
+    /**
+     * Counts how many existing owners belong to the same household as the owner being created, i.e.
+     * share its {@code householdId} (derived by {@link Households#householdId} from the normalized last
+     * name and address). The value excludes the owner being created (which has not yet been saved), so
+     * the household's size after this create is this count plus one. It is stored on the new owner and
+     * drives the {@code GOLD} membership tier once the household reaches three or more members.
+     *
+     * @param lastName the last name of the owner being created
+     * @param address the normalized address of the owner being created
+     * @return the number of existing owners sharing this owner's household
+     */
+    private int countHouseholdMembers(String lastName, String address) {
+        String householdId = Households.householdId(lastName, address);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(
+                Households.householdId(existing.getLastName(), existing.getAddress())))
             .count();
     }
 
