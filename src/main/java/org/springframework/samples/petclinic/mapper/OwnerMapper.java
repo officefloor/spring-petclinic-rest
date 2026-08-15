@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -48,20 +48,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier: {@code GOLD} when the owner's household has 3 or more
-     * members, otherwise {@code SILVER} when {@code namesakeCount} is 0 and an email is present, and
-     * {@code BRONZE} otherwise.
+     * Returns the owner's numeric membership level, assigned on create: it starts at 1, gains 1 when
+     * an email is present, gains 1 when {@code namesakeCount} is 0, and is capped at 3 (level 4 is
+     * reserved for tenure).
      */
-    default String membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return "GOLD";
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        String email = owner.getEmail();
+        if (email != null && !email.isEmpty()) {
+            level++;
         }
         Integer namesakeCount = owner.getNamesakeCount();
-        String email = owner.getEmail();
-        boolean silver = namesakeCount != null && namesakeCount == 0
-            && email != null && !email.isEmpty();
-        return silver ? "SILVER" : "BRONZE";
+        if (namesakeCount != null && namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /**
