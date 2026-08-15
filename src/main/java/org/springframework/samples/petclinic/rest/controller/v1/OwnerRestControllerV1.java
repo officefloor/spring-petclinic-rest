@@ -377,6 +377,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setNamesakeCount(namesakeCount(owner));
+        owner.setHouseholdSize(householdMembers.size() + 1);
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setTelephone(telephone);
         owner.setRegistrationDate(registrationDate);
