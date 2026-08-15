@@ -166,6 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignPossibleDuplicate(owner, sharesHousehold);
         owner.setCustomerCode(generateCustomerCode(owner));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdSize(countHouseholdSize(owner.getHouseholdId()));
         owner.setBulkSignupWarning(isBulkSignupDay(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -503,6 +504,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> firstName.equalsIgnoreCase(existing.getFirstName())
                 && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
+    }
+
+    /**
+     * Computes the size of the owner's household: the number of existing owners already sharing the given
+     * {@code householdId} plus the owner being created itself. The existing count is taken before the new
+     * owner is persisted, so adding one for the owner yields the household's total membership including it
+     * (e.g. two existing members give a household size of 3 for the third member). Households are keyed on
+     * the deterministic {@code householdId} (derived from last name and postcode).
+     *
+     * @param householdId the computed household identifier of the owner being created
+     * @return the household size including the owner being created (at least 1)
+     */
+    private int countHouseholdSize(String householdId) {
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(owner -> householdId.equals(owner.getHouseholdId()))
+            .count();
+        return (int) existing + 1;
     }
 
     /**

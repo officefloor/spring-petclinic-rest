@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       customer_code TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER,
+                                      household_size INTEGER,
                                       bulk_signup_warning BOOLEAN,
                                       postcode VARCHAR(4),
                                       possible_duplicate BOOLEAN,

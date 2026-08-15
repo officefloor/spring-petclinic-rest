@@ -22,26 +22,39 @@ import java.util.List;
 public abstract class OwnerMapper {
 
     /**
-     * The highest membership level attainable. Levels up to {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} are
-     * derivable at creation; level {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than
-     * {@value #TENURE_LEVEL_DAYS} days.
+     * Points added when the owner has an email address.
      */
-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+    private static final int EMAIL_POINTS = 2;
 
     /**
-     * The highest membership level derivable at creation, before any tenure is accrued. A newly created owner
-     * has zero tenure, so it can never exceed this value.
+     * Points added when the owner has no namesakes ({@code namesakeCount} is 0).
      */
-    private static final int MAX_PRE_TENURE_MEMBERSHIP_LEVEL = 3;
+    private static final int NO_NAMESAKE_POINTS = 1;
 
     /**
-     * Tenure, in days, that an owner must exceed to reach membership level {@value #MAX_MEMBERSHIP_LEVEL}.
+     * Points added when the owner belongs to a household of {@value #LARGE_HOUSEHOLD_SIZE} or more members.
      */
-    private static final int TENURE_LEVEL_DAYS = 365;
+    private static final int LARGE_HOUSEHOLD_POINTS = 2;
+
+    /**
+     * The household size (members, including the owner) at which the large-household points are awarded.
+     */
+    private static final int LARGE_HOUSEHOLD_SIZE = 3;
+
+    /**
+     * Points added when the owner's tenure exceeds {@value #TENURE_POINTS_DAYS} days.
+     */
+    private static final int TENURE_POINTS = 3;
+
+    /**
+     * Tenure, in days, that an owner must exceed to earn the tenure points.
+     */
+    private static final int TENURE_POINTS_DAYS = 365;
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.mapper.OwnerLocality.of(owner.getCity(), owner.getPostcode()))")
@@ -62,29 +75,52 @@ public abstract class OwnerMapper {
     public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Computes an owner's numeric membership level. The level starts at 1, gains 1 when an email is present,
-     * gains a further 1 when {@code namesakeCount} is 0, and is capped at
-     * {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL} before tenure is considered. Level
-     * {@value #MAX_MEMBERSHIP_LEVEL} additionally requires tenure of more than {@value #TENURE_LEVEL_DAYS}
-     * days (measured from {@code registrationDate}); because a newly created owner has zero tenure, a new
-     * owner never exceeds level {@value #MAX_PRE_TENURE_MEMBERSHIP_LEVEL}.
+     * Computes an owner's membership points. Points start at 0 and accumulate: {@value #EMAIL_POINTS} when an
+     * email is present, {@value #NO_NAMESAKE_POINTS} when {@code namesakeCount} is 0,
+     * {@value #LARGE_HOUSEHOLD_POINTS} for a household of {@value #LARGE_HOUSEHOLD_SIZE} or more members, and
+     * {@value #TENURE_POINTS} for tenure of more than {@value #TENURE_POINTS_DAYS} days (measured from
+     * {@code registrationDate}). Because a newly created owner has zero tenure, a new owner never earns the
+     * tenure points.
      *
-     * @param owner the owner whose level is being computed
-     * @return the membership level (between 1 and {@value #MAX_MEMBERSHIP_LEVEL} inclusive)
+     * @param owner the owner whose points are being computed
+     * @return the owner's membership points (0 or more)
      */
-    protected Integer membershipLevel(Owner owner) {
-        int level = 1;
+    protected Integer membershipPoints(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+            points += EMAIL_POINTS;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += NO_NAMESAKE_POINTS;
         }
-        level = Math.min(level, MAX_PRE_TENURE_MEMBERSHIP_LEVEL);
-        if (tenureDays(owner) > TENURE_LEVEL_DAYS) {
-            level = MAX_MEMBERSHIP_LEVEL;
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= LARGE_HOUSEHOLD_SIZE) {
+            points += LARGE_HOUSEHOLD_POINTS;
         }
-        return level;
+        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
+            points += TENURE_POINTS;
+        }
+        return points;
+    }
+
+    /**
+     * Maps an owner's membership points to a numeric membership level: level 1 for 0-1 points, level 2 for
+     * 2-3 points, level 3 for 4-5 points, and level 4 for 6 or more points.
+     *
+     * @param owner the owner whose level is being computed
+     * @return the membership level (between 1 and 4 inclusive)
+     */
+    protected Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     /**
