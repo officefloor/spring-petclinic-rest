@@ -26,7 +26,17 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(OwnerMapper.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's preferred contact channel: {@code 'EMAIL'} when an email is present,
+     * otherwise {@code 'PHONE'}.
+     */
+    default String contactPreference(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
 
     /**
      * Fixed city-to-region table backing the owner's {@code locality}: Sydney maps to {@code 'NSW'},
