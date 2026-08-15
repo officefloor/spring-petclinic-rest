@@ -203,7 +203,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
@@ -699,6 +700,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(Owner owner) {
         String key = identityKey(owner);
         boolean taken = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .anyMatch(existing -> key.equals(identityKey(existing)));
         if (taken) {
             throw new DuplicateIdentityException(key);
@@ -725,6 +727,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer matchId = null;
         if (!sharesHousehold && owner.getPostcode() != null) {
             matchId = this.clinicService.findAllOwners().stream()
+                .filter(existing -> !isDeleted(existing))
                 .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName())
                     && owner.getPostcode().equals(existing.getPostcode())
                     && !telephonesEqual(owner.getTelephone(), existing.getTelephone()))
@@ -739,6 +742,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private boolean telephonesEqual(String a, String b) {
         return a == null ? b == null : a.equals(b);
+    }
+
+    /**
+     * Whether an existing owner has been soft-deleted. A soft-deleted owner is retained and still
+     * readable, but is ignored by the create endpoint's duplicate and identity checks.
+     *
+     * @param owner an existing owner
+     * @return {@code true} when the owner is flagged deleted, otherwise {@code false}
+     */
+    private boolean isDeleted(Owner owner) {
+        return Boolean.TRUE.equals(owner.getDeleted());
     }
 
     /**
@@ -788,6 +802,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectHouseholdDuplicate(Owner owner) {
         String householdId = owner.getHouseholdId();
         boolean shared = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (shared) {
             throw new HouseholdDuplicateException(householdId);
