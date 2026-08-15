@@ -4,8 +4,8 @@ package org.springframework.samples.petclinic.rest.function.common;
  * Derives a single Luhn check digit over the digits contained in a value.
  *
  * <p>Used for the owner's {@code checkDigit}, computed over the digits of its
- * {@code customerCode}. Non-digit characters are ignored, so the separators in a code such as
- * {@code 'SYD-SMI-0007'} do not contribute; the rightmost digit is doubled first per the
+ * {@code customerCode}. Non-digit characters are ignored, so the region prefix and separator in a
+ * code such as {@code 'NSW-1A2B3C4D'} do not contribute; the rightmost digit is doubled first per the
  * standard Luhn algorithm.
  */
 public final class CheckDigits {

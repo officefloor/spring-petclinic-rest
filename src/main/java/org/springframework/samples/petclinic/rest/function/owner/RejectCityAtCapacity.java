@@ -10,7 +10,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Step of {@code POST /api/owners} that runs after {@link ValidateOwnerFields} has published the
  * request. Rejects the request when the named city already contains {@value #MAX_OWNERS_PER_CITY}
  * or more owners, so a full city is a 409 Conflict rather than an over-capacity create. City
- * matching is case-insensitive, consistent with {@link AssignCustomerCode}.
+ * matching is case-insensitive.
  */
 public class RejectCityAtCapacity {
 
