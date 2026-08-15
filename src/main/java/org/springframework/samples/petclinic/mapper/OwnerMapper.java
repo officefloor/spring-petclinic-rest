@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -176,26 +177,47 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's numeric membership level. The pre-tenure factors start at 1, gain 1 when
-     * an email is present and gain 1 when {@code namesakeCount} is 0, and are capped at 3. Level 4
-     * requires tenure of more than 365 days: it adds a further 1 on top of the capped pre-tenure
-     * score. Because a newly created owner has zero tenure, a new owner never exceeds level 3.
+     * Returns the owner's membership points. The score starts at 0 and gains 2 when an email is
+     * present, 1 when {@code namesakeCount} is 0, 2 when the household has 3 or more members, and 3
+     * when tenure exceeds 365 days.
      */
-    default Integer membershipLevel(Owner owner) {
-        int level = 1;
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
         String email = owner.getEmail();
         if (email != null && !email.isEmpty()) {
-            level++;
+            points += 2;
         }
         Integer namesakeCount = owner.getNamesakeCount();
         if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            points += 2;
+        }
         if (tenureDays(owner) > 365) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * Returns the owner's numeric membership level, derived from {@link #membershipPoints(Owner)}:
+     * level 1 for 0-1 points, level 2 for 2-3 points, level 3 for 4-5 points, and level 4 for 6 or
+     * more points.
+     */
+    default Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
