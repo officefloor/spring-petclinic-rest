@@ -1,0 +1,42 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
+
+/**
+ * Assigns the owner's soft-duplicate signal. The pipeline only reaches this step once
+ * {@link CheckIdentityUnique} has passed, so the new owner is never a <em>hard</em> duplicate here.
+ * When it nonetheless shares an existing owner's last name and postcode while carrying a
+ * <em>different</em> telephone, it is flagged as a possible duplicate: {@code possibleDuplicate} true
+ * with {@code possibleDuplicateOf} set to the matching owner's id. Otherwise {@code possibleDuplicate}
+ * is false and {@code possibleDuplicateOf} is left null.
+ *
+ * <p>Runs after {@link BuildOwner} and before {@link SaveOwner}, within the write transaction, so it
+ * compares against the owners persisted so far (excluding this new, not-yet-saved one). The last name
+ * is compared case-insensitively; a missing postcode can never match.
+ */
+public class AssignPossibleDuplicate {
+
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+        owner.setPossibleDuplicate(false);
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        for (Owner existing : ownerRepository.findAll()) {
+            boolean sameLastName = lastName != null && lastName.equalsIgnoreCase(existing.getLastName());
+            boolean samePostcode = postcode.equals(existing.getPostcode());
+            boolean differentTelephone = telephone == null
+                    ? existing.getTelephone() != null
+                    : !telephone.equals(existing.getTelephone());
+            if (sameLastName && samePostcode && differentTelephone) {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(existing.getId());
+                return;
+            }
+        }
+    }
+}
