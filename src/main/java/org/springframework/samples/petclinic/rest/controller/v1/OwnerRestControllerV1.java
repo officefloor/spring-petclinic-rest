@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -99,6 +101,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missingFields = new ArrayList<>();
+        requireNonBlank(missingFields, "firstName", ownerFieldsDto.getFirstName());
+        requireNonBlank(missingFields, "lastName", ownerFieldsDto.getLastName());
+        requireNonBlank(missingFields, "address", ownerFieldsDto.getAddress());
+        requireNonBlank(missingFields, "city", ownerFieldsDto.getCity());
+        requireNonBlank(missingFields, "telephone", ownerFieldsDto.getTelephone());
+        if (!missingFields.isEmpty()) {
+            throw new MissingRequiredFieldsException(missingFields);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -199,5 +210,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Records {@code fieldName} as missing when {@code value} is {@code null} or blank (empty or
+     * whitespace-only), so the caller can reject the request listing every offending field.
+     */
+    private static void requireNonBlank(List<String> missingFields, String fieldName, String value) {
+        if (value == null || value.isBlank()) {
+            missingFields.add(fieldName);
+        }
     }
 }
