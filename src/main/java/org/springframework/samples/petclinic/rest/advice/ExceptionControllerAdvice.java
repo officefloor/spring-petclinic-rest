@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdE
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
@@ -66,6 +67,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
     private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the given identity already exists";
     private static final String ERROR_INVALID_EMAIL = "The request contains an invalid email address";
+    private static final String ERROR_INVALID_POSTCODE = "The request contains a postcode that is not valid for the owner's city";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT = "The maximum number of owners for today has already been reached";
 
@@ -233,6 +235,28 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getEmail());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link InvalidPostcodeException} raised when a create request supplies a
+     * {@code postcode} that is present but out of range for the owner's city's region. Returns a
+     * 400 Bad Request whose body carries an {@code errors} array naming the {@code postcode} field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_POSTCODE);
+        detail.setProperty("errors", List.of("postcode"));
+        logger.debug("Invalid postcode at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getPostcode());
         return ResponseEntity.status(status).body(detail);
     }
 

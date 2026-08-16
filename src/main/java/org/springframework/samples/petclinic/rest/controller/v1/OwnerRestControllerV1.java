@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.controller.CityAtCapacityExcep
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -122,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         normalizeAddress(ownerFieldsDto);
         validateRequiredFields(ownerFieldsDto);
+        validatePostcode(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         rejectDuplicateIdentity(ownerFieldsDto);
@@ -302,6 +304,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static void requireText(String field, String value, List<String> errors) {
         if (value == null || value.isBlank()) {
             errors.add(field);
+        }
+    }
+
+    /**
+     * Region -> inclusive 4-digit postcode range {@code {low, high}} used to validate a supplied
+     * postcode against the owner's city. A region absent from this table (i.e. a city whose region
+     * is {@code 'UNKNOWN'}) imposes no range, so any 4-digit postcode is accepted there.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates the submitted {@code postcode} only when present. The field is optional, so a
+     * {@code null} value is accepted. When present it has already been constrained to four digits
+     * by Bean Validation; here it is additionally checked against the owner's city: for a city
+     * whose region is known (see {@link org.springframework.samples.petclinic.mapper.LocalityLookup}),
+     * the postcode must fall within that region's inclusive range
+     * ({@link #REGION_POSTCODE_RANGE}); a city with no known region accepts any 4-digit value.
+     *
+     * @param ownerFieldsDto the submitted owner fields (city already validated as present)
+     * @throws InvalidPostcodeException with a 400 status if the postcode is out of range for the
+     *                                  city's region
+     */
+    private static void validatePostcode(OwnerFieldsDto ownerFieldsDto) {
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode == null) {
+            return;
+        }
+        String region = org.springframework.samples.petclinic.mapper.LocalityLookup
+            .regionFor(ownerFieldsDto.getCity());
+        int[] range = REGION_POSTCODE_RANGE.get(region);
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(postcode);
         }
     }
 
