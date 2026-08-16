@@ -18,6 +18,10 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation",
+        expression = "java(owner == null ? null : "
+            + "(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() "
+            + ": owner.getTitle() + \" \" + owner.getLastName()))")
     @Mapping(target = "displayName",
         expression = "java(owner == null ? null : owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
