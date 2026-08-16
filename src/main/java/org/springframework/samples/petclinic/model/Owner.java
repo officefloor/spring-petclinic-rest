@@ -22,6 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.*;
 
 /**
@@ -74,6 +75,9 @@ public class Owner extends Person {
 
     @Column(name = "postcode")
     private String postcode;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
@@ -174,6 +178,14 @@ public class Owner extends Person {
         this.postcode = postcode;
     }
 
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
     /**
      * The owner's numeric membership level, derived on read from the fields assigned at create.
      * It starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
@@ -202,6 +214,31 @@ public class Owner extends Person {
     @Transient
     public String getContactPreference() {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * The owner's age band, derived on read from {@code birthDate} against the
+     * {@code registrationDate}: {@code 'MINOR'} when the owner is under 18, {@code 'ADULT'}
+     * from 18 to 64, and {@code 'SENIOR'} at 65 or older. The age is the number of whole years
+     * between the birth date and the registration date (falling back to the current date when no
+     * registration date is set).
+     *
+     * @return the age band, or {@code null} when no {@code birthDate} is set
+     */
+    @Transient
+    public String getAgeBand() {
+        if (this.birthDate == null) {
+            return null;
+        }
+        LocalDate reference = this.registrationDate != null ? this.registrationDate : LocalDate.now();
+        int age = Period.between(this.birthDate, reference).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     /**
