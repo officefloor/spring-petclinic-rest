@@ -113,6 +113,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        assignCustomerCode(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -324,6 +325,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownerFieldsDto.getRegistrationDate() == null) {
             ownerFieldsDto.setRegistrationDate(LocalDate.now());
         }
+    }
+
+    /**
+     * Assigns the owner's {@code customerCode} on create, formatted {@code '<LAST3>-<NNNN>'}
+     * where LAST3 is the upper-cased first three letters of {@code lastName} and NNNN is a
+     * global 4-digit zero-padded sequence equal to one more than the current number of owners
+     * (e.g. {@code 'SMI-0007'}).
+     *
+     * @param owner the owner being created (with its {@code lastName} already set)
+     */
+    private void assignCustomerCode(Owner owner) {
+        String lastName = owner.getLastName();
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
     }
 
     private void rejectDuplicateTelephone(String normalizedTelephone) {
