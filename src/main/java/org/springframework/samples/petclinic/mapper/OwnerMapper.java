@@ -61,6 +61,10 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Localities.region("
             + "owner.getPostcode(), owner.getCity()))")
+    @Mapping(target = "timezone",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.Localities.timezone("
+            + "owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\"))")
