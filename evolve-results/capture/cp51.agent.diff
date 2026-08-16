@@ -1,0 +1,196 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 44b82c87..f64d40a4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -67,9 +67,10 @@ public interface OwnerMapper {
+             + "owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(owner == null ? null : "
++            + "(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : "
+             + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
+             + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+-            + "owner.getRegistrationDate()))")
++            + "owner.getRegistrationDate())))")
+     @Mapping(target = "locality",
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Localities.region("
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fc94e35e..2d7c4c00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -205,6 +208,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
++    public void setMembershipLevel(Integer membershipLevel) {
++        this.membershipLevel = membershipLevel;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9063ac95..1d1cd63b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,7 +30,6 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
+@@ -163,12 +162,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPostcode(validatePostcode(owner.getCity(), ownerFieldsDto.getPostcode()));
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         rejectDuplicateIdentity(owner);
+-        rejectDuplicateHousehold(owner, sharesHousehold);
++        // Joining an existing household is now permitted (an exact-identity duplicate is still
++        // rejected above); a joiner's membershipLevel is instead capped one above the household's
++        // current maximum (see cappedMembershipLevel).
+         String region = Localities.region(owner.getPostcode(), owner.getCity());
+         owner.setCustomerCode(assignCustomerCode(region, owner.getTelephone(), owner.getLastName()));
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
+         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getPostcode()) + 1);
++        owner.setMembershipLevel(cappedMembershipLevel(owner));
+         // A declared household member (sharesHousehold) is created but is not a suspected duplicate.
+         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(owner);
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+@@ -416,35 +418,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Rejects creating an owner that would join an existing household without opting in. The household
+-     * is keyed on the computed {@code householdId} (see {@link Households#householdId}, derived from the
+-     * normalized last name and postcode), so an owner sharing an existing owner's last name and postcode
+-     * is the same household. When another owner already belongs to that household the create is rejected,
+-     * unless the request opts in with {@code sharesHousehold}, which bypasses this block and creates the
+-     * owner as a declared household member. An owner with no postcode is never treated as a household
+-     * duplicate.
++     * Computes the {@code membershipLevel} to store for the owner being created, applying the household
++     * ceiling. The owner's natural level is first derived from their own fields (see
++     * {@link org.springframework.samples.petclinic.util.Memberships#membershipLevel(String, Integer, Integer, java.time.LocalDate)}).
++     * It is then capped so it cannot exceed one above the current maximum {@code membershipLevel} among
++     * the owner's existing household members (the non-deleted owners sharing its {@code householdId}, see
++     * {@link Households#householdId}). When the owner has no existing household member no cap applies and
++     * the natural level is returned.
+      *
+-     * @param owner the owner being created, with its last name and postcode already set
+-     * @param sharesHousehold whether the request opted in via {@code sharesHousehold}
+-     * @throws DuplicateHouseholdException (409 Conflict) if the owner joins an existing household and did
+-     *         not opt in
+-     */
+-    private void rejectDuplicateHousehold(Owner owner, boolean sharesHousehold) {
+-        if (sharesHousehold) {
+-            return;
+-        }
+-        String postcode = owner.getPostcode();
+-        if (postcode == null) {
+-            return;
+-        }
+-        String householdId = Households.householdId(owner.getLastName(), postcode);
+-        boolean exists = this.clinicService.findAllOwners().stream()
++     * @param owner the owner being created, with its level-affecting fields already populated
++     * @return the (possibly capped) membership level to store on the owner
++     */
++    private int cappedMembershipLevel(Owner owner) {
++        int naturalLevel = org.springframework.samples.petclinic.util.Memberships.membershipLevel(
++            owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
++        String householdId = Households.householdId(owner.getLastName(), owner.getPostcode());
++        java.util.OptionalInt maxMemberLevel = this.clinicService.findAllOwners().stream()
+             .filter(this::isNotDeleted)
+-            .anyMatch(existing -> householdId.equals(
+-                Households.householdId(existing.getLastName(), existing.getPostcode())));
+-        if (exists) {
+-            throw new DuplicateHouseholdException(owner.getLastName(), postcode);
++            .filter(existing -> householdId.equals(
++                Households.householdId(existing.getLastName(), existing.getPostcode())))
++            .mapToInt(this::effectiveMembershipLevel)
++            .max();
++        if (maxMemberLevel.isEmpty()) {
++            return naturalLevel;
++        }
++        return Math.min(naturalLevel, maxMemberLevel.getAsInt() + 1);
++    }
++
++    /**
++     * Returns an existing owner's effective {@code membershipLevel}: the stored value when present (the
++     * value assigned, and possibly capped, when that owner was created), otherwise the level derived
++     * from its own fields for owners that predate the stored level (e.g. seed data).
++     *
++     * @param owner an existing owner
++     * @return the owner's effective membership level
++     */
++    private int effectiveMembershipLevel(Owner owner) {
++        if (owner.getMembershipLevel() != null) {
++            return owner.getMembershipLevel();
+         }
++        return org.springframework.samples.petclinic.util.Memberships.membershipLevel(
++            owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f20733f9..11ebd758 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ea28774e..b356861f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 764a344c..113f482a 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 4d5a7849..a31d0277 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
++                                      membership_level INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
