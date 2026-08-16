@@ -181,4 +181,18 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", e.getFields()));
     }
 
+    /**
+     * Handles {@link InvalidTelephoneException} raised when an owner's telephone does not contain
+     * exactly ten digits once every non-digit character has been stripped. Returns a 400 Bad Request
+     * whose {@code errors} array names the offending {@code telephone} field.
+     *
+     * @param e The {@link InvalidTelephoneException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleInvalidTelephoneException(InvalidTelephoneException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("telephone")));
+    }
+
 }
