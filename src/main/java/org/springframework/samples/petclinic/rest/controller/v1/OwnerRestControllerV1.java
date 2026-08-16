@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -109,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         normalizeEmail(ownerFieldsDto);
+        defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -282,6 +284,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidEmailException(email);
         }
         ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Defaults the registration date on create: when the client does not supply a
+     * {@code registrationDate}, it is set to the server's current date so it is persisted
+     * and echoed back in ISO 'YYYY-MM-DD' format. A supplied value is left untouched.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private static void defaultRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
+        if (ownerFieldsDto.getRegistrationDate() == null) {
+            ownerFieldsDto.setRegistrationDate(LocalDate.now());
+        }
     }
 
     private void rejectDuplicateTelephone(String normalizedTelephone) {
