@@ -40,17 +40,21 @@ public final class OwnerLocality {
     }
 
     /**
-     * The locality of an already-stored owner: the REGION segment of its {@code customerCode}
-     * identity ({@code <REGION>-<HASH8>}, see {@link AssignCustomerCode}). Falls back to deriving
-     * the region straight from the postcode/city for an owner whose {@code customerCode} has not
-     * been assigned or is not in the region-and-hash form.
+     * The locality of an already-stored owner: the REGION segment of its {@code memberId}
+     * identity ({@code <REGION><FY><HASH8><CHK>}, see {@link AssignMemberId}) — the leading run of
+     * letters before the numeric fiscal-year segment. Falls back to deriving the region straight
+     * from the postcode/city for an owner whose {@code memberId} has not been assigned or is not in
+     * the region-and-hash form.
      */
     public static String forOwner(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            if (dash > 0) {
-                return code.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            int i = 0;
+            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+                i++;
+            }
+            if (i > 0) {
+                return memberId.substring(0, i);
             }
         }
         return of(owner.getCity(), owner.getPostcode());

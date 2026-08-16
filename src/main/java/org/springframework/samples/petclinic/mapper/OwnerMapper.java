@@ -23,10 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ org.springframework.samples.petclinic.rest.function.owner."
-            + "FiscalYear.twoDigit(owner.getRegistrationDate()))")
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
             + "FiscalYear.forOwner(owner))")

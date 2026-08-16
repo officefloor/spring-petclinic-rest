@@ -5,29 +5,23 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Immutable structured audit event emitted alongside the human-readable audit line when an owner is
  * created. Rendered as the JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event:"OWNER_CREATED"}}.
+ * {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}.
  *
- * <p>{@code customerCode} carries the owner's <em>current primary identifier</em>. Today that is the
- * {@link Owner#getCustomerCode() customerCode}; when the customerCode is later unified into a
- * {@code memberId}, only {@link #forOwner(long, Owner)} changes so the same field carries the
- * memberId instead — the event's shape and the way callers read the identifier stay the same.
+ * <p>{@code memberId} carries the owner's primary identifier, the unified
+ * {@link Owner#getMemberId() memberId}.
  *
  * <p>Instances are immutable: fields are captured at construction and never mutated, so a recorded
  * event cannot be altered after the fact.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
         Integer membershipLevel) {
 
     /** Event marker carried in the {@code event} field. */
     public static final String EVENT = "OWNER_CREATED";
 
-    /**
-     * Builds the event for a persisted owner, reading its current primary identifier. This single
-     * line is the switch point: replace {@code owner.getCustomerCode()} with the memberId once the
-     * identifiers are unified and every emitted event follows.
-     */
+    /** Builds the event for a persisted owner, reading its unified {@code memberId} identifier. */
     public static OwnerCreatedEvent forOwner(long seq, Owner owner) {
-        return new OwnerCreatedEvent(seq, owner.getId(), owner.getCustomerCode(),
+        return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
                 owner.getMembershipLevel());
     }
 
@@ -36,7 +30,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
         StringBuilder json = new StringBuilder(96);
         json.append("{\"seq\":").append(this.seq)
                 .append(",\"ownerId\":").append(this.ownerId)
-                .append(",\"customerCode\":").append(quote(this.customerCode))
+                .append(",\"memberId\":").append(quote(this.memberId))
                 .append(",\"membershipLevel\":").append(this.membershipLevel)
                 .append(",\"event\":").append(quote(EVENT))
                 .append('}');

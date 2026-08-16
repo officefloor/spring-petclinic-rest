@@ -10,8 +10,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * named by the calendar year in which it ends (1 July 2025 to 30 June 2026 is {@code FY26}), so a
  * date in July to December belongs to the following calendar year's fiscal year.
  *
- * <p>Used for the {@code fiscalYear} field, the membership number's year segment and the
- * fiscal-year tenure count, so every fiscal-year-derived value stays consistent.
+ * <p>Used for the {@code fiscalYear} field, the memberId's FY segment and the fiscal-year tenure
+ * count, so every fiscal-year-derived value stays consistent.
  */
 public final class FiscalYear {
 
