@@ -39,6 +39,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
+    @Mapping(target = "possibleDuplicate", ignore = true)
+    @Mapping(target = "possibleDuplicateOf", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);

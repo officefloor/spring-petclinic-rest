@@ -13,6 +13,9 @@ public class RespondWithOwner {
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warningFor(ownerRepository));
+        Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(dto);
     }
 }
