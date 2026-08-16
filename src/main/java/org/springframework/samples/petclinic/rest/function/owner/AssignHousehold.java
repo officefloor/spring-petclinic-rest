@@ -8,9 +8,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * SHA-256 over the normalized last name and postcode (see {@link OwnerIdentity#householdIdFor}).
  *
  * <p>The identifier is derived purely from {@code (lastName, postcode)}, so owners with the same last
- * name and postcode share it automatically, regardless of creation order and regardless of whether
- * they opted in with {@code sharesHousehold} — that flag now only bypasses the duplicate block (see
- * {@link CheckIdentityUnique}), it no longer creates the link. An owner without a postcode is not in
+ * name and postcode share it automatically, regardless of creation order. It no longer drives
+ * duplicate detection (that is now the single identity key, see {@link CheckIdentityUnique}); it
+ * remains for membership scoring (see {@link MembershipLevel}). An owner without a postcode is not in
  * any household and is left with no identifier.
  *
  * <p>Runs after {@link BuildOwner} (which publishes the new owner) and before {@link SaveOwner}.
