@@ -25,7 +25,27 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
+    @Mapping(target = "identityKey", source = "owner", qualifiedByName = "toIdentityKey")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's duplicate-detection {@code identityKey}: the single key that consolidates
+     * the former separate telephone, email and household checks. It is the owner's normalized
+     * telephone, its email (lower-cased and trimmed, or the empty string when absent) and its
+     * household identifier (or the empty string when absent), joined in that order by {@code '|'}.
+     * Because the telephone is part of the key, two members of the same household with different
+     * telephones have different identity keys; only an exact full-key match is a duplicate.
+     */
+    @Named("toIdentityKey")
+    default String toIdentityKey(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().trim();
+        String email = owner.getEmail() == null ? "" : owner.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * Derives the owner's preferred contact channel: {@code 'EMAIL'} when the owner has a non-blank

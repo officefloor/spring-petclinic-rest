@@ -40,9 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
 import org.springframework.samples.petclinic.rest.advice.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -144,17 +142,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireDailyLimitNotReached(registrationDate);
         requireCityBelowCapacity(ownerFieldsDto.getCity());
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
-        requireUniqueTelephone(normalizedTelephone);
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold) {
-            requireUniqueHousehold(ownerFieldsDto.getLastName(), normalizedAddress);
-        }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         if (ownerFieldsDto.getEmail() != null) {
-            String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
-            requireUniqueEmail(normalizedEmail);
-            ownerFieldsDto.setEmail(normalizedEmail);
+            ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         }
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
@@ -162,7 +154,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
-            owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
+            owner.setHouseholdId(householdIdFor(normalizeForHousehold(owner.getLastName()),
+                householdAddressKey(owner.getAddress())));
+        }
+        requireUniqueIdentity(owner);
+        if (sharesHousehold) {
+            backfillHousehold(owner.getLastName(), owner.getAddress(), owner.getHouseholdId());
         }
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
@@ -488,59 +485,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects the request when {@code normalizedTelephone} is already used by any existing owner,
-     * comparing on the E.164 form so differently-formatted stored numbers still collide.
+     * Rejects the request when the incoming owner's derived {@code identityKey} exactly matches that
+     * of any existing owner. The key ({@code normalizedTelephone + '|' + (email or empty) + '|' +
+     * (householdId or empty)}) is the single consolidated duplicate-detection key that replaces the
+     * former separate telephone, email and household checks. Because the telephone is part of the
+     * key, two members of the same household (same {@code householdId}) with different telephones
+     * have different keys and are both allowed; only an exact full-key match is a duplicate. The key
+     * is derived identically for the incoming and existing owners via {@link OwnerMapper#toIdentityKey}.
      *
-     * @param normalizedTelephone the incoming owner's normalized E.164 telephone
-     * @throws DuplicateTelephoneException if another owner already uses this telephone
+     * @param owner the incoming owner, with its normalized telephone, email and household identifier
+     *              already populated
+     * @throws DuplicateIdentityException if another owner already has this exact identity key
      */
-    private void requireUniqueTelephone(String normalizedTelephone) {
+    private void requireUniqueIdentity(Owner owner) {
+        String identityKey = ownerMapper.toIdentityKey(owner);
         boolean taken = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .map(OwnerRestControllerV1::toE164)
-            .filter(existing -> existing != null)
-            .anyMatch(normalizedTelephone::equals);
+            .map(ownerMapper::toIdentityKey)
+            .anyMatch(identityKey::equals);
         if (taken) {
-            throw new DuplicateTelephoneException(normalizedTelephone);
-        }
-    }
-
-    /**
-     * Rejects the request when {@code normalizedEmail} is already used by any existing owner,
-     * comparing on the lower-cased email so differently-cased stored addresses still collide.
-     *
-     * @param normalizedEmail the incoming owner's normalized (lower-cased) email
-     * @throws DuplicateEmailException if another owner already uses this email
-     */
-    private void requireUniqueEmail(String normalizedEmail) {
-        boolean taken = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(existing -> existing != null)
-            .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
-            .anyMatch(normalizedEmail::equals);
-        if (taken) {
-            throw new DuplicateEmailException(normalizedEmail);
-        }
-    }
-
-    /**
-     * Rejects the request when another owner already shares this household, i.e. has both the same
-     * last name and the same address once each value is normalized (trimmed, internal whitespace
-     * runs collapsed to a single space, and compared case-insensitively). Callers skip this check
-     * when the request opts in via {@code sharesHousehold}.
-     *
-     * @param lastName the incoming owner's last name (already validated non-blank)
-     * @param address the incoming owner's address (already validated non-blank)
-     * @throws DuplicateHouseholdException if another owner already has this last name and address
-     */
-    private void requireUniqueHousehold(String lastName, String address) {
-        String normalizedLastName = normalizeForHousehold(lastName);
-        String normalizedAddress = householdAddressKey(address);
-        boolean taken = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
-                && householdAddressKey(existing.getAddress()).equals(normalizedAddress));
-        if (taken) {
-            throw new DuplicateHouseholdException(lastName, address);
+            throw new DuplicateIdentityException(identityKey);
         }
     }
 
@@ -600,20 +563,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Joins the household identified by this last name and address, returning the stable shared
-     * {@code householdId} to store on the joining owner. The identifier is derived deterministically
-     * from the normalized last name and address, so every owner in the same household resolves to the
-     * same value. Any existing household members that predate this feature (or were created without
-     * opting in) are back-filled with the shared identifier so the whole household agrees.
+     * Back-fills the shared {@code householdId} onto every existing member of the household
+     * identified by this last name and address (same normalized last name and address) that does not
+     * already carry it, so the whole household agrees on the identifier. Members that predate this
+     * feature (or were created without opting in) are updated to the shared value. Called only after
+     * the joining owner has passed the identity check, so a rejected request leaves existing owners
+     * untouched.
      *
      * @param lastName the joining owner's last name (already validated non-blank)
      * @param address the joining owner's address (already validated non-blank)
-     * @return the shared household identifier for this last name and address
+     * @param householdId the shared household identifier for this last name and address
      */
-    private String joinHousehold(String lastName, String address) {
+    private void backfillHousehold(String lastName, String address, String householdId) {
         String normalizedLastName = normalizeForHousehold(lastName);
         String normalizedAddress = householdAddressKey(address);
-        String householdId = householdIdFor(normalizedLastName, normalizedAddress);
         this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
                 && householdAddressKey(existing.getAddress()).equals(normalizedAddress))
@@ -622,7 +585,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 existing.setHouseholdId(householdId);
                 this.clinicService.saveOwner(existing);
             });
-        return householdId;
     }
 
     /**

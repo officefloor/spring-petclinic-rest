@@ -19,18 +19,19 @@ package org.springframework.samples.petclinic.rest.advice;
 import java.util.List;
 
 /**
- * Thrown when creating an owner whose last name and address already belong to another owner
- * (compared case-insensitively with collapsed whitespace) and the request did not opt in via
- * {@code sharesHousehold}. Carries the offending field names so the exception handler can report
- * them in the {@code errors} response body, and maps to a 409 Conflict response.
+ * Thrown when creating an owner whose derived {@code identityKey} (normalized telephone, email and
+ * household identifier joined by {@code '|'}) exactly matches that of an existing owner. This single
+ * key consolidates the former separate telephone, email and household duplicate checks. Carries the
+ * offending field name so the exception handler can report it in the {@code errors} response body,
+ * and maps to a 409 Conflict response.
  */
-public class DuplicateHouseholdException extends RuntimeException {
+public class DuplicateIdentityException extends RuntimeException {
 
     private final List<String> fields;
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("An owner with last name '" + lastName + "' at address '" + address + "' already exists");
-        this.fields = List.of("lastName", "address");
+    public DuplicateIdentityException(String identityKey) {
+        super("An owner with identity key '" + identityKey + "' already exists");
+        this.fields = List.of("identityKey");
     }
 
     public List<String> getFields() {
