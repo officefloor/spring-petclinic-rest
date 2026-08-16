@@ -352,7 +352,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!digits.matches("[0-9]{8,15}")) {
             return null;
         }
+        if (!hasValidNationalLength(digits)) {
+            return null;
+        }
         return "+" + digits;
+    }
+
+    /**
+     * Checks the national-number length against the country code for the country codes that pin one.
+     * A {@code '+61'} (Australia) number must carry exactly 9 national digits and a {@code '+1'}
+     * (NANP) number exactly 10; every other country code is accepted on the general 8-to-15-digit
+     * rule alone. {@code digits} is the E.164 digit string without the leading {@code '+'}.
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
     }
 
     /**
