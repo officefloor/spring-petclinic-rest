@@ -58,7 +58,8 @@ CREATE TABLE owners (
   membership_points INTEGER,
   bulk_signup_warning BOOLEAN,
   possible_duplicate BOOLEAN,
-  possible_duplicate_of INTEGER
+  possible_duplicate_of INTEGER,
+  deleted BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

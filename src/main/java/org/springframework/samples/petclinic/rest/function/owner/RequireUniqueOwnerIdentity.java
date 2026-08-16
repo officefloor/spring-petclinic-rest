@@ -28,6 +28,9 @@ public class RequireUniqueOwnerIdentity {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // never compare the new owner against itself
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner does not block a new one
+            }
             String other = OwnerIdentity.identityKey(existing.getTelephone(), existing.getEmail(),
                     existing.getHouseholdId());
             if (key.equals(other)) {

@@ -37,6 +37,9 @@ public class AssignPossibleDuplicate {
                 if (existing.getId() == null || existing.getId().equals(owner.getId())) {
                     continue; // never match the new owner against itself
                 }
+                if (Boolean.TRUE.equals(existing.getDeleted())) {
+                    continue; // a soft-deleted owner is not a possible duplicate
+                }
                 if (equalsIgnoreCase(existing.getLastName(), lastName)
                         && postcode.equals(existing.getPostcode())) {
                     if (matchId == null || existing.getId() < matchId) {

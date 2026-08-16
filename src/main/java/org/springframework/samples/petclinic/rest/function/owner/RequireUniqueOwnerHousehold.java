@@ -34,6 +34,9 @@ public class RequireUniqueOwnerHousehold {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // never match the new owner against itself
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner does not block a new one
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new OwnerHouseholdDuplicateException(request.getLastName(),
                         request.getAddress());
