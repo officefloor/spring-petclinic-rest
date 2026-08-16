@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1b522c84..dc02fcca 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -66,6 +66,10 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Localities.timezone("
+             + "owner.getPostcode(), owner.getCity()))")
++    @Mapping(target = "riskFlag",
++        expression = "java(owner == null ? null : "
++            + "org.springframework.samples.petclinic.util.RiskFlags.riskFlag("
++            + "owner.getPossibleDuplicate(), owner.getCapacityWarning(), owner.getEmail()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner == null ? null : "
+             + "(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\"))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RiskFlags.java b/src/main/java/org/springframework/samples/petclinic/util/RiskFlags.java
+new file mode 100644
+index 00000000..3c9c99ad
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RiskFlags.java
+@@ -0,0 +1,80 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Helpers for an owner's {@code riskFlag}, the single boolean that flags an owner for review when any
++ * of a set of soft risk signals held at the time it was created.
++ */
++public final class RiskFlags {
++
++    /**
++     * Second-level domain labels of known disposable/throwaway email providers. A domain whose
++     * second-level label matches one of these but whose full domain is not itself on the hard
++     * disposable blocklist (those creates are rejected outright) is treated as "disposable-adjacent",
++     * e.g. {@code mailinator.net} or {@code tempmail.io}. Compared against the lower-cased domain.
++     */
++    private static final Set<String> DISPOSABLE_DOMAIN_LABELS = Set.of(
++        "mailinator", "tempmail", "guerrillamail");
++
++    private RiskFlags() {
++    }
++
++    /**
++     * Computes an owner's {@code riskFlag}: {@code true} when any of the risk signals hold, otherwise
++     * {@code false}. The signals are: the owner is a possible duplicate ({@code possibleDuplicate} is
++     * true), the owner's email domain is disposable-adjacent (see {@link #isDisposableAdjacent(String)}),
++     * or the owner's city was over its soft capacity ({@code capacityWarning} is true).
++     *
++     * @param possibleDuplicate whether the owner was flagged a possible (soft) duplicate on creation
++     * @param capacityWarning   whether the owner's city was over its soft capacity on creation
++     * @param email             the owner's normalized email, may be {@code null}
++     * @return {@code true} when any risk signal holds
++     */
++    public static boolean riskFlag(Boolean possibleDuplicate, Boolean capacityWarning, String email) {
++        return Boolean.TRUE.equals(possibleDuplicate)
++            || Boolean.TRUE.equals(capacityWarning)
++            || isDisposableAdjacent(email);
++    }
++
++    /**
++     * Whether an email domain is disposable-adjacent: its second-level label (the label immediately
++     * before the top-level label) matches a known disposable provider's, e.g. {@code mailinator.net}
++     * matches {@code mailinator}. A {@code null}, blank or malformed email (no domain) is not adjacent.
++     *
++     * @param email the owner's email, may be {@code null}
++     * @return {@code true} when the email's domain is disposable-adjacent
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0 || at == email.length() - 1) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return false;
++        }
++        return DISPOSABLE_DOMAIN_LABELS.contains(labels[labels.length - 2]);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1dde940f..43d098dc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2319,6 +2319,19 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                Whether this owner is flagged for review. True when any of the
++                following holds at the time it was created: the owner is a
++                possible duplicate (possibleDuplicate is true), the owner's email
++                domain is disposable-adjacent (its second-level label matches a
++                known disposable provider, e.g. 'mailinator.net'), or the owner's
++                city was over its soft capacity (capacityWarning is true).
++                Otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
