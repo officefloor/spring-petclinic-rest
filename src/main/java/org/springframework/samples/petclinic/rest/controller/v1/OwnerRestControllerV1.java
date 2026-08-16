@@ -140,6 +140,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignNamesakeCount(owner);
         assignMembershipNumber(owner);
         assignBulkSignupWarning(owner);
+        assignPossibleDuplicate(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
@@ -625,6 +626,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
         owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
+    }
+
+    /**
+     * Assigns the owner's soft-match duplicate flags on create. The create has already passed
+     * {@link #rejectDuplicateIdentity}, so this owner is not a hard duplicate. It is a
+     * <em>possible</em> duplicate when an existing owner shares its {@code lastName} (compared
+     * case-insensitively) and its {@code postcode} but has a <em>different</em> normalized
+     * {@code telephone}: {@code possibleDuplicate} is set {@code true} and
+     * {@code possibleDuplicateOf} to that owner's id (the earliest such owner by id when several
+     * match). Otherwise {@code possibleDuplicate} is {@code false} and {@code possibleDuplicateOf}
+     * is left unset. The scan is taken over the existing owners before this one is persisted.
+     *
+     * @param owner the owner being created (with its {@code lastName}, {@code postcode} and
+     *              already-normalized {@code telephone} set)
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String lastName = owner.getLastName();
+        String postcode = owner.getPostcode();
+        String telephone = owner.getTelephone();
+        Integer matchId = null;
+        if (lastName != null && postcode != null && telephone != null) {
+            matchId = this.clinicService.findAllOwners().stream()
+                .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+                .filter(existing -> postcode.equals(existing.getPostcode()))
+                .filter(existing -> !telephone.equals(existing.getTelephone()))
+                .map(Owner::getId)
+                .filter(id -> id != null)
+                .min(Integer::compareTo)
+                .orElse(null);
+        }
+        owner.setPossibleDuplicate(matchId != null);
+        owner.setPossibleDuplicateOf(matchId);
     }
 
     /**

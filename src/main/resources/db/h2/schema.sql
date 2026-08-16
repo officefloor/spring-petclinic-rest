@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   bulk_signup_warning BOOLEAN,
   postcode VARCHAR(4),
+  possible_duplicate BOOLEAN,
+  possible_duplicate_of INTEGER,
   birth_date DATE
 );
 
