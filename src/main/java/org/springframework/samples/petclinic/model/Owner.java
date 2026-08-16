@@ -205,6 +205,37 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's check digit, derived on read: a single Luhn check digit computed over the
+     * digits contained in the owner's {@code customerCode}.
+     *
+     * @return the Luhn check digit (0-9), or {@code null} when no customer code is assigned
+     */
+    @Transient
+    public Integer getCheckDigit() {
+        if (this.customerCode == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
+            char c = this.customerCode.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The owner's derived duplicate-detection key: the single consolidated identity used to
      * detect duplicate owners on create. It is formed as
      * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} from the
