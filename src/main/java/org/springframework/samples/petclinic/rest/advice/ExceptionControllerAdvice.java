@@ -190,4 +190,27 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(status).body(detail);
     }
 
+    /**
+     * Handles {@link InvalidFieldValueException} raised when a request supplies a field whose value
+     * is present but violates a business rule (for example a telephone number that is not exactly
+     * ten digits after stripping non-digit characters). Returns a 400 Bad Request whose body carries
+     * an {@code errors} array listing the name of each offending field.
+     *
+     * @param e The {@link InvalidFieldValueException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidFieldValueException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidFieldValueException(InvalidFieldValueException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", e.getFields());
+        logger.debug("Invalid field value at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getFields());
+        return ResponseEntity.status(status).body(detail);
+    }
+
 }
