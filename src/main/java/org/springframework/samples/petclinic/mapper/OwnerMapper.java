@@ -23,6 +23,8 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "salutation",
+        expression = "java(composeSalutation(owner))")
     @Mapping(target = "locality",
         expression = "java(deriveLocality(owner))")
     @Mapping(target = "timezone",
@@ -95,6 +97,19 @@ public interface OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Composes the owner's salutation: the honorific {@code title} followed by a single space and
+     * the {@code lastName} when a title is supplied, or just the {@code lastName} when no title is
+     * given (null or blank).
+     */
+    default String composeSalutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
