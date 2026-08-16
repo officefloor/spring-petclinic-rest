@@ -26,6 +26,12 @@ public final class LocalityLookup {
         "VIC", new int[] {3000, 3099},
         "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name; a fixed, exact mapping. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
     private LocalityLookup() {
     }
 
@@ -54,6 +60,19 @@ public final class LocalityLookup {
     public static String regionFor(String postcode, String city) {
         String fromPostcode = regionForPostcode(postcode);
         return fromPostcode != null ? fromPostcode : regionFor(city);
+    }
+
+    /**
+     * Returns the IANA timezone name for the region derived from {@code postcode}
+     * and {@code city}, from the fixed region-to-timezone table, or {@code null}
+     * when the region is not in the table.
+     *
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @param city the owner's city, possibly {@code null}
+     * @return the IANA timezone name, or {@code null} if the region is unknown
+     */
+    public static String timezoneFor(String postcode, String city) {
+        return REGION_TIMEZONE.get(regionFor(postcode, city));
     }
 
     /**
