@@ -49,6 +49,8 @@ public abstract class OwnerMapper {
         expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+    @Mapping(target = "timezone",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.timezoneOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner))")
     @Mapping(target = "identityKey",
