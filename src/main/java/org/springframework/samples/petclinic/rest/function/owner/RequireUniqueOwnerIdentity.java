@@ -7,23 +7,23 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerIdentityDuplic
 
 /**
  * The single duplicate-detection step: rejects the create only when the new owner's WHOLE
- * derived {@link OwnerIdentity#identityKey identityKey} (telephone|email|householdId) equals
- * an existing owner's. This consolidates the former separate telephone, email and household
- * duplicate checks into one key.
+ * derived {@link OwnerIdentity#identityKey identityKey}
+ * (SHA-256 over normalizedTelephone|lowerEmail|soundex(lastName)) equals an existing owner's.
+ * This is the sole duplicate check — the former separate telephone, email and household
+ * duplicate checks are all subsumed by this one key.
  *
- * <p>Runs after {@link AssignHouseholdId}, so the new owner already carries its
- * {@code householdId} and every existing household member has been back-filled with it — the
- * household segment of both keys is therefore in sync. Because the telephone is part of the
- * key, two members of the same household with different telephones have different keys and are
- * both allowed; only an exact full-key match is rejected 409 via
- * {@link OwnerIdentityDuplicateException}.
+ * <p>Because the telephone is part of the key, two owners sharing a last-name soundex and
+ * postcode but with different telephones have different keys and are both allowed (the second is
+ * flagged a soft match by {@link AssignPossibleDuplicate}); only an exact full-key match is
+ * rejected 409 via {@link OwnerIdentityDuplicateException}. Soft-deleted owners are ignored, and
+ * the disposable-email blocklist has already run earlier in the pipeline.
  */
 public class RequireUniqueOwnerIdentity {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws OwnerIdentityDuplicateException {
         String key = OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(),
-                owner.getHouseholdId());
+                owner.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // never compare the new owner against itself
@@ -32,7 +32,7 @@ public class RequireUniqueOwnerIdentity {
                 continue; // a soft-deleted owner does not block a new one
             }
             String other = OwnerIdentity.identityKey(existing.getTelephone(), existing.getEmail(),
-                    existing.getHouseholdId());
+                    existing.getLastName());
             if (key.equals(other)) {
                 throw new OwnerIdentityDuplicateException(key);
             }

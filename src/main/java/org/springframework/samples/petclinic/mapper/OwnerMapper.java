@@ -32,7 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId()))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "checkDigit",
         expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
     @Mapping(target = "ageBand",
