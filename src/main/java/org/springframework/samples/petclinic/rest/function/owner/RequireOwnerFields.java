@@ -21,7 +21,11 @@ public class RequireOwnerFields {
         List<String> errors = new ArrayList<>();
         checkPresent("firstName", request.getFirstName(), errors);
         checkPresent("lastName", request.getLastName(), errors);
-        checkPresent("address", request.getAddress(), errors);
+        // Address is required after normalization: a value that is blank once trimmed and
+        // collapsed (see NormalizeOwnerAddress) is rejected here, not stored empty.
+        if (NormalizeOwnerAddress.normalize(request.getAddress()).isEmpty()) {
+            errors.add("address");
+        }
         checkPresent("city", request.getCity(), errors);
         checkPresent("telephone", request.getTelephone(), errors);
         if (!errors.isEmpty()) {
