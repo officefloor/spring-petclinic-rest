@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -428,12 +429,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$");
 
     /**
+     * Disposable email domains that are not accepted for an owner's email. A create whose email
+     * domain (the part after the {@code '@'}, compared case-insensitively) is on this blocklist is
+     * rejected. Kept lower-cased to match the normalized email.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
+    /**
      * Normalizes the submitted email when present: the value is trimmed, required to be a
-     * syntactically valid address, and written back lower-cased so it is persisted and echoed
-     * back in canonical form. A {@code null} email is left untouched — the field is optional.
+     * syntactically valid address, required not to use a disposable-email domain, and written back
+     * lower-cased so it is persisted and echoed back in canonical form. A {@code null} email is
+     * left untouched — the field is optional.
      *
      * @param ownerFieldsDto the submitted owner fields
-     * @throws InvalidEmailException with a 400 status if the email is present but not syntactically valid
+     * @throws InvalidEmailException with a 400 status if the email is present but not syntactically
+     *                               valid, or its domain is on the disposable-domain blocklist
      */
     private static void normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
         String email = ownerFieldsDto.getEmail();
@@ -444,7 +457,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException(email);
         }
-        ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException(email);
+        }
+        ownerFieldsDto.setEmail(normalized);
     }
 
     /**
