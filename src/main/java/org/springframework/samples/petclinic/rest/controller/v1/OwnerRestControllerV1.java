@@ -33,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.IdentityKeyDeriver;
+import org.springframework.samples.petclinic.mapper.LocalityDeriver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -43,6 +44,7 @@ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -147,6 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
+        validatePostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
         LocalDate registrationDate = toBusinessDay(
             ownerFieldsDto.getRegistrationDate() != null
                 ? ownerFieldsDto.getRegistrationDate()
@@ -464,6 +467,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
                 return;
             }
+        }
+    }
+
+    /**
+     * Inclusive 4-digit postcode range fixed for each region: NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099. A region absent from this table (i.e. a city with no known region) accepts
+     * any 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's optional {@code postcode}. When absent (or blank) it is left unvalidated
+     * and the owner is accepted, keeping the request contract backward-compatible. When present it
+     * must be a 4-digit value; and when the owner's city maps to a known region it must fall within
+     * that region's fixed inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with
+     * no known region accepts any 4-digit postcode. A violation raises an
+     * {@link InvalidPostcodeException} (reported to the client as 400).
+     */
+    private static void validatePostcode(String city, String postcode) {
+        if (isBlank(postcode)) {
+            return;
+        }
+        if (!postcode.matches("[0-9]{4}")) {
+            throw new InvalidPostcodeException("postcode must be a 4-digit value");
+        }
+        int[] range = REGION_POSTCODE_RANGE.get(LocalityDeriver.locality(city));
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(
+                "postcode is out of range for the owner's city region");
         }
     }
 
