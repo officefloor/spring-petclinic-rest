@@ -162,8 +162,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
         }
         this.clinicService.saveOwner(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerMapper.toMembershipLevel(owner));
         OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -396,45 +397,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
 
-    /** The number of members a household must reach for its owners to be promoted to the {@code 'GOLD'}
-     * membership tier: an owner whose household (owners sharing its {@code householdId}) has at least
-     * this many members is {@code GOLD}, overriding the {@code SILVER}/{@code BRONZE} rules. */
-    private static final int GOLD_HOUSEHOLD_MEMBER_THRESHOLD = 3;
-
     /**
      * Maps {@code owner} to its DTO and sets the {@code bulkSignupWarning} flag: {@code true} when
      * more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created for this
-     * owner's registration date, otherwise {@code false}. The owner is also promoted to the
-     * {@code 'GOLD'} membership tier when its household has reached
-     * {@link #GOLD_HOUSEHOLD_MEMBER_THRESHOLD} members, overriding the mapper's default tier.
+     * owner's registration date, otherwise {@code false}.
      *
      * @param owner the owner to map
-     * @return the owner DTO with its bulk-signup warning flag and membership tier populated
+     * @return the owner DTO with its bulk-signup warning flag populated
      */
     private OwnerDto toOwnerDtoWithBulkWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
-        if (householdMemberCount(owner.getHouseholdId()) >= GOLD_HOUSEHOLD_MEMBER_THRESHOLD) {
-            ownerDto.setMembershipTier(OwnerDto.MembershipTierEnum.GOLD);
-        }
         return ownerDto;
-    }
-
-    /**
-     * Counts the owners belonging to the household identified by {@code householdId} (those sharing
-     * exactly this {@code householdId}). Returns {@code 0} when {@code householdId} is {@code null} or
-     * blank, i.e. the owner is not part of any shared household.
-     *
-     * @param householdId the shared household identifier to count members for (may be {@code null})
-     * @return the number of owners sharing this household identifier
-     */
-    private int householdMemberCount(String householdId) {
-        if (householdId == null || householdId.isBlank()) {
-            return 0;
-        }
-        return (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
     }
 
     /**

@@ -22,7 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "toMembershipTier")
+    @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -82,17 +82,25 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's membership tier: {@code 'SILVER'} when the owner has no namesakes
-     * ({@code namesakeCount} is 0) and a non-blank email is present, otherwise {@code 'BRONZE'}.
+     * Returns the owner's numeric membership level, assigned on creation: starts at {@code 1}, plus
+     * {@code 1} when a non-blank email is present, plus {@code 1} when the owner has no namesakes
+     * ({@code namesakeCount} is 0), capped at {@code 3} (level 4 is reserved for tenure).
      */
-    @Named("toMembershipTier")
-    default String toMembershipTier(Owner owner) {
+    @Named("toMembershipLevel")
+    default Integer toMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        int level = 1;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
+        if (hasEmail) {
+            level++;
+        }
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        if (noNamesakes) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     private static String initial(String name) {
