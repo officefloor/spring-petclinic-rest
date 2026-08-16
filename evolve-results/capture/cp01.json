@@ -1,0 +1,95 @@
+{
+  "checkpoint": 1,
+  "checkpoint_id": "required-fields",
+  "phase": "Start",
+  "type": "additive",
+  "mutates": [],
+  "request": {
+    "spec": "Reject creating an owner that is missing or blank in any of firstName, lastName, address, city or telephone. Respond with 400 and a JSON body whose 'errors' array lists the name of each missing field.",
+    "prompt": "Implement the following change to the application so that it fully satisfies\nthe specification and all existing and new tests pass. Run the test suite and\nmake it green before finishing.\n\nReject creating an owner that is missing or blank in any of firstName, lastName, address, city or telephone. Respond with 400 and a JSON body whose 'errors' array lists the name of each missing field.\n"
+  },
+  "commit_sha": "8318b15b520594bd0a23065b6f2535aec0993c60",
+  "reset_sha": "",
+  "preagent_sha": "a6fca6e4539e43de801147a2b36966fa6f382d72",
+  "prev_sha": "a6fca6e4539e43de801147a2b36966fa6f382d72",
+  "base_sha": "ee199b9b0da67ba965aada522e10bb65d063f7c9",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.177144,
+    "input_tokens": 5606,
+    "output_tokens": 11874,
+    "cache_read_tokens": 948296,
+    "cache_creation_tokens": 37744,
+    "num_turns": 29,
+    "duration_ms": 243720,
+    "duration_api_ms": 173550,
+    "model": "claude-opus-4-8",
+    "session_id": "0fe3c48f-0fa0-4c6d-8739-9f2bad9bebb8",
+    "stop_reason": "success",
+    "result_text": "All 3 tests pass and the build is green.\n\n## Summary\n\nI implemented the required-fields rule for `POST /api/owners` by adding a validation step at the front of the OfficeFloor pipeline, following the project's function-injection conventions (not Spring MVC controllers).\n\n**What changed:**\n\n1. **`ValidateOwnerFields`** (new function) \u2014 the first step of the create pipeline. Binds the request body once, checks each of `firstName`, `lastName`, `address`, `city`, `telephone` for null or blank (`isBlank` catches the whitespace-only `\"   \"` case), and throws a checked `MissingOwnerFieldsException` listing every offending field. On success it republishes the body as an `Out<OwnerFieldsDto>` variable.\n\n2. **`MissingOwnerFieldsException`** (new checked exception) \u2014 carries the list of missing field names.\n\n3. **`MissingOwnerFieldsExceptionHandler`** (new escalation handler) \u2014 responds `400` with body `{\"errors\": [...]}`, wired via `officefloor/escalation/\u2026MissingOwnerFieldsException.yml`.\n\n4. **`BuildOwner`** \u2014 refactored to read the validated `@Val OwnerFieldsDto` variable instead of re-binding `@RequestBody` (the body can only be read once now that the validate step reads it).\n\n5. **`owners.POST.yml`** \u2014 added the `validate` step as the entry point ahead of `build \u2192 save \u2192 respond`.\n\nBecause validation runs manually (no `@Valid`), the response uses the bespoke `errors`-array format the spec requires rather than the generic `ProblemDetail`/`schemaValidationErrors` shape. The `validate` step carries no transaction governance since it performs no DB work.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "cost_usd": 1.177144,
+        "input_tokens": 5606,
+        "output_tokens": 11874,
+        "cache_read_tokens": 948296,
+        "cache_creation_tokens": 37744,
+        "num_turns": 29,
+        "duration_ms": 243720,
+        "duration_api_ms": 173550,
+        "error": "",
+        "wait_s": null
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": "cp01.build.log",
+  "tests": {
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 3,
+    "results": {
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#functionalityAcceptsCompleteOwner": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity": true,
+      "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsBlankTelephone": true
+    },
+    "detail": [
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#functionalityAcceptsCompleteOwner",
+        "passed": true,
+        "skipped": false,
+        "time": 0.659,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsMissingCity",
+        "passed": true,
+        "skipped": false,
+        "time": 0.057,
+        "failure": null
+      },
+      {
+        "test_id": "org.springframework.samples.petclinic.acceptance.Cp01Tests#errorRejectsBlankTelephone",
+        "passed": true,
+        "skipped": false,
+        "time": 0.01,
+        "failure": null
+      }
+    ],
+    "error": ""
+  },
+  "probe": {
+    "probe_cost_usd": 0.3332855,
+    "probe_input_tokens": 13,
+    "probe_cache_read_tokens": 185079,
+    "probe_recall": 0.04878048780487805,
+    "probe_text": "## `POST /api/owners` \u2014 validations and side-effects, in order\n\nWired in `officefloor/rest/api/owners.POST.yml` as a four-step pipeline (`validate \u2192 build \u2192 save \u2192 respond`), guarded by one authorization gate.\n\n**0. Authorization gate (before any step runs)**\n- `composition.authorize: \"hasRole('OWNER_ADMIN')\"` \u2014 the caller must hold role `OWNER_ADMIN`, else the request is rejected (401/403) and nothing below executes.\n\n**1. `ValidateOwnerFields.service` (step `validate`)**\n- Binds the request body once as `@RequestBody OwnerFieldsDto` (the only `@RequestBody` in the pipeline).\n- Presence/blank check on five required fields, in this order: `firstName`, `lastName`, `address`, `city`, `telephone`. A field is invalid when it is `null` or `String.isBlank()`.\n- If any are missing/blank \u2192 throws checked `MissingOwnerFieldsException(missing)`, routed to `MissingOwnerFieldsExceptionHandler`, which responds **400** with body `{\"errors\": [<offending field names>]}`. Side-effect: nothing is persisted.\n- Otherwise republishes the DTO via `Out<OwnerFieldsDto>` for later steps.\n\n**2. `BuildOwner.service` (step `build`, `govern: [transaction]`)**\n- Reads the validated DTO (`@Val`) and maps it to a new `Owner` entity via `OwnerMapper.toOwner(OwnerFieldsDto)`. The mapper explicitly ignores `id` and `pets` (`@Mapping(... ignore = true)`), so the built owner is transient with no pets.\n- Publishes the new `Owner` via `Out<Owner>`. A transaction governs from this step onward.\n\n**3. `SaveOwner.service` (step `save`, `govern: [transaction]`)**\n- `ownerRepository.save(owner)` \u2014 persists the owner (assigns its generated id). This is the real write side-effect.\n\n**4. `RespondWithOwnerCreated.service` (step `respond`, `govern: [transaction]`)**\n- Maps the saved `Owner` to `OwnerDto` via `OwnerMapper.toOwnerDto`.\n- Sends **201 Created** with a `Location` header of `/api/owners/{id}` and the owner DTO as the body.\n- Because governance spans the pipeline, the transaction commits once here at the end.\n\n## Worth flagging: validation that is *not* applied\nThe generated `OwnerFieldsDto` carries Bean Validation constraints \u2014 `@NotNull`, `@Size(min/max)`, and `@Pattern` (letters-only name format, digits-only telephone, max lengths of 30/30/255/80/20). **None of these run**, because the endpoint binds `@RequestBody` *without* `@Valid`. So the only content validation actually enforced is the hand-rolled non-blank presence check in step 1. Values like a 500-character city, a telephone containing letters, or names with digits/symbols pass through and are persisted."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": []
+}
