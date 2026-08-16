@@ -1,16 +1,17 @@
 package org.springframework.samples.petclinic.rest.escalation;
 
-import java.util.List;
-import java.util.Map;
-
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class MissingOwnerFieldsExceptionHandler {
 
     public void handle(@Parameter MissingOwnerFieldsException ex,
-            ObjectResponse<ResponseEntity<Map<String, List<String>>>> response) {
-        response.send(ResponseEntity.badRequest().body(Map.of("errors", ex.getMissingFields())));
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
+        detail.setProperty("errors", ex.getMissingFields());
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
