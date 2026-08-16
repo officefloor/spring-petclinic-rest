@@ -47,10 +47,16 @@ public interface OwnerMapper {
             + "|| owner.getRegistrationDate() == null ? null : "
             + "owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.Memberships.membershipPoints("
+            + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+            + "owner.getRegistrationDate()))")
     @Mapping(target = "membershipLevel",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
-            + "owner.getEmail(), owner.getNamesakeCount(), owner.getRegistrationDate()))")
+            + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+            + "owner.getRegistrationDate()))")
     @Mapping(target = "locality",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Localities.region("
