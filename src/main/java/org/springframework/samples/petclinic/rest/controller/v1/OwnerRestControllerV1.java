@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -124,7 +127,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(normalizedTelephone);
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold) {
             requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
         ownerFieldsDto.setTelephone(normalizedTelephone);
@@ -137,6 +141,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        if (sharesHousehold) {
+            owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -366,5 +373,51 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String normalizeForHousehold(String value) {
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Joins the household identified by this last name and address, returning the stable shared
+     * {@code householdId} to store on the joining owner. The identifier is derived deterministically
+     * from the normalized last name and address, so every owner in the same household resolves to the
+     * same value. Any existing household members that predate this feature (or were created without
+     * opting in) are back-filled with the shared identifier so the whole household agrees.
+     *
+     * @param lastName the joining owner's last name (already validated non-blank)
+     * @param address the joining owner's address (already validated non-blank)
+     * @return the shared household identifier for this last name and address
+     */
+    private String joinHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForHousehold(lastName);
+        String normalizedAddress = normalizeForHousehold(address);
+        String householdId = householdIdFor(normalizedLastName, normalizedAddress);
+        this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress))
+            .filter(existing -> !householdId.equals(existing.getHouseholdId()))
+            .forEach(existing -> {
+                existing.setHouseholdId(householdId);
+                this.clinicService.saveOwner(existing);
+            });
+        return householdId;
+    }
+
+    /**
+     * Derives a stable household identifier from the already-normalized last name and address as the
+     * upper-cased first 12 hex characters of their SHA-256 digest. Deterministic so the same household
+     * always maps to the same identifier.
+     */
+    private static String householdIdFor(String normalizedLastName, String normalizedAddress) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((normalizedLastName + "|" + normalizedAddress).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, 12);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
