@@ -21,6 +21,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
+    @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -44,6 +45,19 @@ public interface OwnerMapper {
             return null;
         }
         return initial(owner.getFirstName()) + initial(owner.getLastName());
+    }
+
+    /**
+     * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}, where {@code YY} is
+     * the last two digits of the {@code registrationDate} year, e.g. {@code 'SMI-0007-M26'}. Returns
+     * {@code null} when either the customer code or the registration date is absent.
+     */
+    @Named("toMembershipNumber")
+    default String toMembershipNumber(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
     private static String initial(String name) {
