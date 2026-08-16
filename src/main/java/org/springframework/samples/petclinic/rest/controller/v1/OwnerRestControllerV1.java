@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -125,6 +126,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone.length() != 10) {
             throw new InvalidTelephoneException(
                 "telephone must contain exactly 10 digits after removing non-digit characters");
+        }
+        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> telephone.equals(normalizeTelephone(existing.getTelephone())));
+        if (telephoneInUse) {
+            throw new DuplicateTelephoneException(
+                "an owner with the same normalized telephone already exists");
         }
         ownerFieldsDto.setTelephone(telephone);
         HttpHeaders headers = new HttpHeaders();
@@ -231,5 +238,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private static String normalizeTelephone(String telephone) {
+        return telephone == null ? null : telephone.replaceAll("\\D", "");
     }
 }

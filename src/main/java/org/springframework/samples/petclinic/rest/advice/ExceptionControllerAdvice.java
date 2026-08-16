@@ -195,4 +195,18 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("telephone")));
     }
 
+    /**
+     * Handles {@link DuplicateTelephoneException} raised when a new owner's normalized telephone is
+     * already used by another owner. Returns a 409 Conflict whose {@code errors} array names the
+     * offending {@code telephone} field.
+     *
+     * @param e The {@link DuplicateTelephoneException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleDuplicateTelephoneException(DuplicateTelephoneException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("telephone")));
+    }
+
 }
