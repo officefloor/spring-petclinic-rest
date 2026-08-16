@@ -122,6 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
         assignHouseholdId(owner);
+        assignNamesakeCount(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -414,6 +415,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void assignHouseholdId(Owner owner) {
         String key = collapse(owner.getLastName()) + "\n" + collapse(owner.getAddress());
         owner.setHouseholdId("HH-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * Assigns the owner's {@code namesakeCount} on create: the number of existing owners that
+     * already share this owner's {@code firstName} and {@code lastName}, compared
+     * case-insensitively. The count is taken before this owner is persisted, so it reflects only
+     * pre-existing namesakes.
+     *
+     * @param owner the owner being created (with its {@code firstName} and {@code lastName} already set)
+     */
+    private void assignNamesakeCount(Owner owner) {
+        String firstName = owner.getFirstName();
+        String lastName = owner.getLastName();
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> firstName != null && firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName != null && lastName.equalsIgnoreCase(existing.getLastName()))
+            .count();
+        owner.setNamesakeCount((int) count);
     }
 
     /**
