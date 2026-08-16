@@ -1,0 +1,193 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 29b7e083..bf559e49 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -78,6 +78,9 @@ public class Owner extends Person {
+     @Column(name = "membership_level")
+     private Integer membershipLevel;
+ 
++    @Column(name = "membership_points")
++    private Integer membershipPoints;
++
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
+@@ -194,6 +197,14 @@ public class Owner extends Person {
+         this.membershipLevel = membershipLevel;
+     }
+ 
++    public Integer getMembershipPoints() {
++        return this.membershipPoints;
++    }
++
++    public void setMembershipPoints(Integer membershipPoints) {
++        this.membershipPoints = membershipPoints;
++    }
++
+     public Boolean getBulkSignupWarning() {
+         return this.bulkSignupWarning;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index 1088a29b..01cc4363 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -7,17 +7,23 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Assigns the owner's numeric {@code membershipLevel} (1 to 4), scored at creation:
+- * start at {@code 1}; add {@code 1} when an email is present; add {@code 1} when
+- * {@code namesakeCount} is {@code 0}; add {@code 1} when tenure exceeds {@code 365} days;
+- * capped at {@code 4}.
++ * Scores the owner's {@code membershipPoints} at creation, then maps them to a numeric
++ * {@code membershipLevel} (1 to 4).
+  *
+- * <p>Level 4 requires tenure of more than 365 days. A newly created owner has zero tenure
+- * (its registration date is today), so the tenure factor never applies at creation and a new
+- * owner never exceeds level 3.
++ * <p>Points start at {@code 0}; add {@code 2} when an email is present; add {@code 1} when
++ * {@code namesakeCount} is {@code 0}; add {@code 2} for a household of {@code 3} or more; add
++ * {@code 3} when tenure exceeds {@code 365} days.
+  *
+- * <p>Runs after {@link AssignNamesakeCount} (so the namesake count is set) and before
+- * {@link SaveOwner}, so the level is persisted and available to the create audit line.
++ * <p>Points map to level as: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, 4 for 6 or
++ * more points.
++ *
++ * <p>Level 4 requires 6 points, and the only route to 6 is the tenure factor (+3). A newly
++ * created owner has zero tenure (its registration date is today), so the tenure factor never
++ * applies at creation and a new owner never exceeds level 3.
++ *
++ * <p>Runs after {@link AssignNamesakeCount} and {@link AssignHouseholdSize} (so those counts are
++ * set) and before {@link SaveOwner}, so both fields are persisted and available to the create
++ * audit line.
+  */
+ public class AssignMembershipLevel {
+ 
+@@ -25,18 +31,37 @@ public class AssignMembershipLevel {
+     private static final long TENURE_DAYS_THRESHOLD = 365;
+ 
+     public void service(@Val Owner owner) {
+-        int level = 1;
++        int points = 0;
+         String email = owner.getEmail();
+         if (email != null && !email.isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+-            level++;
++            points += 1;
++        }
++        Integer householdSize = owner.getHouseholdSize();
++        if (householdSize != null && householdSize >= 3) {
++            points += 2;
+         }
+         if (tenureDays(owner) > TENURE_DAYS_THRESHOLD) {
+-            level++;
++            points += 3;
++        }
++        owner.setMembershipPoints(points);
++        owner.setMembershipLevel(levelForPoints(points));
++    }
++
++    /** Maps points to level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
++    private static int levelForPoints(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        owner.setMembershipLevel(Math.min(level, 4));
++        return 1;
+     }
+ 
+     /** Days of tenure since registration; zero (or negative) for a newly registered owner. */
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index bed94e84..b5a46ac6 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   membership_number VARCHAR(48),
+   membership_level INTEGER,
++  membership_points INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 58041176..614644e8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   household_size INTEGER,
+   membership_number VARCHAR(48),
+   membership_level INTEGER,
++  membership_points INTEGER,
+   bulk_signup_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4d40afe1..ca008767 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   membership_number VARCHAR(48),
+   membership_level INTEGER,
++  membership_points INTEGER,
+   bulk_signup_warning BIT(1),
+   possible_duplicate BIT(1),
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d5e8e7c8..12f66dfe 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_size INTEGER,
+                                       membership_number TEXT,
+                                       membership_level INTEGER,
++                                      membership_points INTEGER,
+                                       bulk_signup_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cc055461..c9d11d7b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2159,16 +2159,26 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: The membership points scored at creation. Starts at 0; adds 2 when an
++                email is present; adds 1 when namesakeCount is 0; adds 2 for a household of 3 or
++                more; adds 3 when tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The numeric membership level (1 to 3) scored at creation. Starts at 1;
+-                adds 1 when an email is present; adds 1 when namesakeCount is 0; capped at 3
+-                (level 4 is reserved for tenure).
++              description: The numeric membership level (1 to 4) derived from membershipPoints;
++                1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, 4 for 6 or more points.
++                Level 4 requires the tenure factor, which a newly created owner never has.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
