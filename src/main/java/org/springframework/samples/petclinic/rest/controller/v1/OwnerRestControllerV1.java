@@ -463,11 +463,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds the existing owner, if any, that the owner being created is a soft duplicate of: an owner
-     * sharing this owner's last name (compared case-insensitively) and postcode (an exact match of the
-     * stored 4-digit value) while carrying a <em>different</em> telephone. A soft match is distinct from
-     * the hard duplicate rejected earlier by {@link #rejectDuplicateIdentity}: the owner is still
-     * created, but flagged. When more than one existing owner matches, the earliest (lowest id) is
-     * returned so the reference is deterministic. An owner with no postcode can never soft-match.
+     * sharing this owner's {@code soundex(lastName)} and postcode (an exact match of the stored 4-digit
+     * value) while carrying a <em>different</em> {@code identityKey}. A soft match is distinct from the
+     * hard duplicate rejected earlier by {@link #rejectDuplicateIdentity} (which requires an identical
+     * identity key): the owner is still created, but flagged. Because the telephone is part of the
+     * identity key, two owners with the same last name and postcode but different telephones are a soft
+     * match rather than a hard duplicate. When more than one existing owner matches, the earliest
+     * (lowest id) is returned so the reference is deterministic. An owner with no postcode can never
+     * soft-match.
      *
      * @param owner the owner being created, with its telephone and postcode already normalized/validated
      * @return the id of the matching existing owner, or {@code null} when there is no soft match
@@ -477,13 +480,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null) {
             return null;
         }
-        String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String telephone = owner.getTelephone();
+        String soundex = Households.soundex(owner.getLastName());
+        String identity = Households.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
         return this.clinicService.findAllOwners().stream()
             .filter(this::isNotDeleted)
-            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> soundex.equals(Households.soundex(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
-            .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
+            .filter(existing -> !identity.equals(Households.identityKey(
+                toE164OrNull(existing.getTelephone()), existing.getEmail(), existing.getLastName())))
             .map(Owner::getId)
             .filter(java.util.Objects::nonNull)
             .min(java.util.Comparator.naturalOrder())
@@ -704,38 +708,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner whose identity duplicates an existing owner's. All duplicate detection
-     * is consolidated here onto the identity-bearing part of the derived {@code identityKey}: two
-     * owners are duplicates when they share the same normalized telephone and the same normalized email
-     * (a {@code null} email compared as an empty segment). Existing telephones are re-normalized to
-     * E.164 and existing emails lower-cased before comparison, so equivalent values submitted in
-     * different formats (e.g. national {@code "0412 345 678"} and international {@code "+61 412 345 678"})
-     * still match.
+     * is consolidated onto the single derived {@code identityKey} (see
+     * {@link Households#identityKey(String, String, String)}): the SHA-256 hex over the normalized
+     * telephone, the lower-cased email (a {@code null} email compared as an empty segment) and the
+     * {@code soundex} of the last name. Two owners are duplicates when their identity keys are equal.
+     * Existing telephones are re-normalized to E.164 before comparison, so equivalent values submitted
+     * in different formats (e.g. national {@code "0412 345 678"} and international
+     * {@code "+61 412 345 678"}) still match. The email-domain blocklist is applied first (during
+     * email normalization), and soft-deleted owners are ignored.
      * <p>
-     * The {@code householdId} is deliberately not part of this comparison: a household is a shared
-     * grouping, so two members of the same household with different telephones have different
-     * identities and are both allowed. Only owners with the same telephone and email collide.
+     * Because the telephone is part of the key, two members of one household (same last name and
+     * postcode) with different telephones have different identity keys and are both allowed; such a
+     * near-match is instead surfaced as a soft duplicate (see {@link #findPossibleDuplicateOf}).
      *
      * @param owner the owner being created, with its telephone and email already normalized
-     * @throws DuplicateIdentityException (409 Conflict) if another owner has the same identity
+     * @throws DuplicateIdentityException (409 Conflict) if another owner has the same identity key
      */
     private void rejectDuplicateIdentity(Owner owner) {
-        String identity = personalIdentity(owner.getTelephone(), owner.getEmail());
+        String identity = Households.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName());
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .filter(this::isNotDeleted)
-            .anyMatch(existing -> identity.equals(
-                personalIdentity(toE164OrNull(existing.getTelephone()), existing.getEmail())));
+            .anyMatch(existing -> identity.equals(Households.identityKey(
+                toE164OrNull(existing.getTelephone()), existing.getEmail(), existing.getLastName())));
         if (duplicate) {
-            String householdId = Households.householdId(owner.getLastName(), owner.getPostcode());
-            throw new DuplicateIdentityException(
-                Households.identityKey(owner.getTelephone(), owner.getEmail(), householdId));
+            throw new DuplicateIdentityException(identity);
         }
     }
 
-    /**
-     * Builds the identity-bearing prefix of the {@code identityKey} used for duplicate detection:
-     * the normalized telephone and email joined with {@code '|'}, lower-casing the email (the form it
-     * is stored in, see {@link #normalizeEmail}) so addresses differing only in letter case still match.
-     */
     /**
      * Whether an existing owner is not soft-deleted. A soft-deleted owner (its {@code deleted} flag
      * set) is retained but ignored by the create endpoint's duplicate and identity checks, so a
@@ -743,11 +742,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private boolean isNotDeleted(Owner owner) {
         return !Boolean.TRUE.equals(owner.getDeleted());
-    }
-
-    private String personalIdentity(String telephone, String email) {
-        String normalizedEmail = email == null ? "" : email.toLowerCase(java.util.Locale.ROOT);
-        return (telephone == null ? "" : telephone) + "|" + normalizedEmail;
     }
 
     /**
