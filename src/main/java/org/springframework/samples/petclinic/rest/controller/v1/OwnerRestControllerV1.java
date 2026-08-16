@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
 import org.springframework.samples.petclinic.rest.advice.MissingRequiredFieldsException;
@@ -123,6 +124,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(normalizedTelephone);
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            requireUniqueHousehold(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         if (ownerFieldsDto.getEmail() != null) {
             ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -332,5 +336,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (taken) {
             throw new DuplicateTelephoneException(normalizedTelephone);
         }
+    }
+
+    /**
+     * Rejects the request when another owner already shares this household, i.e. has both the same
+     * last name and the same address once each value is normalized (trimmed, internal whitespace
+     * runs collapsed to a single space, and compared case-insensitively). Callers skip this check
+     * when the request opts in via {@code sharesHousehold}.
+     *
+     * @param lastName the incoming owner's last name (already validated non-blank)
+     * @param address the incoming owner's address (already validated non-blank)
+     * @throws DuplicateHouseholdException if another owner already has this last name and address
+     */
+    private void requireUniqueHousehold(String lastName, String address) {
+        String normalizedLastName = normalizeForHousehold(lastName);
+        String normalizedAddress = normalizeForHousehold(address);
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeForHousehold(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForHousehold(existing.getAddress()).equals(normalizedAddress));
+        if (taken) {
+            throw new DuplicateHouseholdException(lastName, address);
+        }
+    }
+
+    /**
+     * Normalizes a value for household-duplicate comparison: trims leading and trailing whitespace,
+     * collapses every internal run of whitespace to a single space, and lower-cases the result so
+     * comparisons are case-insensitive.
+     */
+    private static String normalizeForHousehold(String value) {
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 }
