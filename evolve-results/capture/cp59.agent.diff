@@ -1,0 +1,245 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index aa98053a..c48fc31d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -19,7 +19,6 @@ package org.springframework.samples.petclinic.rest.advice;
+ import java.net.URI;
+ import java.time.Instant;
+ import java.util.List;
+-import java.util.Map;
+ import java.util.Objects;
+ 
+ import jakarta.servlet.http.HttpServletRequest;
+@@ -27,6 +26,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+@@ -53,6 +53,8 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
++    private static final String ERROR_CONFLICT = "The request conflicts with the current state of an existing resource";
++    private static final String ERROR_RATE_LIMITED = "The request was rejected because a rate limit has been exceeded";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -72,6 +74,27 @@ public class ExceptionControllerAdvice {
+         return problemDetail;
+     }
+ 
++    /**
++     * Builds an RFC 7807 {@code application/problem+json} response for a rejected request. The body is a
++     * {@link ProblemDetail} carrying {@code type}, {@code title}, {@code status} and {@code detail} members,
++     * and the response is served with the {@code application/problem+json} content type.
++     *
++     * @param e       Object referring to the thrown exception.
++     * @param status  HTTP response status (unchanged from the original rejection).
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @param detail  Human-readable explanation of the rejection.
++     * @param errors  Names of the offending fields, exposed as the {@code errors} property.
++     * @return A {@link ResponseEntity} whose body is an RFC 7807 problem document.
++     */
++    private ResponseEntity<ProblemDetail> problem(Exception e, HttpStatus status, HttpServletRequest request,
++            String detail, List<String> errors) {
++        ProblemDetail problemDetail = this.detailBuild(e, status, request.getRequestURL(), detail);
++        problemDetail.setProperty("errors", errors);
++        return ResponseEntity.status(status)
++            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
++            .body(problemDetail);
++    }
++
+     /**
+      * Re-throws {@link AccessDeniedException} so Spring Security's {@code ExceptionTranslationFilter}
+      * translates it as it normally would - 403 for an authenticated user lacking the required role,
+@@ -162,9 +185,9 @@ public class ExceptionControllerAdvice {
+                 .map(fieldError -> fieldError.getField())
+                 .distinct()
+                 .toList());
+-            return ResponseEntity.status(status).body(detail);
++            return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+         }
+-        return ResponseEntity.status(status).body(detail);
++        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(detail);
+     }
+ 
+     /**
+@@ -173,12 +196,13 @@ public class ExceptionControllerAdvice {
+      * offending field.
+      *
+      * @param e The {@link MissingOwnerFieldsException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field names and a 400 Bad Request status.
+      */
+     @ExceptionHandler(MissingOwnerFieldsException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleMissingOwnerFieldsException(MissingOwnerFieldsException e) {
+-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", e.getFields()));
++    public ResponseEntity<ProblemDetail> handleMissingOwnerFieldsException(MissingOwnerFieldsException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, e.getFields());
+     }
+ 
+     /**
+@@ -187,12 +211,13 @@ public class ExceptionControllerAdvice {
+      * whose {@code errors} array names the offending {@code telephone} field.
+      *
+      * @param e The {@link InvalidTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+      */
+     @ExceptionHandler(InvalidTelephoneException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleInvalidTelephoneException(InvalidTelephoneException e) {
+-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("telephone")));
++    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("telephone"));
+     }
+ 
+     /**
+@@ -201,12 +226,13 @@ public class ExceptionControllerAdvice {
+      * the offending {@code email} field.
+      *
+      * @param e The {@link InvalidEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+      */
+     @ExceptionHandler(InvalidEmailException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleInvalidEmailException(InvalidEmailException e) {
+-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("email")));
++    public ResponseEntity<ProblemDetail> handleInvalidEmailException(InvalidEmailException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("email"));
+     }
+ 
+     /**
+@@ -216,12 +242,13 @@ public class ExceptionControllerAdvice {
+      * {@code postcode} field.
+      *
+      * @param e The {@link InvalidPostcodeException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+      */
+     @ExceptionHandler(InvalidPostcodeException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleInvalidPostcodeException(InvalidPostcodeException e) {
+-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("postcode")));
++    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("postcode"));
+     }
+ 
+     /**
+@@ -230,12 +257,13 @@ public class ExceptionControllerAdvice {
+      * offending {@code telephone} field.
+      *
+      * @param e The {@link DuplicateTelephoneException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+      */
+     @ExceptionHandler(DuplicateTelephoneException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleDuplicateTelephoneException(DuplicateTelephoneException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("telephone")));
++    public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.CONFLICT, request, ERROR_CONFLICT, List.of("telephone"));
+     }
+ 
+     /**
+@@ -244,12 +272,13 @@ public class ExceptionControllerAdvice {
+      * offending {@code email} field.
+      *
+      * @param e The {@link DuplicateEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+      */
+     @ExceptionHandler(DuplicateEmailException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleDuplicateEmailException(DuplicateEmailException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("email")));
++    public ResponseEntity<ProblemDetail> handleDuplicateEmailException(DuplicateEmailException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.CONFLICT, request, ERROR_CONFLICT, List.of("email"));
+     }
+ 
+     /**
+@@ -259,12 +288,13 @@ public class ExceptionControllerAdvice {
+      * {@code postcode} fields.
+      *
+      * @param e The {@link DuplicateHouseholdException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field names and a 409 Conflict status.
+      */
+     @ExceptionHandler(DuplicateHouseholdException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleDuplicateHouseholdException(DuplicateHouseholdException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("lastName", "postcode")));
++    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.CONFLICT, request, ERROR_CONFLICT, List.of("lastName", "postcode"));
+     }
+ 
+     /**
+@@ -273,12 +303,13 @@ public class ExceptionControllerAdvice {
+      * Conflict whose {@code errors} array names the offending {@code identityKey}.
+      *
+      * @param e The {@link DuplicateIdentityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+      */
+     @ExceptionHandler(DuplicateIdentityException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleDuplicateIdentityException(DuplicateIdentityException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("identityKey")));
++    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.CONFLICT, request, ERROR_CONFLICT, List.of("identityKey"));
+     }
+ 
+     /**
+@@ -287,12 +318,13 @@ public class ExceptionControllerAdvice {
+      * {@code city} field.
+      *
+      * @param e The {@link CityAtCapacityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+      */
+     @ExceptionHandler(CityAtCapacityException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleCityAtCapacityException(CityAtCapacityException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("city")));
++    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(CityAtCapacityException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.CONFLICT, request, ERROR_CONFLICT, List.of("city"));
+     }
+ 
+     /**
+@@ -301,12 +333,13 @@ public class ExceptionControllerAdvice {
+      * {@code errors} array names the offending {@code registrationDate} field.
+      *
+      * @param e The {@link DailyRegistrationLimitException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 429 Too Many Requests status.
+      */
+     @ExceptionHandler(DailyRegistrationLimitException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleDailyRegistrationLimitException(DailyRegistrationLimitException e) {
+-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("errors", List.of("registrationDate")));
++    public ResponseEntity<ProblemDetail> handleDailyRegistrationLimitException(DailyRegistrationLimitException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.TOO_MANY_REQUESTS, request, ERROR_RATE_LIMITED, List.of("registrationDate"));
+     }
+ 
+     /**
+@@ -315,12 +348,13 @@ public class ExceptionControllerAdvice {
+      * Request whose {@code errors} array names the offending {@code registrationDate} field.
+      *
+      * @param e The {@link FutureRegistrationDateException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+      */
+     @ExceptionHandler(FutureRegistrationDateException.class)
+     @ResponseBody
+-    public ResponseEntity<Map<String, Object>> handleFutureRegistrationDateException(FutureRegistrationDateException e) {
+-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("registrationDate")));
++    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
++        return this.problem(e, HttpStatus.BAD_REQUEST, request, ERROR_INVALID_REQUEST, List.of("registrationDate"));
+     }
+ 
+ }
