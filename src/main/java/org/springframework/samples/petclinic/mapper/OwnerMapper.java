@@ -24,6 +24,8 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
         expression = "java(owner == null ? null : owner.getTelephoneDisplay())")
+    @Mapping(target = "membershipPoints",
+        expression = "java(owner == null ? null : owner.getMembershipPoints())")
     @Mapping(target = "membershipLevel",
         expression = "java(owner == null ? null : owner.getMembershipLevel())")
     @Mapping(target = "locality",

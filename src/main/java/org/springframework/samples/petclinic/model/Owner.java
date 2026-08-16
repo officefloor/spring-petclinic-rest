@@ -210,29 +210,55 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's numeric membership level, derived on read from the fields assigned at create.
-     * It starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
-     * and gains 1 when the owner's tenure exceeds 365 days. Tenure is the number of whole days
-     * between the {@code registrationDate} and the current date. Because a newly created owner has
-     * zero tenure, a new owner never reaches level 4 and so is capped at 3 on create; level 4 is
+     * The owner's membership points, derived on read from the fields assigned at create. Points
+     * start at 0 and accumulate: 2 when an email is present, 1 when {@code namesakeCount} is 0,
+     * 2 when the household has 3 or more members ({@code householdMemberCount} of 3 or more), and
+     * 3 when the owner's tenure exceeds 365 days. Tenure is the number of whole days between the
+     * {@code registrationDate} and the current date. Because a newly created owner has zero tenure,
+     * the tenure points are only earned once the owner's tenure passes 365 days.
+     *
+     * @return the membership points, 0 or more
+     */
+    @Transient
+    public Integer getMembershipPoints() {
+        int points = 0;
+        if (this.email != null && !this.email.isBlank()) {
+            points += 2;
+        }
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            points += 1;
+        }
+        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
+            points += 2;
+        }
+        if (this.registrationDate != null
+                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * The owner's numeric membership level, derived on read by mapping {@link #getMembershipPoints}
+     * to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
+     * Because a newly created owner has zero tenure, level 4 (which requires the tenure points) is
      * reached only once the owner's tenure passes 365 days.
      *
      * @return the membership level, from 1 to 4
      */
     @Transient
     public Integer getMembershipLevel() {
-        int level = 1;
-        if (this.email != null && !this.email.isBlank()) {
-            level++;
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
-            level++;
+        if (points >= 4) {
+            return 3;
         }
-        if (this.registrationDate != null
-                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
-            level++;
+        if (points >= 2) {
+            return 2;
         }
-        return Math.min(level, 4);
+        return 1;
     }
 
     /**
