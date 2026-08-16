@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
   customer_code VARCHAR(40),
   household_id VARCHAR(64),
   namesake_count INTEGER,
-  membership_number VARCHAR(48)
+  membership_number VARCHAR(48),
+  bulk_signup_warning BOOLEAN
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);

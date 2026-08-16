@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(64),
   namesake_count INTEGER,
   membership_number VARCHAR(48),
+  bulk_signup_warning BIT(1),
   INDEX(last_name)
 ) engine=InnoDB;
 
