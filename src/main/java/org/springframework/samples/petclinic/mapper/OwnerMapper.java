@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerRegion;
 
 import java.util.Collection;
 import java.util.List;
@@ -43,25 +44,21 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derives the owner's locality (region). Prefers the postcode: a four-digit postcode is
-     * mapped by inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). When the postcode
-     * is absent or in no known range, falls back to the city-to-region table
-     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), otherwise "UNKNOWN". Preferring the postcode
-     * returns the same region for known cities but disambiguates cities that share a name.
+     * Derives the owner's locality (region) from the region-and-hash identity: the {@code <REGION>}
+     * segment of the {@code <REGION>-<HASH8>} {@code customerCode}. The region embedded in the code
+     * is itself derived (postcode preferred, then city) when the owner is created, so a postcode in a
+     * known range still wins over the city. When no such code is present (e.g. legacy owners), falls
+     * back to deriving the region live from the postcode/city via {@link OwnerRegion}.
      */
     default String deriveLocality(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("[0-9]{4}")) {
-            int value = Integer.parseInt(postcode);
-            if (value >= 2000 && value <= 2099) return "NSW";
-            if (value >= 3000 && value <= 3099) return "VIC";
-            if (value >= 4000 && value <= 4099) return "QLD";
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            if (dash > 0) {
+                return code.substring(0, dash);
+            }
         }
-        String city = owner.getCity();
-        if ("Sydney".equals(city)) return "NSW";
-        if ("Melbourne".equals(city)) return "VIC";
-        if ("Brisbane".equals(city)) return "QLD";
-        return "UNKNOWN";
+        return OwnerRegion.fromPostcodeOrCity(owner.getPostcode(), owner.getCity());
     }
 
     /**
