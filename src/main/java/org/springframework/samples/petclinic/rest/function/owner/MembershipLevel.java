@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -19,8 +18,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *       {@code householdId} is shared with at least two earlier owners (see
  *       {@link OwnerIdentity#householdIdFor}); an owner with no household — no postcode — is a
  *       household of one;</li>
- *   <li>adds {@code 3} when the owner's tenure — whole days from {@code registrationDate} to today —
- *       exceeds {@code 365} days.</li>
+ *   <li>adds {@code 3} when the owner's tenure — whole elapsed fiscal years from
+ *       {@code registrationDate} to today (see {@link FiscalYear}) — is {@code 1} or more, i.e. at
+ *       least one 1 July boundary has passed since registration.</li>
  * </ul>
  *
  * <p>The points map to a level of 1 to 4: {@code 0-1} points is level {@code 1}, {@code 2-3} is
@@ -43,7 +43,7 @@ public final class MembershipLevel {
 
     private static final int LARGE_HOUSEHOLD_SIZE = 3;
 
-    private static final long TENURE_DAYS_FOR_POINTS = 365;
+    private static final long TENURE_FISCAL_YEARS_FOR_POINTS = 1;
 
     private MembershipLevel() {
     }
@@ -66,7 +66,7 @@ public final class MembershipLevel {
         if (householdSize(owner, ownerRepository) >= LARGE_HOUSEHOLD_SIZE) {
             points += LARGE_HOUSEHOLD_POINTS;
         }
-        if (tenureDays(owner) > TENURE_DAYS_FOR_POINTS) {
+        if (tenureFiscalYears(owner) >= TENURE_FISCAL_YEARS_FOR_POINTS) {
             points += TENURE_POINTS;
         }
         return points;
@@ -86,13 +86,13 @@ public final class MembershipLevel {
         return 4;
     }
 
-    /** Whole days from the owner's {@code registrationDate} to today; {@code 0} when unknown. */
-    private static long tenureDays(Owner owner) {
+    /** Whole elapsed fiscal years from the owner's {@code registrationDate} to today; {@code 0} when unknown. */
+    private static long tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return FiscalYear.elapsedYears(registrationDate, LocalDate.now());
     }
 
     /** The owner's household size: this owner plus every earlier owner sharing its {@code householdId}. */
