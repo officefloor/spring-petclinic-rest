@@ -134,16 +134,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
-        String telephone = ownerFieldsDto.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
-            throw new InvalidTelephoneException(
-                "telephone must contain exactly 10 digits after removing non-digit characters");
-        }
+        String telephone = toE164(ownerFieldsDto.getTelephone());
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(normalizeTelephone(existing.getTelephone())));
+            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
         if (telephoneInUse) {
             throw new DuplicateTelephoneException(
-                "an owner with the same normalized telephone already exists");
+                "an owner with the same E.164 telephone already exists");
         }
         ownerFieldsDto.setTelephone(telephone);
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
@@ -170,7 +166,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
-        currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setTelephone(toE164(ownerFieldsDto.getTelephone()));
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
@@ -257,8 +253,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return value == null || value.isBlank();
     }
 
-    private static String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+    /**
+     * Normalizes a telephone number to E.164 form. Spaces, dashes and brackets are stripped. A
+     * leading {@code '+'} and its country code are kept as-is; otherwise the number is treated as a
+     * national one, a single leading {@code '0'} is dropped, and the default country code
+     * {@code '+61'} is prepended. The result must have 8 to 15 digits after the {@code '+'},
+     * otherwise an {@link InvalidTelephoneException} is raised (reported to the client as 400).
+     */
+    private static String toE164(String telephone) {
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s()-]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("[0-9]{8,15}")) {
+            throw new InvalidTelephoneException(
+                "telephone must form a valid E.164 number with 8 to 15 digits");
+        }
+        return "+" + digits;
     }
 
     /**

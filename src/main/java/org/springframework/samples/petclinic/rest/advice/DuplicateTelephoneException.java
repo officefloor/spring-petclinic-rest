@@ -17,9 +17,8 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a new owner's normalized telephone (every non-digit character stripped) is
- * already used by another owner. {@link ExceptionControllerAdvice} reports it back to the
- * client as a 409 Conflict response.
+ * Thrown when a new owner's normalized E.164 telephone is already used by another owner.
+ * {@link ExceptionControllerAdvice} reports it back to the client as a 409 Conflict response.
  */
 public class DuplicateTelephoneException extends RuntimeException {
 

@@ -17,8 +17,8 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an owner's telephone, after every non-digit character is stripped, does not
- * contain exactly ten digits. {@link ExceptionControllerAdvice} reports it back to the
+ * Thrown when an owner's telephone cannot be normalized to a valid E.164 number (8 to 15
+ * digits after the '+'). {@link ExceptionControllerAdvice} reports it back to the
  * client as a 400 response.
  */
 public class InvalidTelephoneException extends RuntimeException {
