@@ -231,32 +231,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes the submitted telephone on create by stripping every non-digit character,
-     * then requires the result to contain exactly 10 digits. The stripped, 10-digit value is
-     * written back onto the request so it is persisted and echoed back verbatim.
+     * Normalizes the submitted telephone on create to E.164 form (see {@link #toE164}) and
+     * writes the canonical {@code '+'}-prefixed value back onto the request so it is persisted
+     * and echoed back in that form.
      *
      * @param ownerFieldsDto the submitted owner fields
-     * @throws RequiredFieldsMissingException with a 400 status if the telephone does not
-     *                                        contain exactly 10 digits once stripped
+     * @throws RequiredFieldsMissingException with a 400 status if the telephone cannot form a
+     *                                        valid E.164 number
      */
     private static void normalizeTelephone(OwnerFieldsDto ownerFieldsDto) {
-        String telephone = ownerFieldsDto.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String e164 = toE164(ownerFieldsDto.getTelephone());
+        if (e164 == null) {
             throw new RequiredFieldsMissingException(List.of("telephone"));
         }
-        ownerFieldsDto.setTelephone(digits);
+        ownerFieldsDto.setTelephone(e164);
     }
 
     /**
-     * Rejects a create whose normalized telephone is already used by any existing owner.
-     * The submitted telephone has already been normalized to its bare digits by
-     * {@link #normalizeTelephone}; each stored owner's telephone is normalized the same way
-     * before comparison so differing input formats collapse to the same value.
+     * Converts a raw telephone to E.164 form, or returns {@code null} when it cannot form a
+     * valid E.164 number. Spaces, dashes and brackets are stripped. When a leading {@code '+'}
+     * and country code are present they are kept; otherwise country code {@code '+61'} is
+     * assumed and a single leading {@code '0'} is dropped from the national digits. The result
+     * must contain 8 to 15 digits after the {@code '+'}.
      *
-     * @param normalizedTelephone the submitted, already-normalized telephone digits
+     * @param raw the submitted telephone, possibly {@code null}
+     * @return the canonical E.164 string, or {@code null} if it is not a valid E.164 number
+     */
+    private static String toE164(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String cleaned = raw.replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("[0-9]{8,15}")) {
+            return null;
+        }
+        return "+" + digits;
+    }
+
+    /**
+     * Rejects a create whose E.164 telephone is already used by any existing owner. The
+     * submitted telephone has already been normalized to E.164 by {@link #normalizeTelephone};
+     * each stored owner's telephone is normalized the same way before comparison so differing
+     * input formats collapse to the same value.
+     *
+     * @param normalizedTelephone the submitted, already-normalized E.164 telephone
      * @throws DuplicateTelephoneException with a 409 status if another owner already uses the
-     *                                     same normalized telephone
+     *                                     same E.164 telephone
      */
     /**
      * Matches a syntactically valid email address: a non-empty local part, an {@code @},
@@ -302,8 +329,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateTelephone(String normalizedTelephone) {
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
+            .map(OwnerRestControllerV1::toE164)
             .filter(telephone -> telephone != null)
-            .map(telephone -> telephone.replaceAll("\\D", ""))
             .anyMatch(normalizedTelephone::equals);
         if (duplicate) {
             throw new DuplicateTelephoneException(normalizedTelephone);
