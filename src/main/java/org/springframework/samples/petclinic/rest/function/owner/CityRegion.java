@@ -84,11 +84,13 @@ public final class CityRegion {
     }
 
     /**
-     * An owner's {@code locality}, now the REGION segment of its {@code memberId}
-     * ({@code <REGION><FY><HASH8><CHK>}). The region is the leading known region code (NSW, VIC, QLD
-     * or UNKNOWN) the id starts with. When the id is absent or not in that shape (e.g. an owner not
-     * created through the member-id pipeline), falls back to deriving the region from the city and
-     * postcode directly.
+     * An owner's {@code locality}: the plain region read back off the REGION segment of its
+     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}). The region is the leading known region code
+     * (NSW, VIC, QLD or UNKNOWN) the id starts with — the version-2 {@code memberId} embeds the region
+     * as {@code <REGION>V2} (e.g. {@code NSWV2...}), so matching on the leading region code strips the
+     * {@code V2} tag and yields the plain region. When the id is absent or not in that shape (e.g. an
+     * owner not created through the member-id pipeline), falls back to deriving the region from the
+     * city and postcode directly.
      */
     public static String localityOfMemberId(String memberId, String city, String postcode) {
         if (memberId != null) {

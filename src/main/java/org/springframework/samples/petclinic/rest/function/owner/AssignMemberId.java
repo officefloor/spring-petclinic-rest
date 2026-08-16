@@ -9,12 +9,14 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} (see
- * {@link MemberId}): REGION is the region code derived from the postcode/city (see
- * {@link CityRegion#localityOf(String, String)}), FY is the 2-digit fiscal year of the
- * registrationDate (see {@link FiscalYear}), HASH8 is the first 8 upper-case hex characters of
- * SHA-256 over {@code normalizedTelephone + lastName} (see {@link OwnerIdentity#memberIdHash}) and
+ * {@link MemberId}): REGION is the version-2 region code — the plain region derived from the
+ * postcode/city (see {@link CityRegion#localityOf(String, String)}) with the fixed
+ * {@link OwnerIdentity#VERSION_TAG} appended, FY is the 2-digit fiscal year of the registrationDate
+ * (see {@link FiscalYear}), HASH8 is the first 8 upper-case hex characters of SHA-256 over
+ * {@code VERSION_TAG + normalizedTelephone + lastName} (see {@link OwnerIdentity#memberIdHash}) and
  * CHK is a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}. For example
- * {@code NSW261A2B3C4D7}.
+ * {@code NSWV2261A2B3C4D7}. The {@code V2} tag lives only inside the id: the derived
+ * {@code locality}/{@code timezone} and owner segment read the plain region back off the prefix.
  *
  * <p>Runs after {@link BuildOwner} (which defaults the registration date) and
  * {@link ResolveRegistrationDate}, so the fiscal year is known. The base id depends only on this
@@ -27,7 +29,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = CityRegion.localityOf(owner.getCity(), owner.getPostcode());
+        String region = CityRegion.localityOf(owner.getCity(), owner.getPostcode())
+                + OwnerIdentity.VERSION_TAG;
         int fiscalYearYY = FiscalYear.endingYearOf(owner.getRegistrationDate()) % 100;
         String hash8 = OwnerIdentity.memberIdHash(owner.getTelephone(), owner.getLastName());
         String base = MemberId.of(region, fiscalYearYY, hash8);

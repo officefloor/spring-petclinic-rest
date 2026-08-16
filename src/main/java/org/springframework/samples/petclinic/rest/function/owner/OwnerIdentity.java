@@ -23,6 +23,16 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class OwnerIdentity {
 
+    /**
+     * The identity-derivation version tag mixed into every version-2 identifier — the {@code memberId}
+     * (its region segment and HASH8), the {@code householdId} and the {@code identityKey}. Mixing the
+     * {@code "V2"} tag into each hashed pre-image changes every identifier and guarantees no value a
+     * version-1 owner received is reproduced. It is confined to the identifiers: the user-facing
+     * {@code locality}/{@code timezone} and the owner segment's derived region stay the plain region
+     * code (e.g. {@code "NSW"}, never {@code "NSWV2"}).
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerIdentity() {
     }
 
@@ -42,17 +52,19 @@ public final class OwnerIdentity {
     }
 
     /**
-     * Assemble the identity key: the lower-case hex SHA-256 over the normalized telephone, lower-cased
-     * email and Soundex of the last name, joined by {@code '|'}.
+     * Assemble the identity key: the lower-case hex SHA-256 over the fixed {@link #VERSION_TAG}, the
+     * normalized telephone, lower-cased email and Soundex of the last name, joined by {@code '|'}. The
+     * version tag makes this a version-2 key, distinct from any produced under version 1.
      */
     public static String key(String telephone, String email, String lastName) {
-        return sha256HexFull(normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
-                + soundex(lastName));
+        return sha256HexFull(VERSION_TAG + "|" + normalizeTelephone(telephone) + "|"
+                + normalizeEmail(email) + "|" + soundex(lastName));
     }
 
     /**
      * The stable, shared household identifier for an owner's last name and postcode: the first 12
-     * upper-case hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode} (last name
+     * upper-case hex characters of SHA-256 over {@code VERSION_TAG + '|' + normalizedLastName + '|' +
+     * postcode} (the version-2 tag prefix, then the last name
      * lower-cased with whitespace collapsed; postcode trimmed). Owners with the same last name and
      * postcode get the same value automatically, regardless of creation order, so the household is
      * keyed on {@code (lastName, postcode)}. Returns {@code null} when there is no postcode — an owner
@@ -63,17 +75,17 @@ public final class OwnerIdentity {
         if (normalizedPostcode == null) {
             return null;
         }
-        return sha256Hex(normalizeLastName(lastName) + "|" + normalizedPostcode, 12);
+        return sha256Hex(VERSION_TAG + "|" + normalizeLastName(lastName) + "|" + normalizedPostcode, 12);
     }
 
     /**
      * The HASH8 segment of an owner's {@code memberId}: the first 8 upper-case hex characters of
-     * SHA-256 over {@code normalizedTelephone + lastName}. The telephone is normalized to E.164 form
+     * SHA-256 over {@code VERSION_TAG + normalizedTelephone + lastName}. The telephone is normalized to E.164 form
      * (null/invalid becomes empty) so the hash is stable across equivalent phone formats; the last
      * name is taken as stored.
      */
     public static String memberIdHash(String telephone, String lastName) {
-        return sha256Hex(normalizeTelephone(telephone) + (lastName == null ? "" : lastName), 8);
+        return sha256Hex(VERSION_TAG + normalizeTelephone(telephone) + (lastName == null ? "" : lastName), 8);
     }
 
     /**

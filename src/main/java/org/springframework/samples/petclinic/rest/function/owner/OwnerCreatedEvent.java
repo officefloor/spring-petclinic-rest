@@ -10,16 +10,21 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * audit line (see {@link AuditOwnerCreated}) whenever an owner is created.
  *
  * <p>Serialized to JSON as
- * {@code {"seq":<n>,"ownerId":<id>,"customerCode":<identifier>,"membershipLevel":<level>,"event":"OWNER_CREATED"}}.
- * The {@code seq} is a process-wide monotonically increasing integer across all creates. The
- * {@code customerCode} carries the owner's <em>current primary identifier</em> (see
- * {@link OwnerIdentity#primaryIdentifier(Owner)}) — the {@code customerCode} today, and whatever
- * replaces it later (the {@code memberId}), without this event needing to change.
+ * {@code {"schemaVersion":2,"seq":<n>,"ownerId":<id>,"customerCode":<identifier>,"membershipLevel":<level>,"ownerSegment":<segment>,"event":"OWNER_CREATED"}}.
+ * This is schema version 2: it carries an explicit {@code schemaVersion} and the owner segment
+ * recomputed from the version-2 identity. The {@code seq} is a process-wide monotonically increasing
+ * integer across all creates. The {@code customerCode} carries the owner's <em>current primary
+ * identifier</em> (see {@link OwnerIdentity#primaryIdentifier(Owner)}) — the version-2
+ * {@code memberId}.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel) {
+public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
+        String ownerSegment, int schemaVersion) {
 
     /** The {@code event} discriminator carried by every owner-created event. */
     public static final String EVENT = "OWNER_CREATED";
+
+    /** The structured audit schema version — 2 for the version-2 owner identity. */
+    public static final int SCHEMA_VERSION = 2;
 
     /** Process-wide sequence source; each created owner's event gets the next value. */
     private static final AtomicLong SEQUENCE = new AtomicLong(0);
@@ -27,15 +32,18 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
     /** Build the next event for a persisted {@code owner}, allocating a fresh {@link #seq()}. */
     public static OwnerCreatedEvent forOwner(Owner owner, OwnerRepository ownerRepository) {
         return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                OwnerIdentity.primaryIdentifier(owner), MembershipLevel.of(owner, ownerRepository));
+                OwnerIdentity.primaryIdentifier(owner), MembershipLevel.of(owner, ownerRepository),
+                OwnerSegment.of(owner, ownerRepository).getValue(), SCHEMA_VERSION);
     }
 
     /** The event as a single-line JSON object, in the field order stated on the type. */
     public String toJson() {
-        return "{\"seq\":" + this.seq
+        return "{\"schemaVersion\":" + this.schemaVersion
+                + ",\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
                 + ",\"customerCode\":" + jsonString(this.customerCode)
                 + ",\"membershipLevel\":" + this.membershipLevel
+                + ",\"ownerSegment\":" + jsonString(this.ownerSegment)
                 + ",\"event\":" + jsonString(EVENT)
                 + "}";
     }

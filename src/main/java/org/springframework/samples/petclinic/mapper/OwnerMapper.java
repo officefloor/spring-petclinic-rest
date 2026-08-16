@@ -42,6 +42,20 @@ public abstract class OwnerMapper {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner, this.ownerRepository);
     }
 
+    /**
+     * The version-2 {@code identity} group — the {@code memberId}, {@code identityKey} and
+     * {@code householdId} nested under one object, called from the {@code identity} mapping expression.
+     */
+    protected org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner));
+        return identity;
+    }
+
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation",
@@ -62,8 +76,10 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.timezoneOfMemberId(owner.getMemberId(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner))")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
+    @Mapping(target = "identity",
+        expression = "java(identity(owner))")
+    @Mapping(target = "apiVersion",
+        expression = "java(Integer.valueOf(2))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "fiscalYear",
