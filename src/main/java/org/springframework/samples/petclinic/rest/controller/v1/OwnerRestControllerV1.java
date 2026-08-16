@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -72,6 +74,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * one dot, with no whitespace anywhere. Deliberately permissive but requires the essential shape.
      */
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /** Dedicated audit logger; create side-effects are recorded here so they can be observed independently. */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     private final ClinicService clinicService;
 
@@ -154,6 +159,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
         }
         this.clinicService.saveOwner(owner);
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
