@@ -30,7 +30,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
@@ -163,12 +162,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPostcode(validatePostcode(owner.getCity(), ownerFieldsDto.getPostcode()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         rejectDuplicateIdentity(owner);
-        rejectDuplicateHousehold(owner, sharesHousehold);
+        // Joining an existing household is now permitted (an exact-identity duplicate is still
+        // rejected above); a joiner's membershipLevel is instead capped one above the household's
+        // current maximum (see cappedMembershipLevel).
         String region = Localities.region(owner.getPostcode(), owner.getCity());
         owner.setCustomerCode(assignCustomerCode(region, owner.getTelephone(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getPostcode()) + 1);
+        owner.setMembershipLevel(cappedMembershipLevel(owner));
         // A declared household member (sharesHousehold) is created but is not a suspected duplicate.
         Integer possibleDuplicateOf = sharesHousehold ? null : findPossibleDuplicateOf(owner);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
@@ -416,35 +418,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that would join an existing household without opting in. The household
-     * is keyed on the computed {@code householdId} (see {@link Households#householdId}, derived from the
-     * normalized last name and postcode), so an owner sharing an existing owner's last name and postcode
-     * is the same household. When another owner already belongs to that household the create is rejected,
-     * unless the request opts in with {@code sharesHousehold}, which bypasses this block and creates the
-     * owner as a declared household member. An owner with no postcode is never treated as a household
-     * duplicate.
+     * Computes the {@code membershipLevel} to store for the owner being created, applying the household
+     * ceiling. The owner's natural level is first derived from their own fields (see
+     * {@link org.springframework.samples.petclinic.util.Memberships#membershipLevel(String, Integer, Integer, java.time.LocalDate)}).
+     * It is then capped so it cannot exceed one above the current maximum {@code membershipLevel} among
+     * the owner's existing household members (the non-deleted owners sharing its {@code householdId}, see
+     * {@link Households#householdId}). When the owner has no existing household member no cap applies and
+     * the natural level is returned.
      *
-     * @param owner the owner being created, with its last name and postcode already set
-     * @param sharesHousehold whether the request opted in via {@code sharesHousehold}
-     * @throws DuplicateHouseholdException (409 Conflict) if the owner joins an existing household and did
-     *         not opt in
+     * @param owner the owner being created, with its level-affecting fields already populated
+     * @return the (possibly capped) membership level to store on the owner
      */
-    private void rejectDuplicateHousehold(Owner owner, boolean sharesHousehold) {
-        if (sharesHousehold) {
-            return;
-        }
-        String postcode = owner.getPostcode();
-        if (postcode == null) {
-            return;
-        }
-        String householdId = Households.householdId(owner.getLastName(), postcode);
-        boolean exists = this.clinicService.findAllOwners().stream()
+    private int cappedMembershipLevel(Owner owner) {
+        int naturalLevel = org.springframework.samples.petclinic.util.Memberships.membershipLevel(
+            owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
+        String householdId = Households.householdId(owner.getLastName(), owner.getPostcode());
+        java.util.OptionalInt maxMemberLevel = this.clinicService.findAllOwners().stream()
             .filter(this::isNotDeleted)
-            .anyMatch(existing -> householdId.equals(
-                Households.householdId(existing.getLastName(), existing.getPostcode())));
-        if (exists) {
-            throw new DuplicateHouseholdException(owner.getLastName(), postcode);
+            .filter(existing -> householdId.equals(
+                Households.householdId(existing.getLastName(), existing.getPostcode())))
+            .mapToInt(this::effectiveMembershipLevel)
+            .max();
+        if (maxMemberLevel.isEmpty()) {
+            return naturalLevel;
         }
+        return Math.min(naturalLevel, maxMemberLevel.getAsInt() + 1);
+    }
+
+    /**
+     * Returns an existing owner's effective {@code membershipLevel}: the stored value when present (the
+     * value assigned, and possibly capped, when that owner was created), otherwise the level derived
+     * from its own fields for owners that predate the stored level (e.g. seed data).
+     *
+     * @param owner an existing owner
+     * @return the owner's effective membership level
+     */
+    private int effectiveMembershipLevel(Owner owner) {
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return org.springframework.samples.petclinic.util.Memberships.membershipLevel(
+            owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
     }
 
     /**
