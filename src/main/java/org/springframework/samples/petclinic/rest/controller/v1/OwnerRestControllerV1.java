@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.controller.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
@@ -128,6 +129,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeEmail(ownerFieldsDto);
         rejectDuplicateIdentity(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
+        rejectFutureRegistrationDate(ownerFieldsDto);
         defaultRegistrationDate(ownerFieldsDto);
         rejectDailyLimit(ownerFieldsDto.getRegistrationDate());
         HttpHeaders headers = new HttpHeaders();
@@ -440,6 +442,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidEmailException(email);
         }
         ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Rejects a create whose supplied {@code registrationDate} is later than the server's current
+     * date. A registration may be back-dated but never post-dated. The check is made against the
+     * value as supplied, before any defaulting or business-day roll (see
+     * {@link #defaultRegistrationDate}); a {@code null} registration date is accepted (it defaults
+     * to the server date).
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws FutureRegistrationDateException with a 400 status if the supplied registration date is
+     *                                         after the server's current date
+     */
+    private static void rejectFutureRegistrationDate(OwnerFieldsDto ownerFieldsDto) {
+        LocalDate supplied = ownerFieldsDto.getRegistrationDate();
+        if (supplied != null && supplied.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(supplied);
+        }
     }
 
     /**
