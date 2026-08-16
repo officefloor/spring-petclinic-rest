@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -197,7 +198,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "an owner with the same E.164 telephone already exists");
         }
         ownerFieldsDto.setTelephone(telephone);
-        ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        String email = normalizeEmail(ownerFieldsDto.getEmail());
+        if (email != null) {
+            boolean emailInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> existing.getEmail() != null
+                    && email.equalsIgnoreCase(existing.getEmail()));
+            if (emailInUse) {
+                throw new DuplicateEmailException(
+                    "an owner with the same lower-cased email already exists");
+            }
+        }
+        ownerFieldsDto.setEmail(email);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);

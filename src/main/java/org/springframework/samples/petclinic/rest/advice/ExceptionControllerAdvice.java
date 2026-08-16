@@ -224,6 +224,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateEmailException} raised when a new owner's lower-cased email is
+     * already used by another owner. Returns a 409 Conflict whose {@code errors} array names the
+     * offending {@code email} field.
+     *
+     * @param e The {@link DuplicateEmailException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleDuplicateEmailException(DuplicateEmailException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("email")));
+    }
+
+    /**
      * Handles {@link DuplicateHouseholdException} raised when a new owner shares the same last
      * name and address as an existing owner and the request did not opt in via {@code sharesHousehold}.
      * Returns a 409 Conflict whose {@code errors} array names the offending {@code lastName} and
