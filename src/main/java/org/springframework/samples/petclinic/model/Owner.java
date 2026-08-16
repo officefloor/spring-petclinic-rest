@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.*;
@@ -475,20 +478,109 @@ public class Owner extends Person {
 
     /**
      * The owner's derived duplicate-detection key: the single consolidated identity used to
-     * detect duplicate owners on create. It is formed as
-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} from the
-     * owner's already-normalized {@code telephone} (E.164 form), its lower-cased {@code email}
-     * (empty when absent) and its assigned {@code householdId}. Two owners are duplicates only
-     * when their whole {@code identityKey} values are equal.
+     * detect duplicate owners on create. It is the lower-case hex SHA-256 digest of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} from the owner's
+     * already-normalized {@code telephone} (E.164 form), its lower-cased {@code email} (empty
+     * when absent) and the Soundex code of its {@code lastName} (see {@link #soundex}). Two owners
+     * are duplicates only when their whole {@code identityKey} values are equal.
      *
      * @return the consolidated identity key
      */
     @Transient
     public String getIdentityKey() {
-        String telephonePart = this.telephone == null ? "" : this.telephone;
-        String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        return identityKey(this.telephone, this.email, this.lastName);
+    }
+
+    /**
+     * Computes the consolidated {@code identityKey} for the given identity-bearing fields: the
+     * lower-case hex SHA-256 digest of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The {@code email}
+     * is lower-cased (empty when absent) and the {@code lastName} is reduced to its Soundex code
+     * (see {@link #soundex}). The {@code telephone} is expected already normalized to E.164 form.
+     *
+     * @param telephone the owner's normalized (E.164) telephone, possibly {@code null}
+     * @param email     the owner's email, possibly {@code null}
+     * @param lastName  the owner's last name, possibly {@code null}
+     * @return the lower-case hex SHA-256 identity key
+     */
+    public static String identityKey(String telephone, String email, String lastName) {
+        String telephonePart = telephone == null ? "" : telephone;
+        String emailPart = email == null ? "" : email.toLowerCase(Locale.ROOT);
+        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundex(lastName));
+    }
+
+    /**
+     * Returns the American Soundex code of {@code value}: the first letter followed by three
+     * digits encoding the remaining consonants (b,f,p,v→1; c,g,j,k,q,s,x,z→2; d,t→3; l→4; m,n→5;
+     * r→6), where vowels and {@code h}/{@code w} are not coded, adjacent letters with the same
+     * code collapse to one (and a code repeated across an {@code h}/{@code w} is treated as
+     * adjacent), and the result is right-padded with zeros to length four. A {@code null} or
+     * letter-free value yields the empty string.
+     *
+     * @param value the value to encode, possibly {@code null}
+     * @return the four-character Soundex code, or the empty string when there is no letter
+     */
+    public static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        String letters = value.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previous = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            previous = (c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U' || c == 'Y')
+                ? '0' : digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
