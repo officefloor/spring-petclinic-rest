@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -128,7 +129,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
         }
-        requireDailyLimitNotReached();
+        LocalDate suppliedOrDefaultDate = ownerFieldsDto.getRegistrationDate() != null
+            ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+        LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
+        requireDailyLimitNotReached(registrationDate);
         requireCityBelowCapacity(ownerFieldsDto.getCity());
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(normalizedTelephone);
@@ -143,9 +147,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
@@ -371,19 +373,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects the request when {@link #MAX_OWNERS_PER_DAY} or more owners have already been registered
-     * today, counting existing owners whose {@code registrationDate} equals the current date. New owners
-     * default to today's {@code registrationDate}, so this caps the number that may be created per day.
+     * on {@code businessDay}, counting existing owners whose {@code registrationDate} equals that date.
+     * New owners take {@code businessDay} as their {@code registrationDate} (the supplied or defaulted
+     * date rolled forward to a business day), so this caps the number that may be created per day.
      *
+     * @param businessDay the adjusted business-day registration date of the owner being created
      * @throws DailyOwnerLimitException if the daily owner-creation limit has already been reached
      */
-    private void requireDailyLimitNotReached() {
-        LocalDate today = LocalDate.now();
-        long registeredToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+    private void requireDailyLimitNotReached(LocalDate businessDay) {
+        long registeredThatDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
             .count();
-        if (registeredToday >= MAX_OWNERS_PER_DAY) {
+        if (registeredThatDay >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitException(MAX_OWNERS_PER_DAY);
         }
+    }
+
+    /**
+     * Rolls {@code date} forward to a business day: when it falls on a Saturday or Sunday it advances
+     * to the following Monday; a weekday is returned unchanged. Applied to the effective registration
+     * date (whether supplied in the request or defaulted to the server date) so a weekend registration
+     * is recorded on the next business day, and every value derived from the registration date uses the
+     * adjusted date.
+     *
+     * @param date the effective registration date (supplied or defaulted), never {@code null}
+     * @return the same date, or the next Monday when {@code date} is a weekend
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        if (day == DayOfWeek.SATURDAY) {
+            return date.plusDays(2);
+        }
+        if (day == DayOfWeek.SUNDAY) {
+            return date.plusDays(1);
+        }
+        return date;
     }
 
     private void requireCityBelowCapacity(String city) {
