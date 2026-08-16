@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {LocalityDeriver.class, IdentityKeyDeriver.class})
+@Mapper(uses = PetMapper.class,
+    imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -23,6 +24,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "checkDigit",
+        expression = "java(CheckDigitDeriver.checkDigit(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
