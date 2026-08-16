@@ -1,0 +1,208 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b3adeb59..d97ef7fc 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -47,10 +47,16 @@ public interface OwnerMapper {
+             + "|| owner.getRegistrationDate() == null ? null : "
+             + "owner.getCustomerCode() + \"-M\" "
+             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipPoints",
++        expression = "java(owner == null ? null : "
++            + "org.springframework.samples.petclinic.util.Memberships.membershipPoints("
++            + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
++            + "owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel",
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
+-            + "owner.getEmail(), owner.getNamesakeCount(), owner.getRegistrationDate()))")
++            + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
++            + "owner.getRegistrationDate()))")
+     @Mapping(target = "locality",
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Localities.region("
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Memberships.java b/src/main/java/org/springframework/samples/petclinic/util/Memberships.java
+index 39e96904..c2459e3e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Memberships.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Memberships.java
+@@ -20,8 +20,9 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ 
+ /**
+- * Helpers for the numeric membership level a pet owner is assigned. The level is derived from the
+- * owner's own fields together with their tenure (time elapsed since registration).
++ * Helpers for the membership points and numeric level a pet owner is assigned. Points are derived
++ * from the owner's own fields together with their tenure (time elapsed since registration), and the
++ * level is a banding of those points.
+  */
+ public final class Memberships {
+ 
+@@ -31,21 +32,40 @@ public final class Memberships {
+     public static final int BASE_LEVEL = 1;
+ 
+     /**
+-     * The highest membership level reachable. Level 4 is only reached once an owner has qualifying
+-     * tenure (see {@link #TENURE_LEVEL_DAYS}) on top of the other factors.
++     * The highest membership level reachable. Level 4 is only reached with 6 or more points, and the
++     * only route to 6 points is qualifying tenure (see {@link #TENURE_LEVEL_DAYS}) on top of the
++     * other factors.
+      */
+     public static final int MAX_LEVEL = 4;
+ 
+     /**
+-     * The highest membership level derivable from an owner's own fields before tenure is considered.
+-     * A newly created owner has zero tenure, so it can never exceed this level.
++     * The points added when an email is present.
+      */
+-    public static final int PRE_TENURE_MAX_LEVEL = 3;
++    public static final int EMAIL_POINTS = 2;
+ 
+     /**
+-     * The tenure, in days, that must be strictly exceeded to earn the tenure factor. Membership
+-     * level 4 requires tenure of more than this many days; at or below it the tenure factor is not
+-     * granted.
++     * The points added when {@code namesakeCount} is 0.
++     */
++    public static final int UNIQUE_NAME_POINTS = 1;
++
++    /**
++     * The points added for a household of {@link #HOUSEHOLD_POINTS_THRESHOLD} or more.
++     */
++    public static final int HOUSEHOLD_POINTS = 2;
++
++    /**
++     * The household size at or above which {@link #HOUSEHOLD_POINTS} are added.
++     */
++    public static final int HOUSEHOLD_POINTS_THRESHOLD = 3;
++
++    /**
++     * The points added for tenure over {@link #TENURE_LEVEL_DAYS} days.
++     */
++    public static final int TENURE_POINTS = 3;
++
++    /**
++     * The tenure, in days, that must be strictly exceeded to earn the tenure points. At or below it
++     * the tenure points are not granted.
+      */
+     public static final long TENURE_LEVEL_DAYS = 365;
+ 
+@@ -53,30 +73,70 @@ public final class Memberships {
+     }
+ 
+     /**
+-     * Computes an owner's numeric membership level. Starts at {@link #BASE_LEVEL}; adds 1 when an
+-     * email is present; adds 1 when {@code namesakeCount} is 0; adds 1 when the owner's tenure is
+-     * more than {@link #TENURE_LEVEL_DAYS} days; capped at {@link #MAX_LEVEL}. Because a newly
+-     * created owner has zero tenure, it never earns the tenure factor and so never exceeds
+-     * {@link #PRE_TENURE_MAX_LEVEL}.
++     * Computes an owner's membership points. Starts at 0; adds {@link #EMAIL_POINTS} when an email is
++     * present; adds {@link #UNIQUE_NAME_POINTS} when {@code namesakeCount} is 0; adds
++     * {@link #HOUSEHOLD_POINTS} for a household of {@link #HOUSEHOLD_POINTS_THRESHOLD} or more; adds
++     * {@link #TENURE_POINTS} when the owner's tenure is more than {@link #TENURE_LEVEL_DAYS} days.
+      *
+      * @param email            the owner's email, or {@code null} when absent
+      * @param namesakeCount    the owner's namesake count, or {@code null} when unknown
++     * @param householdSize    the owner's household size, or {@code null} when unknown
+      * @param registrationDate the owner's registration date, or {@code null} when unknown; tenure is
+      *                         measured from this date to today
+-     * @return the membership level, from {@value #BASE_LEVEL} to {@value #MAX_LEVEL}
++     * @return the membership points, 0 or more
+      */
+-    public static int membershipLevel(String email, Integer namesakeCount, LocalDate registrationDate) {
+-        int level = BASE_LEVEL;
++    public static int membershipPoints(String email, Integer namesakeCount, Integer householdSize,
++            LocalDate registrationDate) {
++        int points = 0;
+         if (email != null) {
+-            level++;
++            points += EMAIL_POINTS;
+         }
+         if (namesakeCount != null && namesakeCount == 0) {
+-            level++;
++            points += UNIQUE_NAME_POINTS;
++        }
++        if (householdSize != null && householdSize >= HOUSEHOLD_POINTS_THRESHOLD) {
++            points += HOUSEHOLD_POINTS;
+         }
+         if (hasQualifyingTenure(registrationDate)) {
+-            level++;
++            points += TENURE_POINTS;
+         }
+-        return Math.min(level, MAX_LEVEL);
++        return points;
++    }
++
++    /**
++     * Maps membership points to a numeric membership level: 1 (0-1 points), 2 (2-3), 3 (4-5),
++     * 4 (6 or more).
++     *
++     * @param points the owner's membership points (see {@link #membershipPoints})
++     * @return the membership level, from {@value #BASE_LEVEL} to {@value #MAX_LEVEL}
++     */
++    public static int membershipLevel(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
++        }
++        return BASE_LEVEL;
++    }
++
++    /**
++     * Computes an owner's numeric membership level from their fields, by mapping
++     * {@link #membershipPoints} through {@link #membershipLevel(int)}.
++     *
++     * @param email            the owner's email, or {@code null} when absent
++     * @param namesakeCount    the owner's namesake count, or {@code null} when unknown
++     * @param householdSize    the owner's household size, or {@code null} when unknown
++     * @param registrationDate the owner's registration date, or {@code null} when unknown; tenure is
++     *                         measured from this date to today
++     * @return the membership level, from {@value #BASE_LEVEL} to {@value #MAX_LEVEL}
++     */
++    public static int membershipLevel(String email, Integer namesakeCount, Integer householdSize,
++            LocalDate registrationDate) {
++        return membershipLevel(membershipPoints(email, namesakeCount, householdSize, registrationDate));
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 550d85fe..864148ee 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2191,17 +2191,28 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, derived from their own fields.
++                Starts at 0; adds 2 when an email is present; adds 1 when
++                namesakeCount is 0; adds 2 for a household of 3 or more; adds 3
++                for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 5
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level derived from their own
+-                fields, from 1 to 3. Starts at 1; adds 1 when an email is
+-                present; adds 1 when namesakeCount is 0; capped at 3 (level 4 is
+-                reserved for tenure).
++                The owner's numeric membership level derived from their
++                membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or
++                more).
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
