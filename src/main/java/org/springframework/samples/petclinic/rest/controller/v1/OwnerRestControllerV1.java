@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -105,6 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -121,11 +125,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        normalizeEmail(ownerFieldsDto);
         currentOwner.setAddress(ownerFieldsDto.getAddress());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -250,6 +256,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DuplicateTelephoneException with a 409 status if another owner already uses the
      *                                     same normalized telephone
      */
+    /**
+     * Matches a syntactically valid email address: a non-empty local part, an {@code @},
+     * and a domain of at least two dot-separated labels ending in an alphabetic TLD. None of
+     * the parts may contain whitespace or a second {@code @}.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}$");
+
+    /**
+     * Normalizes the submitted email when present: the value is trimmed, required to be a
+     * syntactically valid address, and written back lower-cased so it is persisted and echoed
+     * back in canonical form. A {@code null} email is left untouched — the field is optional.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws InvalidEmailException with a 400 status if the email is present but not syntactically valid
+     */
+    private static void normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
+        String email = ownerFieldsDto.getEmail();
+        if (email == null) {
+            return;
+        }
+        String trimmed = email.strip();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidEmailException(email);
+        }
+        ownerFieldsDto.setEmail(trimmed.toLowerCase(Locale.ROOT));
+    }
+
     private void rejectDuplicateTelephone(String normalizedTelephone) {
         boolean duplicate = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
