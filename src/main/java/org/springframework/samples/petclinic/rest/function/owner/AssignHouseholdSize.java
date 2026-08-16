@@ -14,7 +14,6 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * members that share the identifier plus one for this owner.
  *
  * <p>When the owner is not part of a household ({@code householdId} is null), the size is one.
- * The membership tier reads this value to award {@code GOLD} to households of three or more.
  */
 public class AssignHouseholdSize {
 
