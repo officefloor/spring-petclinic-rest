@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 512eca5c..e2c7f75d 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -42,6 +42,9 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.rest.function.owner."
+             + "TelephoneDisplay.forOwner(owner))")
++    @Mapping(target = "riskFlag",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner."
++            + "OwnerRiskFlag.forOwner(owner))")
+     @Mapping(target = "selfLink",
+         expression = "java(\"/api/owners/\" + owner.getId())")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmail.java
+new file mode 100644
+index 00000000..cbc78751
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableEmail.java
+@@ -0,0 +1,55 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Shared knowledge of disposable/throwaway email domains, used by the create-owner pipeline.
++ *
++ * <p>Two levels of match:
++ * <ul>
++ * <li>{@link #isBlocked(String)} — an EXACT domain on the blocklist. {@link RequireOwnerFields}
++ *     rejects such a create with 400, so a blocked domain is never persisted.</li>
++ * <li>{@link #isAdjacent(String)} — the email's domain is disposable-ADJACENT: its second-level
++ *     label matches a known disposable domain's base label. This is broader than an exact match,
++ *     so subdomains ({@code inbox.mailinator.com}) and sibling suffixes ({@code mailinator.net})
++ *     count too. Adjacency does not reject; it feeds the owner's {@code riskFlag}.</li>
++ * </ul>
++ */
++public final class DisposableEmail {
++
++    /** Disposable/throwaway email domains a create-owner request may not use (hard reject). */
++    private static final Set<String> BLOCKED_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    /** The registrable base labels (the label before the public suffix) of the blocked domains.
++     *  A domain is disposable-adjacent when its second-level label is one of these. */
++    private static final Set<String> BASE_LABELS = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private DisposableEmail() {
++    }
++
++    /** True when the exact domain is on the disposable-domain blocklist. */
++    public static boolean isBlocked(String domain) {
++        return domain != null && BLOCKED_DOMAINS.contains(domain.trim().toLowerCase(Locale.ROOT));
++    }
++
++    /** True when {@code email}'s domain is disposable-adjacent: present, with at least a
++     *  second-level and top-level label, whose second-level label matches a known disposable
++     *  domain's base label (so subdomains and sibling suffixes match too). */
++    public static boolean isAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
++        String[] labels = domain.split("\\.");
++        if (labels.length < 2) {
++            return false;
++        }
++        return BASE_LABELS.contains(labels[labels.length - 2]);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java
+new file mode 100644
+index 00000000..5722627e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code riskFlag} for the response. The flag is true when ANY of these hold:
++ * <ul>
++ * <li>the owner is a possible duplicate ({@link Owner#getPossibleDuplicate()});</li>
++ * <li>the owner's email domain is disposable-adjacent ({@link DisposableEmail#isAdjacent(String)});</li>
++ * <li>the owner's city is over its soft capacity — the approaching-capacity warning
++ *     ({@link Owner#getCapacityWarning()}), set when the city already held 40 or more owners at
++ *     creation time (the soft capacity below the hard limit of 50).</li>
++ * </ul>
++ * Otherwise false. Purely derived from the stored owner, so a plain GET reflects the same value
++ * assigned at creation.
++ */
++public final class OwnerRiskFlag {
++
++    private OwnerRiskFlag() {
++    }
++
++    public static boolean forOwner(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || DisposableEmail.isAdjacent(owner.getEmail())
++                || Boolean.TRUE.equals(owner.getCapacityWarning());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index d991fd3f..a4b396fd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -2,7 +2,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import net.officefloor.plugin.variable.Out;
+@@ -33,10 +32,6 @@ public class RequireOwnerFields {
+      *  a dot, and a top-level label. Rejects inputs such as "not-an-email". */
+     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+ 
+-    /** Disposable/throwaway email domains a create-owner request may not use. */
+-    private static final Set<String> DISPOSABLE_DOMAINS =
+-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+-
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+             DisposableEmailException {
+@@ -93,7 +88,7 @@ public class RequireOwnerFields {
+                 throw new InvalidEmailException(email);
+             }
+             String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
+-            if (DISPOSABLE_DOMAINS.contains(domain)) {
++            if (DisposableEmail.isBlocked(domain)) {
+                 throw new DisposableEmailException(email);
+             }
+             request.setEmail(normalized);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 790cd314..1f578127 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2306,6 +2306,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any of these hold - the owner is a possible duplicate
++                (possibleDuplicate), the owner's email domain is disposable-adjacent (its
++                second-level label matches a known disposable-email domain, so subdomains and
++                sibling suffixes count too), or the owner's city is over its soft capacity
++                (capacityWarning); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: Whether the owner has been soft-deleted. A newly created owner is false;
