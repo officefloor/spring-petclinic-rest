@@ -378,6 +378,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String householdId = Households.householdId(owner.getLastName(), postcode);
         boolean exists = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .anyMatch(existing -> householdId.equals(
                 Households.householdId(existing.getLastName(), existing.getPostcode())));
         if (exists) {
@@ -404,6 +405,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
         String telephone = owner.getTelephone();
         return this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> !java.util.Objects.equals(telephone, existing.getTelephone()))
@@ -644,6 +646,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void rejectDuplicateIdentity(Owner owner) {
         String identity = personalIdentity(owner.getTelephone(), owner.getEmail());
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(this::isNotDeleted)
             .anyMatch(existing -> identity.equals(
                 personalIdentity(toE164OrNull(existing.getTelephone()), existing.getEmail())));
         if (duplicate) {
@@ -658,6 +661,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the normalized telephone and email joined with {@code '|'}, lower-casing the email (the form it
      * is stored in, see {@link #normalizeEmail}) so addresses differing only in letter case still match.
      */
+    /**
+     * Whether an existing owner is not soft-deleted. A soft-deleted owner (its {@code deleted} flag
+     * set) is retained but ignored by the create endpoint's duplicate and identity checks, so a
+     * normally-blocking duplicate is allowed when the only matching owner has been deleted.
+     */
+    private boolean isNotDeleted(Owner owner) {
+        return !Boolean.TRUE.equals(owner.getDeleted());
+    }
+
     private String personalIdentity(String telephone, String email) {
         String normalizedEmail = email == null ? "" : email.toLowerCase(java.util.Locale.ROOT);
         return (telephone == null ? "" : telephone) + "|" + normalizedEmail;
