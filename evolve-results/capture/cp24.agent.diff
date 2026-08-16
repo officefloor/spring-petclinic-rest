@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index facbf827..d6404bf7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
+-    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "toMembershipTier")
++    @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
+     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+@@ -82,17 +82,25 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Returns the owner's membership tier: {@code 'SILVER'} when the owner has no namesakes
+-     * ({@code namesakeCount} is 0) and a non-blank email is present, otherwise {@code 'BRONZE'}.
++     * Returns the owner's numeric membership level, assigned on creation: starts at {@code 1}, plus
++     * {@code 1} when a non-blank email is present, plus {@code 1} when the owner has no namesakes
++     * ({@code namesakeCount} is 0), capped at {@code 3} (level 4 is reserved for tenure).
+      */
+-    @Named("toMembershipTier")
+-    default String toMembershipTier(Owner owner) {
++    @Named("toMembershipLevel")
++    default Integer toMembershipLevel(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
+-        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        int level = 1;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+-        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
++        if (hasEmail) {
++            level++;
++        }
++        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
++        if (noNamesakes) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     private static String initial(String name) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e8205f82..5ae708e0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -162,8 +162,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             owner.setHouseholdId(joinHousehold(owner.getLastName(), owner.getAddress()));
+         }
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.toMembershipLevel(owner));
+         OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+@@ -396,47 +397,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+ 
+-    /** The number of members a household must reach for its owners to be promoted to the {@code 'GOLD'}
+-     * membership tier: an owner whose household (owners sharing its {@code householdId}) has at least
+-     * this many members is {@code GOLD}, overriding the {@code SILVER}/{@code BRONZE} rules. */
+-    private static final int GOLD_HOUSEHOLD_MEMBER_THRESHOLD = 3;
+-
+     /**
+      * Maps {@code owner} to its DTO and sets the {@code bulkSignupWarning} flag: {@code true} when
+      * more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created for this
+-     * owner's registration date, otherwise {@code false}. The owner is also promoted to the
+-     * {@code 'GOLD'} membership tier when its household has reached
+-     * {@link #GOLD_HOUSEHOLD_MEMBER_THRESHOLD} members, overriding the mapper's default tier.
++     * owner's registration date, otherwise {@code false}.
+      *
+      * @param owner the owner to map
+-     * @return the owner DTO with its bulk-signup warning flag and membership tier populated
++     * @return the owner DTO with its bulk-signup warning flag populated
+      */
+     private OwnerDto toOwnerDtoWithBulkWarning(Owner owner) {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
+-        if (householdMemberCount(owner.getHouseholdId()) >= GOLD_HOUSEHOLD_MEMBER_THRESHOLD) {
+-            ownerDto.setMembershipTier(OwnerDto.MembershipTierEnum.GOLD);
+-        }
+         return ownerDto;
+     }
+ 
+-    /**
+-     * Counts the owners belonging to the household identified by {@code householdId} (those sharing
+-     * exactly this {@code householdId}). Returns {@code 0} when {@code householdId} is {@code null} or
+-     * blank, i.e. the owner is not part of any shared household.
+-     *
+-     * @param householdId the shared household identifier to count members for (may be {@code null})
+-     * @return the number of owners sharing this household identifier
+-     */
+-    private int householdMemberCount(String householdId) {
+-        if (householdId == null || householdId.isBlank()) {
+-            return 0;
+-        }
+-        return (int) this.clinicService.findAllOwners().stream()
+-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+-            .count();
+-    }
+-
+     /**
+      * Returns whether more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been
+      * created on {@code registrationDate}, counting existing owners whose {@code registrationDate}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a42f207c..965d5004 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2112,15 +2112,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier. 'GOLD' when the owner's household (owners sharing the same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'.
+-              type: string
+-              enum:
+-                - GOLD
+-                - SILVER
+-                - BRONZE
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's numeric membership level, assigned on creation. Starts at 1, plus 1 when an email is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
