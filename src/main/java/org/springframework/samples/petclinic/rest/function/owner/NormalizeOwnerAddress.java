@@ -11,15 +11,39 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * {@code AVE}&rarr;{@code AVENUE}). The canonical value is written back onto the body in place,
  * so {@link BuildOwner} stores it and later reads/responses return it.
  *
- * <p>Runs after {@link RequireOwnerFields} — which already rejects an address that is blank
- * after normalization — and before the household steps, so
+ * <p>Normalization applies to whichever address fields the body supplied: the structured
+ * {@code addressLine1}/{@code addressLine2} are preferred when present, otherwise the flat
+ * {@code address}. When a structured {@code addressLine1} is supplied the flat {@code address} is
+ * replaced with the composed form — the normalized {@code addressLine1} followed, when an
+ * {@code addressLine2} is present, by a single space and the normalized {@code addressLine2}.
+ *
+ * <p>Runs after {@link RequireOwnerFields} — which already rejects a body with no address in
+ * either form — and before the household steps, so
  * {@link RequireUniqueOwnerHousehold duplicate detection} and
  * {@link AssignHouseholdId the shared household id} both compare the normalized form.
  */
 public class NormalizeOwnerAddress {
 
     public void service(@Val OwnerFieldsDto request) {
-        request.setAddress(normalize(request.getAddress()));
+        String line1 = normalize(request.getAddressLine1());
+        String line2 = normalize(request.getAddressLine2());
+        if (!line1.isEmpty()) {
+            // Structured address supplied: normalize the lines and compose the flat address.
+            request.setAddressLine1(line1);
+            request.setAddressLine2(line2.isEmpty() ? null : line2);
+            request.setAddress(compose(line1, line2));
+        }
+        else {
+            request.setAddress(normalize(request.getAddress()));
+        }
+    }
+
+    /**
+     * The composed address: the normalized {@code addressLine1}, with a single space and the
+     * normalized {@code addressLine2} appended when the latter is present (non-blank).
+     */
+    static String compose(String line1, String line2) {
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
     }
 
     /**
