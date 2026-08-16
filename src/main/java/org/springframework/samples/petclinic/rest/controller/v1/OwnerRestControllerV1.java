@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
 import org.springframework.samples.petclinic.rest.advice.MissingRequiredFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -111,7 +112,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
         }
-        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        requireUniqueTelephone(normalizedTelephone);
+        ownerFieldsDto.setTelephone(normalizedTelephone);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -239,5 +242,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "Telephone must contain exactly 10 digits after removing non-digit characters");
         }
         return digits;
+    }
+
+    /**
+     * Rejects the request when {@code normalizedTelephone} is already used by any existing owner,
+     * comparing on the digits-only form so differently-formatted stored numbers still collide.
+     *
+     * @param normalizedTelephone the incoming owner's normalized (10-digit) telephone
+     * @throws DuplicateTelephoneException if another owner already uses this telephone
+     */
+    private void requireUniqueTelephone(String normalizedTelephone) {
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (taken) {
+            throw new DuplicateTelephoneException(normalizedTelephone);
+        }
     }
 }
