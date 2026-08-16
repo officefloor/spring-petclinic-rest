@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -116,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
+        assignHouseholdId(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -342,6 +346,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
         int sequence = this.clinicService.findAllOwners().size() + 1;
         owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
+    }
+
+    /**
+     * Assigns the owner's {@code householdId} on create: a stable identifier for the household,
+     * formatted {@code 'HH-<HEX12>'} where HEX12 is the first 12 upper-cased hex characters of the
+     * SHA-256 digest of the owner's collapsed {@code lastName} and {@code address} (see
+     * {@link #collapse}) joined by a {@code '\n'}. Because it is derived purely from those two
+     * canonicalized fields, every owner in the same household — including one joining an existing
+     * household via {@code sharesHousehold} — is assigned the same value, independent of create
+     * order.
+     *
+     * @param owner the owner being created (with its {@code lastName} and {@code address} already set)
+     */
+    private void assignHouseholdId(Owner owner) {
+        String key = collapse(owner.getLastName()) + "\n" + collapse(owner.getAddress());
+        owner.setHouseholdId("HH-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * Returns the lower-case hex SHA-256 digest of the UTF-8 bytes of {@code value}.
+     *
+     * @param value the string to hash
+     * @return the 64-character lower-case hex digest
+     */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     private void rejectDuplicateTelephone(String normalizedTelephone) {
