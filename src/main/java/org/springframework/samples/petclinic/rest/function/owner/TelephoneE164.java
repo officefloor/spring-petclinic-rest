@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -10,12 +12,28 @@ import java.util.regex.Pattern;
  * national digits. The result is {@code '+'} followed by 8 to 15 digits; anything that
  * cannot form a valid E.164 number yields {@code null}.
  *
+ * <p>The national number's length is validated against its country code: a {@code '+61'}
+ * (Australia) number requires exactly 9 national digits and a {@code '+1'} (NANP) number
+ * requires exactly 10; a number whose national part is the wrong length for its country
+ * yields {@code null}.
+ *
  * <p>Example: {@code "0412 345 678"} becomes {@code "+61412345678"}.
  */
 final class TelephoneE164 {
 
     /** Characters removed before interpreting the number: spaces, dashes and brackets. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
+
+    /**
+     * Country code (without '+') to its required national-number length. Ordered
+     * longest-prefix-first so a code such as {@code "61"} is matched before {@code "1"}.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = new LinkedHashMap<>();
+
+    static {
+        NATIONAL_LENGTHS.put("61", 9);
+        NATIONAL_LENGTHS.put("1", 10);
+    }
 
     private TelephoneE164() {
     }
@@ -45,6 +63,18 @@ final class TelephoneE164 {
         }
         if (digits.length() < 8 || digits.length() > 15) {
             return null;
+        }
+        // Validate the national-number length against the country code (e.g. '+61' => 9
+        // national digits, '+1' => 10). Codes are checked longest-prefix-first.
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTHS.entrySet()) {
+            String code = entry.getKey();
+            if (digits.startsWith(code)) {
+                int nationalLength = digits.length() - code.length();
+                if (nationalLength != entry.getValue()) {
+                    return null;
+                }
+                break;
+            }
         }
         return "+" + digits;
     }
