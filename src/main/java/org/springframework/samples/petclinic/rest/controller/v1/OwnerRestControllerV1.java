@@ -175,7 +175,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -335,15 +335,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the {@code customerCode} assigned to a new owner, formatted
-     * {@code '<LAST3>-<NNNN>'}: {@code LAST3} is the upper-cased first three letters of the
-     * owner's last name, and {@code NNNN} is a global 4-digit zero-padded sequence equal to
-     * one more than the current number of owners (e.g. {@code 'SMI-0007'}).
+     * {@code '<CITY3>-<LAST3>-<NNNN>'}: {@code CITY3} is the upper-cased first three letters of the
+     * owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last name,
+     * and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the number
+     * of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
      */
-    private String nextCustomerCode(String lastName) {
-        String letters = lastName == null ? "" : lastName.replaceAll("[^\\p{L}]", "");
-        String last3 = letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
-        long sequence = this.clinicService.findAllOwners().size() + 1L;
-        return String.format("%s-%04d", last3, sequence);
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = prefix3(city);
+        String last3 = prefix3(lastName);
+        long sequence = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count() + 1L;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /** Upper-cased first three letters (any non-letter removed) of the given value. */
+    private static String prefix3(String value) {
+        String letters = value == null ? "" : value.replaceAll("[^\\p{L}]", "");
+        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
     }
 
     /**
