@@ -18,7 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class,
     imports = {LocalityDeriver.class, IdentityKeyDeriver.class,
         AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class,
-        FiscalYearDeriver.class, OwnerSegmentDeriver.class})
+        FiscalYearDeriver.class, OwnerSegmentDeriver.class, RiskFlagDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -57,6 +57,8 @@ public interface OwnerMapper {
             + "owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(TelephoneDisplayDeriver.telephoneDisplay(owner.getTelephone()))")
+    @Mapping(target = "riskFlag",
+        expression = "java(RiskFlagDeriver.riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
