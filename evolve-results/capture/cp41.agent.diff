@@ -1,0 +1,42 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3db5426f..29d45126 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -269,17 +269,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * {@link Localities#region(String, String)} — the same region derivation shared with the
+      * {@code locality}) and HASH8 is the first 8 upper-case hex characters of the SHA-256 digest of
+      * the normalized (E.164) telephone concatenated with the last name (e.g. {@code 'NSW-3A7F9C2E'}).
+-     * There are no sequence numbers: the code is fully derived from the owner's own identity fields.
++     * The code is derived from the owner's own identity fields; it carries no sequence number.
++     * <p>
++     * When the computed code collides with an existing owner's {@code customerCode}, it is
++     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes
++     * it unique (e.g. {@code 'NSW-3A7F9C2E-2'}), and the de-duplicated code is returned.
+      *
+      * @param region the owner's canonical region (the identity's REGION, shared with the locality)
+      * @param telephone the owner's normalized (E.164) telephone
+      * @param lastName the owner's last name
+-     * @return the assigned customer code
++     * @return the assigned customer code, de-duplicated to be unique among existing owners
+      */
+     private String assignCustomerCode(String region, String telephone, String lastName) {
+         String basis = (telephone == null ? "" : telephone) + (lastName == null ? "" : lastName);
+         String hash8 = sha256UpperHex(basis).substring(0, 8);
+-        return region + "-" + hash8;
++        String code = region + "-" + hash8;
++        java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(java.util.Objects::nonNull)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existing.contains(code)) {
++            return code;
++        }
++        for (int n = 2; ; n++) {
++            String candidate = code + "-" + n;
++            if (!existing.contains(candidate)) {
++                return candidate;
++            }
++        }
+     }
+ 
+     /**
