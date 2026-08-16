@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_size INT(11),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INT(11),
+  membership_level INT(11),
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   INDEX(last_name)
 ) engine=InnoDB;

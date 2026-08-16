@@ -47,6 +47,18 @@ public final class MembershipPointsDeriver {
     }
 
     /**
+     * Returns the owner's effective membership level: the stored level when one has been
+     * assigned (e.g. a household-capped level fixed at creation), otherwise the level derived
+     * from the owner's own membership points.
+     */
+    public static int effectiveMembershipLevel(Owner owner) {
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
+        return membershipLevel(membershipPoints(owner));
+    }
+
+    /**
      * Returns the membership level for the given membership points: 1 for 0-1 points,
      * 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
      */

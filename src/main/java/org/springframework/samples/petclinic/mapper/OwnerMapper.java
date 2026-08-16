@@ -42,8 +42,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints",
         expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(MembershipPointsDeriver.membershipLevel("
-            + "MembershipPointsDeriver.membershipPoints(owner)))")
+        expression = "java(MembershipPointsDeriver.effectiveMembershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
     @Mapping(target = "timezone",

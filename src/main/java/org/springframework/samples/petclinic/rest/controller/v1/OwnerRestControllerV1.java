@@ -38,6 +38,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.IdentityKeyDeriver;
 import org.springframework.samples.petclinic.mapper.LocalityDeriver;
+import org.springframework.samples.petclinic.mapper.MembershipPointsDeriver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -46,7 +47,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -227,14 +227,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> householdId.equals(
                 householdId(normalizeHousehold(existing.getLastName()), existing.getPostcode())))
             .toList();
-        // Household duplicate block: a second owner in an existing household is rejected as a
-        // household duplicate (409) unless the request opts in via 'sharesHousehold'. Opting in
-        // only bypasses this block; the owner is then created as a declared household member.
-        if (!householdMembers.isEmpty()
-            && !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            throw new DuplicateHouseholdException(
-                "an owner with the same last name and postcode already exists");
-        }
+        // A second owner in an existing household is admitted as a household member; their
+        // membership level is capped below (level-ceiling rule) rather than rejected.
         // Single, consolidated duplicate check: reject only when the new owner's whole
         // derived identity key (telephone|email|householdId) equals an existing owner's.
         String identityKey = IdentityKeyDeriver.identityKey(telephone, email, householdId);
@@ -257,6 +251,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(bulkSignupWarning);
         // Household size after this create: existing members plus the owner being created.
         owner.setHouseholdSize(householdMembers.size() + 1);
+        // Level-ceiling: the new owner's membership level cannot exceed one above the current
+        // maximum level among their existing household members. With no existing member no cap
+        // applies. The (possibly capped) level is stored so it is returned on create and on read.
+        int naturalLevel = MembershipPointsDeriver.membershipLevel(
+            MembershipPointsDeriver.membershipPoints(owner));
+        int cappedLevel = naturalLevel;
+        if (!householdMembers.isEmpty()) {
+            int maxMemberLevel = householdMembers.stream()
+                .mapToInt(MembershipPointsDeriver::effectiveMembershipLevel)
+                .max()
+                .orElseThrow();
+            cappedLevel = Math.min(naturalLevel, maxMemberLevel + 1);
+        }
+        owner.setMembershipLevel(cappedLevel);
         // A declared household member is not a suspected duplicate, and no other create path
         // reaches here for a same-household owner, so a created owner is never flagged.
         owner.setPossibleDuplicate(false);
