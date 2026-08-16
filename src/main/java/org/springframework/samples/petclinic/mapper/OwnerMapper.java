@@ -31,9 +31,12 @@ public interface OwnerMapper {
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(3, 1 "
+        expression = "java(Math.min(4, 1 "
             + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
-            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0) "
+            + "+ ((owner.getRegistrationDate() != null "
+            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), "
+            + "java.time.LocalDate.now()) > 365) ? 1 : 0)))")
     @Mapping(target = "locality",
         expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
