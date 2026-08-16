@@ -63,6 +63,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.labelOf(owner.getRegistrationDate()))")
+    @Mapping(target = "selfLink",
+        expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
