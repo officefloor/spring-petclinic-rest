@@ -81,6 +81,9 @@ public class Owner extends Person {
     @Column(name = "membership_number")
     private String membershipNumber;
 
+    @Column(name = "deleted")
+    private boolean deleted = false;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -194,6 +197,14 @@ public class Owner extends Person {
 
     public void setMembershipNumber(String membershipNumber) {
         this.membershipNumber = membershipNumber;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     protected Set<Pet> getPetsInternal() {
