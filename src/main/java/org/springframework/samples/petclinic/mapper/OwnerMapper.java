@@ -16,7 +16,7 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class,
-    imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
+    imports = {LocalityDeriver.class, IdentityKeyDeriver.class,
         AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class,
         FiscalYearDeriver.class, OwnerSegmentDeriver.class})
 public interface OwnerMapper {
@@ -31,27 +31,21 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "checkDigit",
-        expression = "java(CheckDigitDeriver.checkDigit(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", FiscalYearDeriver.fiscalYear("
-            + "owner.getRegistrationDate()) % 100))")
     @Mapping(target = "fiscalYear",
-        expression = "java(FiscalYearDeriver.fiscalYearLabel(owner.getRegistrationDate()))")
+        expression = "java(FiscalYearDeriver.fiscalYearLabel(owner.getMemberId()))")
     @Mapping(target = "membershipPoints",
         expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(MembershipPointsDeriver.effectiveMembershipLevel(owner))")
     @Mapping(target = "locality",
-        expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
+        expression = "java(LocalityDeriver.locality(owner.getMemberId()))")
     @Mapping(target = "timezone",
         expression = "java(LocalityDeriver.timezone("
-            + "LocalityDeriver.locality(owner.getCustomerCode())))")
+            + "LocalityDeriver.locality(owner.getMemberId())))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerSegmentDeriver.ownerSegment("
             + "MembershipPointsDeriver.effectiveMembershipLevel(owner), "
-            + "LocalityDeriver.locality(owner.getCustomerCode())))")
+            + "LocalityDeriver.locality(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")

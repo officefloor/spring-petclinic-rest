@@ -2,15 +2,16 @@ package org.springframework.samples.petclinic.mapper;
 
 /**
  * Derives an owner's region, either from a postcode or from the region-and-hash
- * {@code customerCode}, plus the legacy city-to-region lookup.
+ * {@code memberId}, plus the legacy city-to-region lookup.
  *
  * <p>{@link #region(String)} maps a postcode to its region by the fixed ranges
  * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); this is the region embedded in
- * an owner's {@code '<REGION>-<HASH8>'} customer code. {@link #locality(String)}
- * reads an owner's locality straight back out of that customer code (its
- * {@code <REGION>} component), so the locality and the identity always agree.
- * The city-to-region table (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD)
- * remains available via {@link #localityForCity(String)} for postcode validation.
+ * the {@code <REGION>} prefix of an owner's {@code '<REGION><FY><HASH8><CHK>'}
+ * memberId. {@link #locality(String)} reads an owner's locality straight back out
+ * of that memberId (its {@code <REGION>} prefix), so the locality and the identity
+ * always agree. The city-to-region table (Sydney -> NSW, Melbourne -> VIC,
+ * Brisbane -> QLD) remains available via {@link #localityForCity(String)} for
+ * postcode validation.
  *
  * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper})
  * so MapStruct does not mistake it for a generic {@code String -> String}
@@ -18,6 +19,9 @@ package org.springframework.samples.petclinic.mapper;
  * through an explicit expression.
  */
 public final class LocalityDeriver {
+
+    /** The known region prefixes carried at the front of a memberId, longest first. */
+    private static final String[] KNOWN_REGIONS = {"NSW", "VIC", "QLD"};
 
     private LocalityDeriver() {
     }
@@ -34,17 +38,21 @@ public final class LocalityDeriver {
     }
 
     /**
-     * Returns an owner's locality: the {@code <REGION>} component of the {@code '<REGION>-<HASH8>'}
-     * customer code (the text before the first {@code '-'}). Returns {@code "UNKNOWN"} when the
-     * customer code is {@code null}/blank or carries no region component.
+     * Returns an owner's locality: the {@code <REGION>} prefix of the {@code '<REGION><FY><HASH8><CHK>'}
+     * memberId. Recognises the known region prefixes {@code NSW}/{@code VIC}/{@code QLD}; anything else
+     * (including a memberId built with an {@code UNKNOWN} region) yields {@code "UNKNOWN"}. Returns
+     * {@code "UNKNOWN"} when the memberId is {@code null}/blank.
      */
-    public static String locality(String customerCode) {
-        if (customerCode == null || customerCode.isBlank()) {
+    public static String locality(String memberId) {
+        if (memberId == null || memberId.isBlank()) {
             return "UNKNOWN";
         }
-        int dash = customerCode.indexOf('-');
-        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
-        return region.isBlank() ? "UNKNOWN" : region;
+        for (String region : KNOWN_REGIONS) {
+            if (memberId.startsWith(region)) {
+                return region;
+            }
+        }
+        return "UNKNOWN";
     }
 
     /**

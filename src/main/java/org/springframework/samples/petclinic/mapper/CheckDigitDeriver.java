@@ -1,16 +1,17 @@
 package org.springframework.samples.petclinic.mapper;
 
 /**
- * Derives an owner's check digit: a single Luhn check digit computed over the
- * digits contained in the owner's customer code.
+ * Computes a single Luhn check digit over the digits contained in a string.
  *
- * <p>Non-digit characters (such as the customer code's separators) are ignored,
- * so only the numeric characters contribute to the checksum. The result is the
- * standard Luhn check digit in the range {@code 0-9}.
+ * <p>Non-digit characters (such as an identifier's region letters or hex letters)
+ * are ignored, so only the numeric characters contribute to the checksum. The
+ * result is the standard Luhn check digit in the range {@code 0-9}. This is the
+ * CHK segment appended to an owner's {@code memberId}, computed over the digits of
+ * its {@code <REGION><FY><HASH8>} prefix.
  *
  * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
  * MapStruct does not mistake it for a generic mapping method and apply it to
- * unrelated fields; the mapper references it only through an explicit expression.
+ * unrelated fields.
  */
 public final class CheckDigitDeriver {
 

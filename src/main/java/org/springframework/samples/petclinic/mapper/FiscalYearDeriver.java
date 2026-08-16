@@ -27,11 +27,21 @@ public final class FiscalYearDeriver {
     }
 
     /**
-     * Returns the fiscal-year label {@code 'FY<YY>'}, where {@code YY} is the last
-     * two digits of {@link #fiscalYear(LocalDate)}.
+     * Returns the fiscal-year label {@code 'FY<YY>'} read from an owner's
+     * {@code '<REGION><FY><HASH8><CHK>'} memberId, where {@code YY} is the two-digit
+     * {@code <FY>} segment that immediately follows the region prefix. Returns
+     * {@code null} when the memberId is {@code null} or too short to carry an FY
+     * segment.
      */
-    public static String fiscalYearLabel(LocalDate date) {
-        return String.format("FY%02d", fiscalYear(date) % 100);
+    public static String fiscalYearLabel(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int fyStart = LocalityDeriver.locality(memberId).length();
+        if (memberId.length() < fyStart + 2) {
+            return null;
+        }
+        return "FY" + memberId.substring(fyStart, fyStart + 2);
     }
 
     /**
