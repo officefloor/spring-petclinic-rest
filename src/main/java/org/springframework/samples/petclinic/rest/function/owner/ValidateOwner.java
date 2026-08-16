@@ -7,6 +7,7 @@ import java.util.regex.Pattern;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,8 +29,12 @@ public class ValidateOwner {
     /** Syntactic email check: a non-empty local part, an '@', then a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$");
 
+    /** A valid postcode is exactly four digits. */
+    private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+            InvalidPostcodeException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -66,6 +71,24 @@ public class ValidateOwner {
                 throw new InvalidEmailException(email);
             }
             request.setEmail(normalized);
+        }
+        // Postcode is optional. When present it must be four digits and, when the city maps to a
+        // known region, fall within that region's range; a city with no known region accepts any
+        // 4-digit postcode. The (trimmed) value is stored and returned as given.
+        String postcode = request.getPostcode();
+        if (postcode != null && !postcode.isBlank()) {
+            String trimmed = postcode.trim();
+            if (!POSTCODE.matcher(trimmed).matches()) {
+                throw new InvalidPostcodeException(postcode);
+            }
+            int[] range = CityRegion.postcodeRangeOf(request.getCity());
+            if (range != null) {
+                int value = Integer.parseInt(trimmed);
+                if (value < range[0] || value > range[1]) {
+                    throw new InvalidPostcodeException(postcode);
+                }
+            }
+            request.setPostcode(trimmed);
         }
         validated.set(request);
     }
