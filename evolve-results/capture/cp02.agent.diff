@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index daf35558..0d19b1a3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -190,4 +190,27 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidFieldValueException} raised when a request supplies a field whose value
++     * is present but violates a business rule (for example a telephone number that is not exactly
++     * ten digits after stripping non-digit characters). Returns a 400 Bad Request whose body carries
++     * an {@code errors} array listing the name of each offending field.
++     *
++     * @param e The {@link InvalidFieldValueException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidFieldValueException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidFieldValueException(InvalidFieldValueException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", e.getFields());
++        logger.debug("Invalid field value at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getFields());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidFieldValueException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidFieldValueException.java
+new file mode 100644
+index 00000000..3481c8af
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidFieldValueException.java
+@@ -0,0 +1,39 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.List;
++
++/**
++ * Thrown when a request supplies a field whose value is present but fails a business rule (for
++ * example a telephone number that is not exactly ten digits after non-digit characters are
++ * stripped). Carries the name of each offending field so the exception handler can report them in
++ * the {@code errors} response body.
++ */
++public class InvalidFieldValueException extends RuntimeException {
++
++    private final List<String> fields;
++
++    public InvalidFieldValueException(String field, String message) {
++        super(message);
++        this.fields = List.of(field);
++    }
++
++    public List<String> getFields() {
++        return this.fields;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 760fc2f0..357d2c03 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
+ import org.springframework.samples.petclinic.rest.advice.MissingRequiredFieldsException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -110,6 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new MissingRequiredFieldsException(missingFields);
+         }
++        ownerFieldsDto.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+@@ -221,4 +223,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             missingFields.add(fieldName);
+         }
+     }
++
++    /**
++     * Normalizes a telephone number by removing every non-digit character and requires the result to
++     * be exactly ten digits. Returns the 10-digit value to be stored and returned as {@code telephone}.
++     *
++     * @param telephone the raw telephone value from the request
++     * @return the normalized 10-digit telephone number
++     * @throws InvalidFieldValueException if the value is not exactly ten digits after stripping
++     */
++    private static String normalizeTelephone(String telephone) {
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new InvalidFieldValueException("telephone",
++                "Telephone must contain exactly 10 digits after removing non-digit characters");
++        }
++        return digits;
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76..8f9946f0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,7 +2029,7 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
++          pattern: '^[-0-9 ().+]*$'
+           example: '6085551023'
+       required:
+         - firstName
