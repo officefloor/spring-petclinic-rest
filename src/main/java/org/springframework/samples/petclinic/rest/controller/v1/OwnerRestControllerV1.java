@@ -134,6 +134,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
         assignHouseholdId(owner);
+        assignHouseholdMemberCount(owner);
         assignNamesakeCount(owner);
         assignMembershipNumber(owner);
         assignBulkSignupWarning(owner);
@@ -457,6 +458,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void assignHouseholdId(Owner owner) {
         String key = collapse(owner.getLastName()) + "\n" + collapse(owner.getAddress());
         owner.setHouseholdId("HH-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * Assigns the owner's {@code householdMemberCount} on create: the number of owners in this
+     * owner's household — those already sharing its {@code householdId} plus this owner itself —
+     * after this create. Because {@code householdId} is derived from the owner's collapsed
+     * {@code lastName} and {@code address} (see {@link #assignHouseholdId}), the count reflects every
+     * owner registered to the same household, including those who joined via {@code sharesHousehold}.
+     * The count is taken before this owner is persisted, so it is one more than the number of
+     * existing household members. It underpins the {@code GOLD} membership tier, which applies once
+     * the household reaches three or more members.
+     *
+     * @param owner the owner being created (with its {@code householdId} already assigned)
+     */
+    private void assignHouseholdMemberCount(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(other -> householdId != null && householdId.equals(other.getHouseholdId()))
+            .count();
+        owner.setHouseholdMemberCount((int) (existing + 1));
     }
 
     /**
