@@ -205,6 +205,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
+        // Household size after this create: existing members plus the owner being created.
+        owner.setHouseholdSize(householdMembers.size() + 1);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
