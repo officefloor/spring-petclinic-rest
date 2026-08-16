@@ -17,12 +17,11 @@
 package org.springframework.samples.petclinic.util;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Helpers for the membership points and numeric level a pet owner is assigned. Points are derived
- * from the owner's own fields together with their tenure (time elapsed since registration), and the
- * level is a banding of those points.
+ * from the owner's own fields together with their tenure (elapsed fiscal years since registration),
+ * and the level is a banding of those points.
  */
 public final class Memberships {
 
@@ -33,8 +32,8 @@ public final class Memberships {
 
     /**
      * The highest membership level reachable. Level 4 is only reached with 6 or more points, and the
-     * only route to 6 points is qualifying tenure (see {@link #TENURE_LEVEL_DAYS}) on top of the
-     * other factors.
+     * only route to 6 points is qualifying tenure (see {@link #TENURE_LEVEL_FISCAL_YEARS}) on top of
+     * the other factors.
      */
     public static final int MAX_LEVEL = 4;
 
@@ -59,15 +58,17 @@ public final class Memberships {
     public static final int HOUSEHOLD_POINTS_THRESHOLD = 3;
 
     /**
-     * The points added for tenure over {@link #TENURE_LEVEL_DAYS} days.
+     * The points added for tenure over {@link #TENURE_LEVEL_FISCAL_YEARS} elapsed fiscal years.
      */
     public static final int TENURE_POINTS = 3;
 
     /**
-     * The tenure, in days, that must be strictly exceeded to earn the tenure points. At or below it
-     * the tenure points are not granted.
+     * The tenure, in elapsed fiscal years (see
+     * {@link org.springframework.samples.petclinic.util.FiscalYears#elapsedFiscalYears}), that must
+     * be strictly exceeded to earn the tenure points. At or below it the tenure points are not
+     * granted.
      */
-    public static final long TENURE_LEVEL_DAYS = 365;
+    public static final int TENURE_LEVEL_FISCAL_YEARS = 1;
 
     private Memberships() {
     }
@@ -76,7 +77,8 @@ public final class Memberships {
      * Computes an owner's membership points. Starts at 0; adds {@link #EMAIL_POINTS} when an email is
      * present; adds {@link #UNIQUE_NAME_POINTS} when {@code namesakeCount} is 0; adds
      * {@link #HOUSEHOLD_POINTS} for a household of {@link #HOUSEHOLD_POINTS_THRESHOLD} or more; adds
-     * {@link #TENURE_POINTS} when the owner's tenure is more than {@link #TENURE_LEVEL_DAYS} days.
+     * {@link #TENURE_POINTS} when the owner's tenure is more than {@link #TENURE_LEVEL_FISCAL_YEARS}
+     * elapsed fiscal years.
      *
      * @param email            the owner's email, or {@code null} when absent
      * @param namesakeCount    the owner's namesake count, or {@code null} when unknown
@@ -140,16 +142,18 @@ public final class Memberships {
     }
 
     /**
-     * Whether the given registration date represents tenure of more than {@link #TENURE_LEVEL_DAYS}
-     * days as of today. A {@code null} (or future) registration date never qualifies.
+     * Whether the given registration date represents tenure of more than
+     * {@link #TENURE_LEVEL_FISCAL_YEARS} elapsed fiscal years as of today. A {@code null} (or future)
+     * registration date never qualifies.
      *
      * @param registrationDate the owner's registration date, or {@code null} when unknown
-     * @return {@code true} when tenure strictly exceeds {@link #TENURE_LEVEL_DAYS} days
+     * @return {@code true} when tenure strictly exceeds {@link #TENURE_LEVEL_FISCAL_YEARS} elapsed
+     *         fiscal years
      */
     public static boolean hasQualifyingTenure(LocalDate registrationDate) {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_LEVEL_DAYS;
+        return FiscalYears.elapsedFiscalYears(registrationDate, LocalDate.now()) > TENURE_LEVEL_FISCAL_YEARS;
     }
 }

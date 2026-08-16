@@ -46,11 +46,17 @@ public interface OwnerMapper {
             + "owner.getTelephone(), owner.getEmail(), "
             + "org.springframework.samples.petclinic.util.Households.householdId("
             + "owner.getLastName(), owner.getPostcode())))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.FiscalYears.fiscalYearLabel("
+            + "owner.getRegistrationDate()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner == null || owner.getCustomerCode() == null "
             + "|| owner.getRegistrationDate() == null ? null : "
             + "owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            + "+ String.format(\"%02d\", "
+            + "org.springframework.samples.petclinic.util.FiscalYears.fiscalYear("
+            + "owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Memberships.membershipPoints("
