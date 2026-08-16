@@ -1,0 +1,220 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyDeriver.java b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyDeriver.java
+new file mode 100644
+index 00000000..1d69d36d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKeyDeriver.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Derives an owner's identity key, the single value used for duplicate detection.
++ *
++ * <p>The key is {@code '<telephone>|<email>|<householdId>'} built from the owner's
++ * normalized E.164 telephone, lower-cased email and household id. A {@code null}
++ * email or household id contributes an empty string, so the key always has the
++ * same {@code a|b|c} shape. Two owners are duplicates only when their whole keys
++ * are equal.
++ *
++ * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
++ * MapStruct does not mistake it for a generic {@code String -> String} mapping
++ * method and apply it to unrelated fields; the mapper references it only through
++ * an explicit expression, and the create endpoint uses it for the duplicate check.
++ */
++public final class IdentityKeyDeriver {
++
++    private IdentityKeyDeriver() {
++    }
++
++    /**
++     * Returns the identity key {@code '<telephone>|<email>|<householdId>'}, treating
++     * a {@code null} value in any component as the empty string.
++     */
++    public static String identityKey(String telephone, String email, String householdId) {
++        return (telephone == null ? "" : telephone)
++            + "|" + (email == null ? "" : email)
++            + "|" + (householdId == null ? "" : householdId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8d4fcf16..554e4a35 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,7 +15,7 @@ import java.util.List;
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+-@Mapper(uses = PetMapper.class, imports = LocalityDeriver.class)
++@Mapper(uses = PetMapper.class, imports = {LocalityDeriver.class, IdentityKeyDeriver.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -34,6 +34,9 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference",
+         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
+             + "? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "identityKey",
++        expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
++            + "owner.getEmail(), owner.getHouseholdId()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java
+new file mode 100644
+index 00000000..45a21581
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateIdentityException.java
+@@ -0,0 +1,31 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a new owner's whole derived identity key
++ * ({@code '<telephone>|<email>|<householdId>'}) equals an existing owner's. This single
++ * key consolidates the former separate telephone, email and household duplicate checks.
++ * {@link ExceptionControllerAdvice} reports it back to the client as a 409 Conflict response.
++ */
++public class DuplicateIdentityException extends RuntimeException {
++
++    public DuplicateIdentityException(String message) {
++        super(message);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index cd52d230..9fc5d686 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -252,6 +252,20 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("lastName", "address")));
+     }
+ 
++    /**
++     * Handles {@link DuplicateIdentityException} raised when a new owner's whole derived identity
++     * key ({@code '<telephone>|<email>|<householdId>'}) equals an existing owner's. Returns a 409
++     * Conflict whose {@code errors} array names the offending {@code identityKey}.
++     *
++     * @param e The {@link DuplicateIdentityException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
++     */
++    @ExceptionHandler(DuplicateIdentityException.class)
++    @ResponseBody
++    public ResponseEntity<Map<String, Object>> handleDuplicateIdentityException(DuplicateIdentityException e) {
++        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("identityKey")));
++    }
++
+     /**
+      * Handles {@link CityAtCapacityException} raised when a new owner's city already contains 50 or
+      * more owners. Returns a 409 Conflict whose {@code errors} array names the offending
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 51c6ba8f..a9aa810a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.mapper.IdentityKeyDeriver;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
+@@ -40,9 +41,7 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
++import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
+@@ -176,12 +175,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .toList();
+         String householdId = null;
+         if (!householdMembers.isEmpty()) {
+-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+-                throw new DuplicateHouseholdException(
+-                    "an owner with the same last name and address already exists");
+-            }
+-            // Joining an existing household: share a stable identifier with every member,
+-            // backfilling any members created before the household was formed.
++            // Owners sharing a normalized last name and address form a household with a
++            // stable shared identifier; backfill any members created before it was formed.
++            // The household id is part of the identity key, so two members with different
++            // telephones have different identity keys and are both allowed.
+             householdId = householdId(lastName, normalizedAddress);
+             for (Owner member : householdMembers) {
+                 if (!householdId.equals(member.getHouseholdId())) {
+@@ -191,24 +188,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             }
+         }
+         String telephone = toE164(ownerFieldsDto.getTelephone());
+-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
+-            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
+-        if (telephoneInUse) {
+-            throw new DuplicateTelephoneException(
+-                "an owner with the same E.164 telephone already exists");
+-        }
+         ownerFieldsDto.setTelephone(telephone);
+         String email = normalizeEmail(ownerFieldsDto.getEmail());
+-        if (email != null) {
+-            boolean emailInUse = this.clinicService.findAllOwners().stream()
+-                .anyMatch(existing -> existing.getEmail() != null
+-                    && email.equalsIgnoreCase(existing.getEmail()));
+-            if (emailInUse) {
+-                throw new DuplicateEmailException(
+-                    "an owner with the same lower-cased email already exists");
+-            }
+-        }
+         ownerFieldsDto.setEmail(email);
++        // Single, consolidated duplicate check: reject only when the new owner's whole
++        // derived identity key (telephone|email|householdId) equals an existing owner's.
++        String identityKey = IdentityKeyDeriver.identityKey(telephone, email, householdId);
++        boolean identityInUse = this.clinicService.findAllOwners().stream()
++            .anyMatch(existing -> identityKey.equals(IdentityKeyDeriver.identityKey(
++                existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
++        if (identityInUse) {
++            throw new DuplicateIdentityException(
++                "an owner with the same identity key already exists");
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         owner.setRegistrationDate(registrationDate);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 00db4de6..4aa40a57 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2189,6 +2189,18 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived identity key, formatted
++                '<telephone>|<email>|<householdId>' from the owner's normalized
++                telephone, lower-cased email (empty when absent) and household id
++                (empty when absent). This single key drives duplicate detection: a
++                new owner is rejected with 409 Conflict only when its whole identity
++                key equals an existing owner's.
++              type: string
++              example: '+61412345678||'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
