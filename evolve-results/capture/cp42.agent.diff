@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d97ef7fc..fd0ac028 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -61,6 +61,10 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : "
+             + "org.springframework.samples.petclinic.util.Localities.region("
+             + "owner.getPostcode(), owner.getCity()))")
++    @Mapping(target = "timezone",
++        expression = "java(owner == null ? null : "
++            + "org.springframework.samples.petclinic.util.Localities.timezone("
++            + "owner.getPostcode(), owner.getCity()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner == null ? null : "
+             + "(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\"))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Localities.java b/src/main/java/org/springframework/samples/petclinic/util/Localities.java
+index 87094480..87799a2a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Localities.java
+@@ -44,6 +44,16 @@ public final class Localities {
+         "VIC", new int[] {3000, 3099},
+         "QLD", new int[] {4000, 4099});
+ 
++    /**
++     * Fixed region-to-timezone table: each canonical region maps to its IANA timezone name
++     * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++     * {@code QLD -> Australia/Brisbane}).
++     */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++        "NSW", "Australia/Sydney",
++        "VIC", "Australia/Melbourne",
++        "QLD", "Australia/Brisbane");
++
+     /**
+      * Locality returned for any city not present in the {@link #CITY_REGION fixed table}.
+      */
+@@ -80,6 +90,21 @@ public final class Localities {
+         return fromPostcode != null ? fromPostcode : region(city);
+     }
+ 
++    /**
++     * Returns the IANA timezone name for an owner's locality, derived from the region resolved by
++     * {@link #region(String, String)} via the fixed region-to-timezone table
++     * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},
++     * {@code QLD -> Australia/Brisbane}), or {@code null} when the region has no known timezone
++     * (including the {@link #UNKNOWN} locality).
++     *
++     * @param postcode the owner's postcode, may be {@code null}
++     * @param city the owner's city
++     * @return the IANA timezone name, or {@code null} when the locality has no known timezone
++     */
++    public static String timezone(String postcode, String city) {
++        return REGION_TIMEZONE.get(region(postcode, city));
++    }
++
+     /**
+      * Returns the region whose inclusive range contains the given postcode, or {@code null} when the
+      * postcode is {@code null}, not a 4-digit number, or in no known range.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 864148ee..b703ceb0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2224,6 +2224,16 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name derived from the owner's locality using a
++                fixed region-to-timezone table (NSW -> Australia/Sydney,
++                VIC -> Australia/Melbourne, QLD -> Australia/Brisbane), absent
++                when the locality has no known timezone.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: >-
