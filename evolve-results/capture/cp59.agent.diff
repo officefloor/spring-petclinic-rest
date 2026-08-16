@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 981afd9e..f0c05a20 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -558,11 +558,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         int naturalLevel = org.springframework.samples.petclinic.util.Memberships.membershipLevel(
+             owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
+         String householdId = Households.householdId(owner.getLastName(), owner.getPostcode());
++        Integer householdSize = owner.getHouseholdSize();
+         java.util.OptionalInt maxMemberLevel = this.clinicService.findAllOwners().stream()
+             .filter(this::isNotDeleted)
+             .filter(existing -> householdId.equals(
+                 Households.householdId(existing.getLastName(), existing.getPostcode())))
+-            .mapToInt(this::effectiveMembershipLevel)
++            .mapToInt(existing -> effectiveMembershipLevel(existing, householdSize))
+             .max();
+         if (maxMemberLevel.isEmpty()) {
+             return naturalLevel;
+@@ -571,19 +572,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Returns an existing owner's effective {@code membershipLevel}: the stored value when present (the
+-     * value assigned, and possibly capped, when that owner was created), otherwise the level derived
+-     * from its own fields for owners that predate the stored level (e.g. seed data).
++     * Returns an existing household member's effective {@code membershipLevel} for the purpose of the
++     * household ceiling, evaluated at the household's {@code currentHouseholdSize} (the size the
++     * household reaches once the owner being created joins). A member's stored level is a snapshot taken
++     * when that member was created, when the household may have been smaller and so not yet qualified
++     * for the household points; as the household grows every member's standing rises with it. The
++     * effective level is therefore the greater of the member's stored level (when present) and the level
++     * recomputed from the member's own fields at the current household size, so a household that has
++     * grown large enough to earn the household points lifts the ceiling for later joiners rather than
++     * pinning them to a stale, pre-growth snapshot.
+      *
+-     * @param owner an existing owner
+-     * @return the owner's effective membership level
++     * @param owner an existing household member
++     * @param currentHouseholdSize the household size after the owner being created joins
++     * @return the member's effective membership level at the current household size
+      */
+-    private int effectiveMembershipLevel(Owner owner) {
++    private int effectiveMembershipLevel(Owner owner, Integer currentHouseholdSize) {
++        int recomputed = org.springframework.samples.petclinic.util.Memberships.membershipLevel(
++            owner.getEmail(), owner.getNamesakeCount(), currentHouseholdSize, owner.getRegistrationDate());
+         if (owner.getMembershipLevel() != null) {
+-            return owner.getMembershipLevel();
++            return Math.max(owner.getMembershipLevel(), recomputed);
+         }
+-        return org.springframework.samples.petclinic.util.Memberships.membershipLevel(
+-            owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), owner.getRegistrationDate());
++        return recomputed;
+     }
+ 
+     /**
