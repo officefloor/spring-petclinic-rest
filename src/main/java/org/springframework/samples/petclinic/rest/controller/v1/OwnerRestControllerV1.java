@@ -108,7 +108,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+        List<OwnerDto> ownerDtos = owners.stream()
+            .map(this::toOwnerDtoWithBulkWarning)
+            .toList();
+        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -118,7 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        return new ResponseEntity<>(toOwnerDtoWithBulkWarning(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -161,7 +164,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -387,6 +390,41 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @param businessDay the adjusted business-day registration date of the owner being created
      * @throws DailyOwnerLimitException if the daily owner-creation limit has already been reached
      */
+    /**
+     * The number of owners for a single day beyond which the {@code bulkSignupWarning} flag is
+     * raised; the warning is true once <em>more than</em> this many owners share a registration date.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Maps {@code owner} to its DTO and sets the {@code bulkSignupWarning} flag: {@code true} when
+     * more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been created for this
+     * owner's registration date, otherwise {@code false}.
+     *
+     * @param owner the owner to map
+     * @return the owner DTO with its bulk-signup warning flag populated
+     */
+    private OwnerDto toOwnerDtoWithBulkWarning(Owner owner) {
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
+        return ownerDto;
+    }
+
+    /**
+     * Returns whether more than {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners have already been
+     * created on {@code registrationDate}, counting existing owners whose {@code registrationDate}
+     * equals that date. Returns {@code false} when {@code registrationDate} is {@code null}.
+     */
+    private boolean exceedsBulkSignupThreshold(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return false;
+        }
+        long registeredThatDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        return registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
     private void requireDailyLimitNotReached(LocalDate businessDay) {
         long registeredThatDay = this.clinicService.findAllOwners().stream()
             .filter(existing -> businessDay.equals(existing.getRegistrationDate()))
