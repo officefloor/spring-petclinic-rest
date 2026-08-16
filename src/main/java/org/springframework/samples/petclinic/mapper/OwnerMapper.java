@@ -21,6 +21,8 @@ import java.util.List;
         FiscalYearDeriver.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink",
+        expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation",
