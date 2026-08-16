@@ -120,7 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        applyAddress(owner, ownerFieldsDto);
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         rejectFutureRegistrationDate(registrationDate);
         if (registrationDate == null) {
@@ -557,6 +557,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "ST", "STREET",
         "RD", "ROAD",
         "AVE", "AVENUE");
+
+    /**
+     * Applies the owner's address on create from the structured fields when present, falling back to the
+     * flat {@code address} for backward compatibility. An owner must supply an address in at least one
+     * form: a non-blank {@code addressLine1} (the structured form, preferred) or a non-blank flat
+     * {@code address}; when neither is present the create is rejected.
+     * <p>
+     * Whichever address fields are supplied are normalized (see {@link #normalizeAddress}). When the
+     * structured form is used the normalized {@code addressLine1} and, when supplied, {@code addressLine2}
+     * are stored on the owner and the composed {@code address} is the normalized {@code addressLine1} with
+     * a single space and the normalized {@code addressLine2} appended when {@code addressLine2} is present.
+     * When only the flat form is used the normalized flat value becomes the stored {@code address} and the
+     * structured lines are left unset. The stored {@code address} is the value every later step reads.
+     *
+     * @param owner the owner being created
+     * @param ownerFieldsDto the submitted owner fields carrying the raw address input
+     * @throws InvalidAddressException (400 Bad Request) if no address is supplied in either form
+     */
+    private void applyAddress(Owner owner, OwnerFieldsDto ownerFieldsDto) {
+        String rawLine1 = ownerFieldsDto.getAddressLine1();
+        String rawLine2 = ownerFieldsDto.getAddressLine2();
+        String rawFlat = ownerFieldsDto.getAddress();
+        boolean hasLine1 = rawLine1 != null && !rawLine1.isBlank();
+        boolean hasFlat = rawFlat != null && !rawFlat.isBlank();
+        if (!hasLine1 && !hasFlat) {
+            throw new InvalidAddressException(rawLine1 != null ? rawLine1 : rawFlat);
+        }
+        if (hasLine1) {
+            String line1 = normalizeAddress(rawLine1);
+            String line2 = (rawLine2 != null && !rawLine2.isBlank()) ? normalizeAddress(rawLine2) : null;
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2);
+            owner.setAddress(line2 != null ? line1 + " " + line2 : line1);
+        } else {
+            owner.setAddressLine1(null);
+            owner.setAddressLine2(null);
+            owner.setAddress(normalizeAddress(rawFlat));
+        }
+    }
 
     /**
      * Normalizes an owner's address on create. Surrounding whitespace is trimmed and internal runs of
