@@ -16,7 +16,8 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class,
-    imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class})
+    imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
+        AgeBandDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -38,6 +39,9 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand",
+        expression = "java(AgeBandDeriver.ageBand(owner.getBirthDate(), "
+            + "owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
             + "owner.getEmail(), owner.getHouseholdId()))")
