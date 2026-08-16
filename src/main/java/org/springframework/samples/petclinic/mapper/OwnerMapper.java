@@ -37,6 +37,9 @@ public interface OwnerMapper {
             + "MembershipPointsDeriver.membershipPoints(owner)))")
     @Mapping(target = "locality",
         expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
+    @Mapping(target = "timezone",
+        expression = "java(LocalityDeriver.timezone("
+            + "LocalityDeriver.locality(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")

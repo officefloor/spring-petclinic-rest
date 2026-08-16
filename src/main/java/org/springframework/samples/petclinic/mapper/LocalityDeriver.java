@@ -48,6 +48,24 @@ public final class LocalityDeriver {
     }
 
     /**
+     * Returns the IANA timezone name for the given locality/region via the fixed
+     * region-to-timezone table (NSW -> {@code Australia/Sydney},
+     * VIC -> {@code Australia/Melbourne}, QLD -> {@code Australia/Brisbane}), or
+     * {@code "UNKNOWN"} when the region is {@code null} or not in the table.
+     */
+    public static String timezone(String region) {
+        if (region == null) {
+            return "UNKNOWN";
+        }
+        return switch (region) {
+            case "NSW" -> "Australia/Sydney";
+            case "VIC" -> "Australia/Melbourne";
+            case "QLD" -> "Australia/Brisbane";
+            default -> "UNKNOWN";
+        };
+    }
+
+    /**
      * Returns the canonical region string for the given city, or {@code "UNKNOWN"}
      * when the city is {@code null} or not in the fixed table.
      */
