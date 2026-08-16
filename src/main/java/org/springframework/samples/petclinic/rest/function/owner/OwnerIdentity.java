@@ -36,18 +36,19 @@ public final class OwnerIdentity {
     }
 
     /**
-     * The stable, shared household identifier for an owner's last name and address, normalizing both
-     * the canonical way first (last name lower-cased with whitespace collapsed; address via
-     * {@link AddressNormalizer}). Owners living at the same address under the same last name get the
-     * same value regardless of creation order.
+     * The stable, shared household identifier for an owner's last name and postcode: the first 12
+     * upper-case hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode} (last name
+     * lower-cased with whitespace collapsed; postcode trimmed). Owners with the same last name and
+     * postcode get the same value automatically, regardless of creation order, so the household is
+     * keyed on {@code (lastName, postcode)}. Returns {@code null} when there is no postcode — an owner
+     * without a postcode is not in any household.
      */
-    public static String householdIdFor(String lastName, String address) {
-        return householdId(normalizeLastName(lastName), AddressNormalizer.normalize(address));
-    }
-
-    /** First 16 upper-case hex chars of SHA-256(lastName|address), over already-normalized inputs. */
-    private static String householdId(String lastName, String address) {
-        return sha256Hex(lastName + "|" + address, 16);
+    public static String householdIdFor(String lastName, String postcode) {
+        String normalizedPostcode = normalizePostcode(postcode);
+        if (normalizedPostcode == null) {
+            return null;
+        }
+        return sha256Hex(normalizeLastName(lastName) + "|" + normalizedPostcode, 12);
     }
 
     /**
@@ -96,5 +97,14 @@ public final class OwnerIdentity {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** Postcode trimmed; null or blank becomes null (no household). */
+    private static String normalizePostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        String trimmed = postcode.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -2070,8 +2070,11 @@ components:
         sharesHousehold:
           title: Shares household
           description: When true, allows creating this owner even though another owner already has the
-            same last name at the same address (an intentionally shared household). Write-only request
-            flag; not persisted.
+            same last name and postcode (the same household), which is otherwise rejected as a
+            duplicate with 409. It only bypasses that duplicate block; the shared 'householdId' is
+            derived automatically from the last name and postcode either way. An owner created with
+            this flag is a declared household member and is not flagged as a possible duplicate.
+            Write-only request flag; not persisted.
           type: boolean
           example: false
       required:
@@ -2117,11 +2120,12 @@ components:
               readOnly: true
             householdId:
               title: Household ID
-              description: A stable shared identifier for owners who share a household (same last name at
-                the same address). Assigned when an owner is created with 'sharesHousehold' true; owners
-                in the same household receive the same value. Absent for owners not in a shared household.
+              description: A deterministic shared household identifier — the first 12 hex characters of
+                SHA-256 over the normalized last name and the postcode. Owners with the same last name
+                and postcode receive the same value automatically, regardless of creation order. Absent
+                for owners without a postcode (not in any household).
               type: string
-              example: 'A1B2C3D4E5F6A7B8'
+              example: 'A1B2C3D4E5F6'
               readOnly: true
             identityKey:
               title: Identity key
@@ -2154,8 +2158,9 @@ components:
             membershipLevel:
               title: Membership level
               description: The owner's membership level, from 1 to 3, computed at creation. Starts at 1;
-                adds 1 when an email address is present; adds 1 when namesakeCount is 0; capped at 3
-                (level 4 is reserved for tenure).
+                adds 1 when an email address is present; adds 1 when the owner is the sole member of
+                their household at creation (no earlier owner shares its householdId; an owner with no
+                postcode is always sole); capped at 3 (level 4 is reserved for tenure).
               type: integer
               format: int32
               minimum: 1
@@ -2180,9 +2185,10 @@ components:
               readOnly: true
             possibleDuplicate:
               title: Possible duplicate
-              description: True when another (non-duplicate) owner shares this owner's lastName and
-                postcode but has a different telephone — a soft match that was still created —
-                otherwise false.
+              description: True when another owner shares this owner's lastName and postcode but has a
+                different telephone and this owner is not a declared household member — a soft match
+                that was still created — otherwise false. A declared household member (created with
+                'sharesHousehold') shares the household deliberately and is never flagged.
               type: boolean
               example: false
               readOnly: true

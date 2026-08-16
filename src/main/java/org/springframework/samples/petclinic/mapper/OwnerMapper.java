@@ -3,8 +3,10 @@ package org.springframework.samples.petclinic.mapper;
 import org.jspecify.annotations.NonNull;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -16,18 +18,26 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct.
  *
- * <p>The {@code membershipLevel} is derived from the owner's own fields alone (see
- * {@link MembershipLevel}).
+ * <p>The {@code membershipLevel} is derived from the owner's fields together with the size of its
+ * household (see {@link MembershipLevel}), so the mapper needs the {@link OwnerRepository}.
  */
 @Mapper(uses = PetMapper.class)
 public abstract class OwnerMapper {
+
+    @Autowired
+    protected OwnerRepository ownerRepository;
+
+    /** Household-aware membership level, called from the {@code membershipLevel} mapping expression. */
+    protected int membershipLevel(Owner owner) {
+        return MembershipLevel.of(owner, this.ownerRepository);
+    }
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
+        expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",

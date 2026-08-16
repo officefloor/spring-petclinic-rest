@@ -15,10 +15,35 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>The response surfaces the match through {@code possibleDuplicate} / {@code possibleDuplicateOf}.
  * The earliest (lowest id) matching owner is reported so the result is stable.
+ *
+ * <p>A <em>declared household member</em> — an owner that shares its {@code householdId} with another
+ * owner, created by opting in with {@code sharesHousehold} — is never a suspect: sharing a last name
+ * and postcode now makes owners the same household, so the only way such an owner is created at all is
+ * as a declared member. Callers suppress the flag for them via {@link #sharesHousehold}.
  */
 public final class PossibleDuplicate {
 
     private PossibleDuplicate() {
+    }
+
+    /**
+     * Whether {@code owner} is a declared household member: it shares its (non-null) {@code householdId}
+     * with another owner. Such an owner is not a suspected duplicate and is not flagged.
+     */
+    public static boolean sharesHousehold(Owner owner, OwnerRepository ownerRepository) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return false;
+        }
+        for (Owner other : ownerRepository.findAll()) {
+            if (other.getId() == null || other.getId().equals(owner.getId())) {
+                continue;
+            }
+            if (householdId.equals(other.getHouseholdId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

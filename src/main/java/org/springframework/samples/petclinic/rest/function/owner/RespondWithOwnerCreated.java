@@ -16,7 +16,9 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warningFor(ownerRepository));
-        Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
+        // A declared household member (created via sharesHousehold) is not a suspected duplicate.
+        Integer possibleDuplicateOf = PossibleDuplicate.sharesHousehold(owner, ownerRepository)
+                ? null : PossibleDuplicate.matchFor(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
