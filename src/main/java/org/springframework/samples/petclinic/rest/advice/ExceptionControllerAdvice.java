@@ -196,6 +196,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidEmailException} raised when an owner supplies an {@code email} that is
+     * not a syntactically valid address. Returns a 400 Bad Request whose {@code errors} array names
+     * the offending {@code email} field.
+     *
+     * @param e The {@link InvalidEmailException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidEmailException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleInvalidEmailException(InvalidEmailException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("email")));
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} raised when a new owner's normalized telephone is
      * already used by another owner. Returns a 409 Conflict whose {@code errors} array names the
      * offending {@code telephone} field.
