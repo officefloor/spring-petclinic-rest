@@ -25,8 +25,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -528,6 +530,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code 'NSW-A1B2C3D4'}. There is no per-city sequence: two owners in the same region share a
      * customer code only when their normalized telephone and last name both match.
      *
+     * <p>When the computed customer code collides with an existing owner's {@code customerCode},
+     * it is de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
+     * makes it unique among the existing owners, so distinct owners always receive distinct codes.
+     *
      * @param owner the owner being created (with its {@code postcode}, {@code city},
      *              {@code telephone} and {@code lastName} already set)
      */
@@ -536,7 +542,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .regionFor(owner.getPostcode(), owner.getCity());
         String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
             .substring(0, 8).toUpperCase(Locale.ROOT);
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+        Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        String customerCode = base;
+        for (int n = 2; existing.contains(customerCode); n++) {
+            customerCode = base + "-" + n;
+        }
+        owner.setCustomerCode(customerCode);
     }
 
     /**
