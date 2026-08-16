@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a82ccaab..6cb64ea1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -29,9 +29,11 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
++import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
++import org.springframework.validation.FieldError;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+@@ -136,6 +138,11 @@ public class ExceptionControllerAdvice {
+         BindingErrorsResponse errors = new BindingErrorsResponse();
+         BindingResult bindingResult = e.getBindingResult();
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        List<String> invalidFields = bindingResult.getFieldErrors().stream()
++            .map(FieldError::getField)
++            .distinct()
++            .toList();
++        detail.setProperty("errors", invalidFields);
+         if (bindingResult.hasErrors()) {
+             errors.addAllErrors(bindingResult);
+             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
+@@ -162,4 +169,26 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link RequiredFieldsMissingException} raised when a request omits or blanks
++     * out mandatory fields. Returns a 400 Bad Request whose body carries an {@code errors}
++     * array listing the name of each offending field.
++     *
++     * @param e The {@link RequiredFieldsMissingException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(RequiredFieldsMissingException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleRequiredFieldsMissingException(RequiredFieldsMissingException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", e.getFields());
++        logger.debug("Missing required fields at {} {}: {}",
++            request.getMethod(),
++            request.getRequestURI(),
++            e.getFields());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/RequiredFieldsMissingException.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/RequiredFieldsMissingException.java
+new file mode 100644
+index 00000000..c90d15e9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/RequiredFieldsMissingException.java
+@@ -0,0 +1,37 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller;
++
++import java.util.List;
++
++/**
++ * Raised when a request omits or blanks out one or more mandatory fields. Carries the
++ * names of the offending fields so the exception handler can report them to the client.
++ */
++public class RequiredFieldsMissingException extends RuntimeException {
++
++    private final List<String> fields;
++
++    public RequiredFieldsMissingException(List<String> fields) {
++        super("Missing or blank required fields: " + fields);
++        this.fields = List.copyOf(fields);
++    }
++
++    public List<String> getFields() {
++        return this.fields;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e5..756f7e76 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -29,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
++import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.PetDto;
+@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        validateRequiredFields(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+@@ -188,6 +191,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+ 
++    /**
++     * Rejects an owner whose mandatory fields ({@code firstName}, {@code lastName},
++     * {@code address}, {@code city}, {@code telephone}) are missing or blank. Bean
++     * Validation already rejects {@code null} values and the pattern-constrained fields
++     * when blank, but {@code address} and {@code city} have no pattern, so a
++     * whitespace-only value would otherwise slip through.
++     *
++     * @param ownerFieldsDto the submitted owner fields
++     * @throws RequiredFieldsMissingException if any required field is missing or blank
++     */
++    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
++        List<String> errors = new ArrayList<>();
++        requireText("firstName", ownerFieldsDto.getFirstName(), errors);
++        requireText("lastName", ownerFieldsDto.getLastName(), errors);
++        requireText("address", ownerFieldsDto.getAddress(), errors);
++        requireText("city", ownerFieldsDto.getCity(), errors);
++        requireText("telephone", ownerFieldsDto.getTelephone(), errors);
++        if (!errors.isEmpty()) {
++            throw new RequiredFieldsMissingException(errors);
++        }
++    }
++
++    private static void requireText(String field, String value, List<String> errors) {
++        if (value == null || value.isBlank()) {
++            errors.add(field);
++        }
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<PetDto> getOwnersPet(Integer ownerId, Integer petId) {
