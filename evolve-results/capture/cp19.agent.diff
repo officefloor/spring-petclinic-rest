@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java
+new file mode 100644
+index 00000000..678f51a3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyRegistrationLimitException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a new owner cannot be created because 100 or more owners have already been
++ * registered today (by {@code registrationDate}). {@link ExceptionControllerAdvice} reports it
++ * back to the client as a 429 Too Many Requests response.
++ */
++public class DailyRegistrationLimitException extends RuntimeException {
++
++    public DailyRegistrationLimitException(String message) {
++        super(message);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index fc3b9366..75f3ae6e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -252,4 +252,18 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("city")));
+     }
+ 
++    /**
++     * Handles {@link DailyRegistrationLimitException} raised when 100 or more owners have already
++     * been registered today (by {@code registrationDate}). Returns a 429 Too Many Requests whose
++     * {@code errors} array names the offending {@code registrationDate} field.
++     *
++     * @param e The {@link DailyRegistrationLimitException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 429 Too Many Requests status.
++     */
++    @ExceptionHandler(DailyRegistrationLimitException.class)
++    @ResponseBody
++    public ResponseEntity<Map<String, Object>> handleDailyRegistrationLimitException(DailyRegistrationLimitException e) {
++        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("errors", List.of("registrationDate")));
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a38758ac..cc31e9ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
++import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+@@ -140,6 +141,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new MissingOwnerFieldsException(missingFields);
+         }
++        LocalDate today = LocalDate.now();
++        long registeredToday = this.clinicService.findAllOwners().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        if (registeredToday >= 100) {
++            throw new DailyRegistrationLimitException(
++                "100 or more owners have already been registered today");
++        }
+         String city = ownerFieldsDto.getCity();
+         long ownersInCity = this.clinicService.findAllOwners().stream()
+             .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
