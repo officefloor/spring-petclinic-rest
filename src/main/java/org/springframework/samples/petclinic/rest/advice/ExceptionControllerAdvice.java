@@ -253,6 +253,20 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DuplicateIdentityException} raised when a new owner's whole derived identity
+     * key ({@code '<telephone>|<email>|<householdId>'}) equals an existing owner's. Returns a 409
+     * Conflict whose {@code errors} array names the offending {@code identityKey}.
+     *
+     * @param e The {@link DuplicateIdentityException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleDuplicateIdentityException(DuplicateIdentityException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("identityKey")));
+    }
+
+    /**
      * Handles {@link CityAtCapacityException} raised when a new owner's city already contains 50 or
      * more owners. Returns a 409 Conflict whose {@code errors} array names the offending
      * {@code city} field.

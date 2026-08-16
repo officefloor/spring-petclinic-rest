@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.IdentityKeyDeriver;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -40,9 +41,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
@@ -176,12 +175,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .toList();
         String householdId = null;
         if (!householdMembers.isEmpty()) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                throw new DuplicateHouseholdException(
-                    "an owner with the same last name and address already exists");
-            }
-            // Joining an existing household: share a stable identifier with every member,
-            // backfilling any members created before the household was formed.
+            // Owners sharing a normalized last name and address form a household with a
+            // stable shared identifier; backfill any members created before it was formed.
+            // The household id is part of the identity key, so two members with different
+            // telephones have different identity keys and are both allowed.
             householdId = householdId(lastName, normalizedAddress);
             for (Owner member : householdMembers) {
                 if (!householdId.equals(member.getHouseholdId())) {
@@ -191,24 +188,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         String telephone = toE164(ownerFieldsDto.getTelephone());
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
-        if (telephoneInUse) {
-            throw new DuplicateTelephoneException(
-                "an owner with the same E.164 telephone already exists");
-        }
         ownerFieldsDto.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
-        if (email != null) {
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> existing.getEmail() != null
-                    && email.equalsIgnoreCase(existing.getEmail()));
-            if (emailInUse) {
-                throw new DuplicateEmailException(
-                    "an owner with the same lower-cased email already exists");
-            }
-        }
         ownerFieldsDto.setEmail(email);
+        // Single, consolidated duplicate check: reject only when the new owner's whole
+        // derived identity key (telephone|email|householdId) equals an existing owner's.
+        String identityKey = IdentityKeyDeriver.identityKey(telephone, email, householdId);
+        boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(IdentityKeyDeriver.identityKey(
+                existing.getTelephone(), existing.getEmail(), existing.getHouseholdId())));
+        if (identityInUse) {
+            throw new DuplicateIdentityException(
+                "an owner with the same identity key already exists");
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);

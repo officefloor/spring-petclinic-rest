@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = LocalityDeriver.class)
+@Mapper(uses = PetMapper.class, imports = {LocalityDeriver.class, IdentityKeyDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -34,6 +34,9 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "identityKey",
+        expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
+            + "owner.getEmail(), owner.getHouseholdId()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
