@@ -295,6 +295,38 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's stored E.164 {@code telephone} formatted for humans, derived on read: the
+     * leading {@code '+'} and country code, a space, then the national digits grouped in threes
+     * (e.g. {@code '+61 412 345 678'} for a stored {@code '+61412345678'}). The recognised
+     * country codes are {@code '+61'} (Australia) and {@code '+1'} (NANP); any other prefix falls
+     * back to a two-digit country code. The raw {@code telephone} is left in E.164 form.
+     *
+     * @return the human-formatted telephone, or the raw value when it is not in E.164 form
+     */
+    @Transient
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.startsWith("+")
+                || !this.telephone.substring(1).matches("[0-9]+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        String countryCode;
+        if (digits.startsWith("61")) {
+            countryCode = "61";
+        } else if (digits.startsWith("1")) {
+            countryCode = "1";
+        } else {
+            countryCode = digits.length() > 2 ? digits.substring(0, 2) : digits;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder display = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
+    }
+
+    /**
      * The owner's derived duplicate-detection key: the single consolidated identity used to
      * detect duplicate owners on create. It is formed as
      * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} from the
