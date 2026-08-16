@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
@@ -116,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateHousehold(ownerFieldsDto);
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
         normalizeEmail(ownerFieldsDto);
         defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
@@ -511,6 +513,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && collapse(owner.getAddress()).equals(address));
         if (duplicate) {
             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
+    }
+
+    /**
+     * The maximum number of owners permitted in a single city. A create is rejected once the
+     * owner's city already contains this many owners.
+     */
+    private static final long CITY_CAPACITY = 50;
+
+    /**
+     * Rejects a create whose {@code city} already contains {@link #CITY_CAPACITY} or more owners,
+     * compared case-insensitively (matching {@link #assignCustomerCode}). The count is taken
+     * before this owner is persisted.
+     *
+     * @param city the submitted city
+     * @throws CityAtCapacityException with a 409 status if the city is already at capacity
+     */
+    private void rejectCityAtCapacity(String city) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (count >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(city);
         }
     }
 
