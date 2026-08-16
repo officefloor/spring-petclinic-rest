@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
@@ -109,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validateRequiredFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateHousehold(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         defaultRegistrationDate(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
@@ -351,6 +353,47 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (duplicate) {
             throw new DuplicateTelephoneException(normalizedTelephone);
         }
+    }
+
+    /**
+     * Rejects a create whose {@code lastName} and {@code address} match those of an existing
+     * owner. Both fields are compared with {@link #collapse} — trimmed, internal whitespace
+     * runs collapsed to a single space, and case-insensitive — so differing spacing or casing
+     * still counts as the same household. The check is skipped when the request opts in via
+     * {@code sharesHousehold == true}, acknowledging that the new owner shares a household with
+     * the existing one.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws DuplicateHouseholdException with a 409 status if another owner already has the same
+     *                                     last name and address and the request did not opt in
+     */
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = collapse(ownerFieldsDto.getLastName());
+        String address = collapse(ownerFieldsDto.getAddress());
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .anyMatch(owner -> collapse(owner.getLastName()).equals(lastName)
+                && collapse(owner.getAddress()).equals(address));
+        if (duplicate) {
+            throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        }
+    }
+
+    /**
+     * Canonicalizes a value for household comparison: leading/trailing whitespace is trimmed,
+     * every internal run of whitespace is collapsed to a single space, and the result is
+     * lower-cased. A {@code null} value collapses to the empty string.
+     *
+     * @param value the value to canonicalize, possibly {@code null}
+     * @return the collapsed, lower-cased value
+     */
+    private static String collapse(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
