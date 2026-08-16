@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -219,8 +220,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(
-            customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
+        owner.setCustomerCode(deduplicateCustomerCode(
+            customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName())));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
@@ -432,6 +433,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String hash8 = sha256Hex8((telephone == null ? "" : telephone)
             + (lastName == null ? "" : lastName));
         return region + "-" + hash8;
+    }
+
+    /**
+     * De-duplicates a computed {@code customerCode} against the codes already assigned to existing
+     * owners. If {@code base} is not currently in use it is returned unchanged; otherwise
+     * {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that yields a code no
+     * existing owner holds (e.g. a second collision on {@code 'NSW-1A2B3C4D'} becomes
+     * {@code 'NSW-1A2B3C4D-2'}, a third {@code 'NSW-1A2B3C4D-3'}, and so on).
+     */
+    private String deduplicateCustomerCode(String base) {
+        Set<String> existing = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(code -> code != null)
+            .collect(Collectors.toSet());
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /** The first 8 upper-case hex characters (4 bytes) of the SHA-256 digest of {@code s}. */
