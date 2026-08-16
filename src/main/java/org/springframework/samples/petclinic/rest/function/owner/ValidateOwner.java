@@ -49,10 +49,24 @@ public class ValidateOwner {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        // Normalize the address before the required-field check, so an address that is blank
-        // only after normalization is rejected, and the normalized value is stored and returned.
-        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
-        if (isBlank(request.getAddress())) {
+        // Normalize whichever address fields are supplied (see AddressNormalizer). The structured
+        // form (addressLine1 + optional addressLine2) is preferred; the flat 'address' input remains
+        // accepted for backward compatibility. Normalizing before the required-field check means a
+        // value that is blank only after normalization is rejected. An owner is valid when it
+        // supplies an address in EITHER form: a non-blank addressLine1, or the flat address.
+        String addressLine1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String addressLine2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flatAddress = AddressNormalizer.normalize(request.getAddress());
+        request.setAddressLine1(addressLine1.isEmpty() ? null : addressLine1);
+        request.setAddressLine2(addressLine2.isEmpty() ? null : addressLine2);
+        // The stored/returned 'address' is the composed structured address when addressLine1 is
+        // present (normalized addressLine1, plus a single space and addressLine2 when present),
+        // otherwise the normalized flat address.
+        String address = !addressLine1.isEmpty()
+                ? AddressNormalizer.compose(addressLine1, addressLine2)
+                : flatAddress;
+        request.setAddress(address);
+        if (isBlank(address)) {
             missing.add("address");
         }
         if (isBlank(request.getCity())) {

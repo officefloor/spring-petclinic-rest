@@ -42,6 +42,18 @@ final class AddressNormalizer {
         return sb.toString();
     }
 
+    /**
+     * Compose the canonical stored address from the structured lines: the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended when
+     * that second line is present (non-blank after normalization). Both inputs are normalized here,
+     * so callers may pass the raw request values.
+     */
+    static String compose(String addressLine1, String addressLine2) {
+        String line1 = normalize(addressLine1);
+        String line2 = normalize(addressLine2);
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
+    }
+
     /** Expand a single whole-word abbreviation, or return the token unchanged. */
     private static String expand(String token) {
         switch (token) {

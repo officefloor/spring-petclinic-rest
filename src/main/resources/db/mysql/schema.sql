@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   postcode VARCHAR(4),
   birth_date DATE,
+  address_line1 VARCHAR(255),
+  address_line2 VARCHAR(255),
   INDEX(last_name)
 ) engine=InnoDB;
 
