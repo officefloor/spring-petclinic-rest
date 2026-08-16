@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
@@ -130,6 +131,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         defaultRegistrationDate(ownerFieldsDto);
         rejectDailyLimit(ownerFieldsDto.getRegistrationDate());
         normalizeEmail(ownerFieldsDto);
+        rejectDuplicateEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         assignCustomerCode(owner);
@@ -554,6 +556,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
+     * Rejects a create whose lower-cased email is already used by any existing owner. The
+     * submitted email has already been normalized (trimmed and lower-cased) by
+     * {@link #normalizeEmail}; each stored owner's email is lower-cased the same way before
+     * comparison so differing casing still counts as the same email. A {@code null} submitted
+     * email is skipped, since the field is optional.
+     *
+     * @param normalizedEmail the submitted, already-normalized (lower-cased) email, possibly
+     *                        {@code null}
+     * @throws DuplicateEmailException with a 409 status if another owner already uses the same
+     *                                 lower-cased email
+     */
+    private void rejectDuplicateEmail(String normalizedEmail) {
+        if (normalizedEmail == null) {
+            return;
+        }
+        boolean duplicate = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(email -> email != null)
+            .map(email -> email.toLowerCase(Locale.ROOT))
+            .anyMatch(normalizedEmail::equals);
+        if (duplicate) {
+            throw new DuplicateEmailException(normalizedEmail);
         }
     }
 
