@@ -32,6 +32,17 @@ public final class OwnerIdentity {
     }
 
     /**
+     * The owner's current <em>primary identifier</em> — the single externally-visible handle an owner
+     * is known by. Today that is the {@code customerCode}; this is the one place to change when the
+     * customer code is later unified into the {@code memberId}, so everything expressed through the
+     * primary identifier (e.g. the {@code OWNER_CREATED} structured event, see {@link OwnerCreatedEvent})
+     * follows automatically.
+     */
+    public static String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
+    }
+
+    /**
      * Assemble the identity key: the lower-case hex SHA-256 over the normalized telephone, lower-cased
      * email and Soundex of the last name, joined by {@code '|'}.
      */
