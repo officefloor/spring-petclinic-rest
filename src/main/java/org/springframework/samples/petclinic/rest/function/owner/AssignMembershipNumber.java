@@ -6,7 +6,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Assigns the owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>} where
  * customerCode is the owner's already-assigned customer code and YY is the last two digits of the
- * registrationDate year, zero-padded (e.g. {@code SMI-0007-M26}).
+ * registrationDate year, zero-padded (e.g. {@code SYD-SMI-0007-M26}).
  *
  * <p>Runs after {@link AssignCustomerCode} (which sets the customer code) and after
  * {@link BuildOwner} (which defaults the registration date), so both inputs are present.
