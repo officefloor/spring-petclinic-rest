@@ -75,6 +75,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. On a successful owner create a welcome notification is
+     * enqueued here carrying the new owner's id and its assigned {@code memberId}.
+     */
+    private static final org.slf4j.Logger NOTIFY = org.slf4j.LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Monotonically increasing sequence assigned to each structured {@code OWNER_CREATED} audit event,
      * so the immutable event stream carries a strictly increasing {@code seq} across creates.
      */
@@ -192,6 +198,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
         AUDIT.info(ownerCreatedEvent(owner, ownerDto));
+        NOTIFY.info("welcome notification enqueued ownerId={} memberId={}",
+            owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
