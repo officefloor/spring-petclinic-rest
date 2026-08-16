@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
@@ -126,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
         }
+        requireCityBelowCapacity(ownerFieldsDto.getCity());
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(normalizedTelephone);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
@@ -349,6 +351,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidFieldValueException("email", "Email must be a syntactically valid address");
         }
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    /** The maximum number of owners permitted in a single city; the {@code (50 + 1)}th is rejected. */
+    private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /**
+     * Rejects the request when the owner's city already contains {@link #MAX_OWNERS_PER_CITY} or more
+     * owners, comparing city names case-insensitively (consistent with the per-city customer-code
+     * sequence). Callers reach this only once {@code city} has been validated non-blank.
+     *
+     * @param city the incoming owner's city (already validated non-blank)
+     * @throws CityAtCapacityException if the city is already at or above its owner capacity
+     */
+    private void requireCityBelowCapacity(String city) {
+        long cityOwners = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (cityOwners >= MAX_OWNERS_PER_CITY) {
+            throw new CityAtCapacityException(city);
+        }
     }
 
     /**
