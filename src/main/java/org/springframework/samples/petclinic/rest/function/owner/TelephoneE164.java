@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  *
  * <p>Example: {@code "0412 345 678"} becomes {@code "+61412345678"}.
  */
-final class TelephoneE164 {
+public final class TelephoneE164 {
 
     /** Characters removed before interpreting the number: spaces, dashes and brackets. */
     private static final Pattern SEPARATORS = Pattern.compile("[\\s\\-()]");
@@ -77,5 +77,45 @@ final class TelephoneE164 {
             }
         }
         return "+" + digits;
+    }
+
+    /**
+     * Format a stored E.164 number for humans: the country code, a space, then the national
+     * digits grouped in threes (e.g. {@code "+61412345678"} becomes {@code "+61 412 345 678"}).
+     *
+     * <p>The country code is identified longest-prefix-first from the known codes; an unknown
+     * code falls back to its first two digits. Anything that is not an E.164 number (no leading
+     * {@code '+'} or non-digit body) is returned unchanged.
+     */
+    public static String display(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return e164;
+        }
+        String digits = e164.substring(1);
+        if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) {
+            return e164;
+        }
+        String code = null;
+        for (String candidate : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(candidate)) {
+                code = candidate;
+                break;
+            }
+        }
+        if (code == null) {
+            code = digits.length() > 2 ? digits.substring(0, 2) : digits;
+        }
+        String national = digits.substring(code.length());
+        if (national.isEmpty()) {
+            return "+" + code;
+        }
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + code + " " + grouped;
     }
 }
