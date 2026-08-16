@@ -27,6 +27,11 @@ public abstract class OwnerMapper {
     @Autowired
     protected OwnerRepository ownerRepository;
 
+    /** Household-aware membership points, called from the {@code membershipPoints} mapping expression. */
+    protected int membershipPoints(Owner owner) {
+        return MembershipLevel.points(owner, this.ownerRepository);
+    }
+
     /** Household-aware membership level, called from the {@code membershipLevel} mapping expression. */
     protected int membershipLevel(Owner owner) {
         return MembershipLevel.of(owner, this.ownerRepository);
@@ -38,6 +43,8 @@ public abstract class OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.display(owner.getTelephone()))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
