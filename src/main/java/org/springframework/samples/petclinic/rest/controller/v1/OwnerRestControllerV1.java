@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -29,6 +30,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
@@ -99,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        validateRequiredFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -187,6 +190,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(visitDto, headers, HttpStatus.CREATED);
     }
 
+
+    /**
+     * Rejects an owner whose mandatory fields ({@code firstName}, {@code lastName},
+     * {@code address}, {@code city}, {@code telephone}) are missing or blank. Bean
+     * Validation already rejects {@code null} values and the pattern-constrained fields
+     * when blank, but {@code address} and {@code city} have no pattern, so a
+     * whitespace-only value would otherwise slip through.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws RequiredFieldsMissingException if any required field is missing or blank
+     */
+    private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+        List<String> errors = new ArrayList<>();
+        requireText("firstName", ownerFieldsDto.getFirstName(), errors);
+        requireText("lastName", ownerFieldsDto.getLastName(), errors);
+        requireText("address", ownerFieldsDto.getAddress(), errors);
+        requireText("city", ownerFieldsDto.getCity(), errors);
+        requireText("telephone", ownerFieldsDto.getTelephone(), errors);
+        if (!errors.isEmpty()) {
+            throw new RequiredFieldsMissingException(errors);
+        }
+    }
+
+    private static void requireText(String field, String value, List<String> errors) {
+        if (value == null || value.isBlank()) {
+            errors.add(field);
+        }
+    }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
