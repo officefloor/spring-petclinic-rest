@@ -222,17 +222,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rolls a registration date forward onto a business day: a Saturday or Sunday is moved forward to
-     * the following Monday; a weekday is returned unchanged. This applies to the effective
-     * registration date whether it was supplied in the request or defaulted to the server date, and
-     * every value derived from the registration date uses the adjusted result.
+     * The fixed public holidays the business-day roll skips. A registration date landing on any of
+     * these dates is rolled forward, just as it is for a weekend.
+     */
+    private static final java.util.Set<java.time.LocalDate> PUBLIC_HOLIDAYS = java.util.Set.of(
+        java.time.LocalDate.parse("2026-01-01"),
+        java.time.LocalDate.parse("2026-01-26"),
+        java.time.LocalDate.parse("2026-04-25"),
+        java.time.LocalDate.parse("2026-12-25"),
+        java.time.LocalDate.parse("2026-12-28"));
+
+    /**
+     * Rolls a registration date forward onto a business day: a Saturday, Sunday or listed public
+     * holiday is moved forward to the next non-holiday weekday; an ordinary weekday is returned
+     * unchanged. This applies to the effective registration date whether it was supplied in the
+     * request or defaulted to the server date, and every value derived from the registration date
+     * uses the adjusted result.
      *
      * @param date the effective registration date
-     * @return {@code date} itself when it is a weekday, otherwise the following Monday
+     * @return {@code date} itself when it is a non-holiday weekday, otherwise the next business day
      */
     private java.time.LocalDate toBusinessDay(java.time.LocalDate date) {
         while (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
-            || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY
+            || PUBLIC_HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
