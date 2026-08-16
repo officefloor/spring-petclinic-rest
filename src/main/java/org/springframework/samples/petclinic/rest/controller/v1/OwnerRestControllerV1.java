@@ -27,8 +27,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -71,6 +73,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * @author Vitaliy Fedoriv
@@ -91,6 +95,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; carries owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Marker naming the structured audit event emitted when an owner is created. */
+    private static final String OWNER_CREATED_EVENT = "OWNER_CREATED";
+
+    /**
+     * Monotonically increasing sequence stamped onto each structured create event, so consumers
+     * can order events across creates. Shared across all creates handled by this application.
+     */
+    private static final AtomicLong CREATE_EVENT_SEQ = new AtomicLong();
+
+    /** Serializes structured audit events to compact JSON. */
+    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
 
     /** Request header carrying the client-supplied idempotency key for creates. */
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
@@ -298,6 +314,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             + "membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        emitOwnerCreatedEvent(owner, ownerDto);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -535,6 +552,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Emits the immutable structured {@code OWNER_CREATED} event to the {@code AUDIT} logger as a
+     * compact JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}}. {@code seq}
+     * is a process-wide monotonically increasing sequence across creates. The event carries the
+     * owner's current primary identifier via {@link #primaryIdentifier(Owner)} — the customerCode
+     * today, and whatever supersedes it later — so consumers always see the identifier in force.
+     */
+    private void emitOwnerCreatedEvent(Owner owner, OwnerDto ownerDto) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("seq", CREATE_EVENT_SEQ.incrementAndGet());
+        event.put("ownerId", owner.getId());
+        event.put("customerCode", primaryIdentifier(owner));
+        event.put("membershipLevel", ownerDto.getMembershipLevel());
+        event.put("event", OWNER_CREATED_EVENT);
+        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
+    }
+
+    /**
+     * The owner's current primary identifier carried by structured audit events. This is the single
+     * point that changes when the {@code customerCode} is unified into the {@code memberId}: today it
+     * returns the {@code customerCode}, and returning the {@code memberId} here later makes every
+     * event carry the {@code memberId} instead, with no other change required.
+     */
+    private static String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 
     /**
