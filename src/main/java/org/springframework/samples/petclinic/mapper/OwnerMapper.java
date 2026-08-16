@@ -46,6 +46,8 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.mapper.LocalityLookup.segmentFor(owner.getMembershipLevel(), owner.getPostcode(), owner.getCity())))")
     @Mapping(target = "selfLink",
         expression = "java(owner == null ? null : owner.getSelfLink())")
+    @Mapping(target = "riskFlag",
+        expression = "java(owner == null ? null : owner.getRiskFlag())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
