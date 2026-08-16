@@ -1,0 +1,107 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3a6cae70..2116aa45 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,7 +17,7 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
+-        AgeBandDeriver.class})
++        AgeBandDeriver.class, TelephoneDisplayDeriver.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -45,6 +45,8 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey",
+         expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
+             + "owner.getEmail(), owner.getHouseholdId()))")
++    @Mapping(target = "telephoneDisplay",
++        expression = "java(TelephoneDisplayDeriver.telephoneDisplay(owner.getTelephone()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplayDeriver.java b/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplayDeriver.java
+new file mode 100644
+index 00000000..295e9fe9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplayDeriver.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Formats an owner's stored E.164 telephone for human display.
++ *
++ * <p>{@link #telephoneDisplay(String)} keeps the raw E.164 value untouched and
++ * produces a grouped rendering: the {@code '+'} and country code, a space, then
++ * the national digits split into groups of three separated by spaces
++ * (e.g. {@code '+61412345678'} -> {@code '+61 412 345 678'}). The country code is
++ * the leading digits recognised for the supported countries ({@code '61'},
++ * {@code '1'}); anything else falls back to a single-digit country code so a
++ * best-effort grouping is still produced.
++ *
++ * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
++ * MapStruct does not mistake it for a generic {@code String -> String} mapping
++ * method and apply it to unrelated fields; the mapper references it only through
++ * an explicit expression.
++ */
++public final class TelephoneDisplayDeriver {
++
++    /** Country codes recognised when splitting an E.164 number into code + national digits. */
++    private static final String[] COUNTRY_CODES = {"61", "1"};
++
++    private TelephoneDisplayDeriver() {
++    }
++
++    /**
++     * Returns the E.164 {@code telephone} formatted as {@code '+<code> <ddd> <ddd> ...'}: the
++     * country code, a space, and the national digits grouped in threes. Returns the input
++     * unchanged when it is {@code null}, blank, or not a {@code '+'}-prefixed run of digits.
++     */
++    public static String telephoneDisplay(String telephone) {
++        if (telephone == null || telephone.isBlank()) {
++            return telephone;
++        }
++        if (!telephone.matches("\\+[0-9]+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        String code = countryCode(digits);
++        String national = digits.substring(code.length());
++        StringBuilder sb = new StringBuilder("+").append(code);
++        for (int i = 0; i < national.length(); i += 3) {
++            sb.append(' ').append(national, i, Math.min(i + 3, national.length()));
++        }
++        return sb.toString();
++    }
++
++    /** Returns the recognised country code prefixing {@code digits}, or its first digit otherwise. */
++    private static String countryCode(String digits) {
++        for (String code : COUNTRY_CODES) {
++            if (digits.startsWith(code) && digits.length() > code.length()) {
++                return code;
++            }
++        }
++        return digits.substring(0, 1);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index aa26ac46..918caaca 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2129,6 +2129,16 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone (display)
++              description: >-
++                The owner's stored E.164 telephone formatted for humans: the
++                country code, a space, then the national digits grouped in threes
++                and space-separated (e.g. '+61 412 345 678'). Derived from the
++                stored 'telephone'; the raw E.164 value remains in 'telephone'.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
