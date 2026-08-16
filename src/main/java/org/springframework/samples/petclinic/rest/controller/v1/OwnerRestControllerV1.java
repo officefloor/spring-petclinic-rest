@@ -259,17 +259,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "AVE", "AVENUE");
 
     /**
-     * Normalizes the submitted address on create and writes the canonical value back onto the
-     * request so it is persisted, echoed back, and used for every downstream address comparison
-     * (household duplicate detection and the household id). The value is trimmed, internal
-     * whitespace runs are collapsed to a single space, it is upper-cased, and common street-type
-     * abbreviations are expanded token-by-token (see {@link #ADDRESS_ABBREVIATIONS}). A
-     * {@code null} address is left untouched so the required-field check can report it as missing.
+     * Normalizes the submitted address on create, accepting either the structured form
+     * ({@code addressLine1} plus an optional {@code addressLine2}) or the flat {@code address}
+     * form retained for backward compatibility. Each supplied field is canonicalized the same way
+     * (trimmed, internal whitespace collapsed to a single space, upper-cased, and common
+     * street-type abbreviations expanded — see {@link #ADDRESS_ABBREVIATIONS}), and the normalized
+     * values are written back onto the request.
+     *
+     * <p>The structured fields are preferred when present: when a non-blank {@code addressLine1} is
+     * supplied, the flat {@code address} is set to the composed value — the normalized
+     * {@code addressLine1}, with a single space and the normalized {@code addressLine2} appended
+     * when an {@code addressLine2} is present — otherwise it keeps the normalized flat value. The
+     * composed {@code address} is therefore persisted, echoed back, and used by everything that
+     * reads the flat address. A blank/absent value in every form leaves {@code address} blank so the
+     * required-field check can report it as missing.
      *
      * @param ownerFieldsDto the submitted owner fields
      */
     private static void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        String addressLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        String flat = normalizeAddress(ownerFieldsDto.getAddress());
+        ownerFieldsDto.setAddressLine1(addressLine1);
+        ownerFieldsDto.setAddressLine2(addressLine2);
+        String composed;
+        if (addressLine1 != null && !addressLine1.isBlank()) {
+            composed = (addressLine2 != null && !addressLine2.isBlank())
+                ? addressLine1 + " " + addressLine2
+                : addressLine1;
+        }
+        else {
+            composed = flat;
+        }
+        ownerFieldsDto.setAddress(composed);
     }
 
     /**
