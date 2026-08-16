@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..57c1f2a0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,58 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++/**
++ * Normalizes a street address to a canonical stored form.
++ *
++ * <p>Rules: trim the ends, collapse every run of whitespace to a single space, upper-case the
++ * whole string, then expand common abbreviations as whole words: {@code ST -> STREET},
++ * {@code RD -> ROAD}, {@code AVE -> AVENUE}. Expansion is token-based, so an abbreviation embedded
++ * in a longer word (e.g. {@code STANMORE}) is left untouched. A {@code null} or all-whitespace
++ * input yields the empty string, which the required-field check treats as a blank address.
++ *
++ * <p>Example: {@code "  12  main  st "} becomes {@code "12 MAIN STREET"}.
++ */
++final class AddressNormalizer {
++
++    /** Any run of whitespace, collapsed to a single space. */
++    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
++
++    private AddressNormalizer() {
++    }
++
++    /** Convert to the canonical stored form; {@code null}/blank input yields {@code ""}. */
++    static String normalize(String raw) {
++        if (raw == null) {
++            return "";
++        }
++        String collapsed = WHITESPACE.matcher(raw.trim()).replaceAll(" ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(expand(tokens[i]));
++        }
++        return sb.toString();
++    }
++
++    /** Expand a single whole-word abbreviation, or return the token unchanged. */
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+index c651eeed..bb3da8b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHousehold.java
+@@ -28,13 +28,13 @@ public class AssignHousehold {
+             return;
+         }
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
++        String address = AddressNormalizer.normalize(owner.getAddress());
+         String householdId = householdId(lastName, address);
+         owner.setHouseholdId(householdId);
+         // Stamp existing members of the same household so both sides share the identifier.
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
+                     && !householdId.equals(existing.getHouseholdId())) {
+                 existing.setHouseholdId(householdId);
+                 ownerRepository.save(existing);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+index 9275fcaa..9363a1da 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckHouseholdUnique.java
+@@ -24,10 +24,10 @@ public class CheckHouseholdUnique {
+             return;
+         }
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(existing.getLastName()))
+-                    && address.equals(normalize(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index 736354ad..4787e36a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
+  * invalid body is a 400 (listing the offending field names) even when the owner does not exist.
+  * Also normalizes the telephone to E.164 form (see {@link TelephoneE164}), publishing the
+  * normalized value so it is stored and returned as {@code telephone}.
++ * The address is normalized (see {@link AddressNormalizer}) before the required-field check, so a
++ * value that is blank only after normalization is rejected, and the normalized form is stored and
++ * returned as {@code address}.
+  * The optional email is accepted when absent; when present it must be a syntactically valid
+  * address (else 400) and is lower-cased so it is stored and returned as {@code email}.
+  * Runs before {@link LoadOwner}/{@link BuildOwner} and publishes the body for later steps.
+@@ -34,6 +37,9 @@ public class ValidateOwner {
+         if (isBlank(request.getLastName())) {
+             missing.add("lastName");
+         }
++        // Normalize the address before the required-field check, so an address that is blank
++        // only after normalization is rejected, and the normalized value is stored and returned.
++        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+         if (isBlank(request.getAddress())) {
+             missing.add("address");
+         }
