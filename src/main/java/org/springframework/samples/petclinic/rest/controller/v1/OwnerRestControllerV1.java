@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidFieldValueException;
@@ -150,7 +151,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         ownerFieldsDto.setTelephone(normalizedTelephone);
         if (ownerFieldsDto.getEmail() != null) {
-            ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+            String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
+            requireUniqueEmail(normalizedEmail);
+            ownerFieldsDto.setEmail(normalizedEmail);
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -480,6 +483,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(normalizedTelephone::equals);
         if (taken) {
             throw new DuplicateTelephoneException(normalizedTelephone);
+        }
+    }
+
+    /**
+     * Rejects the request when {@code normalizedEmail} is already used by any existing owner,
+     * comparing on the lower-cased email so differently-cased stored addresses still collide.
+     *
+     * @param normalizedEmail the incoming owner's normalized (lower-cased) email
+     * @throws DuplicateEmailException if another owner already uses this email
+     */
+    private void requireUniqueEmail(String normalizedEmail) {
+        boolean taken = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(existing -> existing != null)
+            .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
+            .anyMatch(normalizedEmail::equals);
+        if (taken) {
+            throw new DuplicateEmailException(normalizedEmail);
         }
     }
 
