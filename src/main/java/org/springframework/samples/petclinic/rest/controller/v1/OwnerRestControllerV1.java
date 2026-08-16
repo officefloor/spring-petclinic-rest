@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -141,11 +142,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
-        LocalDate today = LocalDate.now();
-        long registeredToday = this.clinicService.findAllOwners().stream()
-            .filter(existing -> today.equals(existing.getRegistrationDate()))
+        LocalDate registrationDate = toBusinessDay(
+            ownerFieldsDto.getRegistrationDate() != null
+                ? ownerFieldsDto.getRegistrationDate()
+                : LocalDate.now());
+        long registeredOnDay = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
-        if (registeredToday >= 100) {
+        if (registeredOnDay >= 100) {
             throw new DailyRegistrationLimitException(
                 "100 or more owners have already been registered today");
         }
@@ -190,9 +194,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -299,6 +301,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Rolls a registration date forward to the next business day: when it falls on a Saturday or
+     * Sunday it is advanced to the following Monday; a weekday is returned unchanged. This is applied
+     * to the effective registration date (whether supplied in the request or defaulted to the server
+     * date), so every value derived from the registration date sees the adjusted business day.
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            date = date.plusDays(1);
+        }
+        return date;
     }
 
     /**
