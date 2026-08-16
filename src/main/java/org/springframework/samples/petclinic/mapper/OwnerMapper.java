@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
+    @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "toMembershipTier")
     OwnerDto toOwnerDto(Owner owner);
 
     /**
@@ -58,6 +59,20 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+    }
+
+    /**
+     * Returns the owner's membership tier: {@code 'SILVER'} when the owner has no namesakes
+     * ({@code namesakeCount} is 0) and a non-blank email is present, otherwise {@code 'BRONZE'}.
+     */
+    @Named("toMembershipTier")
+    default String toMembershipTier(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return noNamesakes && hasEmail ? "SILVER" : "BRONZE";
     }
 
     private static String initial(String name) {
