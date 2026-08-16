@@ -17,8 +17,8 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when a new owner shares the same last name and address (compared case-insensitively
- * with collapsed whitespace) as an existing owner and the request did not opt in via the
+ * Thrown when a new owner shares the same household as an existing owner (the household being
+ * keyed on the normalized last name and the postcode) and the request did not opt in via the
  * {@code sharesHousehold} flag. {@link ExceptionControllerAdvice} reports it back to the client
  * as a 409 Conflict response.
  */
