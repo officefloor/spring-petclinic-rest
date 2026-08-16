@@ -45,6 +45,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -152,9 +153,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new MissingOwnerFieldsException(missingFields);
         }
         validatePostcode(ownerFieldsDto.getCity(), ownerFieldsDto.getPostcode());
+        LocalDate suppliedRegistrationDate = ownerFieldsDto.getRegistrationDate();
+        if (suppliedRegistrationDate != null && suppliedRegistrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(
+                "registrationDate must not be later than the server date");
+        }
         LocalDate registrationDate = toBusinessDay(
-            ownerFieldsDto.getRegistrationDate() != null
-                ? ownerFieldsDto.getRegistrationDate()
+            suppliedRegistrationDate != null
+                ? suppliedRegistrationDate
                 : LocalDate.now());
         long registeredOnDay = this.clinicService.findAllOwners().stream()
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))

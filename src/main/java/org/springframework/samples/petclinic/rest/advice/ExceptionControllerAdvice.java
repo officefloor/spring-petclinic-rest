@@ -309,4 +309,18 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("errors", List.of("registrationDate")));
     }
 
+    /**
+     * Handles {@link FutureRegistrationDateException} raised when an owner supplies a
+     * {@code registrationDate} that is later than the server's current date. Returns a 400 Bad
+     * Request whose {@code errors} array names the offending {@code registrationDate} field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleFutureRegistrationDateException(FutureRegistrationDateException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", List.of("registrationDate")));
+    }
+
 }
