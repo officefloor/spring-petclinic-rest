@@ -71,7 +71,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. On successful owner create an audit line is emitted here carrying
-     * the newly assigned owner id, customer code and registration date.
+     * the newly assigned owner id, customer code, registration date and membership level.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -139,8 +139,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignMembershipNumber(owner);
         assignBulkSignupWarning(owner);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -467,8 +467,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * {@code lastName} and {@code address} (see {@link #assignHouseholdId}), the count reflects every
      * owner registered to the same household, including those who joined via {@code sharesHousehold}.
      * The count is taken before this owner is persisted, so it is one more than the number of
-     * existing household members. It underpins the {@code GOLD} membership tier, which applies once
-     * the household reaches three or more members.
+     * existing household members.
      *
      * @param owner the owner being created (with its {@code householdId} already assigned)
      */
