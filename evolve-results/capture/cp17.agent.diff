@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+new file mode 100644
+index 00000000..8eedb829
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+@@ -0,0 +1,34 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's {@code locality} from its city using a fixed city-to-region
++ * table. Kept out of the mapper interface deliberately: MapStruct treats any
++ * single-argument method on a {@code @Mapper} interface as a candidate mapping
++ * method, so a {@code String -> String} helper there would be applied to every
++ * String property. This static lookup is referenced only from an explicit
++ * mapping expression instead.
++ */
++public final class LocalityLookup {
++
++    /** City -> canonical region; an exact, case-sensitive mapping. */
++    private static final Map<String, String> CITY_REGION = Map.of(
++        "Sydney", "NSW",
++        "Melbourne", "VIC",
++        "Brisbane", "QLD");
++
++    private LocalityLookup() {
++    }
++
++    /**
++     * Returns the canonical region for {@code city} from the fixed table, or
++     * {@code 'UNKNOWN'} when the city is not in the table.
++     *
++     * @param city the owner's city, possibly {@code null}
++     * @return the canonical region, or {@code 'UNKNOWN'} if the city is unknown
++     */
++    public static String regionFor(String city) {
++        return CITY_REGION.getOrDefault(city, "UNKNOWN");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7a4b39cc..5061cbea 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier",
+         expression = "java(owner == null ? null : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE))")
++    @Mapping(target = "locality",
++        expression = "java(owner == null ? null : org.springframework.samples.petclinic.mapper.LocalityLookup.regionFor(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 75d0186e..e13fa5d5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2152,6 +2152,15 @@ components:
+                 - BRONZE
+               example: 'SILVER'
+               readOnly: true
++            locality:
++              title: Locality
++              description: >-
++                The canonical region derived from the owner's city using a fixed
++                city-to-region table (Sydney->NSW, Melbourne->VIC,
++                Brisbane->QLD), or 'UNKNOWN' when the city is not in the table.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
