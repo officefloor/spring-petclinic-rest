@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Binds the owner body and rejects it when any required field is missing or blank, so an
  * invalid body is a 400 (listing the offending field names) even when the owner does not exist.
- * Also normalizes the telephone by stripping every non-digit character and requires exactly
- * 10 digits, publishing the normalized value so it is stored and returned as {@code telephone}.
+ * Also normalizes the telephone to E.164 form (see {@link TelephoneE164}), publishing the
+ * normalized value so it is stored and returned as {@code telephone}.
  * The optional email is accepted when absent; when present it must be a syntactically valid
  * address (else 400) and is lower-cased so it is stored and returned as {@code email}.
  * Runs before {@link LoadOwner}/{@link BuildOwner} and publishes the body for later steps.
@@ -46,12 +46,12 @@ public class ValidateOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        // Normalize telephone: strip every non-digit, then require exactly 10 digits.
-        String digits = request.getTelephone().replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        // Normalize telephone to E.164; reject anything that cannot form a valid number.
+        String e164 = TelephoneE164.normalize(request.getTelephone());
+        if (e164 == null) {
             throw new InvalidTelephoneException(request.getTelephone());
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
         // Email is optional. When present it must be syntactically valid; store it lower-cased.
         String email = request.getEmail();
         if (email != null && !email.isBlank()) {

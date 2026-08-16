@@ -7,10 +7,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
 
 /**
- * Rejects creating an owner whose normalized telephone is already used by any other owner,
+ * Rejects creating an owner whose E.164 telephone is already used by any other owner,
  * so the create endpoint responds 409 instead of storing a duplicate. Runs after
- * {@link ValidateOwner} (which publishes the telephone normalized to 10 digits) and before
- * {@link BuildOwner}, comparing against every existing owner's normalized telephone.
+ * {@link ValidateOwner} (which publishes the telephone normalized to E.164) and before
+ * {@link BuildOwner}, comparing against every existing owner's telephone in E.164 form.
  */
 public class CheckTelephoneUnique {
 
@@ -25,6 +25,7 @@ public class CheckTelephoneUnique {
     }
 
     private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+        String e164 = TelephoneE164.normalize(telephone);
+        return e164 == null ? "" : e164;
     }
 }
