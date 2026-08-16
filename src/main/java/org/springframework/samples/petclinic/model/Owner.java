@@ -23,7 +23,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -269,12 +268,42 @@ public class Owner extends Person {
     }
 
     /**
+     * The fiscal year that a date falls in, on a fiscal year that starts on 1 July: a date on or
+     * after 1 July belongs to the fiscal year named for the following calendar year, and a date
+     * before 1 July belongs to the fiscal year named for its own calendar year (e.g. both
+     * 2026-07-01 and 2027-06-30 fall in fiscal year 2027).
+     *
+     * @param date the date to classify
+     * @return the fiscal year number
+     */
+    public static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, derived on read from the (business-day-adjusted)
+     * {@code registrationDate} on a fiscal year that starts on 1 July, formatted {@code 'FY<YY>'}
+     * where YY is the last two digits of the fiscal year, zero-padded (e.g. a registration date of
+     * 2026-08-16 yields {@code 'FY27'}).
+     *
+     * @return the fiscal year, or {@code null} when no {@code registrationDate} is set
+     */
+    @Transient
+    public String getFiscalYear() {
+        if (this.registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(this.registrationDate) % 100);
+    }
+
+    /**
      * The owner's membership points, derived on read from the fields assigned at create. Points
      * start at 0 and accumulate: 2 when an email is present, 1 when {@code namesakeCount} is 0,
      * 2 when the household has 3 or more members ({@code householdMemberCount} of 3 or more), and
-     * 3 when the owner's tenure exceeds 365 days. Tenure is the number of whole days between the
-     * {@code registrationDate} and the current date. Because a newly created owner has zero tenure,
-     * the tenure points are only earned once the owner's tenure passes 365 days.
+     * 3 when the owner's tenure spans at least one elapsed fiscal year. Tenure is the number of
+     * fiscal years (which start on 1 July) elapsed between the {@code registrationDate} and the
+     * current date. Because a newly created owner has zero tenure, the tenure points are only
+     * earned once the owner has entered a later fiscal year than the one they registered in.
      *
      * @return the membership points, 0 or more
      */
@@ -291,7 +320,7 @@ public class Owner extends Person {
             points += 2;
         }
         if (this.registrationDate != null
-                && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+                && fiscalYearOf(LocalDate.now()) - fiscalYearOf(this.registrationDate) >= 1) {
             points += 3;
         }
         return points;
@@ -301,7 +330,7 @@ public class Owner extends Person {
      * The owner's numeric membership level, derived on read by mapping {@link #getMembershipPoints}
      * to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
      * Because a newly created owner has zero tenure, level 4 (which requires the tenure points) is
-     * reached only once the owner's tenure passes 365 days.
+     * reached only once the owner has entered a later fiscal year than the one they registered in.
      *
      * @return the membership level, from 1 to 4
      */

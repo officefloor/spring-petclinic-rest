@@ -691,15 +691,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assigns the owner's {@code membershipNumber} on create, formatted
      * {@code '<customerCode>-M<YY>'} where customerCode is the owner's already-assigned customer
-     * code and YY is the last two digits of the {@code registrationDate} year, zero-padded
-     * (e.g. {@code 'NSW-A1B2C3D4-M26'}). Derived purely from the owner's own fields, so both
+     * code and YY is the last two digits of the {@code registrationDate}'s fiscal year (which
+     * starts on 1 July), zero-padded (e.g. {@code 'NSW-A1B2C3D4-M27'}). The YY segment therefore
+     * matches the owner's {@code fiscalYear}. Derived purely from the owner's own fields, so both
      * {@link #assignCustomerCode} and {@link #defaultRegistrationDate} must run first.
      *
      * @param owner the owner being created (with its {@code customerCode} and
      *              {@code registrationDate} already set)
      */
     private void assignMembershipNumber(Owner owner) {
-        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String yy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
     }
 
