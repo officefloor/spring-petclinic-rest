@@ -98,6 +98,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; carries owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; carries the welcome notification enqueued on create. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Marker naming the structured audit event emitted when an owner is created. */
     private static final String OWNER_CREATED_EVENT = "OWNER_CREATED";
 
@@ -322,6 +325,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
         emitOwnerCreatedEvent(owner, ownerDto);
+        // Enqueue a welcome notification for the newly created owner: emit a NOTIFY line carrying
+        // the owner's id and memberId so the notification pipeline can address the welcome.
+        NOTIFY.info("welcome notification enqueued: ownerId={} memberId={}",
+            owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
