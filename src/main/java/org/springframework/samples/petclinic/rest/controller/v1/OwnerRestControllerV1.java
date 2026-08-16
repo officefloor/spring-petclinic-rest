@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -125,7 +126,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        if (isBlank(ownerFieldsDto.getAddress())) {
+        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        if (isBlank(normalizedAddress)) {
             missingFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -137,11 +139,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
+        ownerFieldsDto.setAddress(normalizedAddress);
         String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
-        String address = normalizeHousehold(ownerFieldsDto.getAddress());
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
             .filter(existing -> lastName.equals(normalizeHousehold(existing.getLastName()))
-                && address.equals(normalizeHousehold(existing.getAddress())))
+                && normalizedAddress.equals(normalizeAddress(existing.getAddress())))
             .toList();
         String householdId = null;
         if (!householdMembers.isEmpty()) {
@@ -151,7 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             // Joining an existing household: share a stable identifier with every member,
             // backfilling any members created before the household was formed.
-            householdId = householdId(lastName, address);
+            householdId = householdId(lastName, normalizedAddress);
             for (Owner member : householdMembers) {
                 if (!householdId.equals(member.getHouseholdId())) {
                     member.setHouseholdId(householdId);
@@ -281,12 +283,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes a value for household-duplicate comparison: leading and trailing whitespace is
+     * Normalizes a last name for household-duplicate comparison: leading and trailing whitespace is
      * trimmed, every internal run of whitespace is collapsed to a single space, and the result is
-     * lower-cased so that last names and addresses are compared case-insensitively.
+     * lower-cased so that last names are compared case-insensitively.
      */
     private static String normalizeHousehold(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** Common street-type abbreviations expanded to their canonical full form during normalization. */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS =
+        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+
+    /**
+     * Normalizes an address to its canonical stored form: leading and trailing whitespace is
+     * trimmed, every internal run of whitespace is collapsed to a single space, the result is
+     * upper-cased, and common street-type abbreviations are expanded token-by-token
+     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). A {@code null} or
+     * whitespace-only value normalizes to the empty string. This form is both stored/returned and
+     * used for every address comparison (household-duplicate detection and the shared household id).
+     */
+    private static String normalizeAddress(String value) {
+        if (value == null) {
+            return "";
+        }
+        String collapsed = value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
     }
 
     /**
