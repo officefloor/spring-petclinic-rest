@@ -50,7 +50,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
-            + "owner.getEmail(), owner.getNamesakeCount()))")
+            + "owner.getEmail(), owner.getNamesakeCount(), owner.getRegistrationDate()))")
     @Mapping(target = "locality",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Localities.region("
