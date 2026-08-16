@@ -23,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
-        expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+        expression = "java(deriveLocality(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",
@@ -39,6 +39,28 @@ public interface OwnerMapper {
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+
+    /**
+     * Derives the owner's locality (region). Prefers the postcode: a four-digit postcode is
+     * mapped by inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). When the postcode
+     * is absent or in no known range, falls back to the city-to-region table
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), otherwise "UNKNOWN". Preferring the postcode
+     * returns the same region for known cities but disambiguates cities that share a name.
+     */
+    default String deriveLocality(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode != null && postcode.matches("[0-9]{4}")) {
+            int value = Integer.parseInt(postcode);
+            if (value >= 2000 && value <= 2099) return "NSW";
+            if (value >= 3000 && value <= 3099) return "VIC";
+            if (value >= 4000 && value <= 4099) return "QLD";
+        }
+        String city = owner.getCity();
+        if ("Sydney".equals(city)) return "NSW";
+        if ("Melbourne".equals(city)) return "VIC";
+        if ("Brisbane".equals(city)) return "QLD";
+        return "UNKNOWN";
+    }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
         OwnerPageDto ownerPageDto = new OwnerPageDto();
