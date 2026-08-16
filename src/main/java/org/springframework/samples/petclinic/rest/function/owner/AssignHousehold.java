@@ -28,13 +28,13 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         String householdId = householdId(lastName, address);
         owner.setHouseholdId(householdId);
         // Stamp existing members of the same household so both sides share the identifier.
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
                     && !householdId.equals(existing.getHouseholdId())) {
                 existing.setHouseholdId(householdId);
                 ownerRepository.save(existing);

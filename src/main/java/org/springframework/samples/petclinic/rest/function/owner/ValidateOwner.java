@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * invalid body is a 400 (listing the offending field names) even when the owner does not exist.
  * Also normalizes the telephone to E.164 form (see {@link TelephoneE164}), publishing the
  * normalized value so it is stored and returned as {@code telephone}.
+ * The address is normalized (see {@link AddressNormalizer}) before the required-field check, so a
+ * value that is blank only after normalization is rejected, and the normalized form is stored and
+ * returned as {@code address}.
  * The optional email is accepted when absent; when present it must be a syntactically valid
  * address (else 400) and is lower-cased so it is stored and returned as {@code email}.
  * Runs before {@link LoadOwner}/{@link BuildOwner} and publishes the body for later steps.
@@ -34,6 +37,9 @@ public class ValidateOwner {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
+        // Normalize the address before the required-field check, so an address that is blank
+        // only after normalization is rejected, and the normalized value is stored and returned.
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
         if (isBlank(request.getAddress())) {
             missing.add("address");
         }
