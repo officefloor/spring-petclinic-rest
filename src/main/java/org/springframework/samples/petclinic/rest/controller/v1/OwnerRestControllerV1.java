@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -56,6 +58,12 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Basic syntactic email check: a non-empty local part, an '@', and a domain containing at least
+     * one dot, with no whitespace anywhere. Deliberately permissive but requires the essential shape.
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final ClinicService clinicService;
 
@@ -115,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         requireUniqueTelephone(normalizedTelephone);
         ownerFieldsDto.setTelephone(normalizedTelephone);
+        if (ownerFieldsDto.getEmail() != null) {
+            ownerFieldsDto.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -242,6 +253,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 "Telephone must contain exactly 10 digits after removing non-digit characters");
         }
         return digits;
+    }
+
+    /**
+     * Validates and normalizes an owner's email address. A syntactically valid address is required;
+     * the value is returned lower-cased so it is stored and echoed back in canonical form.
+     *
+     * @param email the raw email value from the request (already known to be non-null)
+     * @return the lower-cased email to be stored and returned
+     * @throws InvalidFieldValueException if the value is not a syntactically valid email address
+     */
+    private static String normalizeEmail(String email) {
+        String trimmed = email.trim();
+        if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+            throw new InvalidFieldValueException("email", "Email must be a syntactically valid address");
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
     }
 
     /**
