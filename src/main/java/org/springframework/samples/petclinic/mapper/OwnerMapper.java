@@ -84,6 +84,15 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.AgeBands.ageBand("
             + "owner.getBirthDate(), owner.getRegistrationDate()))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.OwnerSegments.ownerSegment("
+            + "(owner.getMembershipLevel() != null ? owner.getMembershipLevel() : "
+            + "org.springframework.samples.petclinic.util.Memberships.membershipLevel("
+            + "owner.getEmail(), owner.getNamesakeCount(), owner.getHouseholdSize(), "
+            + "owner.getRegistrationDate())), "
+            + "org.springframework.samples.petclinic.util.Localities.region("
+            + "owner.getPostcode(), owner.getCity())))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

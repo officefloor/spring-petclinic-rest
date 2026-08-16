@@ -1,0 +1,59 @@
+/*
+ * Copyright 2016-2017 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.util;
+
+import java.util.Set;
+
+/**
+ * Helpers for the marketing "segment" a pet owner falls into, a {@code '<TIER>_<AREA>'} label
+ * combining the owner's membership tier with the metro/regional classification of their locality.
+ */
+public final class OwnerSegments {
+
+    /**
+     * The membership level (inclusive) at or above which an owner is in the {@code PREMIUM} tier;
+     * below it the owner is {@code STANDARD}.
+     */
+    public static final int PREMIUM_LEVEL = 3;
+
+    /**
+     * The known regions (see {@link Localities}) whose owners are classified {@code METRO}; any other
+     * locality (including {@code UNKNOWN}) is {@code REGIONAL}.
+     */
+    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
+
+    private OwnerSegments() {
+    }
+
+    /**
+     * Computes an owner's segment as {@code '<TIER>_<AREA>'}: one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. The tier is
+     * {@code 'PREMIUM'} when {@code membershipLevel} is {@value #PREMIUM_LEVEL} or more, otherwise
+     * {@code 'STANDARD'}. The area is {@code 'METRO'} when the locality is a known region
+     * ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code 'REGIONAL'}.
+     *
+     * @param membershipLevel the owner's effective membership level
+     * @param locality        the owner's locality (see
+     *                        {@link Localities#region(String, String)})
+     * @return the owner segment label
+     */
+    public static String ownerSegment(int membershipLevel, String locality) {
+        String tier = membershipLevel >= PREMIUM_LEVEL ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+}
