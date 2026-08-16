@@ -226,6 +226,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new CityAtCapacityException(
                 "the owner's city already contains 50 or more owners");
         }
+        // Soft warning as the city approaches its hard capacity of 50: flag owners created while
+        // their city already holds between 40 and 49 owners. Computed on create and returned
+        // unchanged thereafter.
+        boolean capacityWarning = ownersInCity >= 40;
         String telephone = toE164(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
@@ -283,6 +287,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
+        owner.setCapacityWarning(capacityWarning);
         // Household size after this create: existing members plus the owner being created.
         owner.setHouseholdSize(householdMembers.size() + 1);
         // Level-ceiling: the new owner's membership level cannot exceed one above the current
