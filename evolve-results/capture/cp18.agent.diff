@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+new file mode 100644
+index 00000000..2bdb86a0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityAtCapacityException.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when a new owner cannot be created because the owner's city already contains 50 or more
++ * owners. {@link ExceptionControllerAdvice} reports it back to the client as a 409 Conflict
++ * response.
++ */
++public class CityAtCapacityException extends RuntimeException {
++
++    public CityAtCapacityException(String message) {
++        super(message);
++    }
++
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a79eed50..fc3b9366 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -238,4 +238,18 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("lastName", "address")));
+     }
+ 
++    /**
++     * Handles {@link CityAtCapacityException} raised when a new owner's city already contains 50 or
++     * more owners. Returns a 409 Conflict whose {@code errors} array names the offending
++     * {@code city} field.
++     *
++     * @param e The {@link CityAtCapacityException} to be handled
++     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
++     */
++    @ExceptionHandler(CityAtCapacityException.class)
++    @ResponseBody
++    public ResponseEntity<Map<String, Object>> handleCityAtCapacityException(CityAtCapacityException e) {
++        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("city")));
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 53a7416c..a38758ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+@@ -139,6 +140,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new MissingOwnerFieldsException(missingFields);
+         }
++        String city = ownerFieldsDto.getCity();
++        long ownersInCity = this.clinicService.findAllOwners().stream()
++            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
++            .count();
++        if (ownersInCity >= 50) {
++            throw new CityAtCapacityException(
++                "the owner's city already contains 50 or more owners");
++        }
+         ownerFieldsDto.setAddress(normalizedAddress);
+         String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
+         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
