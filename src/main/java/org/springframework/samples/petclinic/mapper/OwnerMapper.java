@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
-        AgeBandDeriver.class, TelephoneDisplayDeriver.class})
+        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -30,13 +30,11 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipPoints",
+        expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(4, 1 "
-            + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
-            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0) "
-            + "+ ((owner.getRegistrationDate() != null "
-            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), "
-            + "java.time.LocalDate.now()) > 365) ? 1 : 0)))")
+        expression = "java(MembershipPointsDeriver.membershipLevel("
+            + "MembershipPointsDeriver.membershipPoints(owner)))")
     @Mapping(target = "locality",
         expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
