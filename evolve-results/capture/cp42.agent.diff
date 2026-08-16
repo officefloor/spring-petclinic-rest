@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9ad8f6f4..33f6ac40 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,8 @@ public interface OwnerMapper {
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "locality",
+         expression = "java(deriveLocality(owner))")
++    @Mapping(target = "timezone",
++        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTimezone.fromRegion(deriveLocality(owner)))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java
+new file mode 100644
+index 00000000..0d67908b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Derives an owner's IANA timezone name from the locality/region code using a fixed
++ * region-to-timezone table (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne,
++ * QLD-&gt;Australia/Brisbane).
++ *
++ * <p>Returns {@code null} when the region is absent or not one of the pinned regions, so the
++ * {@code timezone} field is simply absent from the response for such owners.
++ */
++public final class OwnerTimezone {
++
++    private OwnerTimezone() {
++    }
++
++    /** IANA timezone for the region, or {@code null} when the region is not in the table. */
++    public static String fromRegion(String region) {
++        if (region == null) {
++            return null;
++        }
++        switch (region) {
++            case "NSW":
++                return "Australia/Sydney";
++            case "VIC":
++                return "Australia/Melbourne";
++            case "QLD":
++                return "Australia/Brisbane";
++            default:
++                return null;
++        }
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c9d11d7b..31b33c71 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2188,6 +2188,14 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: The IANA timezone name derived from the locality/region using a fixed
++                region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane). Absent when the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The preferred contact channel, derived from the owner's details.
