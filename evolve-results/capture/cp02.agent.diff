@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 756f7e76..5b8dd1ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,6 +102,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         validateRequiredFields(ownerFieldsDto);
++        normalizeTelephone(ownerFieldsDto);
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+@@ -219,6 +220,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+     }
+ 
++    /**
++     * Normalizes the submitted telephone on create by stripping every non-digit character,
++     * then requires the result to contain exactly 10 digits. The stripped, 10-digit value is
++     * written back onto the request so it is persisted and echoed back verbatim.
++     *
++     * @param ownerFieldsDto the submitted owner fields
++     * @throws RequiredFieldsMissingException with a 400 status if the telephone does not
++     *                                        contain exactly 10 digits once stripped
++     */
++    private static void normalizeTelephone(OwnerFieldsDto ownerFieldsDto) {
++        String telephone = ownerFieldsDto.getTelephone();
++        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
++        if (digits.length() != 10) {
++            throw new RequiredFieldsMissingException(List.of("telephone"));
++        }
++        ownerFieldsDto.setTelephone(digits);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<PetDto> getOwnersPet(Integer ownerId, Integer petId) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1e660a76..38ec3ef7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,11 +2025,13 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. On create the value is
++            normalized by removing every non-digit character and must contain
++            exactly 10 digits once stripped.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+           example: '6085551023'
+       required:
+         - firstName
