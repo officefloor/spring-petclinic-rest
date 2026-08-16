@@ -38,6 +38,38 @@ public final class CityRegion {
     }
 
     /**
+     * The canonical region, preferring the {@code postcode}: the region whose range contains the
+     * postcode is returned first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). Only when the
+     * postcode is absent, non-numeric or in no known range does this fall back to the city-to-region
+     * table. Returns {@code "UNKNOWN"} when neither yields a region.
+     */
+    public static String localityOf(String city, String postcode) {
+        String byPostcode = regionForPostcode(postcode);
+        return byPostcode != null ? byPostcode : localityOf(city);
+    }
+
+    /** The region whose inclusive range contains {@code postcode}, or {@code null} when none does. */
+    private static String regionForPostcode(String postcode) {
+        if (postcode == null) {
+            return null;
+        }
+        int value;
+        try {
+            value = Integer.parseInt(postcode.trim());
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * The inclusive {@code {low, high}} postcode range for {@code city}'s region, or {@code null}
      * when the city has no known region (in which case any 4-digit postcode is accepted).
      */
