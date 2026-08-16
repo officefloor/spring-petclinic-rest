@@ -16,11 +16,13 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -135,15 +137,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
-            String address = normalizeHousehold(ownerFieldsDto.getAddress());
-            boolean householdInUse = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> lastName.equals(normalizeHousehold(existing.getLastName()))
-                    && address.equals(normalizeHousehold(existing.getAddress())));
-            if (householdInUse) {
+        String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
+        String address = normalizeHousehold(ownerFieldsDto.getAddress());
+        List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> lastName.equals(normalizeHousehold(existing.getLastName()))
+                && address.equals(normalizeHousehold(existing.getAddress())))
+            .toList();
+        String householdId = null;
+        if (!householdMembers.isEmpty()) {
+            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
                 throw new DuplicateHouseholdException(
                     "an owner with the same last name and address already exists");
+            }
+            // Joining an existing household: share a stable identifier with every member,
+            // backfilling any members created before the household was formed.
+            householdId = householdId(lastName, address);
+            for (Owner member : householdMembers) {
+                if (!householdId.equals(member.getHouseholdId())) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
             }
         }
         String telephone = toE164(ownerFieldsDto.getTelephone());
@@ -161,6 +174,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setHouseholdId(householdId);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -273,6 +287,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static String normalizeHousehold(String value) {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Derives the stable {@code householdId} shared by all owners in a household. It is a
+     * deterministic function of the normalized last name and address, so every owner that
+     * shares those values maps to the same identifier regardless of creation order.
+     */
+    private static String householdId(String normalizedLastName, String normalizedAddress) {
+        String key = normalizedLastName + "\n" + normalizedAddress;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     /**
