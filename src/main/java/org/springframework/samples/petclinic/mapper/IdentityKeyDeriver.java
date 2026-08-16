@@ -8,11 +8,13 @@ import java.security.NoSuchAlgorithmException;
  * Derives an owner's identity key, the single value used for duplicate detection.
  *
  * <p>The key is the lower-case SHA-256 hex digest (64 characters) over
- * {@code '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}, built from the
- * owner's normalized E.164 telephone, lower-cased email and the Soundex code of the
- * last name. A {@code null} telephone or email contributes an empty string, so the
- * pre-hash input always has the same {@code a|b|c} shape. Two owners are duplicates
- * only when their whole keys are equal.
+ * {@code 'V2|<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'}, built from the
+ * fixed {@code 'V2'} version tag plus the owner's normalized E.164 telephone,
+ * lower-cased email and the Soundex code of the last name. A {@code null} telephone or
+ * email contributes an empty string, so the pre-hash input always has the same
+ * {@code V2|a|b|c} shape. Mixing in the version tag means no key produced under
+ * version 1 is produced again. Two owners are duplicates only when their whole keys
+ * are equal.
  *
  * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
  * MapStruct does not mistake it for a generic {@code String -> String} mapping
@@ -27,16 +29,24 @@ public final class IdentityKeyDeriver {
      */
     private static final char[] SOUNDEX_MAP = "01230120022455012623010202".toCharArray();
 
+    /**
+     * The fixed version tag mixed into the pre-hash input, so no version-2 identity key
+     * reproduces the value version 1 would have produced.
+     */
+    private static final String VERSION_TAG = "V2";
+
     private IdentityKeyDeriver() {
     }
 
     /**
-     * Returns the identity key: the lower-case SHA-256 hex digest over
-     * {@code '<telephone>|<email>|<soundex(lastName)>'}, treating a {@code null}
-     * telephone or email as the empty string.
+     * Returns the version-2 identity key: the lower-case SHA-256 hex digest over
+     * {@code 'V2|<telephone>|<email>|<soundex(lastName)>'}, mixing in the fixed
+     * {@code 'V2'} version tag and treating a {@code null} telephone or email as the
+     * empty string.
      */
     public static String identityKey(String telephone, String email, String lastName) {
-        String raw = (telephone == null ? "" : telephone)
+        String raw = VERSION_TAG
+            + "|" + (telephone == null ? "" : telephone)
             + "|" + (email == null ? "" : email)
             + "|" + soundex(lastName);
         return sha256Hex(raw);

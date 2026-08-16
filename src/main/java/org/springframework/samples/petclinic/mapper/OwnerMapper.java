@@ -38,21 +38,24 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(MembershipPointsDeriver.effectiveMembershipLevel(owner))")
     @Mapping(target = "locality",
-        expression = "java(LocalityDeriver.locality(owner.getMemberId()))")
+        expression = "java(LocalityDeriver.region(owner.getPostcode()))")
     @Mapping(target = "timezone",
         expression = "java(LocalityDeriver.timezone("
-            + "LocalityDeriver.locality(owner.getMemberId())))")
+            + "LocalityDeriver.region(owner.getPostcode())))")
     @Mapping(target = "ownerSegment",
         expression = "java(OwnerSegmentDeriver.ownerSegment("
             + "MembershipPointsDeriver.effectiveMembershipLevel(owner), "
-            + "LocalityDeriver.locality(owner.getMemberId())))")
+            + "LocalityDeriver.region(owner.getPostcode())))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand",
         expression = "java(AgeBandDeriver.ageBand(owner.getBirthDate(), "
             + "owner.getRegistrationDate()))")
-    @Mapping(target = "identityKey",
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity.memberId", expression = "java(owner.getMemberId())")
+    @Mapping(target = "identity.householdId", expression = "java(owner.getHouseholdId())")
+    @Mapping(target = "identity.identityKey",
         expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
             + "owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "telephoneDisplay",
