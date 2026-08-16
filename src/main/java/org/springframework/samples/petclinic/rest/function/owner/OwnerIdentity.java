@@ -47,14 +47,29 @@ public final class OwnerIdentity {
 
     /** First 16 upper-case hex chars of SHA-256(lastName|address), over already-normalized inputs. */
     private static String householdId(String lastName, String address) {
+        return sha256Hex(lastName + "|" + address, 16);
+    }
+
+    /**
+     * The HASH8 half of an owner's region-and-hash {@code customerCode}: the first 8 upper-case hex
+     * characters of SHA-256 over {@code normalizedTelephone + lastName}. The telephone is normalized
+     * to E.164 form (null/invalid becomes empty) so the hash is stable across equivalent phone
+     * formats; the last name is taken as stored.
+     */
+    public static String customerCodeHash(String telephone, String lastName) {
+        return sha256Hex(normalizeTelephone(telephone) + (lastName == null ? "" : lastName), 8);
+    }
+
+    /** First {@code length} upper-case hex chars of SHA-256 over the UTF-8 bytes of {@code input}. */
+    private static String sha256Hex(String input, int length) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(32);
+                    .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(64);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, 16).toUpperCase(Locale.ROOT);
+            return sb.substring(0, length).toUpperCase(Locale.ROOT);
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);

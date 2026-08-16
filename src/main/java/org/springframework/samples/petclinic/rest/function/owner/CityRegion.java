@@ -76,4 +76,20 @@ public final class CityRegion {
     public static int[] postcodeRangeOf(String city) {
         return REGION_POSTCODES.get(localityOf(city));
     }
+
+    /**
+     * An owner's {@code locality}, now the REGION component of its region-and-hash {@code customerCode}
+     * ({@code <REGION>-<HASH8>}). When the code is absent or not yet in that shape (e.g. an owner not
+     * created through the region-and-hash pipeline), falls back to deriving the region from the city
+     * and postcode directly.
+     */
+    public static String localityOfCustomerCode(String customerCode, String city, String postcode) {
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
+        }
+        return localityOf(city, postcode);
+    }
 }
