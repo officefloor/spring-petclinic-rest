@@ -30,7 +30,8 @@ public interface OwnerMapper {
         expression = "java(Math.min(3, 1 "
             + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
             + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
-    @Mapping(target = "locality", expression = "java(LocalityDeriver.locality(owner.getCity()))")
+    @Mapping(target = "locality",
+        expression = "java(LocalityDeriver.locality(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
             + "? \"EMAIL\" : \"PHONE\")")
