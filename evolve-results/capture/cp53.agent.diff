@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 225c8401..b9c8a0ef 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -74,6 +74,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence assigned to each structured {@code OWNER_CREATED} audit event,
++     * so the immutable event stream carries a strictly increasing {@code seq} across creates.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
++        new java.util.concurrent.atomic.AtomicLong();
++
+     /**
+      * Name of the optional request header carrying an idempotency token for owner creation.
+      */
+@@ -183,11 +190,82 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
++        AUDIT.info(ownerCreatedEvent(owner, ownerDto));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Builds the immutable structured {@code OWNER_CREATED} audit event emitted (in addition to the
++     * human-readable audit line) on a successful create, as a JSON object
++     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. The {@code seq} is
++     * a fresh value from the monotonically increasing {@link #AUDIT_EVENT_SEQ} sequence, so the event
++     * stream is strictly ordered across creates.
++     * <p>
++     * The {@code customerCode} field carries the owner's current primary identifier (see
++     * {@link #primaryIdentifier}); it is the {@code customerCode} today and becomes whatever replaces it
++     * once the identifier is unified, so the event always names the owner by its live primary identifier.
++     *
++     * @param owner the just-saved owner
++     * @param ownerDto the mapped DTO, used for the (possibly derived) {@code membershipLevel}
++     * @return the JSON-encoded structured event
++     */
++    private String ownerCreatedEvent(Owner owner, OwnerDto ownerDto) {
++        StringBuilder json = new StringBuilder(128);
++        json.append('{');
++        json.append("\"seq\":").append(AUDIT_EVENT_SEQ.incrementAndGet());
++        json.append(",\"ownerId\":").append(owner.getId());
++        json.append(",\"customerCode\":").append(jsonString(primaryIdentifier(owner)));
++        json.append(",\"membershipLevel\":").append(ownerDto.getMembershipLevel());
++        json.append(",\"event\":\"OWNER_CREATED\"");
++        json.append('}');
++        return json.toString();
++    }
++
++    /**
++     * The owner's current primary identifier carried by the structured audit event. Today this is the
++     * assigned {@code customerCode}; when the identifier is later unified into the {@code memberId} this
++     * is the sole place to switch, so the event begins carrying the {@code memberId} instead.
++     *
++     * @param owner the just-saved owner
++     * @return the owner's live primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /**
++     * Encodes a value as a JSON string literal (quoted, with the JSON-significant characters escaped),
++     * or the literal {@code null} when the value is absent.
++     */
++    private static String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    } else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        sb.append('"');
++        return sb.toString();
++    }
++
+     /**
+      * Reads the optional {@code Idempotency-Key} header from the current request, if any. A create
+      * carrying this header is idempotent: the first create under a key is recorded, and a later create
