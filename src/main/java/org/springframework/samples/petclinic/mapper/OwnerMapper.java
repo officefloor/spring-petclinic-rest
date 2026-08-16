@@ -37,6 +37,11 @@ public abstract class OwnerMapper {
         return MembershipLevel.of(owner, this.ownerRepository);
     }
 
+    /** Owner segment (tier + area), called from the {@code ownerSegment} mapping expression. */
+    protected org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner, this.ownerRepository);
+    }
+
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation",
@@ -49,6 +54,8 @@ public abstract class OwnerMapper {
         expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel",
         expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(ownerSegment(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",
