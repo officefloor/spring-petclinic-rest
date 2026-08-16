@@ -56,7 +56,8 @@ CREATE TABLE owners (
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
-  birth_date DATE
+  birth_date DATE,
+  deleted BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

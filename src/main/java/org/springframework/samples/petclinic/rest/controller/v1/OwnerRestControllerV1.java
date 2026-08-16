@@ -630,6 +630,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String householdId = householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (duplicate) {
             throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
@@ -795,6 +796,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String identityKey = identityKeyFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode(),
             ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail());
         boolean duplicate = this.clinicService.findAllOwners().stream()
+            .filter(owner -> !owner.isDeleted())
             .map(owner -> identityKeyFor(owner.getLastName(), owner.getPostcode(),
                 owner.getTelephone(), owner.getEmail()))
             .anyMatch(identityKey::equals);

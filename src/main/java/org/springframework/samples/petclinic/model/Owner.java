@@ -95,6 +95,9 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -240,6 +243,14 @@ public class Owner extends Person {
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**
