@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java
+new file mode 100644
+index 00000000..e9f42873
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DisposableEmailException.java
+@@ -0,0 +1,35 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown when an owner's email domain is on the disposable-domain blocklist.
++ * Handled as a 400 Bad Request by {@link ExceptionControllerAdvice}.
++ */
++public class DisposableEmailException extends RuntimeException {
++
++    private final transient Object rejectedValue;
++
++    public DisposableEmailException(Object rejectedValue) {
++        super("email domain is not allowed");
++        this.rejectedValue = rejectedValue;
++    }
++
++    public Object getRejectedValue() {
++        return this.rejectedValue;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 3d54d31c..fc4a3fec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -166,6 +166,28 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link DisposableEmailException} thrown while normalizing an owner's email on create.
++     *
++     * @param e The {@link DisposableEmailException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(DisposableEmailException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", List.of("email"));
++        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
++        detail.setProperty("schemaValidationErrors", List.of(
++            new ValidationMessageDto("Field 'email' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
++                .putAdditionalProperty("field", "email")
++                .putAdditionalProperty("rejectedValue", rejectedValue)
++                .putAdditionalProperty("defaultMessage", e.getMessage())));
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles {@link InvalidPostcodeException} thrown while validating an owner's postcode on create.
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 47e8309d..3db5426f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdExcep
+ import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
+ import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
++import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
+@@ -459,6 +460,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     private static final java.util.regex.Pattern EMAIL_PATTERN =
+         java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$");
+ 
++    /**
++     * Domains of known disposable/throwaway email providers. An owner whose email domain is on this
++     * blocklist is rejected with a 400 Bad Request. Compared case-insensitively against the
++     * lower-cased email domain.
++     */
++    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     /**
+      * Normalizes an owner's email. Email is optional: a {@code null} or blank value is left as
+      * {@code null} (no email). When present it must be a syntactically valid address; the value is
+@@ -476,7 +485,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+             throw new InvalidEmailException(email);
+         }
+-        return trimmed.toLowerCase(java.util.Locale.ROOT);
++        String normalized = trimmed.toLowerCase(java.util.Locale.ROOT);
++        String domain = normalized.substring(normalized.indexOf('@') + 1);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new DisposableEmailException(email);
++        }
++        return normalized;
+     }
+ 
+     /**
