@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e7ae0151..37a825d1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+@@ -110,6 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        normalizeAddress(ownerFieldsDto);
+         validateRequiredFields(ownerFieldsDto);
+         normalizeTelephone(ownerFieldsDto);
+         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+@@ -219,6 +221,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * @param ownerFieldsDto the submitted owner fields
+      * @throws RequiredFieldsMissingException if any required field is missing or blank
+      */
++    /**
++     * Common street-type abbreviations expanded during address normalization. Keys are the
++     * upper-cased abbreviation tokens; values are their canonical expansions.
++     */
++    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
++        "ST", "STREET",
++        "RD", "ROAD",
++        "AVE", "AVENUE");
++
++    /**
++     * Normalizes the submitted address on create and writes the canonical value back onto the
++     * request so it is persisted, echoed back, and used for every downstream address comparison
++     * (household duplicate detection and the household id). The value is trimmed, internal
++     * whitespace runs are collapsed to a single space, it is upper-cased, and common street-type
++     * abbreviations are expanded token-by-token (see {@link #ADDRESS_ABBREVIATIONS}). A
++     * {@code null} address is left untouched so the required-field check can report it as missing.
++     *
++     * @param ownerFieldsDto the submitted owner fields
++     */
++    private static void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
++        ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
++    }
++
++    /**
++     * Canonicalizes an address value: trimmed, internal whitespace collapsed to single spaces,
++     * upper-cased, and each whitespace-delimited token that is a known street-type abbreviation
++     * expanded to its full form. A {@code null} value is returned unchanged.
++     *
++     * @param raw the address to canonicalize, possibly {@code null}
++     * @return the normalized address, or {@code null} if {@code raw} was {@code null}
++     */
++    private static String normalizeAddress(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        String collapsed = raw.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return collapsed;
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++
+     private void validateRequiredFields(OwnerFieldsDto ownerFieldsDto) {
+         List<String> errors = new ArrayList<>();
+         requireText("firstName", ownerFieldsDto.getFirstName(), errors);
