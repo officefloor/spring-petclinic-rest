@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -550,10 +551,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Disposable email domains that are rejected outright: an owner whose email domain is one of
+     * these is refused with a 400. Compared case-insensitively (the email is lower-cased before the
+     * check).
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Email is optional: an absent (or blank) value is left as {@code null}. When a value is
      * present it must be a syntactically valid address, otherwise an {@link InvalidEmailException}
-     * is raised (reported to the client as 400). A valid value is returned lower-cased so it is
-     * stored and returned in canonical form.
+     * is raised (reported to the client as 400). Its domain must not be on the disposable-domain
+     * blocklist ({@code mailinator.com}, {@code tempmail.com}, {@code guerrillamail.com}), otherwise
+     * an {@link InvalidEmailException} is likewise raised (400). A valid value is returned lower-cased
+     * so it is stored and returned in canonical form.
      */
     private static String normalizeEmail(String email) {
         if (isBlank(email)) {
@@ -563,6 +574,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException("email must be a syntactically valid address");
         }
-        return trimmed.toLowerCase(Locale.ROOT);
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidEmailException("email domain is on the disposable-domain blocklist");
+        }
+        return normalized;
     }
 }
