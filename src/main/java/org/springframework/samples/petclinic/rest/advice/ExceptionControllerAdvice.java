@@ -252,4 +252,18 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("city")));
     }
 
+    /**
+     * Handles {@link DailyRegistrationLimitException} raised when 100 or more owners have already
+     * been registered today (by {@code registrationDate}). Returns a 429 Too Many Requests whose
+     * {@code errors} array names the offending {@code registrationDate} field.
+     *
+     * @param e The {@link DailyRegistrationLimitException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyRegistrationLimitException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleDailyRegistrationLimitException(DailyRegistrationLimitException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("errors", List.of("registrationDate")));
+    }
+
 }

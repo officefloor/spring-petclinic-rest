@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyRegistrationLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -139,6 +140,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
+        }
+        LocalDate today = LocalDate.now();
+        long registeredToday = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        if (registeredToday >= 100) {
+            throw new DailyRegistrationLimitException(
+                "100 or more owners have already been registered today");
         }
         String city = ownerFieldsDto.getCity();
         long ownersInCity = this.clinicService.findAllOwners().stream()
