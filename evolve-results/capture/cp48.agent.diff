@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/FiscalYearDeriver.java b/src/main/java/org/springframework/samples/petclinic/mapper/FiscalYearDeriver.java
+new file mode 100644
+index 00000000..8ba947ae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/FiscalYearDeriver.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.time.LocalDate;
++
++/**
++ * Derives fiscal-year values from a date. The fiscal year starts on 1 July and is
++ * identified by the calendar year in which it ends, following the Australian
++ * convention: a date in July through December falls in the <em>next</em> calendar
++ * year's fiscal year, while January through June stays in the current one.
++ *
++ * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
++ * MapStruct does not mistake it for a generic mapping method and apply it to
++ * unrelated fields; the mapper references it only through explicit expressions.
++ */
++public final class FiscalYearDeriver {
++
++    private FiscalYearDeriver() {
++    }
++
++    /**
++     * Returns the fiscal year (the calendar year in which it ends) for the given
++     * date. July through December map to {@code year + 1}; January through June to
++     * {@code year}.
++     */
++    public static int fiscalYear(LocalDate date) {
++        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
++    }
++
++    /**
++     * Returns the fiscal-year label {@code 'FY<YY>'}, where {@code YY} is the last
++     * two digits of {@link #fiscalYear(LocalDate)}.
++     */
++    public static String fiscalYearLabel(LocalDate date) {
++        return String.format("FY%02d", fiscalYear(date) % 100);
++    }
++
++    /**
++     * Returns the number of whole fiscal years elapsed from {@code from} to
++     * {@code to}, i.e. the difference of their fiscal years.
++     */
++    public static int elapsedFiscalYears(LocalDate from, LocalDate to) {
++        return fiscalYear(to) - fiscalYear(from);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java
+index 77330635..a1fe6d85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java
+@@ -1,7 +1,6 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+ import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+@@ -12,7 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
+  * <p>Points start at 0 and accumulate: {@code +2} when an email address is present,
+  * {@code +1} when the owner has no namesakes ({@code namesakeCount} is 0), {@code +2}
+  * for a household of 3 or more, and {@code +3} for a tenure (registration date to today)
+- * of more than 365 days.
++ * of more than one elapsed fiscal year (the fiscal year starts on 1 July).
+  *
+  * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and
+  * 4 for 6 or more points.
+@@ -41,7 +40,7 @@ public final class MembershipPointsDeriver {
+             points += 2;
+         }
+         if (owner.getRegistrationDate() != null
+-            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
++            && FiscalYearDeriver.elapsedFiscalYears(owner.getRegistrationDate(), LocalDate.now()) > 1) {
+             points += 3;
+         }
+         return points;
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 82aacb3f..1ae3e1df 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,7 +17,8 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
+-        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class})
++        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class,
++        FiscalYearDeriver.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -32,7 +33,10 @@ public interface OwnerMapper {
+         expression = "java(CheckDigitDeriver.checkDigit(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" "
+-            + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++            + "+ String.format(\"%02d\", FiscalYearDeriver.fiscalYear("
++            + "owner.getRegistrationDate()) % 100))")
++    @Mapping(target = "fiscalYear",
++        expression = "java(FiscalYearDeriver.fiscalYearLabel(owner.getRegistrationDate()))")
+     @Mapping(target = "membershipPoints",
+         expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
+     @Mapping(target = "membershipLevel",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a2afdd87..3e6cbff5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2209,11 +2209,23 @@ components:
+               description: >-
+                 The owner's membership number, formatted '<customerCode>-M<YY>'
+                 where <customerCode> is the owner's customer code and YY is the
+-                last two digits of the registration date's year. Derived from the
+-                owner's own fields.
++                last two digits of the fiscal year of the business-day-adjusted
++                registration date (the fiscal year starts on 1 July). Derived from
++                the owner's own fields.
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year of the owner's business-day-adjusted registration
++                date, formatted 'FY<YY>' where the fiscal year starts on 1 July and
++                is identified by the calendar year in which it ends (so a July-to-
++                December date falls in the next calendar year's fiscal year) and YY
++                is that year's last two digits. Derived from the owner's own fields.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
+@@ -2244,8 +2256,9 @@ components:
+                 The owner's membership points, assigned on creation. Starts at 0;
+                 adds 2 when an email address is present; adds 1 when the owner has
+                 no namesakes (namesakeCount is 0); adds 2 for a household of 3 or
+-                more; adds 3 for a tenure over 365 days. Derived from the owner's
+-                own fields.
++                more; adds 3 for a tenure of more than one elapsed fiscal year
++                (the fiscal year starts on 1 July). Derived from the owner's own
++                fields.
+               type: integer
+               format: int32
+               minimum: 0
