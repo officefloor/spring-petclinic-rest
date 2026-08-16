@@ -15,6 +15,7 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+        dto.setCapacityWarning(CityCapacity.warningFor(owner, ownerRepository));
         dto.setBulkSignupWarning(BulkSignup.warningFor(ownerRepository));
         Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);

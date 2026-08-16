@@ -38,6 +38,7 @@ public class CheckIdempotencyKey {
                 if (owner != null && !owner.isDeleted()) {
                     // Idempotent repeat: return the originally created owner with 200 and stop here.
                     OwnerDto dto = ownerMapper.toOwnerDto(owner);
+                    dto.setCapacityWarning(CityCapacity.warningFor(owner, ownerRepository));
                     dto.setBulkSignupWarning(BulkSignup.warningFor(ownerRepository));
                     Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
                     dto.setPossibleDuplicate(possibleDuplicateOf != null);
