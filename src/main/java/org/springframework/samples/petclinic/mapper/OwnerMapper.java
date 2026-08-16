@@ -50,7 +50,7 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}, where {@code YY} is
-     * the last two digits of the {@code registrationDate} year, e.g. {@code 'SMI-0007-M26'}. Returns
+     * the last two digits of the {@code registrationDate} year, e.g. {@code 'SYD-SMI-0007-M26'}. Returns
      * {@code null} when either the customer code or the registration date is absent.
      */
     @Named("toMembershipNumber")
