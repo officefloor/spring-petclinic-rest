@@ -158,6 +158,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DailyRegistrationLimitException(
                 "100 or more owners have already been registered today");
         }
+        boolean bulkSignupWarning = registeredOnDay > 80;
         String city = ownerFieldsDto.getCity();
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
@@ -203,6 +204,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(bulkSignupWarning);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
