@@ -33,13 +33,12 @@ public final class OwnerIdentity {
 
     /**
      * The owner's current <em>primary identifier</em> — the single externally-visible handle an owner
-     * is known by. Today that is the {@code customerCode}; this is the one place to change when the
-     * customer code is later unified into the {@code memberId}, so everything expressed through the
-     * primary identifier (e.g. the {@code OWNER_CREATED} structured event, see {@link OwnerCreatedEvent})
-     * follows automatically.
+     * is known by. That is the {@code memberId} (the unified {@code <REGION><FY><HASH8><CHK>} identity,
+     * see {@link MemberId}), so everything expressed through the primary identifier (e.g. the
+     * {@code OWNER_CREATED} structured event, see {@link OwnerCreatedEvent}) follows from it.
      */
     public static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
@@ -68,12 +67,12 @@ public final class OwnerIdentity {
     }
 
     /**
-     * The HASH8 half of an owner's region-and-hash {@code customerCode}: the first 8 upper-case hex
-     * characters of SHA-256 over {@code normalizedTelephone + lastName}. The telephone is normalized
-     * to E.164 form (null/invalid becomes empty) so the hash is stable across equivalent phone
-     * formats; the last name is taken as stored.
+     * The HASH8 segment of an owner's {@code memberId}: the first 8 upper-case hex characters of
+     * SHA-256 over {@code normalizedTelephone + lastName}. The telephone is normalized to E.164 form
+     * (null/invalid becomes empty) so the hash is stable across equivalent phone formats; the last
+     * name is taken as stored.
      */
-    public static String customerCodeHash(String telephone, String lastName) {
+    public static String memberIdHash(String telephone, String lastName) {
         return sha256Hex(normalizeTelephone(telephone) + (lastName == null ? "" : lastName), 8);
     }
 

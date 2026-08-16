@@ -84,16 +84,21 @@ public final class CityRegion {
     }
 
     /**
-     * An owner's {@code locality}, now the REGION component of its region-and-hash {@code customerCode}
-     * ({@code <REGION>-<HASH8>}). When the code is absent or not yet in that shape (e.g. an owner not
-     * created through the region-and-hash pipeline), falls back to deriving the region from the city
-     * and postcode directly.
+     * An owner's {@code locality}, now the REGION segment of its {@code memberId}
+     * ({@code <REGION><FY><HASH8><CHK>}). The region is the leading known region code (NSW, VIC, QLD
+     * or UNKNOWN) the id starts with. When the id is absent or not in that shape (e.g. an owner not
+     * created through the member-id pipeline), falls back to deriving the region from the city and
+     * postcode directly.
      */
-    public static String localityOfCustomerCode(String customerCode, String city, String postcode) {
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
+    public static String localityOfMemberId(String memberId, String city, String postcode) {
+        if (memberId != null) {
+            for (String region : REGION_POSTCODES.keySet()) {
+                if (memberId.startsWith(region)) {
+                    return region;
+                }
+            }
+            if (memberId.startsWith(UNKNOWN)) {
+                return UNKNOWN;
             }
         }
         return localityOf(city, postcode);
@@ -101,11 +106,11 @@ public final class CityRegion {
 
     /**
      * The IANA timezone name for the owner's locality/region, derived the same way as
-     * {@link #localityOfCustomerCode(String, String, String)}, via the fixed region-to-timezone
+     * {@link #localityOfMemberId(String, String, String)}, via the fixed region-to-timezone
      * table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane).
      * Returns {@code null} when the region is {@code "UNKNOWN"} (not in the table).
      */
-    public static String timezoneOfCustomerCode(String customerCode, String city, String postcode) {
-        return REGION_TIMEZONE.get(localityOfCustomerCode(customerCode, city, postcode));
+    public static String timezoneOfMemberId(String memberId, String city, String postcode) {
+        return REGION_TIMEZONE.get(localityOfMemberId(memberId, city, postcode));
     }
 }

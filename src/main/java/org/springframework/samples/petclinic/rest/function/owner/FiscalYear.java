@@ -10,8 +10,8 @@ import java.time.Month;
  * date before 1 July belongs to the fiscal year ending that same June.
  *
  * <p>All date-derived owner values that were previously on a calendar-year basis now use this: the
- * {@code fiscalYear} label returned on the DTO, the membership number's year segment
- * (see {@link AssignMembershipNumber}) and the tenure count (see {@link MembershipLevel}). Every one
+ * {@code fiscalYear} label returned on the DTO, the {@code memberId}'s FY segment
+ * (see {@link AssignMemberId}) and the tenure count (see {@link MembershipLevel}). Every one
  * is measured from the business-day-adjusted {@code registrationDate} resolved at creation
  * (see {@link ResolveRegistrationDate}).
  */

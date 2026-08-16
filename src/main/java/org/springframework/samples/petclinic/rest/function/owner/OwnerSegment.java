@@ -26,7 +26,7 @@ public final class OwnerSegment {
     /** The owner's segment, formatted {@code <TIER>_<AREA>}. */
     public static OwnerDto.OwnerSegmentEnum of(Owner owner, OwnerRepository ownerRepository) {
         String tier = MembershipLevel.of(owner, ownerRepository) >= PREMIUM_MIN_LEVEL ? "PREMIUM" : "STANDARD";
-        String locality = CityRegion.localityOfCustomerCode(owner.getCustomerCode(), owner.getCity(),
+        String locality = CityRegion.localityOfMemberId(owner.getMemberId(), owner.getCity(),
             owner.getPostcode());
         String area = CityRegion.UNKNOWN.equals(locality) ? "REGIONAL" : "METRO";
         return OwnerDto.OwnerSegmentEnum.valueOf(tier + "_" + area);

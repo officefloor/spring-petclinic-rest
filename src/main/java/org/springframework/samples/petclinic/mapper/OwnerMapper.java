@@ -57,15 +57,13 @@ public abstract class OwnerMapper {
     @Mapping(target = "ownerSegment",
         expression = "java(ownerSegment(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOfMemberId(owner.getMemberId(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.timezoneOfCustomerCode(owner.getCustomerCode(), owner.getCity(), owner.getPostcode()))")
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.timezoneOfMemberId(owner.getMemberId(), owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "fiscalYear",
