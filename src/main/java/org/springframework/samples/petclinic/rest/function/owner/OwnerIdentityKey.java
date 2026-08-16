@@ -10,7 +10,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * The single derived key that consolidates all duplicate detection for
  * {@code POST /api/owners}. An owner's {@code identityKey} is the lower-case hex SHA-256 of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}; a create is a duplicate
+ * {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} — the fixed
+ * {@code V2} version tag (see {@link OwnerLocality#VERSION_TAG}) mixed in so no key produced under
+ * version 1 recurs; a create is a duplicate
  * — and rejected with 409 — only when a new owner's WHOLE identityKey equals an existing owner's.
  * Because the telephone is part of the key, two owners with the same surname and postcode but
  * different telephones have different keys and are both allowed (the later one is flagged a soft
@@ -37,8 +39,11 @@ public final class OwnerIdentityKey {
     }
 
     private static String of(String telephone, String email, String lastName) {
-        String raw = normalizeTelephone(telephone) + "|" + normalizeEmail(email) + "|"
-                + Soundex.encode(lastName);
+        // Version 2 mixes the fixed V2 version tag into the hashed key, so every identityKey differs
+        // from the value the same owner produced under version 1; duplicate detection is unchanged
+        // because the tag is applied identically to a request and every stored owner it compares to.
+        String raw = OwnerLocality.VERSION_TAG + "|" + normalizeTelephone(telephone) + "|"
+                + normalizeEmail(email) + "|" + Soundex.encode(lastName);
         return sha256Hex(raw);
     }
 

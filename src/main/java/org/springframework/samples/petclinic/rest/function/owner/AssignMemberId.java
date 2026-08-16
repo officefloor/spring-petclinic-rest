@@ -13,10 +13,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where REGION is
- * the region code derived from the postcode (see {@link OwnerLocality}), FY is the 2-digit fiscal
+ * the version-2 region code derived from the postcode (the plain region with the fixed {@code V2}
+ * version tag appended, e.g. {@code NSWV2}; see {@link OwnerLocality#regionCodeV2}), FY is the 2-digit fiscal
  * year of the owner's (business-day-adjusted) registration date (see {@link FiscalYear}), HASH8 is
- * the first eight upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName}
- * (the same region-and-hash identity as before), and CHK is a single Luhn check digit computed over
+ * the first eight upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName},
+ * and CHK is a single Luhn check digit computed over
  * the digits of {@code <REGION><FY><HASH8>}. The telephone is normalized to E.164 (see
  * {@link TelephoneE164}) exactly as the owner is stored, so the hash is stable regardless of the
  * telephone's input format. This single field replaces the former {@code customerCode} and
@@ -29,7 +30,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = OwnerLocality.of(owner.getCity(), owner.getPostcode());
+        String region = OwnerLocality.regionCodeV2(owner.getCity(), owner.getPostcode());
         String fy = FiscalYear.twoDigit(owner.getRegistrationDate());
         String normalizedTelephone = normalizedTelephone(owner.getTelephone());
         String hash8 = sha256Hex8(normalizedTelephone + owner.getLastName());

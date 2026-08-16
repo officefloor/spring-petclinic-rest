@@ -4,34 +4,44 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Immutable structured audit event emitted alongside the human-readable audit line when an owner is
- * created. Rendered as the JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:"OWNER_CREATED"}}.
+ * created. Schema version 2, rendered as the JSON object
+ * {@code {seq, ownerId, memberId, membershipLevel, ownerSegment, schemaVersion:2, event:"OWNER_CREATED"}}.
  *
  * <p>{@code memberId} carries the owner's primary identifier, the unified
- * {@link Owner#getMemberId() memberId}.
+ * {@link Owner#getMemberId() memberId} (now derived under version 2). {@code ownerSegment} is the
+ * owner's marketing segment recomputed from the version-2 identity (see {@link OwnerSegment}), and
+ * {@code schemaVersion} pins the event to version 2 of this schema.
  *
  * <p>Instances are immutable: fields are captured at construction and never mutated, so a recorded
  * event cannot be altered after the fact.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-        Integer membershipLevel) {
+        Integer membershipLevel, String ownerSegment, int schemaVersion) {
 
     /** Event marker carried in the {@code event} field. */
     public static final String EVENT = "OWNER_CREATED";
 
-    /** Builds the event for a persisted owner, reading its unified {@code memberId} identifier. */
+    /** The schema version stamped onto every event. */
+    public static final int SCHEMA_VERSION = 2;
+
+    /**
+     * Builds the version-2 event for a persisted owner, reading its unified {@code memberId}
+     * identifier and recomputing its owner segment from the version-2 identity.
+     */
     public static OwnerCreatedEvent forOwner(long seq, Owner owner) {
         return new OwnerCreatedEvent(seq, owner.getId(), owner.getMemberId(),
-                owner.getMembershipLevel());
+                owner.getMembershipLevel(), OwnerSegment.forOwner(owner), SCHEMA_VERSION);
     }
 
     /** Canonical JSON rendering of this event. */
     public String toJson() {
-        StringBuilder json = new StringBuilder(96);
+        StringBuilder json = new StringBuilder(128);
         json.append("{\"seq\":").append(this.seq)
                 .append(",\"ownerId\":").append(this.ownerId)
                 .append(",\"memberId\":").append(quote(this.memberId))
                 .append(",\"membershipLevel\":").append(this.membershipLevel)
+                .append(",\"ownerSegment\":").append(quote(this.ownerSegment))
+                .append(",\"schemaVersion\":").append(this.schemaVersion)
                 .append(",\"event\":").append(quote(EVENT))
                 .append('}');
         return json.toString();

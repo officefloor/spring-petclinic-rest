@@ -36,9 +36,15 @@ public class AssignHouseholdId {
         return householdId(request.getLastName(), postcode);
     }
 
-    /** Stable identifier for the household sharing {@code lastName} at {@code postcode}. */
+    /**
+     * Stable identifier for the household sharing {@code lastName} at {@code postcode}. Version 2
+     * mixes the fixed {@link OwnerLocality#VERSION_TAG} into the hashed key, so every householdId
+     * differs from the value the same household produced under version 1 while owners with the same
+     * lastName and postcode still share it.
+     */
     static String householdId(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = OwnerLocality.VERSION_TAG + "|" + normalize(lastName) + "|"
+                + (postcode == null ? "" : postcode);
         return "HH-" + sha256Hex(key).substring(0, 12).toUpperCase(Locale.ROOT);
     }
 

@@ -18,6 +18,15 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class OwnerLocality {
 
+    /**
+     * Fixed identity version tag mixed into the region code used INSIDE the identifiers
+     * (see {@link #regionCodeV2(String, String)}), and — via that region code and this same tag —
+     * into the {@code householdId}, {@code identityKey} and {@code memberId}. It never appears in
+     * the user-facing {@code locality}, {@code timezone} or the owner segment's derived region,
+     * which stay the plain region code.
+     */
+    public static final String VERSION_TAG = "V2";
+
     private static final Pattern FOUR_DIGITS = Pattern.compile("^[0-9]{4}$");
 
     /** City -> canonical region (matching {@link RequirePostcode}'s table). */
@@ -40,24 +49,25 @@ public final class OwnerLocality {
     }
 
     /**
-     * The locality of an already-stored owner: the REGION segment of its {@code memberId}
-     * identity ({@code <REGION><FY><HASH8><CHK>}, see {@link AssignMemberId}) — the leading run of
-     * letters before the numeric fiscal-year segment. Falls back to deriving the region straight
-     * from the postcode/city for an owner whose {@code memberId} has not been assigned or is not in
-     * the region-and-hash form.
+     * The user-facing locality of an already-stored owner: the PLAIN region code derived straight
+     * from its postcode/city (see {@link #of(String, String)}), never carrying the {@link #VERSION_TAG}.
+     * It is deliberately NOT read back out of the {@code memberId}, whose REGION segment now embeds
+     * the version-2 tag (see {@link #regionCodeV2(String, String)} and {@link AssignMemberId}); the
+     * {@code locality}, {@code timezone} and owner segment must stay the plain region.
      */
     public static String forOwner(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            int i = 0;
-            while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-                i++;
-            }
-            if (i > 0) {
-                return memberId.substring(0, i);
-            }
-        }
         return of(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * The version-2 region code used INSIDE the identifiers: the plain region (see
+     * {@link #of(String, String)}) with the fixed {@link #VERSION_TAG} appended (e.g. {@code "NSWV2"}
+     * for NSW). Mixing the tag in here guarantees every version-2 {@code memberId} differs from —
+     * and is never equal to — any value produced under version 1. This is the identifier form only;
+     * the user-facing {@link #forOwner(Owner) locality} keeps the plain region.
+     */
+    public static String regionCodeV2(String city, String postcode) {
+        return of(city, postcode) + VERSION_TAG;
     }
 
     /**
