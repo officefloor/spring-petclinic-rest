@@ -136,6 +136,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignHouseholdId(owner);
         assignNamesakeCount(owner);
         assignMembershipNumber(owner);
+        assignBulkSignupWarning(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -489,6 +490,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void assignMembershipNumber(Owner owner) {
         String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
         owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
+    }
+
+    /**
+     * The number of owners that must already carry a registration date before a subsequent
+     * create for that same day is flagged with a bulk-signup warning. The warning is raised
+     * once the count of owners already registered on that day <em>exceeds</em> this value.
+     */
+    private static final long BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Assigns the owner's {@code bulkSignupWarning} on create: {@code true} when more than
+     * {@link #BULK_SIGNUP_WARNING_THRESHOLD} owners already carry this owner's (business-day
+     * adjusted) {@code registrationDate}, otherwise {@code false}. The count is taken over the
+     * existing owners before this one is persisted, so it reflects only the owners already
+     * created for that day (matching the accumulation used by {@link #rejectDailyLimit}).
+     *
+     * @param owner the owner being created (with its {@code registrationDate} already set)
+     */
+    private void assignBulkSignupWarning(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
+            .count();
+        owner.setBulkSignupWarning(count > BULK_SIGNUP_WARNING_THRESHOLD);
     }
 
     /**
