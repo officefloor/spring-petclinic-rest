@@ -74,6 +74,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "bulkSignupWarning", ignore = true)
     @Mapping(target = "possibleDuplicate", ignore = true)
     @Mapping(target = "possibleDuplicateOf", ignore = true)
+    @Mapping(target = "riskFlag", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);

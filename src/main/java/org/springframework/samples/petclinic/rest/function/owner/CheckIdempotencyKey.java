@@ -43,6 +43,7 @@ public class CheckIdempotencyKey {
                     Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
                     dto.setPossibleDuplicate(possibleDuplicateOf != null);
                     dto.setPossibleDuplicateOf(possibleDuplicateOf);
+                    dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
                     response.send(ResponseEntity.ok(dto));
                     return;
                 }

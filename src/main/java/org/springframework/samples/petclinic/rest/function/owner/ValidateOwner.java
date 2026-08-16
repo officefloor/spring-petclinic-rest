@@ -2,7 +2,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -34,10 +33,6 @@ public class ValidateOwner {
 
     /** A valid postcode is exactly four digits. */
     private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
-
-    /** Disposable email domains that are never accepted, even when syntactically valid. */
-    private static final Set<String> DISPOSABLE_DOMAINS =
-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
@@ -93,7 +88,7 @@ public class ValidateOwner {
             }
             // Reject syntactically valid addresses whose domain is a known disposable provider.
             String domain = normalized.substring(normalized.indexOf('@') + 1);
-            if (DISPOSABLE_DOMAINS.contains(domain)) {
+            if (DisposableEmail.isBlocked(domain)) {
                 throw new DisposableEmailDomainException(email);
             }
             request.setEmail(normalized);

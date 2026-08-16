@@ -20,6 +20,7 @@ public class RespondWithOwnerCreated {
         Integer possibleDuplicateOf = PossibleDuplicate.matchFor(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
+        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
