@@ -428,8 +428,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Normalizes a telephone number to E.164 form. Spaces, dashes and brackets are stripped. A
      * leading {@code '+'} and its country code are kept as-is; otherwise the number is treated as a
      * national one, a single leading {@code '0'} is dropped, and the default country code
-     * {@code '+61'} is prepended. The result must have 8 to 15 digits after the {@code '+'},
-     * otherwise an {@link InvalidTelephoneException} is raised (reported to the client as 400).
+     * {@code '+61'} is prepended. The result must have 8 to 15 digits after the {@code '+'}, and its
+     * national number must have the length required by its country code ({@code '+61'} requires 9
+     * national digits, {@code '+1'} requires 10); otherwise an {@link InvalidTelephoneException} is
+     * raised (reported to the client as 400).
      */
     private static String toE164(String telephone) {
         String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s()-]", "");
@@ -444,7 +446,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidTelephoneException(
                 "telephone must form a valid E.164 number with 8 to 15 digits");
         }
+        validateNationalLength(digits);
         return "+" + digits;
+    }
+
+    /** National-number length required for each supported country code (digits after the code). */
+    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY_CODE = Map.of(
+        "61", 9, "1", 10);
+
+    /**
+     * Validates the national-number length of an E.164 number (digits after the {@code '+'}) against
+     * its country code. {@code '+61'} requires 9 national digits and {@code '+1'} requires 10; a
+     * mismatch raises an {@link InvalidTelephoneException} (reported to the client as 400). Country
+     * codes without a configured requirement are left to the general 8-to-15-digit rule.
+     */
+    private static void validateNationalLength(String digits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
+            String code = entry.getKey();
+            if (digits.startsWith(code)) {
+                int nationalLength = digits.length() - code.length();
+                if (nationalLength != entry.getValue()) {
+                    throw new InvalidTelephoneException(
+                        "telephone national number must have " + entry.getValue()
+                            + " digits for country code +" + code);
+                }
+                return;
+            }
+        }
     }
 
     /**
