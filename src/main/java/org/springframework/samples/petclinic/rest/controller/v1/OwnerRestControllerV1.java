@@ -123,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignCustomerCode(owner);
         assignHouseholdId(owner);
         assignNamesakeCount(owner);
+        assignMembershipNumber(owner);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -433,6 +434,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && lastName != null && lastName.equalsIgnoreCase(existing.getLastName()))
             .count();
         owner.setNamesakeCount((int) count);
+    }
+
+    /**
+     * Assigns the owner's {@code membershipNumber} on create, formatted
+     * {@code '<customerCode>-M<YY>'} where customerCode is the owner's already-assigned customer
+     * code and YY is the last two digits of the {@code registrationDate} year, zero-padded
+     * (e.g. {@code 'SMI-0007-M26'}). Derived purely from the owner's own fields, so both
+     * {@link #assignCustomerCode} and {@link #defaultRegistrationDate} must run first.
+     *
+     * @param owner the owner being created (with its {@code customerCode} and
+     *              {@code registrationDate} already set)
+     */
+    private void assignMembershipNumber(Owner owner) {
+        String yy = String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        owner.setMembershipNumber(owner.getCustomerCode() + "-M" + yy);
     }
 
     /**
