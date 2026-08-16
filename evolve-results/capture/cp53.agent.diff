@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java
+new file mode 100644
+index 00000000..ed1eab5f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreatedEvent.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import net.officefloor.plugin.variable.Val;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import tools.jackson.databind.ObjectMapper;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Emits an immutable, structured {@code OWNER_CREATED} event on the dedicated {@code AUDIT} logger,
++ * in addition to the human-readable line from {@link AuditOwnerCreated}. Runs after {@link SaveOwner}
++ * (so the owner has its persisted id) and after {@link AssignCustomerCode} / {@link AssignMembershipLevel}.
++ *
++ * <p>The event is a JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}} where
++ * {@code seq} is a monotonically increasing integer across creates. It carries the owner's <em>current
++ * primary identifier</em>: today that is the {@code customerCode} (see {@link #primaryIdentifier}).
++ * When the customerCode is later unified into the memberId, only {@link #primaryIdentifier} and the
++ * {@link OwnerCreatedEvent} field change, so the event then carries the memberId instead.
++ */
++public class AuditOwnerCreatedEvent {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    /** Monotonic across all creates in this process; not reset by per-request transactions. */
++    private static final AtomicLong SEQ = new AtomicLong();
++
++    /** Immutable structured create event. Field order is the serialized JSON order. */
++    public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
++            Integer membershipLevel, String event) {
++    }
++
++    public void service(@Val Owner owner, ObjectMapper mapper) {
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
++                primaryIdentifier(owner), owner.getMembershipLevel(), "OWNER_CREATED");
++        AUDIT.info(mapper.writeValueAsString(event));
++    }
++
++    /**
++     * The owner's current primary identifier. Currently the {@code customerCode}; this is the single
++     * point that later moves to {@code owner.getMemberId()} when the two are unified.
++     */
++    private static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 184f3484..68a0b829 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -126,6 +126,13 @@ save:
+ audit:
+   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
+   govern: [ transaction ]
++  next: auditEvent
++
++# In addition to the audit line, emit an immutable structured OWNER_CREATED event on the AUDIT
++# logger, carrying the owner's current primary identifier (the customerCode).
++auditEvent:
++  class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreatedEvent
++  govern: [ transaction ]
+   next: recordIdempotency
+ 
+ # Record the Idempotency-Key (if any) against the new owner id, so a repeat replays it.
