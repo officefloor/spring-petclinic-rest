@@ -447,8 +447,9 @@ public class Owner extends Person {
 
     /**
      * The owner's derived duplicate-detection key: the single consolidated identity used to
-     * detect duplicate owners on create. It is the lower-case hex SHA-256 digest of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} from the owner's
+     * detect duplicate owners on create. It is the version-2 lower-case hex SHA-256 digest of
+     * {@code IDENTITY_VERSION + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}
+     * from the fixed {@code 'V2'} version tag (see {@link #IDENTITY_VERSION}), the owner's
      * already-normalized {@code telephone} (E.164 form), its lower-cased {@code email} (empty
      * when absent) and the Soundex code of its {@code lastName} (see {@link #soundex}). Two owners
      * are duplicates only when their whole {@code identityKey} values are equal.
@@ -461,11 +462,21 @@ public class Owner extends Person {
     }
 
     /**
-     * Computes the consolidated {@code identityKey} for the given identity-bearing fields: the
-     * lower-case hex SHA-256 digest of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The {@code email}
-     * is lower-cased (empty when absent) and the {@code lastName} is reduced to its Soundex code
-     * (see {@link #soundex}). The {@code telephone} is expected already normalized to E.164 form.
+     * The fixed version tag mixed into every derived owner identifier so that the version-2
+     * identity ({@code identityKey}, {@code memberId} and {@code householdId}) never reproduces a
+     * value produced under version 1. It is an internal component of the identifiers only and never
+     * leaks into the user-facing {@code locality}, {@code timezone} or owner-segment region.
+     */
+    public static final String IDENTITY_VERSION = "V2";
+
+    /**
+     * Computes the consolidated version-2 {@code identityKey} for the given identity-bearing fields:
+     * the lower-case hex SHA-256 digest of
+     * {@code IDENTITY_VERSION + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+     * The fixed {@code 'V2'} version tag (see {@link #IDENTITY_VERSION}) is mixed in so the key differs
+     * from the version-1 key; the {@code email} is lower-cased (empty when absent) and the
+     * {@code lastName} is reduced to its Soundex code (see {@link #soundex}). The {@code telephone} is
+     * expected already normalized to E.164 form.
      *
      * @param telephone the owner's normalized (E.164) telephone, possibly {@code null}
      * @param email     the owner's email, possibly {@code null}
@@ -475,7 +486,7 @@ public class Owner extends Person {
     public static String identityKey(String telephone, String email, String lastName) {
         String telephonePart = telephone == null ? "" : telephone;
         String emailPart = email == null ? "" : email.toLowerCase(Locale.ROOT);
-        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundex(lastName));
+        return sha256Hex(IDENTITY_VERSION + "|" + telephonePart + "|" + emailPart + "|" + soundex(lastName));
     }
 
     /**

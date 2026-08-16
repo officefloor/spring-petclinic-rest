@@ -95,6 +95,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final AtomicLong EVENT_SEQ = new AtomicLong();
 
+    /**
+     * The schema version stamped onto each structured {@code OWNER_CREATED} event. Version 2 adds
+     * the {@code schemaVersion} field and carries the version-2 {@code memberId} read from the
+     * owner's identity.
+     */
+    private static final int AUDIT_SCHEMA_VERSION = 2;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -199,9 +206,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Emits the immutable structured {@code OWNER_CREATED} event to the {@code AUDIT} logger, in
-     * addition to the human-readable audit line. The event is a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} where {@code seq}
-     * is a monotonically increasing integer across every create (see {@link #EVENT_SEQ}).
+     * addition to the human-readable audit line. The event is a schema-version-2 JSON object
+     * {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}
+     * where {@code seq} is a monotonically increasing integer across every create (see
+     * {@link #EVENT_SEQ}) and {@code schemaVersion} is {@link #AUDIT_SCHEMA_VERSION}.
      *
      * <p>The event carries the owner's <em>current</em> primary identifier under
      * {@code memberId}; see {@link #primaryIdentifier(Owner)} — the single place that decides which
@@ -213,6 +221,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         long seq = EVENT_SEQ.incrementAndGet();
         String event = "{"
             + "\"seq\":" + seq
+            + ",\"schemaVersion\":" + AUDIT_SCHEMA_VERSION
             + ",\"ownerId\":" + owner.getId()
             + ",\"memberId\":" + jsonString(primaryIdentifier(owner))
             + ",\"membershipLevel\":" + owner.getMembershipLevel()
@@ -667,19 +676,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assigns the owner's unified {@code memberId} on create, formatted
-     * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region derived from the owner's postcode
-     * (preferring the postcode range, falling back to the city — the same derivation that yields
-     * the owner's {@code locality}, see
+     * Assigns the owner's unified version-2 {@code memberId} on create, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the version-2 region code — the fixed
+     * {@code 'V2'} version tag (see {@link Owner#IDENTITY_VERSION}) prefixed onto the region derived
+     * from the owner's postcode (preferring the postcode range, falling back to the city — the same
+     * plain derivation that yields the owner's {@code locality}, see
      * {@link org.springframework.samples.petclinic.mapper.LocalityLookup#regionFor(String, String)});
      * FY is the two-digit fiscal year of the owner's (business-day-adjusted) {@code registrationDate}
      * on a fiscal year that starts on 1 July, zero-padded (matching the owner's {@code fiscalYear});
      * HASH8 is the first 8 upper-cased hex characters of the SHA-256 digest of the owner's
-     * already-normalized (E.164) {@code telephone} concatenated with its {@code lastName} (the same
-     * hash used by the region-and-hash identity); and CHK is a single Luhn check digit computed over
-     * the digits of {@code <REGION><FY><HASH8>} — e.g. {@code 'NSW27A1B2C3D45'}. Because REGION and
-     * HASH8 both derive from the identity fields, two owners in the same region and fiscal year share
-     * a member id only when their normalized telephone and last name both match.
+     * already-normalized (E.164) {@code telephone} concatenated with its {@code lastName}; and CHK is
+     * a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>} — e.g.
+     * {@code 'V2NSW27A1B2C3D45'}. The {@code 'V2'} tag makes every member id differ from the value
+     * that version 1 produced. Because REGION and HASH8 both derive from the identity fields, two
+     * owners in the same region and fiscal year share a member id only when their normalized
+     * telephone and last name both match.
      *
      * <p>When the computed member id collides with an existing owner's {@code memberId}, it is
      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes
@@ -691,7 +702,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *              {@code telephone}, {@code lastName} and {@code registrationDate} already set)
      */
     private void assignMemberId(Owner owner) {
-        String region = org.springframework.samples.petclinic.mapper.LocalityLookup
+        String region = Owner.IDENTITY_VERSION + org.springframework.samples.petclinic.mapper.LocalityLookup
             .regionFor(owner.getPostcode(), owner.getCity());
         String fy = String.format("%02d", Owner.fiscalYearOf(owner.getRegistrationDate()) % 100);
         String hash8 = sha256Hex(owner.getTelephone() + owner.getLastName())
@@ -752,10 +763,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Derives the deterministic {@code householdId} for the given {@code lastName} and
-     * {@code postcode}: the first 12 hex characters of the SHA-256 digest of the normalized
-     * {@code lastName} (see {@link #collapse}) concatenated with a {@code '|'} and the
-     * {@code postcode} (empty when absent). Because it is derived purely from those two fields,
+     * Derives the deterministic version-2 {@code householdId} for the given {@code lastName} and
+     * {@code postcode}: the first 12 hex characters of the SHA-256 digest of the fixed {@code 'V2'}
+     * version tag (see {@link Owner#IDENTITY_VERSION}), a {@code '|'}, the normalized
+     * {@code lastName} (see {@link #collapse}), another {@code '|'} and the {@code postcode} (empty
+     * when absent). The {@code 'V2'} tag makes it differ from the version-1 household id. Because it
+     * is otherwise derived purely from those two fields,
      * every owner sharing a last name and postcode receives the same value, independent of create
      * order. Shared by {@link #assignHouseholdId} (which persists it), {@link #assignHouseholdMemberCount}
      * and {@link #assignMembershipLevelCap} (which read the household membership).
@@ -765,7 +778,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the derived household id
      */
     private static String householdIdFor(String lastName, String postcode) {
-        String key = collapse(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = Owner.IDENTITY_VERSION + "|" + collapse(lastName) + "|" + (postcode == null ? "" : postcode);
         return sha256Hex(key).substring(0, 12);
     }
 
