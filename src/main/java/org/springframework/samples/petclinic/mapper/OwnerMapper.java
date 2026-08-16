@@ -18,6 +18,9 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink",
+        expression = "java(owner == null || owner.getId() == null ? null : "
+            + "\"/api/owners/\" + owner.getId())")
     @Mapping(target = "salutation",
         expression = "java(owner == null ? null : "
             + "(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() "
