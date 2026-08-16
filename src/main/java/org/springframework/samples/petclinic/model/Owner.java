@@ -466,6 +466,17 @@ public class Owner extends Person {
         return telephonePart + "|" + emailPart + "|" + householdPart;
     }
 
+    /**
+     * A link to this owner's own resource, derived on read as {@code '/api/owners/'} followed by
+     * the owner's id.
+     *
+     * @return the self link, or {@code null} when no id is assigned
+     */
+    @Transient
+    public String getSelfLink() {
+        return getId() == null ? null : "/api/owners/" + getId();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

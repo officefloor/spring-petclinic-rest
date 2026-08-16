@@ -44,6 +44,8 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : owner.getFiscalYear())")
     @Mapping(target = "identityKey",
         expression = "java(owner == null ? null : owner.getIdentityKey())")
+    @Mapping(target = "selfLink",
+        expression = "java(owner == null ? null : owner.getSelfLink())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
