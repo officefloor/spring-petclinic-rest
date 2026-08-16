@@ -2,7 +2,6 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -32,10 +31,6 @@ public class RequireOwnerFields {
     /** Pragmatic syntactic check: one or more non-space/@ characters, an '@', a domain label,
      *  a dot, and a top-level label. Rejects inputs such as "not-an-email". */
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-
-    /** Disposable/throwaway email domains a create-owner request may not use. */
-    private static final Set<String> DISPOSABLE_DOMAINS =
-            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
@@ -93,7 +88,7 @@ public class RequireOwnerFields {
                 throw new InvalidEmailException(email);
             }
             String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
-            if (DISPOSABLE_DOMAINS.contains(domain)) {
+            if (DisposableEmail.isBlocked(domain)) {
                 throw new DisposableEmailException(email);
             }
             request.setEmail(normalized);
