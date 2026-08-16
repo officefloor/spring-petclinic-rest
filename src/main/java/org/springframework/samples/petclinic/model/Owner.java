@@ -91,6 +91,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level_cap")
+    private Integer membershipLevelCap;
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
@@ -236,6 +239,14 @@ public class Owner extends Person {
         this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
+    public Integer getMembershipLevelCap() {
+        return this.membershipLevelCap;
+    }
+
+    public void setMembershipLevelCap(Integer membershipLevelCap) {
+        this.membershipLevelCap = membershipLevelCap;
+    }
+
     public LocalDate getBirthDate() {
         return this.birthDate;
     }
@@ -332,21 +343,35 @@ public class Owner extends Person {
      * Because a newly created owner has zero tenure, level 4 (which requires the tenure points) is
      * reached only once the owner has entered a later fiscal year than the one they registered in.
      *
+     * <p>The points-derived level is finally capped by {@link #membershipLevelCap} when one was
+     * assigned at create: a new owner joining an existing household without declaring it (see
+     * {@code membershipLevelCap}) may not exceed one above the highest membership level already held
+     * by an existing household member, so the returned level is the lesser of the derived level and
+     * the cap. When no cap was assigned (a household's first member, or a declared member) the
+     * derived level is returned unchanged.
+     *
      * @return the membership level, from 1 to 4
      */
     @Transient
     public Integer getMembershipLevel() {
         int points = getMembershipPoints();
+        int level;
         if (points >= 6) {
-            return 4;
+            level = 4;
         }
-        if (points >= 4) {
-            return 3;
+        else if (points >= 4) {
+            level = 3;
         }
-        if (points >= 2) {
-            return 2;
+        else if (points >= 2) {
+            level = 2;
         }
-        return 1;
+        else {
+            level = 1;
+        }
+        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
+            return this.membershipLevelCap;
+        }
+        return level;
     }
 
     /**

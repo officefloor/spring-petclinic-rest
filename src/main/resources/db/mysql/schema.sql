@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  membership_level_cap INTEGER,
   birth_date DATE,
   deleted BOOLEAN DEFAULT FALSE NOT NULL,
   INDEX(last_name)

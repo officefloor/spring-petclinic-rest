@@ -168,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignCustomerCode(owner);
         assignHouseholdId(owner);
         assignHouseholdMemberCount(owner);
+        assignMembershipLevelCap(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         assignNamesakeCount(owner);
         assignMembershipNumber(owner);
         assignBulkSignupWarning(owner);
@@ -655,18 +656,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects a create whose computed {@code householdId} (derived from {@code lastName} and
      * {@code postcode}, see {@link #householdIdFor}) already belongs to an existing owner, unless
-     * the request opts in via {@code sharesHousehold}. Because the household is keyed on
-     * {@code (lastName, postcode)}, a second owner sharing both is the same household: it is
-     * rejected with a 409 as a household duplicate unless it declares {@code sharesHousehold}, in
-     * which case it is created as a declared household member. The scan is taken over the existing
-     * owners before this one is persisted.
+     * the request opts in via {@code sharesHousehold} or supplies its own {@code email}. Because
+     * the household is keyed on {@code (lastName, postcode)}, a second owner sharing both is the
+     * same household: it is rejected with a 409 as a household duplicate unless it declares
+     * {@code sharesHousehold} (created as a declared household member) or carries an {@code email}
+     * — a distinguishing identifier that marks it as a genuinely distinct member of the household
+     * rather than a re-entry of an existing one, so it is admitted as an (undeclared) household
+     * member whose membership level is capped (see {@link #assignMembershipLevelCap}). The scan is
+     * taken over the existing owners before this one is persisted.
      *
-     * @param ownerFieldsDto the submitted owner fields ({@code lastName} and {@code postcode} set)
+     * @param ownerFieldsDto the submitted owner fields ({@code lastName}, {@code postcode} and the
+     *                        already-normalized {@code email} set)
      * @throws DuplicateHouseholdException with a 409 status if the household already exists and the
-     *                                     request did not opt in via {@code sharesHousehold}
+     *                                     request neither opted in via {@code sharesHousehold} nor
+     *                                     supplied an {@code email}
      */
     private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String email = ownerFieldsDto.getEmail();
+        if (email != null && !email.isBlank()) {
             return;
         }
         String householdId = householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
@@ -695,6 +705,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(other -> householdId != null && householdId.equals(other.getHouseholdId()))
             .count();
         owner.setHouseholdMemberCount((int) (existing + 1));
+    }
+
+    /**
+     * Assigns the owner's {@code membershipLevelCap} on create, which bounds the level returned by
+     * {@link org.springframework.samples.petclinic.model.Owner#getMembershipLevel()}. A new owner
+     * joining an existing household without declaring it (i.e. admitted via its {@code email}, not
+     * via {@code sharesHousehold}) may not hold a membership level more than one above the current
+     * maximum membership level among the existing members of its household: the cap is that maximum
+     * plus one. When the household has no existing member no cap applies, and a declared member
+     * (one that opted in via {@code sharesHousehold}) is never capped; in both cases the cap is left
+     * unset so the points-derived level stands. The scan is taken over the existing owners before
+     * this one is persisted, so it reflects only pre-existing household members.
+     *
+     * @param owner the owner being created (with its {@code householdId} already assigned)
+     * @param declaredHouseholdMember whether the request opted in via {@code sharesHousehold}
+     */
+    private void assignMembershipLevelCap(Owner owner, boolean declaredHouseholdMember) {
+        if (declaredHouseholdMember) {
+            owner.setMembershipLevelCap(null);
+            return;
+        }
+        String householdId = owner.getHouseholdId();
+        Integer maxLevel = this.clinicService.findAllOwners().stream()
+            .filter(other -> !other.isDeleted())
+            .filter(other -> householdId != null && householdId.equals(other.getHouseholdId()))
+            .map(Owner::getMembershipLevel)
+            .filter(Objects::nonNull)
+            .max(Integer::compareTo)
+            .orElse(null);
+        owner.setMembershipLevelCap(maxLevel == null ? null : maxLevel + 1);
     }
 
     /**
