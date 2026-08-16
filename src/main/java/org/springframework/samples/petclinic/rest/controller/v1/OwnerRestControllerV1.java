@@ -176,6 +176,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(assignCustomerCode(region, owner.getTelephone(), owner.getLastName()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
+        owner.setCapacityWarning(computeCapacityWarning(owner.getCity()));
         owner.setHouseholdSize(countHouseholdMembers(owner.getLastName(), owner.getPostcode()) + 1);
         owner.setMembershipLevel(cappedMembershipLevel(owner));
         // A declared household member (sharesHousehold) is created but is not a suspected duplicate.
@@ -402,6 +403,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (count >= CITY_CAPACITY) {
             throw new CityAtCapacityException(city);
         }
+    }
+
+    /**
+     * The number of owners a city must already hold for a new owner in it to raise a
+     * {@code capacityWarning}. Once a city holds at least this many owners (but fewer than the hard
+     * {@link #CITY_CAPACITY} limit) the next owner created in it warns that the city is approaching
+     * capacity.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Computes the {@code capacityWarning} for an owner being created: {@code true} when the owner's
+     * city already holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD} and
+     * {@value #CITY_CAPACITY} minus one owners (approaching, but not yet at, the hard
+     * {@link #CITY_CAPACITY} limit), otherwise {@code false}. Owners are counted per city the same way
+     * the hard capacity rule counts them (see {@link #rejectCityAtCapacity}), comparing the city name
+     * case-insensitively with a {@code null} city treated as empty, and the owner being created is
+     * excluded (it has not yet been saved). A city already at or beyond the hard limit is rejected
+     * before this runs, so it never reports a warning.
+     *
+     * @param city the city of the owner being created
+     * @return {@code true} if the city is approaching its capacity limit
+     */
+    private boolean computeCapacityWarning(String city) {
+        String cityValue = city == null ? "" : city;
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> cityValue.equalsIgnoreCase(
+                existing.getCity() == null ? "" : existing.getCity()))
+            .count();
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 
     /**

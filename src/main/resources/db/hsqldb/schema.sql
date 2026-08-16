@@ -52,6 +52,7 @@ CREATE TABLE owners (
   customer_code VARCHAR(20),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
+  capacity_warning BOOLEAN,
   household_size INTEGER,
   membership_level INTEGER,
   possible_duplicate BOOLEAN,
