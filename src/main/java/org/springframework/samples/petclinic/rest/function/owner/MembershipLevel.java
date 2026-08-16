@@ -30,6 +30,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  *
  * <p>Only owners created earlier (lower id) count towards the household size, so the base points stay
  * fixed from creation even as the household later grows.
+ *
+ * <p>The banded level is then capped: an owner's level cannot exceed one above the current maximum
+ * level among their existing household members — the earlier owners (lower id) sharing this owner's
+ * {@code householdId}. With no existing household member (no postcode, or first in the household) no
+ * cap applies. The cap is computed from those members' own (already-capped) levels.
  */
 public final class MembershipLevel {
 
@@ -48,9 +53,17 @@ public final class MembershipLevel {
     private MembershipLevel() {
     }
 
-    /** The owner's membership level, from 1 to 4, banded from {@link #points}. */
+    /**
+     * The owner's membership level, from 1 to 4, banded from {@link #points} and then capped at one
+     * above the maximum level among their existing household members (see {@link #householdLevelCap}).
+     */
     public static int of(Owner owner, OwnerRepository ownerRepository) {
-        return level(points(owner, ownerRepository));
+        int level = level(points(owner, ownerRepository));
+        Integer cap = householdLevelCap(owner, ownerRepository);
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
     }
 
     /** The owner's membership points (0 or more). */
@@ -93,6 +106,36 @@ public final class MembershipLevel {
             return 0;
         }
         return FiscalYear.elapsedYears(registrationDate, LocalDate.now());
+    }
+
+    /**
+     * The level ceiling from this owner's existing household members: one above the maximum level
+     * among the earlier owners (lower id) sharing its {@code householdId}, or {@code null} when it has
+     * no household ({@code householdId} absent) or no existing member — in which case no cap applies.
+     */
+    private static Integer householdLevelCap(Owner owner, OwnerRepository ownerRepository) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || householdId.isBlank()) {
+            return null;
+        }
+        Integer ownerId = owner.getId();
+        Integer maxLevel = null;
+        for (Owner other : ownerRepository.findAll()) {
+            Integer otherId = other.getId();
+            if (otherId == null) {
+                continue;
+            }
+            if (ownerId != null && otherId >= ownerId) {
+                continue; // only owners that already existed at creation count
+            }
+            if (householdId.equals(other.getHouseholdId())) {
+                int otherLevel = of(other, ownerRepository);
+                if (maxLevel == null || otherLevel > maxLevel) {
+                    maxLevel = otherLevel;
+                }
+            }
+        }
+        return maxLevel == null ? null : maxLevel + 1;
     }
 
     /** The owner's household size: this owner plus every earlier owner sharing its {@code householdId}. */
