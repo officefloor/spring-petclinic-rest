@@ -141,8 +141,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
-        if (isBlank(normalizedAddress)) {
+        // Normalize whichever address form was supplied and fold it into the DTO: the structured
+        // 'addressLine1'/'addressLine2' win when a non-blank 'addressLine1' is present, otherwise the
+        // flat 'address' is used. The composed value is stored back into 'address' so every reader of
+        // the owner's address sees the effective (structured-or-flat) value.
+        applyAddress(ownerFieldsDto);
+        if (isBlank(ownerFieldsDto.getAddress())) {
             missingFields.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -180,7 +184,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new CityAtCapacityException(
                 "the owner's city already contains 50 or more owners");
         }
-        ownerFieldsDto.setAddress(normalizedAddress);
         String telephone = toE164(ownerFieldsDto.getTelephone());
         ownerFieldsDto.setTelephone(telephone);
         String email = normalizeEmail(ownerFieldsDto.getEmail());
@@ -249,7 +252,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        applyAddress(ownerFieldsDto);
         currentOwner.setAddress(ownerFieldsDto.getAddress());
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -391,6 +397,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
             sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
         }
         return sb.toString();
+    }
+
+    /**
+     * Folds an owner's supplied address into its canonical stored form on the given DTO, preferring
+     * the structured fields when present. When a non-blank {@code addressLine1} is supplied, it and an
+     * optional {@code addressLine2} are normalized ({@link #normalizeAddress}) and kept as the
+     * structured lines; the flat {@code address} is set to the composed value ({@code addressLine1},
+     * plus a single space and {@code addressLine2} when the second line is present). Otherwise the
+     * structured lines are cleared and the flat {@code address} is set to the normalized flat input.
+     * The resulting {@code address} is the effective value every address reader sees, and is blank
+     * only when neither an {@code addressLine1} nor a flat {@code address} was supplied.
+     */
+    private static void applyAddress(OwnerFieldsDto ownerFieldsDto) {
+        String line1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String line2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        if (!isBlank(line1)) {
+            ownerFieldsDto.setAddressLine1(line1);
+            ownerFieldsDto.setAddressLine2(isBlank(line2) ? null : line2);
+            ownerFieldsDto.setAddress(isBlank(line2) ? line1 : line1 + " " + line2);
+        } else {
+            ownerFieldsDto.setAddressLine1(null);
+            ownerFieldsDto.setAddressLine2(null);
+            ownerFieldsDto.setAddress(normalizeAddress(ownerFieldsDto.getAddress()));
+        }
     }
 
     /**
