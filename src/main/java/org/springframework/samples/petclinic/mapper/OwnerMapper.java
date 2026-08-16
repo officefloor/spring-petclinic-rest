@@ -24,6 +24,10 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(owner == null ? null : "
+            + "org.springframework.samples.petclinic.util.TelephoneFormats.telephoneDisplay("
+            + "owner.getTelephone()))")
     @Mapping(target = "checkDigit",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.CheckDigits.luhn("
