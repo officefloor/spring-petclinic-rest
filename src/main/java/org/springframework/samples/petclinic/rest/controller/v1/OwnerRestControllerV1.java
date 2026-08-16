@@ -17,6 +17,8 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -207,7 +209,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(
+            customerCode(owner.getPostcode(), owner.getTelephone(), owner.getLastName()));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(bulkSignupWarning);
@@ -386,24 +389,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the {@code customerCode} assigned to a new owner, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'}: {@code CITY3} is the upper-cased first three letters of the
-     * owner's city, {@code LAST3} is the upper-cased first three letters of the owner's last name,
-     * and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to one more than the number
-     * of owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+     * {@code '<REGION>-<HASH8>'}: {@code REGION} is the region code derived from the owner's postcode
+     * ({@code NSW}/{@code VIC}/{@code QLD}, or {@code UNKNOWN}), and {@code HASH8} is the first 8
+     * upper-case hex characters of SHA-256 over the owner's normalized E.164 telephone concatenated
+     * with the last name (e.g. {@code 'NSW-1A2B3C4D'}). No sequence number is used, so the code is a
+     * pure function of the owner's own identity fields.
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = prefix3(city);
-        String last3 = prefix3(lastName);
-        long sequence = this.clinicService.findAllOwners().stream()
-            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1L;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private static String customerCode(String postcode, String telephone, String lastName) {
+        String region = LocalityDeriver.region(postcode);
+        String hash8 = sha256Hex8((telephone == null ? "" : telephone)
+            + (lastName == null ? "" : lastName));
+        return region + "-" + hash8;
     }
 
-    /** Upper-cased first three letters (any non-letter removed) of the given value. */
-    private static String prefix3(String value) {
-        String letters = value == null ? "" : value.replaceAll("[^\\p{L}]", "");
-        return letters.substring(0, Math.min(3, letters.length())).toUpperCase(Locale.ROOT);
+    /** The first 8 upper-case hex characters (4 bytes) of the SHA-256 digest of {@code s}. */
+    private static String sha256Hex8(String s) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(s.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
@@ -495,7 +507,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!postcode.matches("[0-9]{4}")) {
             throw new InvalidPostcodeException("postcode must be a 4-digit value");
         }
-        int[] range = REGION_POSTCODE_RANGE.get(LocalityDeriver.locality(city));
+        int[] range = REGION_POSTCODE_RANGE.get(LocalityDeriver.localityForCity(city));
         if (range == null) {
             return;
         }

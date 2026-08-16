@@ -1,13 +1,16 @@
 package org.springframework.samples.petclinic.mapper;
 
 /**
- * Derives an owner's locality (region) preferring the postcode over the city.
+ * Derives an owner's region, either from a postcode or from the region-and-hash
+ * {@code customerCode}, plus the legacy city-to-region lookup.
  *
- * <p>The postcode range is consulted first (NSW 2000-2099, VIC 3000-3099,
- * QLD 4000-4099); only when the postcode is absent or falls in no known range
- * does derivation fall back to the fixed city-to-region table (Sydney -> NSW,
- * Melbourne -> VIC, Brisbane -> QLD). This returns the same region for the known
- * cities but disambiguates cities that share a name.
+ * <p>{@link #region(String)} maps a postcode to its region by the fixed ranges
+ * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); this is the region embedded in
+ * an owner's {@code '<REGION>-<HASH8>'} customer code. {@link #locality(String)}
+ * reads an owner's locality straight back out of that customer code (its
+ * {@code <REGION>} component), so the locality and the identity always agree.
+ * The city-to-region table (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD)
+ * remains available via {@link #localityForCity(String)} for postcode validation.
  *
  * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper})
  * so MapStruct does not mistake it for a generic {@code String -> String}
@@ -20,23 +23,35 @@ public final class LocalityDeriver {
     }
 
     /**
-     * Returns the canonical region string, preferring the postcode: if the postcode falls in a
-     * known region's range it wins; otherwise the city-to-region table is used. Returns
-     * {@code "UNKNOWN"} when neither yields a region.
+     * Returns the region code derived from the postcode: the region whose fixed inclusive range
+     * contains the 4-digit postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), or
+     * {@code "UNKNOWN"} when the postcode is absent, not a 4-digit value, or in no known range.
+     * This is the {@code <REGION>} component embedded in a new owner's customer code.
      */
-    public static String locality(String city, String postcode) {
+    public static String region(String postcode) {
         String byPostcode = regionForPostcode(postcode);
-        if (byPostcode != null) {
-            return byPostcode;
+        return byPostcode != null ? byPostcode : "UNKNOWN";
+    }
+
+    /**
+     * Returns an owner's locality: the {@code <REGION>} component of the {@code '<REGION>-<HASH8>'}
+     * customer code (the text before the first {@code '-'}). Returns {@code "UNKNOWN"} when the
+     * customer code is {@code null}/blank or carries no region component.
+     */
+    public static String locality(String customerCode) {
+        if (customerCode == null || customerCode.isBlank()) {
+            return "UNKNOWN";
         }
-        return locality(city);
+        int dash = customerCode.indexOf('-');
+        String region = dash < 0 ? customerCode : customerCode.substring(0, dash);
+        return region.isBlank() ? "UNKNOWN" : region;
     }
 
     /**
      * Returns the canonical region string for the given city, or {@code "UNKNOWN"}
      * when the city is {@code null} or not in the fixed table.
      */
-    public static String locality(String city) {
+    public static String localityForCity(String city) {
         if (city == null) {
             return "UNKNOWN";
         }
