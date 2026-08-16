@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
-        AgeBandDeriver.class})
+        AgeBandDeriver.class, TelephoneDisplayDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -45,6 +45,8 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey",
         expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
             + "owner.getEmail(), owner.getHouseholdId()))")
+    @Mapping(target = "telephoneDisplay",
+        expression = "java(TelephoneDisplayDeriver.telephoneDisplay(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
