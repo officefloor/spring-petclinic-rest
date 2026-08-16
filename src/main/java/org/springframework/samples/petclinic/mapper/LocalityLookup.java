@@ -63,6 +63,24 @@ public final class LocalityLookup {
     }
 
     /**
+     * Returns the owner's marketing segment, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code 'PREMIUM'} when {@code membershipLevel} is 3 or more, otherwise {@code 'STANDARD'}.
+     * AREA is {@code 'METRO'} when the region derived from {@code postcode} and {@code city} is a
+     * known region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
+     *
+     * @param membershipLevel the owner's membership level, possibly {@code null}
+     * @param postcode the owner's postcode, possibly {@code null}
+     * @param city the owner's city, possibly {@code null}
+     * @return the owner segment, one of {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'},
+     *     {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}
+     */
+    public static String segmentFor(Integer membershipLevel, String postcode, String city) {
+        String tier = (membershipLevel != null && membershipLevel >= 3) ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(regionFor(postcode, city)) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * Returns the IANA timezone name for the region derived from {@code postcode}
      * and {@code city}, from the fixed region-to-timezone table, or {@code null}
      * when the region is not in the table.
