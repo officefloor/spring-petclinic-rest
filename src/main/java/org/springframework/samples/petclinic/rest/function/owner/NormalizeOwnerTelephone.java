@@ -9,7 +9,9 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerTelephoneInval
  * into E.164 form: spaces, dashes and brackets are stripped; a leading {@code '+'} with its
  * country code is kept when present, otherwise country code {@code '+61'} is assumed and a
  * single leading {@code '0'} is dropped from the national digits. The result must have 8 to
- * 15 digits after the {@code '+'}. The E.164 value is written back onto the body in place, so
+ * 15 digits after the {@code '+'}, and the national-number length must match the country code
+ * ({@code '+61'} requires 9 national digits, {@code '+1'} requires 10). The E.164 value is
+ * written back onto the body in place, so
  * {@link BuildOwner} maps it and later reads/responses return it. A telephone that cannot form
  * a valid E.164 number is rejected 400 via {@link OwnerTelephoneInvalidException}.
  */
@@ -49,6 +51,17 @@ public class NormalizeOwnerTelephone {
         }
         if (!digits.matches("\\d{8,15}")) {
             return null;
+        }
+        // Country-specific national-number length: '+61' requires 9 national digits,
+        // '+1' requires 10. Other country codes keep only the general 8-15 rule above.
+        if (digits.startsWith("61")) {
+            if (digits.length() - 2 != 9) {
+                return null;
+            }
+        } else if (digits.startsWith("1")) {
+            if (digits.length() - 1 != 10) {
+                return null;
+            }
         }
         return "+" + digits;
     }
