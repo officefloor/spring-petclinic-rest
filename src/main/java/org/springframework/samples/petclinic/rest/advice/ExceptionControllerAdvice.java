@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.advice;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -157,9 +158,27 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList());
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link MissingOwnerFieldsException} raised when an owner payload is missing or blank in one
+     * or more required fields. Returns a 400 Bad Request whose {@code errors} array lists the name of each
+     * offending field.
+     *
+     * @param e The {@link MissingOwnerFieldsException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field names and a 400 Bad Request status.
+     */
+    @ExceptionHandler(MissingOwnerFieldsException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleMissingOwnerFieldsException(MissingOwnerFieldsException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("errors", e.getFields()));
     }
 
 }
