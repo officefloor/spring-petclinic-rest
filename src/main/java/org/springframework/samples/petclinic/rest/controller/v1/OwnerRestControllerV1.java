@@ -23,6 +23,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -212,6 +213,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new DuplicateIdentityException(
                 "an owner with the same identity key already exists");
         }
+        // Soft (possible) duplicate: not a hard duplicate, but sharing an existing owner's
+        // last name and postcode with a different telephone. The owner is still created; it is
+        // flagged and carries the matching owner's id (the lowest when several match).
+        String postcode = ownerFieldsDto.getPostcode();
+        Integer possibleDuplicateOf = null;
+        if (!isBlank(postcode)) {
+            possibleDuplicateOf = this.clinicService.findAllOwners().stream()
+                .filter(existing -> lastName.equals(normalizeHousehold(existing.getLastName()))
+                    && postcode.equals(existing.getPostcode())
+                    && !telephone.equals(existing.getTelephone()))
+                .map(Owner::getId)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
@@ -222,6 +237,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(bulkSignupWarning);
         // Household size after this create: existing members plus the owner being created.
         owner.setHouseholdSize(householdMembers.size() + 1);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
