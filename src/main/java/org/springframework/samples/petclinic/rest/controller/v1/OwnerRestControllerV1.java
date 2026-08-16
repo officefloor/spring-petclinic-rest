@@ -76,7 +76,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Dedicated audit logger. On successful owner create an audit line is emitted here carrying
-     * the newly assigned owner id, customer code, registration date and membership level.
+     * the newly assigned owner id, customer code, registration date, membership level and
+     * membership number.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -147,8 +148,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         assignBulkSignupWarning(owner);
         assignPossibleDuplicate(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(),
+            owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
