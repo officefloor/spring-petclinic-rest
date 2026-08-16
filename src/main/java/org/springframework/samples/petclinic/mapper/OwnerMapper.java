@@ -28,6 +28,8 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : org.springframework.samples.petclinic.mapper.LocalityLookup.regionFor(owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : owner.getContactPreference())")
+    @Mapping(target = "identityKey",
+        expression = "java(owner == null ? null : owner.getIdentityKey())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

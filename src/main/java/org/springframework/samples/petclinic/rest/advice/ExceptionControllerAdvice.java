@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.rest.controller.CityAtCapacityExcep
 import org.springframework.samples.petclinic.rest.controller.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateHouseholdException;
+import org.springframework.samples.petclinic.rest.controller.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.controller.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.controller.RequiredFieldsMissingException;
@@ -63,6 +64,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
+    private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the given identity already exists";
     private static final String ERROR_INVALID_EMAIL = "The request contains an invalid email address";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city already contains the maximum number of owners";
     private static final String ERROR_DAILY_LIMIT = "The maximum number of owners for today has already been reached";
@@ -253,6 +255,29 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getEmail());
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateIdentityException} raised when a create request supplies an owner
+     * whose whole derived {@code identityKey} already equals that of an existing owner. This one
+     * key consolidates the former telephone, email and household duplicate checks. Returns a 409
+     * Conflict whose body carries an {@code errors} array naming the {@code identityKey} field.
+     *
+     * @param e The {@link DuplicateIdentityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
+        detail.setProperty("errors", List.of("identityKey"));
+        logger.debug("Duplicate identity at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getIdentityKey());
         return ResponseEntity.status(status).body(detail);
     }
 

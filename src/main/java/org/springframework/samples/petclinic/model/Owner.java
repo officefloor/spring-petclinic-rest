@@ -193,6 +193,24 @@ public class Owner extends Person {
         return (this.email != null && !this.email.isBlank()) ? "EMAIL" : "PHONE";
     }
 
+    /**
+     * The owner's derived duplicate-detection key: the single consolidated identity used to
+     * detect duplicate owners on create. It is formed as
+     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} from the
+     * owner's already-normalized {@code telephone} (E.164 form), its lower-cased {@code email}
+     * (empty when absent) and its assigned {@code householdId}. Two owners are duplicates only
+     * when their whole {@code identityKey} values are equal.
+     *
+     * @return the consolidated identity key
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = this.email == null ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
