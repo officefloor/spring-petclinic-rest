@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerRegion;
 
 import java.util.Collection;
@@ -31,8 +33,10 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTimezone.fromRegion(deriveLocality(owner)))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "apiVersion",
+        expression = "java(Integer.valueOf(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityVersion.API_VERSION))")
+    @Mapping(target = "identity",
+        expression = "java(toOwnerIdentityDto(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "fiscalYear",
@@ -58,36 +62,36 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derives the owner's locality (region) from the unified {@code memberId}: its leading
-     * {@code <REGION>} segment (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.MemberId#region}). The region
-     * embedded in the memberId is itself derived (postcode preferred, then city) when the owner is
-     * created, so a postcode in a known range still wins over the city. When no memberId is present
-     * (e.g. legacy owners), falls back to deriving the region live from the postcode/city via
-     * {@link OwnerRegion}.
+     * Builds the owner's version-2 {@code identity} object — the {@code memberId}, {@code householdId}
+     * and {@code identityKey}. The memberId and householdId are read from the persisted owner; the
+     * identityKey is (re)derived with the version-2 algorithm (see
+     * {@link OwnerIdentity#identityKey}). Every value carries the fixed {@code "V2"} version tag.
+     */
+    default OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            OwnerIdentity.identityKey(owner.getTelephone(), owner.getEmail(), owner.getLastName()));
+        return identity;
+    }
+
+    /**
+     * Derives the owner's user-facing {@code locality} — the plain region code (postcode preferred,
+     * then city, else {@code "UNKNOWN"}) via {@link OwnerRegion}. This is deliberately independent of
+     * the {@code memberId}, whose embedded region now carries the {@code "V2"} identity version tag:
+     * the locality, timezone and owner segment must stay the plain region.
      */
     default String deriveLocality(Owner owner) {
-        String region = org.springframework.samples.petclinic.rest.function.owner.MemberId
-            .region(owner.getMemberId());
-        if (region != null) {
-            return region;
-        }
         return OwnerRegion.fromPostcodeOrCity(owner.getPostcode(), owner.getCity());
     }
 
     /**
-     * Derives the {@code FY<YY>} fiscal-year label from the unified {@code memberId}: its 2-digit
-     * {@code <FY>} segment (see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.MemberId#fiscalYear2}). When no
-     * memberId is present (e.g. legacy owners), falls back to computing the label live from the
-     * registration date via {@link org.springframework.samples.petclinic.rest.function.owner.FiscalYear}.
+     * Derives the {@code FY<YY>} fiscal-year label live from the owner's business-day-adjusted
+     * registration date via
+     * {@link org.springframework.samples.petclinic.rest.function.owner.FiscalYear}.
      */
     default String deriveFiscalYear(Owner owner) {
-        String fy2 = org.springframework.samples.petclinic.rest.function.owner.MemberId
-            .fiscalYear2(owner.getMemberId());
-        if (fy2 != null) {
-            return "FY" + fy2;
-        }
         return org.springframework.samples.petclinic.rest.function.owner.FiscalYear
             .label(owner.getRegistrationDate());
     }

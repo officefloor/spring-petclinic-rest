@@ -13,8 +13,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} (see
- * {@link MemberId}): REGION is the region code derived from the postcode/city (see
- * {@link OwnerRegion}); FY is the 2-digit fiscal year of the business-day-adjusted
+ * {@link MemberId}): REGION is the version-2 region code — the plain postcode/city region with the
+ * fixed {@code "V2"} tag prefixed (see {@link OwnerRegion#identityRegion}); FY is the 2-digit
+ * fiscal year of the business-day-adjusted
  * {@code registrationDate} (the same {@code YY} as the owner's {@code fiscalYear}); HASH8 is the
  * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
  * last name; and CHK is a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}
@@ -31,7 +32,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = OwnerRegion.fromPostcodeOrCity(owner.getPostcode(), owner.getCity());
+        String region = OwnerRegion.identityRegion(owner.getPostcode(), owner.getCity());
         String fy2 = String.format("%02d", FiscalYear.startYear(owner.getRegistrationDate()) % 100);
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();

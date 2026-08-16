@@ -2111,6 +2111,40 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: The owner's version-2 derived identity. Each identifier is rederived with a fixed
+        'V2' version tag mixed in, so no value equals its version-1 form.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: The unified member identifier, formatted '<REGION><FY><HASH8><CHK>' with no
+            separators, where REGION is the version-2 region code — the 'V2' tag prefixed to the
+            postcode/city region (e.g. 'V2NSW'). FY is the 2-digit fiscal year; HASH8 is the first
+            8 upper-case hex characters of SHA-256 over (normalizedTelephone + lastName); and CHK is
+            a single Luhn check digit over the digits of '<REGION><FY><HASH8>'. A trailing '-<n>' is
+            appended on collision.
+          type: string
+          example: 'V2NSW261A2B3C4D5'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: A stable shared identifier for a household, computed deterministically as the
+            first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode + '|V2').
+            Every owner is assigned one, and owners sharing a lastName and postcode share the same
+            value automatically.
+          type: string
+          example: '3f8a1c2d9e0b'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: The single derived key used for duplicate detection, the lower-case hex
+            SHA-256 over 'normalizedTelephone|lowerEmail|soundex(lastName)|V2' (the email segment is
+            empty when absent). Two owners are duplicates only when their whole identityKey is equal.
+          type: string
+          example: '3f8a1c2d9e0b4a5c6d7e8f90112233445566778899aabbccddeeff0011223344'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2145,25 +2179,23 @@ components:
               type: string
               example: 'DR Franklin'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: The unified member identifier, formatted '<REGION><FY><HASH8><CHK>' with
-                no separators. REGION is the region code derived from the postcode/city (NSW, VIC,
-                QLD or UNKNOWN); FY is the 2-digit fiscal year (the same YY as fiscalYear); HASH8 is
-                the first 8 upper-case hex characters of SHA-256 over (normalizedTelephone +
-                lastName); and CHK is a single Luhn check digit over the digits of
-                '<REGION><FY><HASH8>'. A trailing '-<n>' is appended on collision.
-              type: string
-              example: 'NSW261A2B3C4D5'
+            apiVersion:
+              title: API version
+              description: The version of the owner identity contract. Version 2 groups the
+                memberId, householdId and identityKey under the 'identity' object and rederives
+                each identifier with a fixed 'V2' version tag mixed in.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: A stable shared identifier for a household, computed deterministically
-                as the first 12 hex characters of SHA-256 over (normalizedLastName + '|' +
-                postcode). Every owner is assigned one, and owners sharing a lastName and postcode
-                share the same value automatically.
-              type: string
-              example: '3f8a1c2d9e0b'
+            identity:
+              title: Identity
+              description: The owner's version-2 derived identity — the memberId, householdId and
+                identityKey, each rederived with a fixed 'V2' version tag mixed in so every value
+                differs from its version-1 form. The V2 tag appears only inside these identifiers,
+                never in the user-facing locality, timezone or owner segment.
+              allOf:
+                - $ref: '#/components/schemas/OwnerIdentity'
               readOnly: true
             namesakeCount:
               title: Namesake count
@@ -2173,15 +2205,6 @@ components:
               format: int32
               minimum: 0
               example: 1
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: The single derived key used for duplicate detection, the lower-case
-                hex SHA-256 over 'normalizedTelephone|lowerEmail|soundex(lastName)' (the email
-                segment is empty when absent). Two owners are duplicates only when their whole
-                identityKey is equal.
-              type: string
-              example: '3f8a1c2d9e0b4a5c6d7e8f90112233445566778899aabbccddeeff0011223344'
               readOnly: true
             membershipPoints:
               title: Membership points
@@ -2206,9 +2229,10 @@ components:
               readOnly: true
             locality:
               title: Locality
-              description: The canonical region derived from the city using a fixed city-to-region
-                table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is
-                not in the table.
+              description: The canonical, plain region code — the postcode's region when it falls in
+                a known range, else the city's region from a fixed city-to-region table (Sydney->NSW,
+                Melbourne->VIC, Brisbane->QLD), else 'UNKNOWN'. This user-facing value is not an
+                identifier and never carries the 'V2' identity version tag.
               type: string
               example: 'NSW'
               readOnly: true

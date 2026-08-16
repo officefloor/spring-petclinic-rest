@@ -14,6 +14,16 @@ public final class OwnerRegion {
     private OwnerRegion() {
     }
 
+    /**
+     * The version-2 region code used <em>inside the identifiers</em> — the plain
+     * {@link #fromPostcodeOrCity region} with the fixed {@link OwnerIdentityVersion#TAG "V2"} tag
+     * prefixed (e.g. {@code "V2NSW"}). This is the region embedded in the {@code memberId}; the
+     * user-facing {@code locality}, {@code timezone} and owner segment keep the plain region.
+     */
+    public static String identityRegion(String postcode, String city) {
+        return OwnerIdentityVersion.TAG + fromPostcodeOrCity(postcode, city);
+    }
+
     /** Region derived from the postcode, falling back to the city, else {@code "UNKNOWN"}. */
     public static String fromPostcodeOrCity(String postcode, String city) {
         if (postcode != null && postcode.matches("[0-9]{4}")) {

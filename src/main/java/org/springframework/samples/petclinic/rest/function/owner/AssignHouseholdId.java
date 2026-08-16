@@ -8,9 +8,11 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
- * {@code normalizedLastName + '|' + postcode}, where the last name is normalized the same way
- * {@link RequireUniqueOwnerHousehold} compares it (case-insensitive, whitespace collapsed).
+ * Assigns the deterministic version-2 {@code householdId}: the first 12 hex characters of SHA-256
+ * over {@code normalizedLastName + '|' + postcode + '|' + "V2"}, where the last name is normalized
+ * the same way {@link RequireUniqueOwnerHousehold} compares it (case-insensitive, whitespace
+ * collapsed). The fixed {@code "V2"} tag is mixed in so no id equals its version-1 form, while
+ * owners sharing a lastName and postcode still share the same value.
  *
  * <p>Because the value is derived purely from the household identity (lastName, postcode), every
  * owner is assigned one and owners with the same lastName and postcode share it automatically,
@@ -29,10 +31,10 @@ public class AssignHouseholdId {
         owner.setHouseholdId(deriveHouseholdId(owner.getLastName(), owner.getPostcode()));
     }
 
-    /** First 12 lower-case hex chars of SHA-256(normalizedLastName + '|' + postcode). */
+    /** First 12 lower-case hex chars of SHA-256(normalizedLastName + '|' + postcode + '|' + "V2"). */
     static String deriveHouseholdId(String lastName, String postcode) {
         String key = RequireUniqueOwnerHousehold.normalize(lastName) + "|"
-                + (postcode == null ? "" : postcode.trim());
+                + (postcode == null ? "" : postcode.trim()) + "|" + OwnerIdentityVersion.TAG;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));

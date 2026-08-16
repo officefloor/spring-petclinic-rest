@@ -14,9 +14,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * in addition to the human-readable line from {@link AuditOwnerCreated}. Runs after {@link SaveOwner}
  * (so the owner has its persisted id) and after {@link AssignMemberId} / {@link AssignMembershipLevel}.
  *
- * <p>The event is a JSON object {@code {seq, ownerId, memberId, membershipLevel, event}} where
- * {@code seq} is a monotonically increasing integer across creates. It carries the owner's <em>current
- * primary identifier</em>, the unified {@code memberId} (see {@link #primaryIdentifier}).
+ * <p>The event is a JSON object
+ * {@code {seq, schemaVersion, ownerId, memberId, membershipLevel, event}} where {@code seq} is a
+ * monotonically increasing integer across creates and {@code schemaVersion} is 2 (the version-2
+ * schema). It carries the owner's <em>current primary identifier</em>, the version-2 unified
+ * {@code memberId} (see {@link #primaryIdentifier}).
  */
 public class AuditOwnerCreatedEvent {
 
@@ -26,13 +28,14 @@ public class AuditOwnerCreatedEvent {
     private static final AtomicLong SEQ = new AtomicLong();
 
     /** Immutable structured create event. Field order is the serialized JSON order. */
-    public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
+    public record OwnerCreatedEvent(long seq, int schemaVersion, Integer ownerId, String memberId,
             Integer membershipLevel, String event) {
     }
 
     public void service(@Val Owner owner, ObjectMapper mapper) {
-        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                primaryIdentifier(owner), owner.getMembershipLevel(), "OWNER_CREATED");
+        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(),
+                OwnerIdentityVersion.SCHEMA_VERSION, owner.getId(), primaryIdentifier(owner),
+                owner.getMembershipLevel(), "OWNER_CREATED");
         AUDIT.info(mapper.writeValueAsString(event));
     }
 

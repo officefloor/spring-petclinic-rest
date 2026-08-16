@@ -29,8 +29,9 @@ public final class OwnerIdentity {
     }
 
     /**
-     * Builds the identity key: the hex SHA-256 of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+     * Builds the version-2 identity key: the hex SHA-256 of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName) + '|' + "V2"}. The
+     * fixed {@code "V2"} tag is mixed in so no key equals its version-1 form.
      */
     public static String identityKey(String telephone, String email, String lastName) {
         String tel = NormalizeOwnerTelephone.toE164(telephone);
@@ -38,7 +39,7 @@ public final class OwnerIdentity {
             tel = telephone == null ? "" : telephone;
         }
         String mail = (email == null || email.isBlank()) ? "" : email.toLowerCase();
-        String key = tel + "|" + mail + "|" + Soundex.of(lastName);
+        String key = tel + "|" + mail + "|" + Soundex.of(lastName) + "|" + OwnerIdentityVersion.TAG;
         return sha256Hex(key);
     }
 
