@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+index a271138a..7d3e9f6f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+@@ -62,6 +62,24 @@ public final class LocalityLookup {
+         return fromPostcode != null ? fromPostcode : regionFor(city);
+     }
+ 
++    /**
++     * Returns the owner's marketing segment, formatted {@code '<TIER>_<AREA>'}. TIER is
++     * {@code 'PREMIUM'} when {@code membershipLevel} is 3 or more, otherwise {@code 'STANDARD'}.
++     * AREA is {@code 'METRO'} when the region derived from {@code postcode} and {@code city} is a
++     * known region (NSW, VIC or QLD), otherwise {@code 'REGIONAL'}.
++     *
++     * @param membershipLevel the owner's membership level, possibly {@code null}
++     * @param postcode the owner's postcode, possibly {@code null}
++     * @param city the owner's city, possibly {@code null}
++     * @return the owner segment, one of {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'},
++     *     {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}
++     */
++    public static String segmentFor(Integer membershipLevel, String postcode, String city) {
++        String tier = (membershipLevel != null && membershipLevel >= 3) ? "PREMIUM" : "STANDARD";
++        String area = REGION_TIMEZONE.containsKey(regionFor(postcode, city)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++
+     /**
+      * Returns the IANA timezone name for the region derived from {@code postcode}
+      * and {@code city}, from the fixed region-to-timezone table, or {@code null}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d34da5b1..a0fe64a5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,6 +44,8 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : owner.getFiscalYear())")
+     @Mapping(target = "identityKey",
+         expression = "java(owner == null ? null : owner.getIdentityKey())")
++    @Mapping(target = "ownerSegment",
++        expression = "java(owner == null ? null : org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.mapper.LocalityLookup.segmentFor(owner.getMembershipLevel(), owner.getPostcode(), owner.getCity())))")
+     @Mapping(target = "selfLink",
+         expression = "java(owner == null ? null : owner.getSelfLink())")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a34939af..100569ff 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2369,6 +2369,21 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: >-
++                The owner's marketing segment, derived on read and formatted
++                '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or
++                more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a
++                known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             selfLink:
+               title: Self link
+               description: >-
