@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -64,6 +65,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -87,6 +90,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; carries owner lifecycle side-effects. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Request header carrying the client-supplied idempotency key for creates. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers the owner created for each already-seen {@code Idempotency-Key}, so a create that
+     * repeats with the same key returns the originally created owner (200) instead of creating a
+     * duplicate. Keyed by the raw header value; the mapped value is the created owner's id.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
 
     private final ClinicService clinicService;
 
@@ -134,6 +147,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        // Idempotent create: if this request repeats an already-seen 'Idempotency-Key', return the
+        // owner created the first time (200) rather than creating a duplicate.
+        String idempotencyKey = idempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         List<String> missingFields = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
             missingFields.add("firstName");
@@ -238,6 +263,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicateOf(null);
         owner.setDeleted(false);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            idempotentCreates.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} "
             + "membershipNumber={}",
@@ -348,6 +376,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Returns the {@code Idempotency-Key} header of the current request, or {@code null} when the
+     * header is absent, blank, or there is no bound request. Read from the request context so the
+     * generated {@link OwnersApi#addOwner} signature is left untouched.
+     */
+    private static String idempotencyKey() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
+            return null;
+        }
+        String key = attrs.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return isBlank(key) ? null : key;
     }
 
     /**
