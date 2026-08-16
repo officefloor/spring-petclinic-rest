@@ -52,6 +52,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -71,6 +74,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * numeric {@code membershipLevel}.
      */
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Name of the optional request header carrying an idempotency token for owner creation.
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Idempotency store mapping a previously seen {@code Idempotency-Key} to the id of the owner
+     * originally created under it. When a create repeats with a key already present here, the
+     * originally created owner is returned (200 OK) instead of creating a duplicate.
+     */
+    private final java.util.Map<String, Integer> idempotencyKeyToOwnerId =
+        new java.util.concurrent.ConcurrentHashMap<>();
 
     private final ClinicService clinicService;
 
@@ -118,6 +134,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = idempotencyKeyToOwnerId.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         applyAddress(owner, ownerFieldsDto);
@@ -148,6 +174,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            idempotencyKeyToOwnerId.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -155,6 +184,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Reads the optional {@code Idempotency-Key} header from the current request, if any. A create
+     * carrying this header is idempotent: the first create under a key is recorded, and a later create
+     * with the same key returns the originally created owner instead of creating a duplicate.
+     *
+     * @return the trimmed idempotency key, or {@code null} when the header is absent, blank or there is
+     *         no active servlet request
+     */
+    private String currentIdempotencyKey() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (attributes instanceof ServletRequestAttributes servletAttributes) {
+            String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+            if (key != null && !key.isBlank()) {
+                return key.trim();
+            }
+        }
+        return null;
     }
 
     /**
