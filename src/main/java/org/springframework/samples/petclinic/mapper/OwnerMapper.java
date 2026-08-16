@@ -36,6 +36,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
     @Mapping(target = "checkDigit",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
+    @Mapping(target = "ageBand",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS owners (
   namesake_count INT,
   membership_number VARCHAR(30),
   postcode VARCHAR(4),
+  birth_date DATE,
   INDEX(last_name)
 ) engine=InnoDB;
 
