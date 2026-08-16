@@ -238,4 +238,18 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("lastName", "address")));
     }
 
+    /**
+     * Handles {@link CityAtCapacityException} raised when a new owner's city already contains 50 or
+     * more owners. Returns a 409 Conflict whose {@code errors} array names the offending
+     * {@code city} field.
+     *
+     * @param e The {@link CityAtCapacityException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field name and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleCityAtCapacityException(CityAtCapacityException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("city")));
+    }
+
 }

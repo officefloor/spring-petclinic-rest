@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -138,6 +139,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
+        }
+        String city = ownerFieldsDto.getCity();
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city != null && city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        if (ownersInCity >= 50) {
+            throw new CityAtCapacityException(
+                "the owner's city already contains 50 or more owners");
         }
         ownerFieldsDto.setAddress(normalizedAddress);
         String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
