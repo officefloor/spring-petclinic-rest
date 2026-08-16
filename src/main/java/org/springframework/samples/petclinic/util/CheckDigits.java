@@ -17,9 +17,9 @@
 package org.springframework.samples.petclinic.util;
 
 /**
- * Helper for the Luhn check digit assigned to a pet owner. The check digit is computed over the
- * decimal digits contained in the owner's {@code customerCode}; any non-digit characters (such as
- * the '-' separators) are ignored.
+ * Helper for the Luhn check digit used within a pet owner's {@code memberId}. The check digit is
+ * computed over the decimal digits contained in the {@code <REGION><FY><HASH8>} prefix of the
+ * memberId; any non-digit characters (such as the region letters) are ignored.
  */
 public final class CheckDigits {
 

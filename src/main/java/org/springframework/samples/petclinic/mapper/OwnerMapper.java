@@ -35,10 +35,6 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.TelephoneFormats.telephoneDisplay("
             + "owner.getTelephone()))")
-    @Mapping(target = "checkDigit",
-        expression = "java(owner == null ? null : "
-            + "org.springframework.samples.petclinic.util.CheckDigits.luhn("
-            + "owner.getCustomerCode()))")
     @Mapping(target = "householdId",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Households.householdId("
@@ -51,13 +47,6 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.FiscalYears.fiscalYearLabel("
             + "owner.getRegistrationDate()))")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner == null || owner.getCustomerCode() == null "
-            + "|| owner.getRegistrationDate() == null ? null : "
-            + "owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", "
-            + "org.springframework.samples.petclinic.util.FiscalYears.fiscalYear("
-            + "owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.Memberships.membershipPoints("

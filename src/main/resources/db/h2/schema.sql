@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
   postcode VARCHAR(4),
   registration_date DATE,
   birth_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(30),
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
   capacity_warning BOOLEAN,
