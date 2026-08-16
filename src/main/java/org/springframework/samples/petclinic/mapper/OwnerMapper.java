@@ -23,7 +23,27 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
     @Mapping(target = "membershipTier", source = "owner", qualifiedByName = "toMembershipTier")
+    @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Fixed city-to-region table used to derive an owner's locality.
+     */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derives the owner's locality as the canonical region for the owner's city from the fixed
+     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}),
+     * or {@code 'UNKNOWN'} when the city is not in the table.
+     */
+    @Named("toLocality")
+    default String toLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
 
     /**
      * Formats the owner's stored names as {@code 'LastName, FirstName'}.
