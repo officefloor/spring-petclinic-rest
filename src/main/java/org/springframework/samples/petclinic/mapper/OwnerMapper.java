@@ -38,8 +38,6 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : owner.getContactPreference())")
     @Mapping(target = "ageBand",
         expression = "java(owner == null || owner.getAgeBand() == null ? null : org.springframework.samples.petclinic.rest.dto.OwnerDto.AgeBandEnum.fromValue(owner.getAgeBand()))")
-    @Mapping(target = "checkDigit",
-        expression = "java(owner == null ? null : owner.getCheckDigit())")
     @Mapping(target = "fiscalYear",
         expression = "java(owner == null ? null : owner.getFiscalYear())")
     @Mapping(target = "identityKey",

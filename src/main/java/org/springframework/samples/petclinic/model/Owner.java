@@ -67,8 +67,8 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -78,9 +78,6 @@ public class Owner extends Person {
 
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
@@ -173,12 +170,12 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -203,14 +200,6 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Boolean getBulkSignupWarning() {
@@ -422,37 +411,6 @@ public class Owner extends Person {
             return "ADULT";
         }
         return "SENIOR";
-    }
-
-    /**
-     * The owner's check digit, derived on read: a single Luhn check digit computed over the
-     * digits contained in the owner's {@code customerCode}.
-     *
-     * @return the Luhn check digit (0-9), or {@code null} when no customer code is assigned
-     */
-    @Transient
-    public Integer getCheckDigit() {
-        if (this.customerCode == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = this.customerCode.length() - 1; i >= 0; i--) {
-            char c = this.customerCode.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
