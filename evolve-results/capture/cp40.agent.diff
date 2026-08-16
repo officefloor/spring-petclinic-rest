@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3b1c74b7..15fd9a0c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(owner == null ? null : owner.getTelephoneDisplay())")
++    @Mapping(target = "membershipPoints",
++        expression = "java(owner == null ? null : owner.getMembershipPoints())")
+     @Mapping(target = "membershipLevel",
+         expression = "java(owner == null ? null : owner.getMembershipLevel())")
+     @Mapping(target = "locality",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1f6a98b4..85d5583a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -210,29 +210,55 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's numeric membership level, derived on read from the fields assigned at create.
+-     * It starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0,
+-     * and gains 1 when the owner's tenure exceeds 365 days. Tenure is the number of whole days
+-     * between the {@code registrationDate} and the current date. Because a newly created owner has
+-     * zero tenure, a new owner never reaches level 4 and so is capped at 3 on create; level 4 is
+-     * reached only once the owner's tenure passes 365 days.
++     * The owner's membership points, derived on read from the fields assigned at create. Points
++     * start at 0 and accumulate: 2 when an email is present, 1 when {@code namesakeCount} is 0,
++     * 2 when the household has 3 or more members ({@code householdMemberCount} of 3 or more), and
++     * 3 when the owner's tenure exceeds 365 days. Tenure is the number of whole days between the
++     * {@code registrationDate} and the current date. Because a newly created owner has zero tenure,
++     * the tenure points are only earned once the owner's tenure passes 365 days.
+      *
+-     * @return the membership level, from 1 to 4
++     * @return the membership points, 0 or more
+      */
+     @Transient
+-    public Integer getMembershipLevel() {
+-        int level = 1;
++    public Integer getMembershipPoints() {
++        int points = 0;
+         if (this.email != null && !this.email.isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (this.namesakeCount != null && this.namesakeCount == 0) {
+-            level++;
++            points += 1;
++        }
++        if (this.householdMemberCount != null && this.householdMemberCount >= 3) {
++            points += 2;
+         }
+         if (this.registrationDate != null
+                 && ChronoUnit.DAYS.between(this.registrationDate, LocalDate.now()) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The owner's numeric membership level, derived on read by mapping {@link #getMembershipPoints}
++     * to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
++     * Because a newly created owner has zero tenure, level 4 (which requires the tenure points) is
++     * reached only once the owner's tenure passes 365 days.
++     *
++     * @return the membership level, from 1 to 4
++     */
++    @Transient
++    public Integer getMembershipLevel() {
++        int points = getMembershipPoints();
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
+         }
+-        return Math.min(level, 4);
++        return 1;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b1da4672..15f9ba37 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2184,17 +2184,29 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, derived on read. Points start at 0
++                and accumulate: 2 when an email is present, 1 when namesakeCount is
++                0, 2 for a household of 3 or more members, and 3 when the owner's
++                tenure exceeds 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 5
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's numeric membership level, assigned on create and
+-                ranging from 1 to 3. It starts at 1, gains 1 when an email is
+-                present, gains 1 when namesakeCount is 0, and is capped at 3
+-                (level 4 is reserved for tenure).
++                The owner's numeric membership level, derived on read by mapping
++                membershipPoints to a level: 1 for 0-1 points, 2 for 2-3 points,
++                3 for 4-5 points, and 4 for 6 or more points. Because a new owner
++                has zero tenure, level 4 is reached only once tenure passes 365 days.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 3
+               readOnly: true
+             locality:
