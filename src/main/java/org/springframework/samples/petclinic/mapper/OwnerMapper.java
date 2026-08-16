@@ -31,6 +31,9 @@ public interface OwnerMapper {
             + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
             + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(LocalityDeriver.locality(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+        expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) "
+            + "? \"EMAIL\" : \"PHONE\")")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
