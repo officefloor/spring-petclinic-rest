@@ -35,14 +35,8 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.TelephoneFormats.telephoneDisplay("
             + "owner.getTelephone()))")
-    @Mapping(target = "householdId",
-        expression = "java(owner == null ? null : "
-            + "org.springframework.samples.petclinic.util.Households.householdId("
-            + "owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey",
-        expression = "java(owner == null ? null : "
-            + "org.springframework.samples.petclinic.util.Households.identityKey("
-            + "owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(owner == null ? null : toOwnerIdentityDto(owner))")
     @Mapping(target = "fiscalYear",
         expression = "java(owner == null ? null : "
             + "org.springframework.samples.petclinic.util.FiscalYears.fiscalYearLabel("
@@ -87,6 +81,25 @@ public interface OwnerMapper {
             + "org.springframework.samples.petclinic.util.Localities.region("
             + "owner.getPostcode(), owner.getCity())))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Builds the nested, version-2 {@code identity} object grouping the owner's derived identifiers:
+     * the assigned {@code memberId} and the freshly derived {@code householdId} and {@code identityKey}
+     * (each rederived with the fixed {@code 'V2'} version tag).
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toOwnerIdentityDto(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(org.springframework.samples.petclinic.util.Households.householdId(
+            owner.getLastName(), owner.getPostcode()));
+        identity.setIdentityKey(org.springframework.samples.petclinic.util.Households.identityKey(
+            owner.getTelephone(), owner.getEmail(), owner.getLastName()));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

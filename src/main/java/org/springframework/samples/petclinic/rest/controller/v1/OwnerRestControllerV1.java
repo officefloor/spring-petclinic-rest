@@ -178,7 +178,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Joining an existing household is now permitted (an exact-identity duplicate is still
         // rejected above); a joiner's membershipLevel is instead capped one above the household's
         // current maximum (see cappedMembershipLevel).
-        String region = Localities.region(owner.getPostcode(), owner.getCity());
+        String region = Localities.regionForIdentity(owner.getPostcode(), owner.getCity());
         owner.setMemberId(assignMemberId(region, owner.getTelephone(), owner.getLastName(), registrationDate));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(computeBulkSignupWarning(registrationDate));
@@ -207,13 +207,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Builds the immutable structured {@code OWNER_CREATED} audit event emitted (in addition to the
-     * human-readable audit line) on a successful create, as a JSON object
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. The {@code seq} is
-     * a fresh value from the monotonically increasing {@link #AUDIT_EVENT_SEQ} sequence, so the event
-     * stream is strictly ordered across creates.
+     * human-readable audit line) on a successful create, as a schema-version-2 JSON object
+     * {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, ownerSegment,
+     * event:'OWNER_CREATED'}}. The {@code seq} is a fresh value from the monotonically increasing
+     * {@link #AUDIT_EVENT_SEQ} sequence, so the event stream is strictly ordered across creates.
      * <p>
-     * The {@code memberId} field carries the owner's current primary identifier (see
-     * {@link #primaryIdentifier}), so the event always names the owner by its live primary identifier.
+     * The {@code schemaVersion} names the version-2 event shape; the {@code memberId} field carries the
+     * owner's current primary identifier (see {@link #primaryIdentifier}), the version-2 memberId, so
+     * the event always names the owner by its live primary identifier, and the {@code ownerSegment} is
+     * recomputed from the version-2 identity.
      *
      * @param owner the just-saved owner
      * @param ownerDto the mapped DTO, used for the (possibly derived) {@code membershipLevel}
@@ -223,9 +225,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         StringBuilder json = new StringBuilder(128);
         json.append('{');
         json.append("\"seq\":").append(AUDIT_EVENT_SEQ.incrementAndGet());
+        json.append(",\"schemaVersion\":2");
         json.append(",\"ownerId\":").append(owner.getId());
         json.append(",\"memberId\":").append(jsonString(primaryIdentifier(owner)));
         json.append(",\"membershipLevel\":").append(ownerDto.getMembershipLevel());
+        json.append(",\"ownerSegment\":").append(jsonString(ownerDto.getOwnerSegment()));
         json.append(",\"event\":\"OWNER_CREATED\"");
         json.append('}');
         return json.toString();

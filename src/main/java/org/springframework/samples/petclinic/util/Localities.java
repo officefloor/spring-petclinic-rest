@@ -91,6 +91,22 @@ public final class Localities {
     }
 
     /**
+     * Returns the version-2 region code embedded inside an owner's identifiers (the {@code memberId}).
+     * It is the {@link #region(String, String) plain region} prefixed with the fixed
+     * {@link Households#IDENTITY_VERSION_TAG version-2 tag}, so the region woven into the identifiers
+     * differs from its version-1 form and no version-1 identifier is produced again. The user-facing
+     * {@link #region(String, String) locality}, {@link #timezone(String, String) timezone} and the
+     * owner-segment region are deliberately left as the plain region code and never carry the tag.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @param city the owner's city
+     * @return the version-2 region code for use inside the owner's identifiers
+     */
+    public static String regionForIdentity(String postcode, String city) {
+        return Households.IDENTITY_VERSION_TAG + region(postcode, city);
+    }
+
+    /**
      * Returns the IANA timezone name for an owner's locality, derived from the region resolved by
      * {@link #region(String, String)} via the fixed region-to-timezone table
      * ({@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne},

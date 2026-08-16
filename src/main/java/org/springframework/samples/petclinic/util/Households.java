@@ -30,6 +30,15 @@ import java.util.Locale;
  */
 public final class Households {
 
+    /**
+     * Fixed version-2 identity tag mixed into every derived identifier (the {@code householdId}, the
+     * {@code identityKey} and the region embedded in the {@code memberId}). Because the tag is folded
+     * into the hashed input of each identifier, every value differs from its version-1 predecessor and
+     * no version-1 value is produced again. The tag is deliberately absent from the user-facing
+     * {@code locality}, {@code timezone} and owner-segment region, which stay the plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private Households() {
     }
 
@@ -47,24 +56,27 @@ public final class Households {
 
     /**
      * Returns the stable, shared identifier for the household of the owner with the given last name
-     * and postcode. The value is the first 12 hex characters of the SHA-256 digest of the normalized
-     * last name, a {@code '|'} separator and the postcode, so every owner sharing a last name and
-     * postcode (the two values the household is keyed on) is deterministically assigned the same
-     * identifier.
+     * and postcode. The value is the first 12 hex characters of the SHA-256 digest of the fixed
+     * {@link #IDENTITY_VERSION_TAG version-2 tag}, a {@code '|'} separator, the normalized last name, a
+     * {@code '|'} separator and the postcode, so every owner sharing a last name and postcode (the two
+     * values the household is keyed on) is deterministically assigned the same identifier. Folding in
+     * the version tag makes every value differ from its version-1 predecessor.
      *
      * @param lastName the owner's last name
      * @param postcode the owner's postcode, or {@code null} when none
      * @return the household identifier
      */
     public static String householdId(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = IDENTITY_VERSION_TAG + "|" + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         return sha256hex(key).substring(0, 12);
     }
 
     /**
      * Builds an owner's {@code identityKey}: the single derived value all duplicate detection is
      * expressed through. It is the full lower-case hex SHA-256 digest of
-     * {@code '<normalizedTelephone>|<lowerEmail or empty>|<soundex(lastName)>'} (a {@code null}
+     * {@code '<V2>|<normalizedTelephone>|<lowerEmail or empty>|<soundex(lastName)>'}, where {@code <V2>}
+     * is the fixed {@link #IDENTITY_VERSION_TAG version-2 tag} folded in so every key differs from its
+     * version-1 predecessor (a {@code null}
      * telephone or email contributes an empty segment; the email is lower-cased and the last name is
      * reduced to its {@link #soundex(String) soundex} code). Two owners are duplicates only when their
      * whole identity keys are equal, so household members sharing a last name (hence a soundex) but
@@ -76,7 +88,8 @@ public final class Households {
      * @return the derived identity key (a 64-character lower-case hex string)
      */
     public static String identityKey(String telephone, String email, String lastName) {
-        String key = (telephone == null ? "" : telephone) + "|"
+        String key = IDENTITY_VERSION_TAG + "|"
+            + (telephone == null ? "" : telephone) + "|"
             + (email == null ? "" : email.toLowerCase(Locale.ROOT)) + "|"
             + soundex(lastName);
         return sha256hex(key);
