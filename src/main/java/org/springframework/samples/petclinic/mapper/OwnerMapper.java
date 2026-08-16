@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class)
+@Mapper(uses = PetMapper.class, imports = LocalityDeriver.class)
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipTier",
         expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
             + "&& owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\")")
+    @Mapping(target = "locality", expression = "java(LocalityDeriver.locality(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
