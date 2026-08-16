@@ -1,8 +1,8 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 /**
- * Derives an owner's region code — the {@code <REGION>} segment of the
- * {@code <REGION>-<HASH8>} {@code customerCode} and the source of the owner's locality.
+ * Derives an owner's region code — the leading {@code <REGION>} segment of the unified
+ * {@code memberId} and the source of the owner's locality.
  *
  * <p>The postcode is preferred: a four-digit postcode is mapped by inclusive range
  * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). When the postcode is absent or in no

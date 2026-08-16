@@ -12,13 +12,11 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Emits an immutable, structured {@code OWNER_CREATED} event on the dedicated {@code AUDIT} logger,
  * in addition to the human-readable line from {@link AuditOwnerCreated}. Runs after {@link SaveOwner}
- * (so the owner has its persisted id) and after {@link AssignCustomerCode} / {@link AssignMembershipLevel}.
+ * (so the owner has its persisted id) and after {@link AssignMemberId} / {@link AssignMembershipLevel}.
  *
- * <p>The event is a JSON object {@code {seq, ownerId, customerCode, membershipLevel, event}} where
+ * <p>The event is a JSON object {@code {seq, ownerId, memberId, membershipLevel, event}} where
  * {@code seq} is a monotonically increasing integer across creates. It carries the owner's <em>current
- * primary identifier</em>: today that is the {@code customerCode} (see {@link #primaryIdentifier}).
- * When the customerCode is later unified into the memberId, only {@link #primaryIdentifier} and the
- * {@link OwnerCreatedEvent} field change, so the event then carries the memberId instead.
+ * primary identifier</em>, the unified {@code memberId} (see {@link #primaryIdentifier}).
  */
 public class AuditOwnerCreatedEvent {
 
@@ -28,7 +26,7 @@ public class AuditOwnerCreatedEvent {
     private static final AtomicLong SEQ = new AtomicLong();
 
     /** Immutable structured create event. Field order is the serialized JSON order. */
-    public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
             Integer membershipLevel, String event) {
     }
 
@@ -38,11 +36,8 @@ public class AuditOwnerCreatedEvent {
         AUDIT.info(mapper.writeValueAsString(event));
     }
 
-    /**
-     * The owner's current primary identifier. Currently the {@code customerCode}; this is the single
-     * point that later moves to {@code owner.getMemberId()} when the two are unified.
-     */
+    /** The owner's primary identifier: the unified {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }

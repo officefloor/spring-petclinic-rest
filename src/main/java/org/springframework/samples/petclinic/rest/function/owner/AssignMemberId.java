@@ -12,27 +12,31 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is
- * the region code derived from the postcode (see {@link OwnerRegion}) and HASH8 is the first 8
- * upper-case hex characters of the SHA-256 digest over the normalized telephone concatenated with
- * the last name (e.g. {@code NSW-1A2B3C4D}). There are no per-city sequence numbers.
+ * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} (see
+ * {@link MemberId}): REGION is the region code derived from the postcode/city (see
+ * {@link OwnerRegion}); FY is the 2-digit fiscal year of the business-day-adjusted
+ * {@code registrationDate} (the same {@code YY} as the owner's {@code fiscalYear}); HASH8 is the
+ * first 8 upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
+ * last name; and CHK is a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>}
+ * (e.g. {@code NSW261A2B3C4D5}). There are no per-city sequence numbers.
  *
- * <p>Runs after {@link BuildOwner} (so the normalized telephone, last name and postcode are on the
- * owner) and before {@link SaveOwner}. The membership number, its Luhn check digit, the create
- * audit line and the derived locality all read this identity.
+ * <p>Runs after {@link BuildOwner} (so the normalized telephone, last name, postcode and
+ * registration date are on the owner) and before {@link SaveOwner}. The audit record, the derived
+ * locality/region and the owner segment all read this identity.
  *
- * <p>If the computed code collides with an existing owner's {@code customerCode}, it is
+ * <p>If the computed memberId collides with an existing owner's {@code memberId}, it is
  * de-duplicated by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it
  * unique.
  */
-public class AssignCustomerCode {
+public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = OwnerRegion.fromPostcodeOrCity(owner.getPostcode(), owner.getCity());
+        String fy2 = String.format("%02d", FiscalYear.startYear(owner.getRegistrationDate()) % 100);
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String lastName = owner.getLastName() == null ? "" : owner.getLastName();
-        String base = region + "-" + hash8(telephone + lastName);
-        owner.setCustomerCode(deDuplicate(base, owner, ownerRepository));
+        String base = MemberId.of(region, fy2, hash8(telephone + lastName));
+        owner.setMemberId(deDuplicate(base, owner, ownerRepository));
     }
 
     /**
@@ -45,9 +49,9 @@ public class AssignCustomerCode {
             if (existing.getId() != null && existing.getId().equals(owner.getId())) {
                 continue; // never compare the new owner against itself
             }
-            String code = existing.getCustomerCode();
-            if (code != null) {
-                taken.add(code);
+            String memberId = existing.getMemberId();
+            if (memberId != null) {
+                taken.add(memberId);
             }
         }
         if (!taken.contains(base)) {
