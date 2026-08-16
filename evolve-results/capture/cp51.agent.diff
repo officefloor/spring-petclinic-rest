@@ -1,0 +1,205 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8e895be3..ef05e91e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -91,6 +91,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "membership_level_cap")
++    private Integer membershipLevelCap;
++
+     @Column(name = "birth_date")
+     private LocalDate birthDate;
+ 
+@@ -236,6 +239,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Integer getMembershipLevelCap() {
++        return this.membershipLevelCap;
++    }
++
++    public void setMembershipLevelCap(Integer membershipLevelCap) {
++        this.membershipLevelCap = membershipLevelCap;
++    }
++
+     public LocalDate getBirthDate() {
+         return this.birthDate;
+     }
+@@ -332,21 +343,35 @@ public class Owner extends Person {
+      * Because a newly created owner has zero tenure, level 4 (which requires the tenure points) is
+      * reached only once the owner has entered a later fiscal year than the one they registered in.
+      *
++     * <p>The points-derived level is finally capped by {@link #membershipLevelCap} when one was
++     * assigned at create: a new owner joining an existing household without declaring it (see
++     * {@code membershipLevelCap}) may not exceed one above the highest membership level already held
++     * by an existing household member, so the returned level is the lesser of the derived level and
++     * the cap. When no cap was assigned (a household's first member, or a declared member) the
++     * derived level is returned unchanged.
++     *
+      * @return the membership level, from 1 to 4
+      */
+     @Transient
+     public Integer getMembershipLevel() {
+         int points = getMembershipPoints();
++        int level;
+         if (points >= 6) {
+-            return 4;
++            level = 4;
++        }
++        else if (points >= 4) {
++            level = 3;
++        }
++        else if (points >= 2) {
++            level = 2;
+         }
+-        if (points >= 4) {
+-            return 3;
++        else {
++            level = 1;
+         }
+-        if (points >= 2) {
+-            return 2;
++        if (this.membershipLevelCap != null && level > this.membershipLevelCap) {
++            return this.membershipLevelCap;
+         }
+-        return 1;
++        return level;
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cf0d5811..0ce0f0ad 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -168,6 +168,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         assignCustomerCode(owner);
+         assignHouseholdId(owner);
+         assignHouseholdMemberCount(owner);
++        assignMembershipLevelCap(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()));
+         assignNamesakeCount(owner);
+         assignMembershipNumber(owner);
+         assignBulkSignupWarning(owner);
+@@ -655,20 +656,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Rejects a create whose computed {@code householdId} (derived from {@code lastName} and
+      * {@code postcode}, see {@link #householdIdFor}) already belongs to an existing owner, unless
+-     * the request opts in via {@code sharesHousehold}. Because the household is keyed on
+-     * {@code (lastName, postcode)}, a second owner sharing both is the same household: it is
+-     * rejected with a 409 as a household duplicate unless it declares {@code sharesHousehold}, in
+-     * which case it is created as a declared household member. The scan is taken over the existing
+-     * owners before this one is persisted.
++     * the request opts in via {@code sharesHousehold} or supplies its own {@code email}. Because
++     * the household is keyed on {@code (lastName, postcode)}, a second owner sharing both is the
++     * same household: it is rejected with a 409 as a household duplicate unless it declares
++     * {@code sharesHousehold} (created as a declared household member) or carries an {@code email}
++     * — a distinguishing identifier that marks it as a genuinely distinct member of the household
++     * rather than a re-entry of an existing one, so it is admitted as an (undeclared) household
++     * member whose membership level is capped (see {@link #assignMembershipLevelCap}). The scan is
++     * taken over the existing owners before this one is persisted.
+      *
+-     * @param ownerFieldsDto the submitted owner fields ({@code lastName} and {@code postcode} set)
++     * @param ownerFieldsDto the submitted owner fields ({@code lastName}, {@code postcode} and the
++     *                        already-normalized {@code email} set)
+      * @throws DuplicateHouseholdException with a 409 status if the household already exists and the
+-     *                                     request did not opt in via {@code sharesHousehold}
++     *                                     request neither opted in via {@code sharesHousehold} nor
++     *                                     supplied an {@code email}
+      */
+     private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+             return;
+         }
++        String email = ownerFieldsDto.getEmail();
++        if (email != null && !email.isBlank()) {
++            return;
++        }
+         String householdId = householdIdFor(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
+         boolean duplicate = this.clinicService.findAllOwners().stream()
+             .filter(existing -> !existing.isDeleted())
+@@ -697,6 +707,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setHouseholdMemberCount((int) (existing + 1));
+     }
+ 
++    /**
++     * Assigns the owner's {@code membershipLevelCap} on create, which bounds the level returned by
++     * {@link org.springframework.samples.petclinic.model.Owner#getMembershipLevel()}. A new owner
++     * joining an existing household without declaring it (i.e. admitted via its {@code email}, not
++     * via {@code sharesHousehold}) may not hold a membership level more than one above the current
++     * maximum membership level among the existing members of its household: the cap is that maximum
++     * plus one. When the household has no existing member no cap applies, and a declared member
++     * (one that opted in via {@code sharesHousehold}) is never capped; in both cases the cap is left
++     * unset so the points-derived level stands. The scan is taken over the existing owners before
++     * this one is persisted, so it reflects only pre-existing household members.
++     *
++     * @param owner the owner being created (with its {@code householdId} already assigned)
++     * @param declaredHouseholdMember whether the request opted in via {@code sharesHousehold}
++     */
++    private void assignMembershipLevelCap(Owner owner, boolean declaredHouseholdMember) {
++        if (declaredHouseholdMember) {
++            owner.setMembershipLevelCap(null);
++            return;
++        }
++        String householdId = owner.getHouseholdId();
++        Integer maxLevel = this.clinicService.findAllOwners().stream()
++            .filter(other -> !other.isDeleted())
++            .filter(other -> householdId != null && householdId.equals(other.getHouseholdId()))
++            .map(Owner::getMembershipLevel)
++            .filter(Objects::nonNull)
++            .max(Integer::compareTo)
++            .orElse(null);
++        owner.setMembershipLevelCap(maxLevel == null ? null : maxLevel + 1);
++    }
++
+     /**
+      * Assigns the owner's {@code namesakeCount} on create: the number of existing owners that
+      * already share this owner's {@code firstName} and {@code lastName}, compared
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 7224c26e..e26bc76a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 199322bb..ab3e18e1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -56,6 +56,7 @@ CREATE TABLE owners (
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2c39708d..5324685b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   postcode VARCHAR(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  membership_level_cap INTEGER,
+   birth_date DATE,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL,
+   INDEX(last_name)
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 92284712..bc8a23fc 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       postcode TEXT,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
++                                      membership_level_cap INTEGER,
+                                       birth_date DATE,
+                                       deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
