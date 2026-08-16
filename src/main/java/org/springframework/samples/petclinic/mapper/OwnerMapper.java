@@ -32,6 +32,8 @@ public abstract class OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityRegion.localityOf(owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(org.springframework.samples.petclinic.rest.function.owner.ContactPreference.of(owner))")
+    @Mapping(target = "identityKey",
+        expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
     @Mapping(target = "bulkSignupWarning", ignore = true)
     public abstract OwnerDto toOwnerDto(Owner owner);
 
