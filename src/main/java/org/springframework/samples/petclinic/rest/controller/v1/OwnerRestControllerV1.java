@@ -198,6 +198,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // existing owners with the same computed household id. Both the duplicate block and the
         // household size below key off this value.
         List<Owner> householdMembers = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> householdId.equals(
                 householdId(normalizeHousehold(existing.getLastName()), existing.getPostcode())))
             .toList();
@@ -213,6 +214,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // derived identity key (telephone|email|householdId) equals an existing owner's.
         String identityKey = IdentityKeyDeriver.identityKey(telephone, email, householdId);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(IdentityKeyDeriver.identityKey(
                 existing.getTelephone(), existing.getEmail(),
                 householdId(normalizeHousehold(existing.getLastName()), existing.getPostcode()))));
@@ -234,6 +236,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // reaches here for a same-household owner, so a created owner is never flagged.
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
+        owner.setDeleted(false);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created: id={} customerCode={} registrationDate={} membershipLevel={} "
@@ -273,7 +276,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
