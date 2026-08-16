@@ -6,53 +6,39 @@ import java.security.NoSuchAlgorithmException;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Assigns the {@code householdId} when the request opts into sharing a household
- * ({@code sharesHousehold} true). The identifier is a stable value derived deterministically
- * from the household identity — the {@code lastName} and {@code address} normalized the same
- * way {@link RequireUniqueOwnerHousehold} compares them (case-insensitive, whitespace
- * collapsed) — so every owner of the same household is assigned the same value regardless of
- * creation order.
+ * Assigns the deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
+ * {@code normalizedLastName + '|' + postcode}, where the last name is normalized the same way
+ * {@link RequireUniqueOwnerHousehold} compares it (case-insensitive, whitespace collapsed).
  *
- * <p>Any existing owners already in that household are back-filled with the same identifier,
- * so both the joining owner and the owners already there carry it.
+ * <p>Because the value is derived purely from the household identity (lastName, postcode), every
+ * owner is assigned one and owners with the same lastName and postcode share it automatically,
+ * regardless of creation order and independent of whether the request opted into
+ * {@code sharesHousehold}. No back-fill of existing owners is needed — they already carry the
+ * same computed value.
  *
- * <p>When {@code sharesHousehold} is not true, no identifier is assigned and the owner keeps
- * a null {@code householdId}.
+ * <p>Runs after {@link BuildOwner} (so the owner carries its lastName and postcode) and before
+ * {@link RequireUniqueOwnerHousehold duplicate detection}, {@link AssignHouseholdSize the
+ * household-size count} and {@link RequireUniqueOwnerIdentity the identity key}, all of which key
+ * off this computed identifier.
  */
 public class AssignHouseholdId {
 
-    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
-            OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        String lastName = RequireUniqueOwnerHousehold.normalize(owner.getLastName());
-        String address = RequireUniqueOwnerHousehold.normalize(owner.getAddress());
-        String householdId = deriveHouseholdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner existing : ownerRepository.findAll()) {
-            if (RequireUniqueOwnerHousehold.normalize(existing.getLastName()).equals(lastName)
-                    && RequireUniqueOwnerHousehold.normalize(existing.getAddress()).equals(address)
-                    && !householdId.equals(existing.getHouseholdId())) {
-                existing.setHouseholdId(householdId);
-                ownerRepository.save(existing);
-            }
-        }
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(deriveHouseholdId(owner.getLastName(), owner.getPostcode()));
     }
 
-    /** {@code HH-} followed by the first 16 upper-case hex chars of SHA-256(lastName|address). */
-    static String deriveHouseholdId(String lastName, String address) {
-        String key = lastName + "|" + address;
+    /** First 12 lower-case hex chars of SHA-256(normalizedLastName + '|' + postcode). */
+    static String deriveHouseholdId(String lastName, String postcode) {
+        String key = RequireUniqueOwnerHousehold.normalize(lastName) + "|"
+                + (postcode == null ? "" : postcode.trim());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("HH-");
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02X", digest[i]));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) {
+                sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();
         }

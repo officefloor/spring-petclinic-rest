@@ -7,26 +7,34 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.OwnerHouseholdDuplicateException;
 
 /**
- * Rejects the create when another owner already shares this owner's household: the same
- * {@code lastName} and {@code address}, compared case-insensitively with runs of whitespace
- * collapsed to a single space. A match is rejected 409 via
- * {@link OwnerHouseholdDuplicateException}.
+ * Rejects the create when another owner already belongs to this owner's household — the same
+ * computed {@link AssignHouseholdId#deriveHouseholdId householdId}, which is derived from the
+ * (lastName, postcode) pair. Owners sharing a lastName and postcode are the same household, so a
+ * second such owner is rejected 409 via {@link OwnerHouseholdDuplicateException}.
  *
- * <p>Bypassed when the request sets {@code sharesHousehold} true — the caller has confirmed
- * the two owners knowingly live together.
+ * <p>Bypassed when the request sets {@code sharesHousehold} true — the caller has confirmed the
+ * two owners knowingly live together. Such a declared member is then created (and, sharing the
+ * computed householdId, becomes part of the household) rather than blocked.
+ *
+ * <p>Runs after {@link AssignHouseholdId}, so the owner already carries its computed
+ * {@code householdId} and every existing member carries the same value.
  */
 public class RequireUniqueOwnerHousehold {
 
-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
-            throws OwnerHouseholdDuplicateException {
+    public void service(@Val OwnerFieldsDto request, @Val Owner owner,
+            OwnerRepository ownerRepository) throws OwnerHouseholdDuplicateException {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return;
+        }
         for (Owner existing : ownerRepository.findAll()) {
-            if (normalize(existing.getLastName()).equals(lastName)
-                    && normalize(existing.getAddress()).equals(address)) {
+            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
+                continue; // never match the new owner against itself
+            }
+            if (householdId.equals(existing.getHouseholdId())) {
                 throw new OwnerHouseholdDuplicateException(request.getLastName(),
                         request.getAddress());
             }
