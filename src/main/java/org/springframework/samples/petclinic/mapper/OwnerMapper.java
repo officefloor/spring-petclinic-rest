@@ -56,7 +56,7 @@ public interface OwnerMapper {
             + "owner.getRegistrationDate()))")
     @Mapping(target = "identityKey",
         expression = "java(IdentityKeyDeriver.identityKey(owner.getTelephone(), "
-            + "owner.getEmail(), owner.getHouseholdId()))")
+            + "owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(TelephoneDisplayDeriver.telephoneDisplay(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);

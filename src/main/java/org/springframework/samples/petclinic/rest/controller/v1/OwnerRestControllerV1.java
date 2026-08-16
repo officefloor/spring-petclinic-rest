@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -229,18 +230,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .toList();
         // A second owner in an existing household is admitted as a household member; their
         // membership level is capped below (level-ceiling rule) rather than rejected.
-        // Single, consolidated duplicate check: reject only when the new owner's whole
-        // derived identity key (telephone|email|householdId) equals an existing owner's.
-        String identityKey = IdentityKeyDeriver.identityKey(telephone, email, householdId);
+        // Single, consolidated duplicate check: reject only when the new owner's whole derived
+        // identity key (SHA-256 over telephone|email|soundex(lastName)) equals an existing,
+        // non-deleted owner's. This single identity key is the only 409; there is no separate
+        // household-duplicate rejection keyed off the computed householdId.
+        String newLastName = ownerFieldsDto.getLastName();
+        String identityKey = IdentityKeyDeriver.identityKey(telephone, email, newLastName);
         boolean identityInUse = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(IdentityKeyDeriver.identityKey(
-                existing.getTelephone(), existing.getEmail(),
-                householdId(normalizeHousehold(existing.getLastName()), existing.getPostcode()))));
+                existing.getTelephone(), existing.getEmail(), existing.getLastName())));
         if (identityInUse) {
             throw new DuplicateIdentityException(
                 "an owner with the same identity key already exists");
         }
+        // Soft match: not a hard duplicate, but shares a household signature with an existing,
+        // non-deleted owner — the same last-name Soundex and the same postcode while the identity
+        // key differs (e.g. same last name and postcode but a different telephone). Such an owner
+        // is still created (201) but flagged as a possible duplicate of the earliest matching owner
+        // so it can be reviewed rather than rejected.
+        String newSoundex = IdentityKeyDeriver.soundex(newLastName);
+        Integer softMatchOf = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> !identityKey.equals(IdentityKeyDeriver.identityKey(
+                existing.getTelephone(), existing.getEmail(), existing.getLastName())))
+            .filter(existing -> newSoundex.equals(IdentityKeyDeriver.soundex(existing.getLastName())))
+            .filter(existing -> Objects.equals(postcode, existing.getPostcode()))
+            .map(Owner::getId)
+            .min(Integer::compareTo)
+            .orElse(null);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
@@ -265,10 +283,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             cappedLevel = Math.min(naturalLevel, maxMemberLevel + 1);
         }
         owner.setMembershipLevel(cappedLevel);
-        // A declared household member is not a suspected duplicate, and no other create path
-        // reaches here for a same-household owner, so a created owner is never flagged.
-        owner.setPossibleDuplicate(false);
-        owner.setPossibleDuplicateOf(null);
+        // Flag a soft match (same last-name Soundex and postcode as an existing owner, but a
+        // different identity key) as a possible duplicate of the earliest such owner; a create
+        // with no soft match is left unflagged.
+        owner.setPossibleDuplicate(softMatchOf != null);
+        owner.setPossibleDuplicateOf(softMatchOf);
         owner.setDeleted(false);
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
