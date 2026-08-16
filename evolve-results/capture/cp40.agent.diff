@@ -1,0 +1,146 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java
+new file mode 100644
+index 00000000..77330635
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipPointsDeriver.java
+@@ -0,0 +1,66 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's membership points and the membership level those points map to,
++ * from the owner's own fields.
++ *
++ * <p>Points start at 0 and accumulate: {@code +2} when an email address is present,
++ * {@code +1} when the owner has no namesakes ({@code namesakeCount} is 0), {@code +2}
++ * for a household of 3 or more, and {@code +3} for a tenure (registration date to today)
++ * of more than 365 days.
++ *
++ * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and
++ * 4 for 6 or more points.
++ *
++ * <p>Kept as a standalone helper (rather than a method on {@link OwnerMapper}) so
++ * MapStruct does not mistake it for a generic mapping method and apply it to unrelated
++ * fields; the mapper references it only through explicit expressions.
++ */
++public final class MembershipPointsDeriver {
++
++    private MembershipPointsDeriver() {
++    }
++
++    /**
++     * Returns the owner's membership points, derived from the owner's own fields.
++     */
++    public static int membershipPoints(Owner owner) {
++        int points = 0;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            points += 2;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
++        }
++        if (owner.getRegistrationDate() != null
++            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * Returns the membership level for the given membership points: 1 for 0-1 points,
++     * 2 for 2-3 points, 3 for 4-5 points, and 4 for 6 or more points.
++     */
++    public static int membershipLevel(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fb3cdcd9..4fe8822e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -17,7 +17,7 @@ import java.util.List;
+  */
+ @Mapper(uses = PetMapper.class,
+     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
+-        AgeBandDeriver.class, TelephoneDisplayDeriver.class})
++        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -30,13 +30,11 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber",
+         expression = "java(owner.getCustomerCode() + \"-M\" "
+             + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipPoints",
++        expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(Math.min(4, 1 "
+-            + "+ ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) "
+-            + "+ ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0) "
+-            + "+ ((owner.getRegistrationDate() != null "
+-            + "&& java.time.temporal.ChronoUnit.DAYS.between(owner.getRegistrationDate(), "
+-            + "java.time.LocalDate.now()) > 365) ? 1 : 0)))")
++        expression = "java(MembershipPointsDeriver.membershipLevel("
++            + "MembershipPointsDeriver.membershipPoints(owner)))")
+     @Mapping(target = "locality",
+         expression = "java(LocalityDeriver.locality(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 918caaca..89d1c2c3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2196,19 +2196,31 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points, assigned on creation. Starts at 0;
++                adds 2 when an email address is present; adds 1 when the owner has
++                no namesakes (namesakeCount is 0); adds 2 for a household of 3 or
++                more; adds 3 for a tenure over 365 days. Derived from the owner's
++                own fields.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3 assigned on
+-                creation. Starts at 1; adds 1 when an email address is present;
+-                adds 1 when the owner has no namesakes (namesakeCount is 0);
+-                capped at 3 (level 4 is reserved for tenure). Derived from the
+-                owner's own fields.
++                The owner's membership level, a number from 1 to 4 derived from
++                the owner's membership points: level 1 for 0-1 points, level 2 for
++                2-3 points, level 3 for 4-5 points, and level 4 for 6 or more
++                points. Derived from the owner's own fields.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
