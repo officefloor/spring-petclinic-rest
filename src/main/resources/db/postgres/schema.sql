@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       postcode TEXT,
                                       birth_date DATE,
                                       address_line1 TEXT,
-                                      address_line2 TEXT
+                                      address_line2 TEXT,
+                                      title      TEXT
 );
 CREATE INDEX ON owners (last_name);
 
