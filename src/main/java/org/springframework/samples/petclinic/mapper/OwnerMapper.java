@@ -17,7 +17,8 @@ import java.util.List;
  */
 @Mapper(uses = PetMapper.class,
     imports = {LocalityDeriver.class, IdentityKeyDeriver.class, CheckDigitDeriver.class,
-        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class})
+        AgeBandDeriver.class, TelephoneDisplayDeriver.class, MembershipPointsDeriver.class,
+        FiscalYearDeriver.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -32,7 +33,10 @@ public interface OwnerMapper {
         expression = "java(CheckDigitDeriver.checkDigit(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" "
-            + "+ String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            + "+ String.format(\"%02d\", FiscalYearDeriver.fiscalYear("
+            + "owner.getRegistrationDate()) % 100))")
+    @Mapping(target = "fiscalYear",
+        expression = "java(FiscalYearDeriver.fiscalYearLabel(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints",
         expression = "java(MembershipPointsDeriver.membershipPoints(owner))")
     @Mapping(target = "membershipLevel",

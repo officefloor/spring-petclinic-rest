@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.mapper;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -12,7 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * <p>Points start at 0 and accumulate: {@code +2} when an email address is present,
  * {@code +1} when the owner has no namesakes ({@code namesakeCount} is 0), {@code +2}
  * for a household of 3 or more, and {@code +3} for a tenure (registration date to today)
- * of more than 365 days.
+ * of more than one elapsed fiscal year (the fiscal year starts on 1 July).
  *
  * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3 points, 3 for 4-5 points, and
  * 4 for 6 or more points.
@@ -41,7 +40,7 @@ public final class MembershipPointsDeriver {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+            && FiscalYearDeriver.elapsedFiscalYears(owner.getRegistrationDate(), LocalDate.now()) > 1) {
             points += 3;
         }
         return points;
