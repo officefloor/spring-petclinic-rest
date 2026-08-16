@@ -167,6 +167,28 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link DisposableEmailException} thrown while normalizing an owner's email on create.
+     *
+     * @param e The {@link DisposableEmailException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(DisposableEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailException(DisposableEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("email"));
+        String rejectedValue = Objects.toString(e.getRejectedValue(), "null");
+        detail.setProperty("schemaValidationErrors", List.of(
+            new ValidationMessageDto("Field 'email' %s (rejected value: %s)".formatted(e.getMessage(), rejectedValue))
+                .putAdditionalProperty("field", "email")
+                .putAdditionalProperty("rejectedValue", rejectedValue)
+                .putAdditionalProperty("defaultMessage", e.getMessage())));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link InvalidPostcodeException} thrown while validating an owner's postcode on create.
      *
      * @param e The {@link InvalidPostcodeException} to be handled

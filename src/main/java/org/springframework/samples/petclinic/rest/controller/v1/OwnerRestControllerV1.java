@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdExcep
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidAddressException;
+import org.springframework.samples.petclinic.rest.advice.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -460,6 +461,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         java.util.regex.Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$");
 
     /**
+     * Domains of known disposable/throwaway email providers. An owner whose email domain is on this
+     * blocklist is rejected with a 400 Bad Request. Compared case-insensitively against the
+     * lower-cased email domain.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
      * Normalizes an owner's email. Email is optional: a {@code null} or blank value is left as
      * {@code null} (no email). When present it must be a syntactically valid address; the value is
      * lower-cased before being stored and returned.
@@ -476,7 +485,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
             throw new InvalidEmailException(email);
         }
-        return trimmed.toLowerCase(java.util.Locale.ROOT);
+        String normalized = trimmed.toLowerCase(java.util.Locale.ROOT);
+        String domain = normalized.substring(normalized.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new DisposableEmailException(email);
+        }
+        return normalized;
     }
 
     /**
