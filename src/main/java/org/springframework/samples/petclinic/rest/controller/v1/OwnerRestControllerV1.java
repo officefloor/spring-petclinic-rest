@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -133,6 +134,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!missingFields.isEmpty()) {
             throw new MissingOwnerFieldsException(missingFields);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            String lastName = normalizeHousehold(ownerFieldsDto.getLastName());
+            String address = normalizeHousehold(ownerFieldsDto.getAddress());
+            boolean householdInUse = this.clinicService.findAllOwners().stream()
+                .anyMatch(existing -> lastName.equals(normalizeHousehold(existing.getLastName()))
+                    && address.equals(normalizeHousehold(existing.getAddress())));
+            if (householdInUse) {
+                throw new DuplicateHouseholdException(
+                    "an owner with the same last name and address already exists");
+            }
         }
         String telephone = toE164(ownerFieldsDto.getTelephone());
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
@@ -252,6 +264,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * Normalizes a value for household-duplicate comparison: leading and trailing whitespace is
+     * trimmed, every internal run of whitespace is collapsed to a single space, and the result is
+     * lower-cased so that last names and addresses are compared case-insensitively.
+     */
+    private static String normalizeHousehold(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**

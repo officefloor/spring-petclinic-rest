@@ -223,4 +223,19 @@ public class ExceptionControllerAdvice {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("telephone")));
     }
 
+    /**
+     * Handles {@link DuplicateHouseholdException} raised when a new owner shares the same last
+     * name and address as an existing owner and the request did not opt in via {@code sharesHousehold}.
+     * Returns a 409 Conflict whose {@code errors} array names the offending {@code lastName} and
+     * {@code address} fields.
+     *
+     * @param e The {@link DuplicateHouseholdException} to be handled
+     * @return A {@link ResponseEntity} containing the offending field names and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> handleDuplicateHouseholdException(DuplicateHouseholdException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("errors", List.of("lastName", "address")));
+    }
+
 }
