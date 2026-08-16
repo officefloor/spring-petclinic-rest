@@ -2,10 +2,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailDomainException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
@@ -21,7 +23,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * value that is blank only after normalization is rejected, and the normalized form is stored and
  * returned as {@code address}.
  * The optional email is accepted when absent; when present it must be a syntactically valid
- * address (else 400) and is lower-cased so it is stored and returned as {@code email}.
+ * address (else 400) whose domain is not on the disposable-domain blocklist (else 400), and is
+ * lower-cased so it is stored and returned as {@code email}.
  * Runs before {@link LoadOwner}/{@link BuildOwner} and publishes the body for later steps.
  */
 public class ValidateOwner {
@@ -32,9 +35,13 @@ public class ValidateOwner {
     /** A valid postcode is exactly four digits. */
     private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
 
+    /** Disposable email domains that are never accepted, even when syntactically valid. */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
-            InvalidPostcodeException {
+            DisposableEmailDomainException, InvalidPostcodeException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -69,6 +76,11 @@ public class ValidateOwner {
             String normalized = email.trim().toLowerCase();
             if (!EMAIL.matcher(normalized).matches()) {
                 throw new InvalidEmailException(email);
+            }
+            // Reject syntactically valid addresses whose domain is a known disposable provider.
+            String domain = normalized.substring(normalized.indexOf('@') + 1);
+            if (DISPOSABLE_DOMAINS.contains(domain)) {
+                throw new DisposableEmailDomainException(email);
             }
             request.setEmail(normalized);
         }
