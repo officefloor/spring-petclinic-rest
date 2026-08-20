@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -57,6 +58,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -85,6 +88,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Dedicated audit logger; create side-effects are recorded here so they can be observed independently. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /** Request header carrying the client-supplied idempotency key for owner creation. */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers, per already-seen {@code Idempotency-Key}, the id of the owner that create originally
+     * produced for it. A repeated create carrying a key found here returns that same owner instead of
+     * creating a duplicate, making owner creation idempotent with respect to the key.
+     */
+    private final Map<String, Integer> ownersByIdempotencyKey = new ConcurrentHashMap<>();
 
     private final ClinicService clinicService;
 
@@ -135,6 +148,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = this.ownersByIdempotencyKey.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(toOwnerDtoWithBulkWarning(existing), HttpStatus.OK);
+                }
+            }
+        }
         List<String> missingFields = new ArrayList<>();
         requireNonBlank(missingFields, "firstName", ownerFieldsDto.getFirstName());
         requireNonBlank(missingFields, "lastName", ownerFieldsDto.getLastName());
@@ -178,6 +201,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireNoHouseholdDuplicate(owner, sharesHousehold);
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            this.ownersByIdempotencyKey.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -185,6 +211,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Returns the {@code Idempotency-Key} header of the request in progress, or {@code null} when the
+     * header is absent, blank, or there is no active servlet request. The generated {@link OwnersApi}
+     * signature carries no header parameter, so it is read from the current request context.
+     */
+    private static String currentIdempotencyKey() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            String key = attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+            if (key != null && !key.isBlank()) {
+                return key;
+            }
+        }
+        return null;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
