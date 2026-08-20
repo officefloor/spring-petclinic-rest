@@ -1,0 +1,181 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c28ba457..d90b6725 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ import java.util.List;
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
++    @Mapping(target = "salutation", source = "owner", qualifiedByName = "toSalutation")
+     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "toTelephoneDisplay")
+     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
+     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
+@@ -198,6 +199,23 @@ public interface OwnerMapper {
+         return owner.getLastName() + ", " + owner.getFirstName();
+     }
+ 
++    /**
++     * Composes the owner's {@code salutation}: the owner's {@code title} and {@code lastName} joined
++     * by a single space when a title is present, or just the {@code lastName} when no title is
++     * supplied (absent or blank).
++     */
++    @Named("toSalutation")
++    default String toSalutation(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        String title = owner.getTitle();
++        if (title == null || title.isBlank()) {
++            return owner.getLastName();
++        }
++        return title + " " + owner.getLastName();
++    }
++
+     /**
+      * Formats the owner's stored E.164 {@code telephone} for humans: the country code, a space, then
+      * the national digits grouped in threes, e.g. {@code "+61412345678"} becomes
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 039e0140..4fe8836f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -35,6 +35,9 @@ import java.util.*;
+ @Entity
+ @Table(name = "owners")
+ public class Owner extends Person {
++    @Column(name = "title")
++    private String title;
++
+     @Column(name = "address")
+     @NotEmpty
+     private String address;
+@@ -84,6 +87,14 @@ public class Owner extends Person {
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ce16129d..d82d2f68 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
++  title VARCHAR(10),
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index c2fd6ab7..c96a6f71 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 3b388635..7e5216a5 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,7 +52,8 @@ CREATE TABLE owners (
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   address_line1 VARCHAR(255),
+-  address_line2 VARCHAR(255)
++  address_line2 VARCHAR(255),
++  title VARCHAR(10)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e1e0b2f1..91c4e6f7 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   id INT(4) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
++  title VARCHAR(10),
+   address VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c0ba3c68..8480daf6 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       id         INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                                       first_name TEXT,
+                                       last_name  TEXT,
++                                      title      TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cfca223b..07381979 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,15 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            The owner's optional honorific title (e.g. MR, MRS, MS, DR). When present it is used to
++            compose the owner's 'salutation' as title + ' ' + lastName; otherwise the salutation is
++            just the last name.
++          type: string
++          maxLength: 10
++          example: DR
+         address:
+           title: Address
+           description: >-
+@@ -2118,6 +2127,14 @@ components:
+               type: string
+               example: 'Franklin, George'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, composed as title + ' ' + lastName when a title is present,
++                or just the lastName when no title is supplied.
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             telephoneDisplay:
+               title: Telephone display
+               description: >-
