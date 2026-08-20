@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "toMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
+    @Mapping(target = "timezone", source = "owner", qualifiedByName = "toTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "toIdentityKey")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "toAgeBand")
@@ -94,6 +95,15 @@ public interface OwnerMapper {
         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     /**
+     * Fixed region-to-timezone table mapping each canonical region to its IANA timezone name
+     * ({@code NSW->Australia/Sydney}, {@code VIC->Australia/Melbourne}, {@code QLD->Australia/Brisbane}).
+     */
+    java.util.Map<String, String> REGION_TIMEZONE = java.util.Map.of(
+        "NSW", "Australia/Sydney",
+        "VIC", "Australia/Melbourne",
+        "QLD", "Australia/Brisbane");
+
+    /**
      * Fixed region-to-postcode range table: each region admits an inclusive 4-digit range
      * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). Used to derive an
      * owner's locality from its postcode in preference to its city.
@@ -143,6 +153,20 @@ public interface OwnerMapper {
             }
         }
         return toRegion(owner);
+    }
+
+    /**
+     * Derives the owner's {@code timezone} as the IANA timezone name mapped from its locality/region
+     * via the fixed region-to-timezone table ({@code NSW->Australia/Sydney},
+     * {@code VIC->Australia/Melbourne}, {@code QLD->Australia/Brisbane}). Returns {@code null} when the
+     * owner's region is not one of the tabled regions.
+     */
+    @Named("toTimezone")
+    default String toTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return REGION_TIMEZONE.get(toLocality(owner));
     }
 
     /**
