@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
+    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "toCheckDigit")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
@@ -171,6 +172,37 @@ public interface OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
+     * contained in the owner's {@code customerCode}. Returns {@code null} when the customer code is
+     * absent.
+     */
+    @Named("toCheckDigit")
+    default Integer toCheckDigit(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        String code = owner.getCustomerCode();
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     private static String initial(String name) {
