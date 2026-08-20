@@ -14,9 +14,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Joins a deliberately-shared household. When the create request opts in via
- * {@code sharesHousehold} and an existing owner has the same last name and address (compared
- * case-insensitively with runs of whitespace collapsed, the same rule {@link CheckOwnerHouseholdUnique}
- * uses), the new owner and the existing household member(s) are given the same, stable
+ * {@code sharesHousehold} and an existing owner has the same last name and address (the address in
+ * its normalized form and the last name case-insensitively with whitespace collapsed, the same rule
+ * {@link CheckOwnerHouseholdUnique} uses), the new owner and the existing household member(s) are
+ * given the same, stable
  * {@code householdId}. If a matching owner already carries a household id it is reused; otherwise a
  * new id is derived from the household's normalized last name and address, so the same household
  * always yields the same value. Does nothing when the request does not opt in or no matching owner
@@ -28,13 +29,13 @@ public class AssignHousehold {
         if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String lastName = normalizeName(owner.getLastName());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         String existingId = null;
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (lastName.equals(normalizeName(existing.getLastName()))
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 household.add(existing);
                 if (existingId == null && existing.getHouseholdId() != null) {
                     existingId = existing.getHouseholdId();
@@ -71,7 +72,7 @@ public class AssignHousehold {
     }
 
     /** Trim, collapse internal whitespace runs to a single space, and lower-case. */
-    private static String normalize(String value) {
+    private static String normalizeName(String value) {
         if (value == null) {
             return "";
         }

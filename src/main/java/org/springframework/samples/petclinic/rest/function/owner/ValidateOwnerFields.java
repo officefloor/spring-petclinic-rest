@@ -3,19 +3,18 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.officefloor.plugin.variable.Out;
+import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
-import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * Rejects a create-owner request that is missing or blank in any required field, before
- * {@link BuildOwner} runs. Reads the body once and republishes it for later steps, so no
- * later step binds {@code @RequestBody} again.
+ * {@link BuildOwner} runs. Reads the body that {@link NormalizeOwnerAddress} already normalized and
+ * republished, so the {@code address} check rejects a value that is blank after normalization.
  */
 public class ValidateOwnerFields {
 
-    public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+    public void service(@Val OwnerFieldsDto request)
             throws MissingOwnerFieldsException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
@@ -36,7 +35,6 @@ public class ValidateOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        validated.set(request);
     }
 
     private static boolean isBlank(String value) {
