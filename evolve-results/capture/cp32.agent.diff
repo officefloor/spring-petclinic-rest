@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index 52d75721..c236c740 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -1,33 +1,46 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.function.common.Localities;
+ 
+ /**
+- * Assigns the owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is
+- * the upper-cased first three letters of city, LAST3 the upper-cased first three letters of lastName,
+- * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of owners
+- * already in that city (e.g. {@code SYD-SMI-0007}). Runs before the owner is saved, so the count
+- * excludes the owner being created.
++ * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
++ * region derived from the owner's postcode (falling back to the city table) and HASH8 is the first
++ * eight upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
++ * last name (e.g. {@code NSW-1A2B3C4D}). There is no per-city sequence number. Runs after telephone
++ * normalization so the hash is taken over the stored, normalized (E.164) telephone.
+  */
+ public class AssignCustomerCode {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String city3 = prefix(owner.getCity());
+-        String last3 = prefix(owner.getLastName());
+-        int sequence = countOwnersInCity(owner.getCity(), ownerRepository) + 1;
+-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
++    public void service(@Val Owner owner) {
++        String region = Localities.region(owner.getPostcode(), owner.getCity());
++        String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
++        owner.setCustomerCode(region + "-" + hash8);
+     }
+ 
+-    private static String prefix(String value) {
+-        int length = Math.min(3, value.length());
+-        return value.substring(0, length).toUpperCase();
++    /** First {@code length} upper-case hex characters of SHA-256({@code value}). */
++    private static String shaHex(String value, int length) {
++        return sha256hex(value).substring(0, length).toUpperCase();
+     }
+ 
+-    private static int countOwnersInCity(String city, OwnerRepository ownerRepository) {
+-        return (int) ownerRepository.findAll().stream()
+-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+-                .count();
++    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
++    private static String sha256hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException("SHA-256 not available", e);
++        }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+index a7313ea3..b91b3255 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipNumber.java
+@@ -5,7 +5,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Assigns the owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>} where YY is
+- * the last two digits of the {@code registrationDate} year (e.g. {@code SYD-SMI-0007-M26}). Runs after
++ * the last two digits of the {@code registrationDate} year (e.g. {@code NSW-1A2B3C4D-M26}). Runs after
+  * the customer code has been assigned and the registration date defaulted, so both fields are set.
+  */
+ public class AssignMembershipNumber {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodeCheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodeCheckDigit.java
+index adebb7d8..24d3c4fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodeCheckDigit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CustomerCodeCheckDigit.java
+@@ -4,7 +4,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+  * The derived {@code checkDigit} for an owner: a single Luhn check digit (0-9) computed over the
+  * digits contained in the owner's {@code customerCode}.
+  *
+- * <p>Non-digit characters (the dashes in {@code <CITY3>-<LAST3>-<NNNN>}) are ignored. The digits are
++ * <p>Non-digit characters (the dash and letters in {@code <REGION>-<HASH8>}) are ignored. The digits are
+  * processed right-to-left, doubling every second digit starting with the rightmost and subtracting 9
+  * from any doubled value above 9; the check digit is {@code (10 - (sum % 10)) % 10}.
+  */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7fca1e32..5296004c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2104,12 +2104,13 @@ components:
+             customerCode:
+               title: Customer code
+               description: >-
+-                The owner's customer code, formatted '<CITY3>-<LAST3>-<NNNN>' where CITY3
+-                is the upper-cased first three letters of city, LAST3 the upper-cased first
+-                three letters of lastName and NNNN a per-city 4-digit zero-padded sequence
+-                (one more than the owners already in that city) assigned at creation.
++                The owner's customer code, formatted '<REGION>-<HASH8>' where REGION is the
++                region derived from the postcode (falling back to the city-to-region table)
++                and HASH8 is the first eight upper-cased hex characters of SHA-256 over the
++                normalized telephone concatenated with the lastName. Assigned at creation;
++                there is no per-city sequence number.
+               type: string
+-              example: 'SYD-SMI-0007'
++              example: 'NSW-1A2B3C4D'
+               readOnly: true
+             checkDigit:
+               title: Check digit
+@@ -2161,7 +2162,7 @@ components:
+                 The owner's membership number, formatted '<customerCode>-M<YY>' where YY
+                 is the last two digits of the registrationDate year.
+               type: string
+-              example: 'SYD-SMI-0007-M26'
++              example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
+             membershipLevel:
+               title: Membership level
