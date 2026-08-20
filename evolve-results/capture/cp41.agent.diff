@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index 4fac9d72..073b8c0e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -3,10 +3,13 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.util.HashSet;
++import java.util.Set;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.LocalityLookup;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Assigns the owner's {@code customerCode} formatted {@code <REGION>-<HASH8>}, where REGION is the
+@@ -15,14 +18,33 @@ import org.springframework.samples.petclinic.model.Owner;
+  * normalized (E.164) telephone concatenated with the last name (e.g. {@code NSW-1A2B3C4D}). The
+  * identity is deterministic — no sequence numbers — so the same telephone and last name always
+  * produce the same hash. Runs after the owner is built and normalized.
++ *
++ * <p>If the computed code collides with an existing owner's {@code customerCode}, {@code -<n>} is
++ * appended with the smallest {@code n} of 2 or more that makes it unique (e.g. a second collision
++ * yields {@code NSW-1A2B3C4D-2}), so distinct owners always receive distinct customer codes. The
++ * new owner is not yet persisted at this step, so it is not counted among the existing codes.
+  */
+ public class AssignOwnerCustomerCode {
+ 
+-    public void service(@Val Owner owner) {
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+         String region = LocalityLookup.postcodeRegion(owner.getPostcode());
+         String normalizedTelephone = TelephoneNormalizer.toE164(owner.getTelephone());
+         String basis = (normalizedTelephone == null ? "" : normalizedTelephone) + owner.getLastName();
+-        owner.setCustomerCode(region + "-" + hash8(basis));
++        String baseCode = region + "-" + hash8(basis);
++
++        Set<String> existingCodes = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            String code = other.getCustomerCode();
++            if (code != null) {
++                existingCodes.add(code);
++            }
++        }
++
++        String customerCode = baseCode;
++        for (int n = 2; existingCodes.contains(customerCode); n++) {
++            customerCode = baseCode + "-" + n;
++        }
++        owner.setCustomerCode(customerCode);
+     }
+ 
+     /** First 8 upper-case hex characters of the SHA-256 digest of the UTF-8 bytes of {@code input}. */
