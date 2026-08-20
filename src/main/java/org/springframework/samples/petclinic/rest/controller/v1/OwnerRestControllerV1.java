@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -63,6 +64,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+
 import jakarta.transaction.Transactional;
 
 /**
@@ -90,6 +93,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; create side-effects are recorded here so they can be observed independently. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /**
+     * Source of the monotonically increasing {@code seq} stamped on each {@link OwnerCreatedEvent}.
+     * Incremented once per successful create so the emitted events form a gap-free, strictly increasing
+     * sequence across all creates handled by this application instance.
+     */
+    private static final AtomicLong OWNER_CREATED_SEQUENCE = new AtomicLong();
+
     /** Request header carrying the client-supplied idempotency key for owner creation. */
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
@@ -108,14 +118,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    /** Serializes the structured {@link OwnerCreatedEvent} to JSON for the {@code AUDIT} logger. */
+    private final ObjectMapper objectMapper;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 ObjectMapper objectMapper) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.objectMapper = objectMapper;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -208,6 +223,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        OwnerCreatedEvent event = OwnerCreatedEvent.forCreatedOwner(
+            OWNER_CREATED_SEQUENCE.incrementAndGet(), owner, ownerDto.getMembershipLevel());
+        AUDIT.info(this.objectMapper.writeValueAsString(event));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
