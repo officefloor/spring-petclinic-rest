@@ -29,6 +29,9 @@ public interface OwnerMapper {
             + "(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
             + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
             + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\"))")
+    @Mapping(target = "contactPreference",
+        expression = "java(owner == null ? null : "
+            + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
