@@ -275,17 +275,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Builds the owner's customer code as {@code '<REGION>-<HASH8>'}, where {@code REGION} is the
      * region derived from the owner's postcode (falling back to its city, else {@code 'UNKNOWN'}) via
      * {@link OwnerMapper#toRegion}, and {@code HASH8} is the first 8 upper-case hex characters of the
-     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}). The code
-     * carries no sequence number: it is a deterministic function of the owner's region and identity.
+     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}).
+     *
+     * <p>When the computed code collides with an existing owner's {@code customerCode}, it is
+     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it
+     * unique (e.g. {@code NSW-1A2B3C4D-2}); the de-duplicated code is returned. Absent a collision the
+     * base region-and-hash code is returned unchanged.
      *
      * @param owner the owner being created, with its region-determining postcode and city populated
      * @param normalizedTelephone the owner's normalized (E.164) telephone, hashed with the last name
-     * @return the region-and-hash customer code for the owner being created
+     * @return the (de-duplicated) region-and-hash customer code for the owner being created
      */
     private String buildCustomerCode(Owner owner, String normalizedTelephone) {
         String region = ownerMapper.toRegion(owner);
         String hash8 = sha256Hex8(normalizedTelephone + owner.getLastName());
-        return region + "-" + hash8;
+        String baseCode = region + "-" + hash8;
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        if (!existingCodes.contains(baseCode)) {
+            return baseCode;
+        }
+        int n = 2;
+        while (existingCodes.contains(baseCode + "-" + n)) {
+            n++;
+        }
+        return baseCode + "-" + n;
     }
 
     /**
