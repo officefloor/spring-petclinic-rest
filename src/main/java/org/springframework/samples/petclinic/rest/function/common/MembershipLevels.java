@@ -6,35 +6,65 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's numeric membership level (1 to 4).
+ * Derives an owner's membership points and the numeric level (1 to 4) mapped from them.
  *
- * <p>The pre-tenure factors are a base of 1, plus one for holding an email address, plus one for a
- * {@code namesakeCount} of 0. Those factors are capped at level 3, so even a fully-endowed new owner
- * (an email, a {@code namesakeCount} of 0 and a multi-member household) never exceeds level 3.
+ * <p>Points start at 0 and accumulate: +2 when an email is present, +1 when {@code namesakeCount}
+ * is 0, +2 for a household of 3 or more members, and +3 for tenure of more than 365 days between the
+ * owner's registration date and today.
  *
- * <p>Level 4 is reserved for tenure: it requires more than 365 days between the owner's registration
- * date and today. Because a newly created owner has zero tenure, a new owner is always at most
- * level 3.
+ * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a
+ * newly created owner has zero tenure, the tenure points are unavailable, so a new owner tops out at
+ * 5 points and therefore never exceeds level 3.
  */
 public final class MembershipLevels {
 
-    /** Level 4 requires strictly more than this many days of tenure. */
-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
+    /** The tenure points require strictly more than this many days of tenure. */
+    private static final long TENURE_DAYS_FOR_TENURE_POINTS = 365;
 
     private MembershipLevels() {
     }
 
-    public static int of(Owner owner) {
-        int preTenure = Math.min(3, 1
-                + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0)
-                + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0));
-        return preTenure + (hasTenureForLevel4(owner.getRegistrationDate()) ? 1 : 0);
+    /** Computes the owner's membership points. */
+    public static int points(Owner owner) {
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            points += 2;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += 1;
+        }
+        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
+            points += 2;
+        }
+        if (hasTenurePoints(owner.getRegistrationDate())) {
+            points += 3;
+        }
+        return points;
     }
 
-    private static boolean hasTenureForLevel4(LocalDate registrationDate) {
+    /** Computes the owner's membership level from the owner's points. */
+    public static int of(Owner owner) {
+        return levelForPoints(points(owner));
+    }
+
+    /** Maps points to a level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    public static int levelForPoints(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
+    }
+
+    private static boolean hasTenurePoints(LocalDate registrationDate) {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_LEVEL_4;
+        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_TENURE_POINTS;
     }
 }
