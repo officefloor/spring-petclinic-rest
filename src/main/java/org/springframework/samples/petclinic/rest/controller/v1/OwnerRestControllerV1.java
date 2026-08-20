@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -256,6 +259,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return String.format("%s-%04d", last3, sequence);
     }
 
+    /**
+     * Derives the stable {@code householdId} for an owner from the collapsed {@code lastName} and
+     * {@code address} - the same pair used to detect a shared household. Because it is a pure
+     * function of that pair (upper-case hex of SHA-256 over the two collapsed values), every owner
+     * in the same household - whether created first or joining later via {@code sharesHousehold} -
+     * receives the identical, non-blank identifier without needing to read any other owner's value.
+     */
+    private static String householdIdFor(String lastName, String address) {
+        String key = collapse(lastName) + "\n" + collapse(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(32);
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -271,6 +295,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
