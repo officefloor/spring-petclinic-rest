@@ -169,10 +169,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         requireNoHouseholdDuplicate(owner, sharesHousehold);
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
+        OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
         AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.toMembershipLevel(owner));
-        OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
+            ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -456,7 +456,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private OwnerDto toOwnerDtoWithBulkWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
+        int points = OwnerMapper.membershipPointsFor(owner, householdSize(owner.getHouseholdId()));
+        ownerDto.setMembershipPoints(points);
+        ownerDto.setMembershipLevel(OwnerMapper.membershipLevelFor(points));
         return ownerDto;
+    }
+
+    /**
+     * Returns the number of owners sharing the given {@code householdId} (the household's size),
+     * counting every existing owner that carries the same {@code householdId}. Returns {@code 0} when
+     * {@code householdId} is {@code null}, since an owner with no postcode has no household key and so
+     * no household.
+     *
+     * @param householdId the owner's computed household identifier, or {@code null} when absent
+     * @return the number of owners in the household
+     */
+    private int householdSize(String householdId) {
+        if (householdId == null) {
+            return 0;
+        }
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
     }
 
     /**

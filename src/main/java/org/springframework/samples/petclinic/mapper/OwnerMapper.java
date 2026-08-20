@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "toCheckDigit")
+    @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "toMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
@@ -230,32 +231,86 @@ public interface OwnerMapper {
     }
 
     /**
-     * Returns the owner's numeric membership level, assigned on creation: starts at {@code 1}, plus
-     * {@code 1} when a non-blank email is present, plus {@code 1} when the owner has no namesakes
-     * ({@code namesakeCount} is 0), plus {@code 1} for tenure of more than {@code 365} days since the
-     * {@code registrationDate}, capped at {@code 4}. Because a newly created owner has zero tenure, a
-     * new owner never exceeds level 3.
+     * Returns the owner's membership points, assigned on creation: starts at {@code 0}, plus {@code 2}
+     * when a non-blank email is present, plus {@code 1} when the owner has no namesakes
+     * ({@code namesakeCount} is 0), plus {@code 2} for a household of {@code 3} or more members, plus
+     * {@code 3} for tenure of more than {@code 365} days since the {@code registrationDate}. This
+     * qualified mapping cannot observe the owner's household size (which requires counting other
+     * owners), so it computes the points as if the owner were the only member of its household; the
+     * controller recomputes the points with the real household size via
+     * {@link #membershipPointsFor(Owner, int)} before returning the owner.
+     */
+    @Named("toMembershipPoints")
+    default Integer toMembershipPoints(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        return membershipPointsFor(owner, 1);
+    }
+
+    /**
+     * Returns the owner's numeric membership level, derived from its membership points: level
+     * {@code 1} for {@code 0-1} points, {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and
+     * {@code 4} for {@code 6} or more. As with {@link #toMembershipPoints(Owner)}, the household size
+     * is not observable here and is treated as a single member.
      */
     @Named("toMembershipLevel")
     default Integer toMembershipLevel(Owner owner) {
         if (owner == null) {
             return null;
         }
-        int level = 1;
+        return membershipLevelFor(membershipPointsFor(owner, 1));
+    }
+
+    /**
+     * Computes an owner's membership points from the given household size: starts at {@code 0}, plus
+     * {@code 2} when a non-blank email is present, plus {@code 1} when the owner has no namesakes
+     * ({@code namesakeCount} is 0), plus {@code 2} when {@code householdSize} is {@code 3} or more,
+     * plus {@code 3} for tenure of more than {@code 365} days since the {@code registrationDate}.
+     *
+     * @param owner the owner whose points are computed, never {@code null}
+     * @param householdSize the number of owners sharing the owner's household
+     * @return the owner's membership points
+     */
+    static int membershipPointsFor(Owner owner, int householdSize) {
+        int points = 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         if (hasEmail) {
-            level++;
+            points += 2;
         }
         boolean noNamesakes = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
         if (noNamesakes) {
-            level++;
+            points += 1;
+        }
+        if (householdSize >= 3) {
+            points += 2;
         }
         boolean tenured = owner.getRegistrationDate() != null
             && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365;
         if (tenured) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * Maps membership points to the numeric membership level: level {@code 1} for {@code 0-1} points,
+     * {@code 2} for {@code 2-3}, {@code 3} for {@code 4-5}, and {@code 4} for {@code 6} or more.
+     *
+     * @param points the owner's membership points
+     * @return the corresponding membership level (1-4)
+     */
+    static int membershipLevelFor(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
