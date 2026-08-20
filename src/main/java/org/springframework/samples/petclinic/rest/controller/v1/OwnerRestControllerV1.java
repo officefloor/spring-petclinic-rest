@@ -530,24 +530,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rolls {@code date} forward to a business day: when it falls on a Saturday or Sunday it advances
-     * to the following Monday; a weekday is returned unchanged. Applied to the effective registration
-     * date (whether supplied in the request or defaulted to the server date) so a weekend registration
-     * is recorded on the next business day, and every value derived from the registration date uses the
-     * adjusted date.
+     * Fixed list of public holidays. A registration date landing on one of these dates is rolled
+     * forward, just like a weekend, until it reaches a non-holiday business day.
+     */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
+    /**
+     * Rolls {@code date} forward to a business day: while it falls on a Saturday, Sunday, or a listed
+     * public holiday it advances one day at a time until it reaches a non-holiday weekday. Applied to
+     * the effective registration date (whether supplied in the request or defaulted to the server date)
+     * so a weekend or holiday registration is recorded on the next business day, and every value derived
+     * from the registration date uses the adjusted date.
      *
      * @param date the effective registration date (supplied or defaulted), never {@code null}
-     * @return the same date, or the next Monday when {@code date} is a weekend
+     * @return the same date, or the next non-holiday business day when {@code date} is a weekend or holiday
      */
     private static LocalDate toBusinessDay(LocalDate date) {
+        LocalDate adjusted = date;
+        while (isWeekend(adjusted) || PUBLIC_HOLIDAYS.contains(adjusted)) {
+            adjusted = adjusted.plusDays(1);
+        }
+        return adjusted;
+    }
+
+    /** Whether {@code date} falls on a Saturday or Sunday. */
+    private static boolean isWeekend(LocalDate date) {
         DayOfWeek day = date.getDayOfWeek();
-        if (day == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (day == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
-        }
-        return date;
+        return day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
     }
 
     /** Matches a well-formed postcode: exactly four decimal digits. */
