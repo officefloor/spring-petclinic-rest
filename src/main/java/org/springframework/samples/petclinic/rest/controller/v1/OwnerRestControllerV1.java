@@ -138,7 +138,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<String> missingFields = new ArrayList<>();
         requireNonBlank(missingFields, "firstName", ownerFieldsDto.getFirstName());
         requireNonBlank(missingFields, "lastName", ownerFieldsDto.getLastName());
-        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        String normalizedAddressLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String normalizedAddressLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        String normalizedFlatAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        boolean hasStructuredAddress = !normalizedAddressLine1.isEmpty();
+        String normalizedAddress = hasStructuredAddress
+            ? composeAddress(normalizedAddressLine1, normalizedAddressLine2)
+            : normalizedFlatAddress;
         requireNonBlank(missingFields, "address", normalizedAddress);
         requireNonBlank(missingFields, "city", ownerFieldsDto.getCity());
         requireNonBlank(missingFields, "telephone", ownerFieldsDto.getTelephone());
@@ -161,6 +167,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
+        owner.setAddressLine1(hasStructuredAddress ? normalizedAddressLine1 : null);
+        owner.setAddressLine2(hasStructuredAddress && !normalizedAddressLine2.isEmpty()
+            ? normalizedAddressLine2 : null);
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(buildCustomerCode(owner, normalizedTelephone));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -737,6 +746,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             sb.append(expanded);
         }
         return sb.toString();
+    }
+
+    /**
+     * Composes the stored/returned {@code address} from the normalized structured lines: the
+     * normalized {@code addressLine1}, with a single space and the normalized {@code addressLine2}
+     * appended when {@code addressLine2} is present (non-empty). Both arguments are already
+     * normalized via {@link #normalizeAddress(String)}.
+     *
+     * @param normalizedAddressLine1 the normalized first address line (non-empty)
+     * @param normalizedAddressLine2 the normalized second address line, or the empty string when absent
+     * @return the composed address string
+     */
+    private static String composeAddress(String normalizedAddressLine1, String normalizedAddressLine2) {
+        if (normalizedAddressLine2.isEmpty()) {
+            return normalizedAddressLine1;
+        }
+        return normalizedAddressLine1 + " " + normalizedAddressLine2;
     }
 
     /**
