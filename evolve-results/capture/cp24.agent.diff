@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 75c0deff..7ed47aef 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,8 +22,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials",
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-            expression = "java((owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) ? \"GOLD\" : ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++            expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.region(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+index 50020123..0e9664dd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+@@ -7,9 +7,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ /**
+  * Records the size of the owner's household: the number of owners that share this owner's
+  * {@code householdId}, counting the owner itself. An owner with no {@code householdId} is a
+- * household of one. Household membership is assigned by {@link AssignHousehold}; this count drives
+- * the {@code GOLD} membership tier (3 or more members). Runs on both the create and read pipelines
+- * so the count is derived consistently from current data.
++ * household of one. Household membership is assigned by {@link AssignHousehold}. Runs on both the
++ * create and read pipelines so the count is derived consistently from current data.
+  */
+ public class AssignHouseholdMemberCount {
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 3eb8b00b..eeb5fe09 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -18,8 +18,8 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        auditLogger.info("Owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        auditLogger.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel());
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8eab7d60..2ac20f91 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2131,13 +2131,17 @@ components:
+               type: string
+               example: 'SYD-SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'SILVER' when namesakeCount is 0 and an
+-                email is present, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++                The owner's membership level, from 1 to 3, assigned at creation. Starts
++                at 1, plus 1 when an email is present, plus 1 when namesakeCount is 0,
++                capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
