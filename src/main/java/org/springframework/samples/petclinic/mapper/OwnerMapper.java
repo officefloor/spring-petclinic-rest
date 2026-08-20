@@ -24,13 +24,6 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipTier",
-        expression = "java(owner == null ? null : "
-            + "(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 "
-            + "? \"GOLD\" "
-            + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
-            + "&& owner.getEmail() != null && !owner.getEmail().isEmpty() "
-            + "? \"SILVER\" : \"BRONZE\")))")
     @Mapping(target = "locality",
         expression = "java(owner == null ? null : "
             + "(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "

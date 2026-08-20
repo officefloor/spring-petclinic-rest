@@ -376,6 +376,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The membership level ceiling assigned on create; level 4 is reserved for tenure and so is
+     * never reached here.
+     */
+    private static final int MAX_MEMBERSHIP_LEVEL = 3;
+
+    /**
+     * Computes the numeric {@code membershipLevel} for a newly created owner. It starts at 1,
+     * gains 1 when an email is present, gains 1 when the owner's {@code namesakeCount} is 0, and
+     * is capped at {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure). Evaluated after
+     * the owner's email and namesakeCount have been set.
+     */
+    private static int membershipLevelFor(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            level++;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            level++;
+        }
+        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+    }
+
+    /**
      * The maximum number of owners any single city may contain. A create whose city already
      * holds this many owners is rejected.
      */
@@ -488,9 +511,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+        owner.setMembershipLevel(membershipLevelFor(owner));
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
