@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b877c865..476ffaad 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.region(owner.getPostcode(), owner.getCity()))")
++    @Mapping(target = "timezone",
++            expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.timezone(owner.getPostcode(), owner.getCity()))")
+     @Mapping(target = "contactPreference",
+             expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
+     @Mapping(target = "telephoneDisplay",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+index 0e12367c..3a0656aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/Localities.java
+@@ -23,6 +23,12 @@ public final class Localities {
+             "VIC", new int[] {3000, 3099},
+             "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney",
++            "VIC", "Australia/Melbourne",
++            "QLD", "Australia/Brisbane");
++
+     private static final Pattern FOUR_DIGITS = Pattern.compile("^[0-9]{4}$");
+ 
+     /** Locality returned for any city not in the table. */
+@@ -53,6 +59,19 @@ public final class Localities {
+         return byPostcode != null ? byPostcode : region(city);
+     }
+ 
++    /**
++     * Derives the IANA timezone name for an owner, from the region derived by
++     * {@link #region(String, String)} via the fixed region-to-timezone table
++     * (NSW-&gt;Australia/Sydney, VIC-&gt;Australia/Melbourne, QLD-&gt;Australia/Brisbane).
++     *
++     * @param postcode the owner's postcode (may be {@code null} or blank).
++     * @param city     the owner's city (may be {@code null}).
++     * @return the IANA timezone name, or {@code null} when the region is not in the table.
++     */
++    public static String timezone(String postcode, String city) {
++        return REGION_TIMEZONE.get(region(postcode, city));
++    }
++
+     /**
+      * @return the region whose inclusive range contains {@code postcode}, or {@code null} when the
+      *         postcode is absent, malformed, or in no known range.
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 925ee7c3..c1c9a2bf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2216,6 +2216,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The owner's IANA timezone name, derived from the locality/region using the
++                fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
++                QLD->Australia/Brisbane). Absent when the region is not in the table.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
