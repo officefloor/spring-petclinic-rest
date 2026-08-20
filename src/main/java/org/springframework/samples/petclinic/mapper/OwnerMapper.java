@@ -11,7 +11,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -26,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "toTelephoneDisplay")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
+    @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "toFiscalYear")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "toCheckDigit")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "toMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
@@ -261,23 +261,54 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}, where {@code YY} is
-     * the last two digits of the {@code registrationDate} year, e.g. {@code 'NSW-1A2B3C4D-M26'}. Returns
-     * {@code null} when either the customer code or the registration date is absent.
+     * the last two digits of the fiscal year of the {@code registrationDate}, e.g.
+     * {@code 'NSW-1A2B3C4D-M26'}. The fiscal year starts on 1 July and is identified by the calendar
+     * year in which it ends. Returns {@code null} when either the customer code or the registration
+     * date is absent.
      */
     @Named("toMembershipNumber")
     default String toMembershipNumber(Owner owner) {
         if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Derives the owner's {@code fiscalYear} from its {@code registrationDate}, formatted
+     * {@code 'FY<YY>'} where {@code YY} is the last two digits of the fiscal year, e.g. {@code 'FY26'}.
+     * The fiscal year starts on 1 July and is identified by the calendar year in which it ends: a date
+     * from 1 July onwards belongs to the fiscal year ending in the following calendar year, and a date
+     * before 1 July to the fiscal year ending in the same calendar year. Returns {@code null} when the
+     * registration date is absent.
+     */
+    @Named("toFiscalYear")
+    default String toFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYear(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
+     * Returns the fiscal year of the given date as the calendar year in which the fiscal year ends.
+     * The fiscal year starts on 1 July, so a date in July or later belongs to the fiscal year ending
+     * in the next calendar year ({@code year + 1}); an earlier date belongs to the fiscal year ending
+     * in its own calendar year.
+     *
+     * @param date the date whose fiscal year is computed, never {@code null}
+     * @return the calendar year in which the date's fiscal year ends
+     */
+    static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= java.time.Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
      * Returns the owner's membership points, assigned on creation: starts at {@code 0}, plus {@code 2}
      * when a non-blank email is present, plus {@code 1} when the owner has no namesakes
      * ({@code namesakeCount} is 0), plus {@code 2} for a household of {@code 3} or more members, plus
-     * {@code 3} for tenure of more than {@code 365} days since the {@code registrationDate}. This
-     * qualified mapping cannot observe the owner's household size (which requires counting other
+     * {@code 3} for a tenure of one or more elapsed fiscal years since the {@code registrationDate}.
+     * This qualified mapping cannot observe the owner's household size (which requires counting other
      * owners), so it computes the points as if the owner were the only member of its household; the
      * controller recomputes the points with the real household size via
      * {@link #membershipPointsFor(Owner, int)} before returning the owner.
@@ -308,7 +339,8 @@ public interface OwnerMapper {
      * Computes an owner's membership points from the given household size: starts at {@code 0}, plus
      * {@code 2} when a non-blank email is present, plus {@code 1} when the owner has no namesakes
      * ({@code namesakeCount} is 0), plus {@code 2} when {@code householdSize} is {@code 3} or more,
-     * plus {@code 3} for tenure of more than {@code 365} days since the {@code registrationDate}.
+     * plus {@code 3} for a tenure of one or more elapsed fiscal years (each starting 1 July) between
+     * the {@code registrationDate} and today.
      *
      * @param owner the owner whose points are computed, never {@code null}
      * @param householdSize the number of owners sharing the owner's household
@@ -328,7 +360,7 @@ public interface OwnerMapper {
             points += 2;
         }
         boolean tenured = owner.getRegistrationDate() != null
-            && ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365;
+            && fiscalYear(LocalDate.now()) - fiscalYear(owner.getRegistrationDate()) >= 1;
         if (tenured) {
             points += 3;
         }
