@@ -28,6 +28,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.region(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference",
             expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
+    @Mapping(target = "telephoneDisplay",
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneE164.toDisplay(owner.getTelephone()))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.of(owner))")
     @Mapping(target = "checkDigit",

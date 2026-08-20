@@ -40,6 +40,43 @@ public final class TelephoneE164 {
     }
 
     /**
+     * Formats an E.164 number for humans as the country code, a space, then the national digits
+     * grouped in threes (e.g. '+61412345678' becomes '+61 412 345 678'). The country code is '+61'
+     * or '+1' when recognised, otherwise a two-digit code is assumed. Expects {@code e164} already
+     * in valid E.164 form (a '+' followed by 8 to 15 digits), as returned by {@link #toE164};
+     * returns {@code null} for a {@code null} or non-E.164 value.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return null;
+        }
+        String digits = e164.substring(1);
+        if (!digits.matches("\\d{8,15}")) {
+            return null;
+        }
+        String code;
+        if (digits.startsWith("61")) {
+            code = "61";
+        }
+        else if (digits.startsWith("1")) {
+            code = "1";
+        }
+        else {
+            // Unknown country code: assume a two-digit code.
+            code = digits.substring(0, 2);
+        }
+        String national = digits.substring(code.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i += 3) {
+            if (grouped.length() > 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national, i, Math.min(i + 3, national.length()));
+        }
+        return "+" + code + " " + grouped;
+    }
+
+    /**
      * Checks the national-number length of an E.164 number against its country code: '+61'
      * requires 9 national digits and '+1' requires 10. Country codes without a per-country length
      * rule here pass (only the generic 8-to-15-digit bound applies to them). Expects {@code e164}
