@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4367df48..09659be7 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,11 +24,7 @@ public interface OwnerMapper {
+         expression = "java(owner == null ? null : "
+             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "locality",
+-        expression = "java(owner == null ? null : "
+-            + "(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
+-            + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
+-            + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\"))")
++    @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner == null ? null : "
+             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
+@@ -48,6 +44,47 @@ public interface OwnerMapper {
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
++    /**
++     * Derive the owner's locality (region). The postcode range takes precedence
++     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only when the postcode is
++     * absent or falls in no known range do we fall back to the city-to-region table
++     * (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD), otherwise "UNKNOWN".
++     */
++    default String deriveLocality(Owner owner) {
++        if (owner == null) {
++            return null;
++        }
++        String postcode = owner.getPostcode();
++        if (postcode != null) {
++            try {
++                int pc = Integer.parseInt(postcode.trim());
++                if (pc >= 2000 && pc <= 2099) {
++                    return "NSW";
++                }
++                if (pc >= 3000 && pc <= 3099) {
++                    return "VIC";
++                }
++                if (pc >= 4000 && pc <= 4099) {
++                    return "QLD";
++                }
++            }
++            catch (NumberFormatException ignored) {
++                // not a numeric postcode; fall back to the city-to-region table
++            }
++        }
++        String city = owner.getCity();
++        if ("Sydney".equals(city)) {
++            return "NSW";
++        }
++        if ("Melbourne".equals(city)) {
++            return "VIC";
++        }
++        if ("Brisbane".equals(city)) {
++            return "QLD";
++        }
++        return "UNKNOWN";
++    }
++
+     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
