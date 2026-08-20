@@ -1,0 +1,287 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6de2b5d4..0be7e3a1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -108,6 +111,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+new file mode 100644
+index 00000000..fd4ce211
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerHousehold.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Stamps the shared {@code householdId} published by {@link CheckOwnerHouseholdUnique} onto the
++ * newly built owner, so a joiner carries the same identifier as the rest of its household. When
++ * the request did not join a household the variable is unset and the owner keeps no household id.
++ */
++public class AssignOwnerHousehold {
++
++    public void service(@Val Owner owner, @Val HouseholdId householdId) {
++        if (householdId != null) {
++            owner.setHouseholdId(householdId.value());
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+index 5648bfda..ddb588f4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+@@ -1,7 +1,13 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Locale;
+ 
++import net.officefloor.plugin.variable.Out;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+@@ -9,26 +15,68 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException;
+ 
+ /**
+- * Rejects a create-owner request that shares a household with an existing owner — the same
+- * last name and the same address — with a 409. Both fields are compared case-insensitively
+- * with runs of whitespace collapsed to a single space and leading/trailing whitespace
+- * trimmed. The check is bypassed when the request sets {@code sharesHousehold} true.
++ * Governs the household rule for a create-owner request. A "household" is a set of owners
++ * that share the same last name and the same address, both compared case-insensitively with
++ * runs of whitespace collapsed to a single space and leading/trailing whitespace trimmed.
++ *
++ * <p>When the request would join an existing household (a match is found):
++ * <ul>
++ *   <li>If the request did not set {@code sharesHousehold} true, it is rejected with a 409.</li>
++ *   <li>If it set {@code sharesHousehold} true, the join is allowed and a stable shared
++ *       {@code householdId} — derived from the canonical last name and address, so every
++ *       member of the household derives the same value — is stamped onto the existing
++ *       members and published for {@link AssignOwnerHousehold} to stamp onto the new owner.</li>
++ * </ul>
++ *
++ * <p>When there is no existing household match the request is a plain unique owner and no
++ * {@code householdId} is assigned.
+  */
+ public class CheckOwnerHouseholdUnique {
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+-            throws DuplicateOwnerHouseholdException {
+-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+-            return;
+-        }
++    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
++            Out<HouseholdId> householdId) throws DuplicateOwnerHouseholdException {
+         String lastName = canonical(request.getLastName());
+         String address = canonical(request.getAddress());
++        List<Owner> members = new ArrayList<>();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(canonical(existing.getLastName()))
+                     && address.equals(canonical(existing.getAddress()))) {
+-                throw new DuplicateOwnerHouseholdException(request.getLastName(), request.getAddress());
++                members.add(existing);
+             }
+         }
++        if (members.isEmpty()) {
++            return; // no existing household — a plain unique owner, no householdId
++        }
++        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
++            throw new DuplicateOwnerHouseholdException(request.getLastName(), request.getAddress());
++        }
++        // Opted in to share the household: assign the same stable id to every member.
++        String id = deriveHouseholdId(lastName, address);
++        for (Owner member : members) {
++            member.setHouseholdId(id);
++            ownerRepository.save(member);
++        }
++        householdId.set(new HouseholdId(id));
++    }
++
++    /**
++     * A stable household identifier derived from the canonical last name and address, so that
++     * every owner joining the same household independently derives an identical value.
++     */
++    static String deriveHouseholdId(String canonicalLastName, String canonicalAddress) {
++        String seed = canonicalLastName + "\n" + canonicalAddress;
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(seed.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder();
++            for (int i = 0; i < 6; i++) {
++                hex.append(String.format("%02X", digest[i]));
++            }
++            return "HH-" + hex;
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException("SHA-256 unavailable", ex);
++        }
+     }
+ 
+     private static String canonical(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+new file mode 100644
+index 00000000..cd650be7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -0,0 +1,9 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Pipeline variable carrying the stable shared household identifier assigned by
++ * {@link CheckOwnerHouseholdUnique} to {@link AssignOwnerHousehold}. A dedicated type
++ * (rather than a bare {@code String}) keeps the variable unambiguous by type.
++ */
++public record HouseholdId(String value) {
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 9ba24c19..dcc28baa 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(40)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b30d343..25fb0a16 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db4..7870c1e3 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(40)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6e7c1871..a4bee52c 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   email VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
++  household_id VARCHAR(40),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 98b79658..91eec0f1 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
+-                                      customer_code TEXT
++                                      customer_code TEXT,
++                                      household_id TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 0819a23a..cb39af78 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -26,6 +26,11 @@ household:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: assignHousehold
++
++assignHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerHousehold
++  govern: [ transaction ]
+   next: assignCode
+ 
+ assignCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2e617fc9..6dfeaa27 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2097,6 +2097,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'SMI-0007'
++            householdId:
++              title: Household ID
++              description: >-
++                Stable shared identifier assigned when an owner is registered into an
++                existing household (same last name and address) via 'sharesHousehold'.
++                Every owner in the household carries the same value. Absent for owners
++                that do not share a household.
++              type: string
++              readOnly: true
++              example: 'HH-3F9A1C2B7D0E'
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
