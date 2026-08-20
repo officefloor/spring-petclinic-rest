@@ -634,11 +634,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private void requireUniqueIdentity(Owner owner) {
         String identityKey = ownerMapper.toIdentityKey(owner);
         boolean taken = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .map(ownerMapper::toIdentityKey)
             .anyMatch(identityKey::equals);
         if (taken) {
             throw new DuplicateIdentityException(identityKey);
         }
+    }
+
+    /**
+     * Returns whether an existing owner has been soft-deleted. A soft-deleted owner retains its row
+     * but is ignored by the create endpoint's duplicate and identity checks, so a normally-blocking
+     * duplicate is allowed when the only matching owner has been deleted.
+     */
+    private static boolean isDeleted(Owner owner) {
+        return Boolean.TRUE.equals(owner.getDeleted());
     }
 
     /**
@@ -663,6 +673,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         boolean householdExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         if (householdExists) {
             throw new DuplicateIdentityException(ownerMapper.toIdentityKey(owner));
