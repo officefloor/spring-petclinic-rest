@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -221,6 +222,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
             if (normalizedTelephone.equals(existingE164)) {
                 throw new DuplicateTelephoneException(normalizedTelephone);
+            }
+        }
+    }
+
+    /**
+     * Rejects a create whose lower-cased email is already used by another owner. The candidate
+     * email is already normalized to lower case by {@code normalizeEmail}; each existing owner's
+     * email is lower-cased the same way for the comparison, so the match is case-insensitive
+     * regardless of the case each was originally entered in. An existing owner with no email is
+     * skipped. A {@code null} candidate email is not checked, since email is optional. A match is
+     * reported via {@link DuplicateEmailException}, which the exception handler translates to a 409.
+     */
+    private void rejectDuplicateEmail(String normalizedEmail) {
+        if (normalizedEmail == null) {
+            return;
+        }
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String existingEmail = existing.getEmail();
+            if (existingEmail != null && normalizedEmail.equals(existingEmail.toLowerCase(Locale.ROOT))) {
+                throw new DuplicateEmailException(normalizedEmail);
             }
         }
     }
@@ -500,7 +521,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         owner.setTelephone(normalizedTelephone);
-        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+        String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
+        rejectDuplicateEmail(normalizedEmail);
+        owner.setEmail(normalizedEmail);
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         rejectDailyOwnerLimit(registrationDate);
