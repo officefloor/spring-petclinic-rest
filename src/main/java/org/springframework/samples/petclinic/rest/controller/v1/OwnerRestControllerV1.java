@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -136,6 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!missingFields.isEmpty()) {
             throw new MissingRequiredFieldsException(missingFields);
         }
+        validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
         LocalDate suppliedOrDefaultDate = ownerFieldsDto.getRegistrationDate() != null
             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
@@ -473,6 +475,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return date.plusDays(1);
         }
         return date;
+    }
+
+    /** Matches a well-formed postcode: exactly four decimal digits. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
+    /**
+     * Fixed region-to-postcode range table: each region admits an inclusive 4-digit range
+     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). Regions are derived
+     * from the owner's city via {@link OwnerMapper#CITY_REGION}; a city with no known region is not
+     * present here and accepts any well-formed postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's optional {@code postcode}. When absent nothing is checked (postcode is
+     * optional, so the request contract stays backward-compatible). When present it must be exactly
+     * four digits and, for a city whose region is known, fall within that region's inclusive range
+     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city with no known region accepts any 4-digit
+     * postcode. A malformed or out-of-range value is rejected with a 400.
+     *
+     * @param postcode the raw postcode from the request (may be {@code null} when not supplied)
+     * @param city the owner's city, used to look up the region whose range constrains the postcode
+     * @throws InvalidFieldValueException if the postcode is present but malformed or out of range
+     */
+    private void validatePostcode(String postcode, String city) {
+        if (postcode == null) {
+            return;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            throw new InvalidFieldValueException("postcode", "Postcode must be exactly four digits");
+        }
+        String region = OwnerMapper.CITY_REGION.getOrDefault(city, "UNKNOWN");
+        int[] range = REGION_POSTCODES.get(region);
+        if (range == null) {
+            return;
+        }
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidFieldValueException("postcode",
+                "Postcode must be valid for the city's region " + region);
+        }
     }
 
     private void requireCityBelowCapacity(String city) {
