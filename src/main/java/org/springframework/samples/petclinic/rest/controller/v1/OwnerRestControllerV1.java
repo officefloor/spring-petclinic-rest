@@ -504,6 +504,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int MAX_OWNERS_PER_CITY = 50;
 
     /**
+     * The number of owners in a single city at or beyond which the {@code capacityWarning} flag is
+     * raised; the warning is true once a city holds at least this many owners while still remaining
+     * below {@link #MAX_OWNERS_PER_CITY} (i.e. between 40 and 49 inclusive), signalling that the city
+     * is approaching its hard capacity limit.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
      * Rejects the request when the owner's city already contains {@link #MAX_OWNERS_PER_CITY} or more
      * owners, comparing city names case-insensitively. Callers reach this only once {@code city} has
      * been validated non-blank.
@@ -540,6 +548,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private OwnerDto toOwnerDtoWithBulkWarning(Owner owner) {
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
+        ownerDto.setCapacityWarning(approachingCityCapacity(owner.getCity()));
         int points = OwnerMapper.membershipPointsFor(owner, householdSize(owner.getHouseholdId()));
         ownerDto.setMembershipPoints(points);
         ownerDto.setMembershipLevel(capMembershipLevel(owner, OwnerMapper.membershipLevelFor(points)));
@@ -731,6 +740,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (cityOwners >= MAX_OWNERS_PER_CITY) {
             throw new CityAtCapacityException(city);
         }
+    }
+
+    /**
+     * Returns whether the owner's city is approaching its capacity: {@code true} when the city already
+     * holds at least {@link #CITY_CAPACITY_WARNING_THRESHOLD} but fewer than {@link #MAX_OWNERS_PER_CITY}
+     * owners (i.e. between 40 and 49 inclusive), comparing city names case-insensitively as the hard
+     * capacity check does. Returns {@code false} when {@code city} is {@code null}.
+     *
+     * @param city the owner's city, or {@code null}
+     * @return {@code true} when the city holds 40 to 49 owners, otherwise {@code false}
+     */
+    private boolean approachingCityCapacity(String city) {
+        if (city == null) {
+            return false;
+        }
+        long cityOwners = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        return cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY;
     }
 
     /**
