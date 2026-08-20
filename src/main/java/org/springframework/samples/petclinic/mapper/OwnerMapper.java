@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
@@ -30,11 +31,44 @@ public interface OwnerMapper {
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
     @Mapping(target = "timezone", source = "owner", qualifiedByName = "toTimezone")
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
-    @Mapping(target = "identityKey", source = "owner", qualifiedByName = "toIdentityKey")
+    @Mapping(target = "identity", source = "owner", qualifiedByName = "toIdentity")
+    @Mapping(target = "apiVersion", source = "owner", qualifiedByName = "toApiVersion")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "toAgeBand")
     @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "toOwnerSegment")
     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "toSelfLink")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The fixed version-2 tag mixed into every derived owner identifier so no version-1 value recurs. */
+    String VERSION_TAG = "V2";
+
+    /** The owner-identity API version reported at the top level of the owner response. */
+    Integer API_VERSION = 2;
+
+    /**
+     * Groups the owner's version-2 identifiers — the {@code memberId} and {@code householdId} carried on
+     * the owner and the derived {@code identityKey} — under the response's nested {@code identity}
+     * object. Returns {@code null} when the owner is {@code null}.
+     */
+    @Named("toIdentity")
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(toIdentityKey(owner));
+        return identity;
+    }
+
+    /**
+     * Returns the owner-identity API version, the fixed {@link #API_VERSION} ({@code 2}) reported at the
+     * top level of every owner response.
+     */
+    @Named("toApiVersion")
+    default Integer toApiVersion(Owner owner) {
+        return owner == null ? null : API_VERSION;
+    }
 
     /**
      * Derives the owner's {@code selfLink}: its canonical relative URL, {@code '/api/owners/'}
@@ -70,13 +104,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's duplicate-detection {@code identityKey}: the single key that consolidates
-     * the former separate telephone, email and household checks. It is the lower-case, 64-character
-     * SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
-     * where {@code lowerEmail} is the email trimmed and lower-cased (or the empty string when absent)
-     * and {@code soundex(lastName)} is the American Soundex code of the owner's last name. Because the
-     * telephone is part of the key, two owners with the same last name (same soundex) and postcode but
-     * different telephones have different identity keys; only an exact full-key match is a duplicate.
+     * Derives the owner's version-2 duplicate-detection {@code identityKey}: the single key that
+     * consolidates the former separate telephone, email and household checks. It is the lower-case,
+     * 64-character SHA-256 hex digest of
+     * {@code VERSION_TAG + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+     * fixed {@link #VERSION_TAG} is mixed in so no version-1 identity key is reproduced, {@code
+     * lowerEmail} is the email trimmed and lower-cased (or the empty string when absent) and {@code
+     * soundex(lastName)} is the American Soundex code of the owner's last name. Because the telephone is
+     * part of the key, two owners with the same last name (same soundex) and postcode but different
+     * telephones have different identity keys; only an exact full-key match is a duplicate.
      */
     @Named("toIdentityKey")
     default String toIdentityKey(Owner owner) {
@@ -86,7 +122,7 @@ public interface OwnerMapper {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().trim();
         String email = owner.getEmail() == null ? "" : owner.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
         String soundex = OwnerIdentity.soundex(owner.getLastName());
-        return OwnerIdentity.sha256Hex(telephone + "|" + email + "|" + soundex);
+        return OwnerIdentity.sha256Hex(VERSION_TAG + telephone + "|" + email + "|" + soundex);
     }
 
     /**
@@ -170,19 +206,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality as the {@code REGION} component of its {@code memberId} (the prefix
-     * before the fixed {@code <FY><HASH8><CHK>} tail). The locality therefore shares the member id's
-     * identity rather than being computed independently. When the member id is absent the region is
-     * derived directly from the owner's postcode and city via {@link #toRegion(Owner)}.
+     * Derives the owner's user-facing {@code locality}: the plain region code (e.g. {@code 'NSW'})
+     * derived directly from the owner's postcode and city via {@link #toRegion(Owner)}. Unlike the
+     * version-2 {@code memberId} — whose region component carries the {@code 'V2'} version tag — the
+     * locality is not an identifier and never carries the version tag, so it stays the plain region.
      */
     @Named("toLocality")
     default String toLocality(Owner owner) {
         if (owner == null) {
             return null;
-        }
-        String region = regionFromMemberId(owner.getMemberId());
-        if (region != null) {
-            return region;
         }
         return toRegion(owner);
     }
@@ -201,18 +233,6 @@ public interface OwnerMapper {
         }
         int dash = memberId.indexOf('-');
         return dash >= 0 ? memberId.substring(0, dash) : memberId;
-    }
-
-    /**
-     * Extracts the {@code REGION} component (the prefix before the fixed {@code <FY><HASH8><CHK>}
-     * tail) from a {@code memberId}, or {@code null} when the id is absent or too short to carry one.
-     */
-    private static String regionFromMemberId(String memberId) {
-        String core = memberIdCore(memberId);
-        if (core == null || core.length() <= MEMBER_ID_TAIL_LENGTH) {
-            return null;
-        }
-        return core.substring(0, core.length() - MEMBER_ID_TAIL_LENGTH);
     }
 
     /**
