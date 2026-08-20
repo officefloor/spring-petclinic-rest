@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -212,6 +213,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Collapses a value for household comparison: leading and trailing whitespace is trimmed, any
+     * internal run of whitespace is reduced to a single space, and the result is lower-cased. This
+     * is how both {@code lastName} and {@code address} are compared so that differences of case or
+     * spacing do not defeat the duplicate-household check.
+     */
+    private static String collapse(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Rejects a create that would place a second owner in the same household as an existing one -
+     * i.e. another owner already has the same {@code lastName} and the same {@code address},
+     * compared case-insensitively with collapsed whitespace. The caller can opt in to sharing a
+     * household by setting {@code sharesHousehold} true, in which case this check is skipped. A
+     * match is reported via {@link DuplicateHouseholdException}, which the exception handler
+     * translates to a 409.
+     */
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String lastName = collapse(ownerFieldsDto.getLastName());
+        String address = collapse(ownerFieldsDto.getAddress());
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName.equals(collapse(existing.getLastName()))
+                && address.equals(collapse(existing.getAddress()))) {
+                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+            }
+        }
+    }
+
+    /**
      * Builds the {@code customerCode} for a newly created owner, formatted {@code '<LAST3>-<NNNN>'}
      * where {@code LAST3} is the upper-cased first three letters of {@code lastName} and {@code NNNN}
      * is a global 4-digit zero-padded sequence equal to one more than the current number of owners
@@ -227,6 +260,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectMissingOrBlankFields(ownerFieldsDto);
+        rejectDuplicateHousehold(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
