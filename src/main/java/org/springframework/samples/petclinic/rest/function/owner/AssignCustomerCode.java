@@ -1,33 +1,46 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
- * Assigns the owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>} where CITY3 is
- * the upper-cased first three letters of city, LAST3 the upper-cased first three letters of lastName,
- * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of owners
- * already in that city (e.g. {@code SYD-SMI-0007}). Runs before the owner is saved, so the count
- * excludes the owner being created.
+ * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
+ * region derived from the owner's postcode (falling back to the city table) and HASH8 is the first
+ * eight upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
+ * last name (e.g. {@code NSW-1A2B3C4D}). There is no per-city sequence number. Runs after telephone
+ * normalization so the hash is taken over the stored, normalized (E.164) telephone.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city3 = prefix(owner.getCity());
-        String last3 = prefix(owner.getLastName());
-        int sequence = countOwnersInCity(owner.getCity(), ownerRepository) + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+    public void service(@Val Owner owner) {
+        String region = Localities.region(owner.getPostcode(), owner.getCity());
+        String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
+        owner.setCustomerCode(region + "-" + hash8);
     }
 
-    private static String prefix(String value) {
-        int length = Math.min(3, value.length());
-        return value.substring(0, length).toUpperCase();
+    /** First {@code length} upper-case hex characters of SHA-256({@code value}). */
+    private static String shaHex(String value, int length) {
+        return sha256hex(value).substring(0, length).toUpperCase();
     }
 
-    private static int countOwnersInCity(String city, OwnerRepository ownerRepository) {
-        return (int) ownerRepository.findAll().stream()
-                .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-                .count();
+    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
+    private static String sha256hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }
