@@ -20,6 +20,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
+    @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "toTelephoneDisplay")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
     @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "toCheckDigit")
@@ -168,6 +169,37 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Formats the owner's stored E.164 {@code telephone} for humans: the country code, a space, then
+     * the national digits grouped in threes, e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}. The country code is a single {@code '1'} for NANP ({@code +1}) numbers
+     * and two digits otherwise (covering the {@code +61} numbers the app stores). Returns the value
+     * unchanged when it is absent or not a well-formed E.164 number, leaving raw {@code telephone}
+     * untouched.
+     */
+    @Named("toTelephoneDisplay")
+    default String toTelephoneDisplay(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.matches("\\+[0-9]{8,15}")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int countryCodeLength = digits.startsWith("1") ? 1 : 2;
+        String countryCode = digits.substring(0, countryCodeLength);
+        String national = digits.substring(countryCodeLength);
+        StringBuilder sb = new StringBuilder("+").append(countryCode);
+        for (int i = 0; i < national.length(); i++) {
+            if (i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(national.charAt(i));
+        }
+        return sb.toString();
     }
 
     /**
