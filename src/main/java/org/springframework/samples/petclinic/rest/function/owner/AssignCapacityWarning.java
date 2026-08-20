@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * Sets {@code capacityWarning} true when this owner's city already holds between 40 and 49
  * <em>other</em> owners — i.e. it is approaching, but has not reached, the hard capacity limit of 50
  * enforced by {@link CheckOwnerCityCapacity} — otherwise false. The city is compared
- * case-insensitively (matching {@link CheckOwnerCityCapacity} and {@link AssignCustomerCode}) and the
+ * case-insensitively (matching {@link CheckOwnerCityCapacity}) and the
  * owner itself is excluded, so the count reflects the owners that preceded it. Runs on both the create
  * and read pipelines so the flag is derived consistently from current data.
  */
