@@ -1,0 +1,54 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b5790f39..07193852 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
+ import java.time.LocalDate;
+ import java.time.Period;
++import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -47,10 +48,11 @@ public abstract class OwnerMapper {
+     public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+     /**
+-     * Derives the owner's numeric membership level, assigned on creation. Starts at 1;
+-     * add 1 when an email address is on file; add 1 when the owner is the first with
+-     * their name ({@code namesakeCount} is 0); capped at 3 (level 4 is reserved for
+-     * tenure).
++     * Derives the owner's numeric membership level. Starts at 1; add 1 when an email
++     * address is on file; add 1 when the owner is the first with their name
++     * ({@code namesakeCount} is 0). These at-creation factors are capped at 3. Level 4 is
++     * reserved for tenure: add 1 once the owner's tenure exceeds 365 days. Because a newly
++     * created owner has zero tenure, a new owner never exceeds level 3.
+      */
+     protected Integer membershipLevel(Owner owner) {
+         int level = 1;
+@@ -60,7 +62,24 @@ public abstract class OwnerMapper {
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+             level++;
+         }
+-        return Math.min(level, 3);
++        level = Math.min(level, 3);
++        if (tenureDays(owner) > 365) {
++            level++;
++        }
++        return level;
++    }
++
++    /**
++     * The owner's tenure in whole days, measured from their {@code registrationDate} to
++     * the current date. Returns 0 when no registrationDate is on file (e.g. a brand-new
++     * owner before one is assigned), so such an owner has zero tenure.
++     */
++    private long tenureDays(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+     }
+ 
+     /**
