@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -374,6 +375,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * The maximum number of owners that may be created on any single day (by
+     * {@code registrationDate}). A create attempted once this many owners already carry the
+     * current day's registration date is rejected.
+     */
+    private static final int DAILY_OWNER_LIMIT = 100;
+
+    /**
+     * Rejects a create once {@value #DAILY_OWNER_LIMIT} or more owners already carry today's
+     * {@code registrationDate} (the date the new owner will itself receive). The count reflects
+     * the state prior to this create. When the limit is reached the create is reported via
+     * {@link DailyOwnerLimitExceededException}, which the exception handler translates to a 429
+     * Too Many Requests.
+     */
+    private void rejectDailyOwnerLimit() {
+        LocalDate today = LocalDate.now();
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (today.equals(existing.getRegistrationDate())) {
+                count++;
+            }
+        }
+        if (count >= DAILY_OWNER_LIMIT) {
+            throw new DailyOwnerLimitExceededException();
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -381,6 +409,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
         rejectDuplicateHousehold(ownerFieldsDto, normalizedAddress);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
+        rejectDailyOwnerLimit();
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
