@@ -29,6 +29,11 @@ public interface OwnerMapper {
             + "(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
             + "&& owner.getEmail() != null && !owner.getEmail().isEmpty() "
             + "? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "locality",
+        expression = "java(owner == null ? null : "
+            + "(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
+            + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
+            + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\"))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
