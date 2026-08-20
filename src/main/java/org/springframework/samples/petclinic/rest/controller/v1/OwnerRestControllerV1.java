@@ -296,6 +296,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Builds the {@code membershipNumber} for a newly created owner, formatted
+     * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
+     * {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
+     */
+    private static String membershipNumberFor(String customerCode, LocalDate registrationDate) {
+        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+    }
+
+    /**
      * Derives the stable {@code householdId} for an owner from the collapsed {@code lastName} and
      * {@code address} - the same pair used to detect a shared household. Because it is a pure
      * function of that pair (upper-case hex of SHA-256 over the two collapsed values), every owner
@@ -349,6 +358,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
