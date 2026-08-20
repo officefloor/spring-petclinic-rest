@@ -1,0 +1,107 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 16478fa2..75c0deff 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,7 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier",
+-            expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\")")
++            expression = "java((owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) ? \"GOLD\" : ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"SILVER\" : \"BRONZE\"))")
+     @Mapping(target = "locality",
+             expression = "java(org.springframework.samples.petclinic.rest.function.common.Localities.region(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9fd479b9..d8c4fc3c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,9 @@ public class Owner extends Person {
+     @Transient
+     private Boolean bulkSignupWarning;
+ 
++    @Transient
++    private Integer householdMemberCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -153,6 +156,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getHouseholdMemberCount() {
++        return this.householdMemberCount;
++    }
++
++    public void setHouseholdMemberCount(Integer householdMemberCount) {
++        this.householdMemberCount = householdMemberCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+new file mode 100644
+index 00000000..50020123
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignHouseholdMemberCount.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records the size of the owner's household: the number of owners that share this owner's
++ * {@code householdId}, counting the owner itself. An owner with no {@code householdId} is a
++ * household of one. Household membership is assigned by {@link AssignHousehold}; this count drives
++ * the {@code GOLD} membership tier (3 or more members). Runs on both the create and read pipelines
++ * so the count is derived consistently from current data.
++ */
++public class AssignHouseholdMemberCount {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            owner.setHouseholdMemberCount(1);
++            return;
++        }
++        long count = ownerRepository.findAll().stream()
++                .filter(existing -> householdId.equals(existing.getHouseholdId()))
++                .count();
++        owner.setHouseholdMemberCount((int) count);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index d86dbcc8..bf2d1e09 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -70,6 +70,11 @@ save:
+ bulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignBulkSignupWarning
+   govern: [ transaction ]
++  next: householdMemberCount
++
++householdMemberCount:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdMemberCount
++  govern: [ transaction ]
+   next: respond
+ 
+ respond:
+diff --git a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+index ba447b3a..1c985256 100644
+--- a/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
++++ b/src/main/resources/officefloor/rest/api/owners/{ownerId}.GET.yml
+@@ -9,6 +9,11 @@ load:
+ bulkSignupWarning:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignBulkSignupWarning
+   govern: [ readonly-transaction ]
++  next: householdMemberCount
++
++householdMemberCount:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdMemberCount
++  govern: [ readonly-transaction ]
+   next: respond
+ 
+ respond:
