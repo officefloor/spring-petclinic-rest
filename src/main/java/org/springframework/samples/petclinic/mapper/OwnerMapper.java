@@ -27,6 +27,7 @@ public interface OwnerMapper {
             expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
                     + "&& owner.getEmail() != null && !owner.getEmail().isBlank() "
                     + "? OwnerDto.MembershipTierEnum.SILVER : OwnerDto.MembershipTierEnum.BRONZE)")
+    @Mapping(target = "locality", expression = "java(LocalityLookup.regionFor(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
