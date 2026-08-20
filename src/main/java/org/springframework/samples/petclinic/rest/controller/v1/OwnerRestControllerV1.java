@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -147,13 +148,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return digits;
     }
 
+    /**
+     * Rejects a create whose normalized telephone is already used by another owner. Each
+     * existing owner's stored telephone is reduced to digits the same way {@code normalize}
+     * does, so the comparison is on the canonical, digits-only form. A match is reported via
+     * {@link DuplicateTelephoneException}, which the exception handler translates to a 409.
+     */
+    private void rejectDuplicateTelephone(String normalizedTelephone) {
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            String existingDigits = existing.getTelephone() == null
+                ? "" : existing.getTelephone().replaceAll("\\D", "");
+            if (normalizedTelephone.equals(existingDigits)) {
+                throw new DuplicateTelephoneException(normalizedTelephone);
+            }
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectMissingOrBlankFields(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setTelephone(normalizeTelephone(ownerFieldsDto.getTelephone()));
+        String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateTelephone(normalizedTelephone);
+        owner.setTelephone(normalizedTelephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
