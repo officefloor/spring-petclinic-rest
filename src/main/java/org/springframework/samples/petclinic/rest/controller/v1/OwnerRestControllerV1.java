@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -348,12 +349,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return count;
     }
 
+    /**
+     * The maximum number of owners any single city may contain. A create whose city already
+     * holds this many owners is rejected.
+     */
+    private static final int CITY_CAPACITY = 50;
+
+    /**
+     * Rejects a create whose city already contains {@value #CITY_CAPACITY} or more owners,
+     * compared case-insensitively - the same way the city is matched when building the
+     * {@code customerCode} sequence. The count reflects the state prior to this create. A city
+     * at capacity is reported via {@link CityAtCapacityException}, which the exception handler
+     * translates to a 409.
+     */
+    private void rejectCityAtCapacity(String city) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        if (count >= CITY_CAPACITY) {
+            throw new CityAtCapacityException(city);
+        }
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
         rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
         rejectDuplicateHousehold(ownerFieldsDto, normalizedAddress);
+        rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
