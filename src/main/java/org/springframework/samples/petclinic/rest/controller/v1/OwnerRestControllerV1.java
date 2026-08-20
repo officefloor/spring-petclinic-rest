@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -149,6 +152,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * A pragmatic syntactic email check: a non-empty local part, an {@code @}, and a domain that
+     * carries at least one dot, with no whitespace anywhere. Deliberately permissive — it accepts
+     * ordinary addresses while rejecting obvious non-addresses such as one lacking an {@code @}.
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /**
+     * Normalizes an optional owner email. A {@code null} email is left as-is (the field is
+     * optional). When present it must be a syntactically valid address; a valid value is
+     * lower-cased so it is stored and returned in canonical form. An invalid value is rejected via
+     * {@link InvalidEmailException}, which the exception handler translates to a 400.
+     */
+    private static String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidEmailException(email);
+        }
+        return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
      * Rejects a create whose normalized telephone is already used by another owner. Each
      * existing owner's stored telephone is reduced to digits the same way {@code normalize}
      * does, so the comparison is on the canonical, digits-only form. A match is reported via
@@ -173,6 +199,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         owner.setTelephone(normalizedTelephone);
+        owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -192,6 +219,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
