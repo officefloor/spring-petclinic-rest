@@ -241,6 +241,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link FutureRegistrationDateException} thrown when an owner is created with a
+     * supplied {@code registrationDate} that is later than the current server date. Returns a 400
+     * Bad Request whose {@code errors} array names the {@code registrationDate} field.
+     *
+     * @param e The {@link FutureRegistrationDateException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("registrationDate"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} thrown when an owner is created with a
      * normalized telephone that is already used by another owner. Returns a 409 Conflict whose
      * {@code errors} array names the {@code telephone} field.

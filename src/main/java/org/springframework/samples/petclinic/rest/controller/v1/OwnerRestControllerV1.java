@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceeded
 import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
@@ -602,6 +603,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * date - so the stored {@code registrationDate}, and everything derived from it, always falls
      * on a business day.
      */
+    /**
+     * Rejects a supplied {@code registrationDate} that lies in the future. A registration date is
+     * only ever explicitly supplied on the request; when present it must not be later than the
+     * current server date. A future date raises a {@link FutureRegistrationDateException}, which the
+     * exception handler translates to a 400 Bad Request. A {@code null} date (the default, filled in
+     * later from the server date) is accepted.
+     */
+    private static void rejectFutureRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new FutureRegistrationDateException(registrationDate);
+        }
+    }
+
     private static LocalDate toBusinessDay(LocalDate date) {
         return switch (date.getDayOfWeek()) {
             case SATURDAY -> date.plusDays(2);
@@ -626,6 +640,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         validatePostcode(owner.getCity(), owner.getPostcode());
         String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
         rejectDuplicateIdentity(ownerFieldsDto, normalizedTelephone, normalizedEmail, householdId);
+        rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         rejectDailyOwnerLimit(registrationDate);
