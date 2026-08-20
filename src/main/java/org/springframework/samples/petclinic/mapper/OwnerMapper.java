@@ -24,9 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", source = "owner", qualifiedByName = "toSalutation")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "toTelephoneDisplay")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
-    @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
     @Mapping(target = "fiscalYear", source = "owner", qualifiedByName = "toFiscalYear")
-    @Mapping(target = "checkDigit", source = "owner", qualifiedByName = "toCheckDigit")
     @Mapping(target = "membershipPoints", source = "owner", qualifiedByName = "toMembershipPoints")
     @Mapping(target = "membershipLevel", source = "owner", qualifiedByName = "toMembershipLevel")
     @Mapping(target = "locality", source = "owner", qualifiedByName = "toLocality")
@@ -152,7 +150,7 @@ public interface OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's canonical region, the {@code REGION} component of its {@code customerCode}.
+     * Derives the owner's canonical region, the {@code REGION} component of its {@code memberId}.
      * The postcode takes precedence: when the owner has a well-formed 4-digit postcode that falls
      * within a known region's range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD
      * 4000-4099}), that region is returned. Otherwise the region is looked up from the fixed
@@ -172,25 +170,62 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives the owner's locality as the {@code REGION} component of its region-and-hash
-     * {@code customerCode} (the prefix before the first {@code '-'}). The locality therefore shares
-     * the customer code's identity rather than being computed independently. When the customer code
-     * is absent the region is derived directly from the owner's postcode and city via
-     * {@link #toRegion(Owner)}.
+     * Derives the owner's locality as the {@code REGION} component of its {@code memberId} (the prefix
+     * before the fixed {@code <FY><HASH8><CHK>} tail). The locality therefore shares the member id's
+     * identity rather than being computed independently. When the member id is absent the region is
+     * derived directly from the owner's postcode and city via {@link #toRegion(Owner)}.
      */
     @Named("toLocality")
     default String toLocality(Owner owner) {
         if (owner == null) {
             return null;
         }
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash >= 0) {
-                return customerCode.substring(0, dash);
-            }
+        String region = regionFromMemberId(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return toRegion(owner);
+    }
+
+    /** The fixed-width tail of a memberId's {@code <REGION><FY><HASH8><CHK>} core: FY (2) + HASH8 (8) + CHK (1). */
+    int MEMBER_ID_TAIL_LENGTH = 11;
+
+    /**
+     * Returns the {@code <REGION><FY><HASH8><CHK>} core of a {@code memberId}, stripping any
+     * collision-dedup suffix ({@code '-<n>'}). Returns {@code null} when {@code memberId} is
+     * {@code null}.
+     */
+    private static String memberIdCore(String memberId) {
+        if (memberId == null) {
+            return null;
+        }
+        int dash = memberId.indexOf('-');
+        return dash >= 0 ? memberId.substring(0, dash) : memberId;
+    }
+
+    /**
+     * Extracts the {@code REGION} component (the prefix before the fixed {@code <FY><HASH8><CHK>}
+     * tail) from a {@code memberId}, or {@code null} when the id is absent or too short to carry one.
+     */
+    private static String regionFromMemberId(String memberId) {
+        String core = memberIdCore(memberId);
+        if (core == null || core.length() <= MEMBER_ID_TAIL_LENGTH) {
+            return null;
+        }
+        return core.substring(0, core.length() - MEMBER_ID_TAIL_LENGTH);
+    }
+
+    /**
+     * Extracts the 2-digit {@code FY} component of a {@code memberId} (the two characters immediately
+     * following its {@code REGION} prefix), or {@code null} when the id is absent or too short.
+     */
+    private static String fiscalYearFromMemberId(String memberId) {
+        String core = memberIdCore(memberId);
+        if (core == null || core.length() <= MEMBER_ID_TAIL_LENGTH) {
+            return null;
+        }
+        int fyStart = core.length() - MEMBER_ID_TAIL_LENGTH;
+        return core.substring(fyStart, fyStart + 2);
     }
 
     /**
@@ -297,34 +332,19 @@ public interface OwnerMapper {
     }
 
     /**
-     * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}, where {@code YY} is
-     * the last two digits of the fiscal year of the {@code registrationDate}, e.g.
-     * {@code 'NSW-1A2B3C4D-M26'}. The fiscal year starts on 1 July and is identified by the calendar
-     * year in which it ends. Returns {@code null} when either the customer code or the registration
-     * date is absent.
-     */
-    @Named("toMembershipNumber")
-    default String toMembershipNumber(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(), fiscalYear(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * Derives the owner's {@code fiscalYear} from its {@code registrationDate}, formatted
-     * {@code 'FY<YY>'} where {@code YY} is the last two digits of the fiscal year, e.g. {@code 'FY26'}.
-     * The fiscal year starts on 1 July and is identified by the calendar year in which it ends: a date
-     * from 1 July onwards belongs to the fiscal year ending in the following calendar year, and a date
-     * before 1 July to the fiscal year ending in the same calendar year. Returns {@code null} when the
-     * registration date is absent.
+     * Derives the owner's {@code fiscalYear}, formatted {@code 'FY<YY>'} where {@code YY} is the
+     * 2-digit fiscal-year segment carried inside the owner's {@code memberId} (e.g. {@code 'FY26'}).
+     * The fiscal year starts on 1 July and is identified by the calendar year in which it ends; that
+     * value was stamped into the member id from the business-day-adjusted registration date at
+     * creation. Returns {@code null} when the member id is absent.
      */
     @Named("toFiscalYear")
     default String toFiscalYear(Owner owner) {
-        if (owner == null || owner.getRegistrationDate() == null) {
+        if (owner == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYear(owner.getRegistrationDate()) % 100);
+        String fy = fiscalYearFromMemberId(owner.getMemberId());
+        return fy == null ? null : "FY" + fy;
     }
 
     /**
@@ -422,37 +442,6 @@ public interface OwnerMapper {
             return 3;
         }
         return 4;
-    }
-
-    /**
-     * Computes the owner's {@code checkDigit}: a single Luhn check digit (0-9) over the digits
-     * contained in the owner's {@code customerCode}. Returns {@code null} when the customer code is
-     * absent.
-     */
-    @Named("toCheckDigit")
-    default Integer toCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        String code = owner.getCustomerCode();
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     private static String initial(String name) {

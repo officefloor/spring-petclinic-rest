@@ -210,7 +210,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setAddressLine2(hasStructuredAddress && !normalizedAddressLine2.isEmpty()
             ? normalizedAddressLine2 : null);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(buildCustomerCode(owner, normalizedTelephone));
+        owner.setMemberId(buildMemberId(owner, normalizedTelephone));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
         requireUniqueIdentity(owner);
@@ -220,9 +220,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             this.ownersByIdempotencyKey.put(idempotencyKey, owner.getId());
         }
         OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         OwnerCreatedEvent event = OwnerCreatedEvent.forCreatedOwner(
             OWNER_CREATED_SEQUENCE.incrementAndGet(), owner, ownerDto.getMembershipLevel());
         AUDIT.info(this.objectMapper.writeValueAsString(event));
@@ -340,36 +340,67 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the owner's customer code as {@code '<REGION>-<HASH8>'}, where {@code REGION} is the
-     * region derived from the owner's postcode (falling back to its city, else {@code 'UNKNOWN'}) via
-     * {@link OwnerMapper#toRegion}, and {@code HASH8} is the first 8 upper-case hex characters of the
-     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}).
+     * Builds the owner's unified {@code memberId} as {@code '<REGION><FY><HASH8><CHK>'}: {@code REGION}
+     * is the region derived from the owner's postcode (falling back to its city, else {@code 'UNKNOWN'})
+     * via {@link OwnerMapper#toRegion}; {@code FY} is the 2-digit fiscal year of the owner's
+     * business-day-adjusted {@code registrationDate}; {@code HASH8} is the first 8 upper-case hex
+     * characters of the SHA-256 digest of {@code normalizedTelephone + lastName}; and {@code CHK} is a
+     * single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D9}).
      *
-     * <p>When the computed code collides with an existing owner's {@code customerCode}, it is
-     * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it
-     * unique (e.g. {@code NSW-1A2B3C4D-2}); the de-duplicated code is returned. Absent a collision the
-     * base region-and-hash code is returned unchanged.
+     * <p>When the computed id collides with an existing owner's {@code memberId}, it is de-duplicated by
+     * appending {@code '-<n>'} with the smallest {@code n} of 2 or more that makes it unique (e.g.
+     * {@code NSW261A2B3C4D9-2}); the de-duplicated id is returned. Absent a collision the base id is
+     * returned unchanged.
      *
-     * @param owner the owner being created, with its region-determining postcode and city populated
+     * @param owner the owner being created, with its region-determining postcode/city and
+     *              registrationDate populated
      * @param normalizedTelephone the owner's normalized (E.164) telephone, hashed with the last name
-     * @return the (de-duplicated) region-and-hash customer code for the owner being created
+     * @return the (de-duplicated) member id for the owner being created
      */
-    private String buildCustomerCode(Owner owner, String normalizedTelephone) {
+    private String buildMemberId(Owner owner, String normalizedTelephone) {
         String region = ownerMapper.toRegion(owner);
+        String fy = String.format("%02d", OwnerMapper.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = sha256Hex8(normalizedTelephone + owner.getLastName());
-        String baseCode = region + "-" + hash8;
-        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+        String core = region + fy + hash8;
+        String baseId = core + luhnCheckDigit(core);
+        Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
-        if (!existingCodes.contains(baseCode)) {
-            return baseCode;
+        if (!existingIds.contains(baseId)) {
+            return baseId;
         }
         int n = 2;
-        while (existingCodes.contains(baseCode + "-" + n)) {
+        while (existingIds.contains(baseId + "-" + n)) {
             n++;
         }
-        return baseCode + "-" + n;
+        return baseId + "-" + n;
+    }
+
+    /**
+     * Computes a single Luhn check digit (0-9) over the decimal digits contained in {@code value};
+     * non-digit characters are ignored. Used to append the {@code CHK} segment to a member id's
+     * {@code <REGION><FY><HASH8>} core.
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
