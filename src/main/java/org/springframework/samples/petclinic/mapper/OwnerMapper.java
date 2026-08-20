@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "toIdentityKey")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "toAgeBand")
+    @Mapping(target = "ownerSegment", source = "owner", qualifiedByName = "toOwnerSegment")
     @Mapping(target = "selfLink", source = "owner", qualifiedByName = "toSelfLink")
     OwnerDto toOwnerDto(Owner owner);
 
@@ -88,6 +89,28 @@ public interface OwnerMapper {
         String email = owner.getEmail() == null ? "" : owner.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
         String soundex = OwnerIdentity.soundex(owner.getLastName());
         return OwnerIdentity.sha256Hex(telephone + "|" + email + "|" + soundex);
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}: one of
+     * {@code 'PREMIUM_METRO'}, {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or
+     * {@code 'STANDARD_REGIONAL'}. TIER is {@code 'PREMIUM'} when the owner's {@code membershipLevel}
+     * is {@code 3} or more, otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's
+     * locality is a known region ({@code NSW}, {@code VIC} or {@code QLD}), otherwise
+     * {@code 'REGIONAL'}.
+     */
+    @Named("toOwnerSegment")
+    default OwnerDto.OwnerSegmentEnum toOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer membershipLevel = toMembershipLevel(owner);
+        boolean premium = membershipLevel != null && membershipLevel >= 3;
+        boolean metro = REGION_TIMEZONE.containsKey(toLocality(owner));
+        if (premium) {
+            return metro ? OwnerDto.OwnerSegmentEnum.PREMIUM_METRO : OwnerDto.OwnerSegmentEnum.PREMIUM_REGIONAL;
+        }
+        return metro ? OwnerDto.OwnerSegmentEnum.STANDARD_METRO : OwnerDto.OwnerSegmentEnum.STANDARD_REGIONAL;
     }
 
     /**
