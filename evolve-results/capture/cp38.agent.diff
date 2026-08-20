@@ -1,0 +1,40 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3842d3cd..d22151f6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -26,6 +26,7 @@ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -75,6 +76,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Domains known to hand out disposable/throwaway mailboxes. An owner whose email domain is on
++     * this blocklist is rejected: such addresses cannot be relied on for contacting the owner.
++     */
++    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     /** Dedicated audit logger; create side-effects are recorded here so they can be observed independently. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
+@@ -400,7 +408,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+             throw new InvalidFieldValueException("email", "Email must be a syntactically valid address");
+         }
+-        return trimmed.toLowerCase(Locale.ROOT);
++        String canonical = trimmed.toLowerCase(Locale.ROOT);
++        String domain = canonical.substring(canonical.indexOf('@') + 1);
++        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
++            throw new InvalidFieldValueException("email", "Email must not use a disposable-domain address");
++        }
++        return canonical;
+     }
+ 
+     /** The maximum number of owners permitted in a single city; the {@code (50 + 1)}th is rejected. */
