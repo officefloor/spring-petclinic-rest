@@ -383,23 +383,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final int DAILY_OWNER_LIMIT = 100;
 
     /**
-     * Rejects a create once {@value #DAILY_OWNER_LIMIT} or more owners already carry today's
-     * {@code registrationDate} (the date the new owner will itself receive). The count reflects
-     * the state prior to this create. When the limit is reached the create is reported via
-     * {@link DailyOwnerLimitExceededException}, which the exception handler translates to a 429
-     * Too Many Requests.
+     * Rejects a create once {@value #DAILY_OWNER_LIMIT} or more owners already carry the given
+     * business-day-adjusted {@code registrationDate} (the date the new owner will itself receive).
+     * The count reflects the state prior to this create. When the limit is reached the create is
+     * reported via {@link DailyOwnerLimitExceededException}, which the exception handler translates
+     * to a 429 Too Many Requests.
      */
-    private void rejectDailyOwnerLimit() {
-        LocalDate today = LocalDate.now();
+    private void rejectDailyOwnerLimit(LocalDate registrationDate) {
         int count = 0;
         for (Owner existing : this.clinicService.findAllOwners()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            if (registrationDate.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
         if (count >= DAILY_OWNER_LIMIT) {
             throw new DailyOwnerLimitExceededException();
         }
+    }
+
+    /**
+     * Rolls an effective registration date forward onto a business day. A Saturday or Sunday is
+     * advanced to the following Monday; a weekday is returned unchanged. This is applied to the
+     * effective registration date - whether supplied in the request or defaulted to the server
+     * date - so the stored {@code registrationDate}, and everything derived from it, always falls
+     * on a business day.
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -409,7 +423,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
         rejectDuplicateHousehold(ownerFieldsDto, normalizedAddress);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
-        rejectDailyOwnerLimit();
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
@@ -417,9 +430,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(normalizedTelephone);
         owner.setTelephone(normalizedTelephone);
         owner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+        LocalDate registrationDate = toBusinessDay(effectiveDate);
+        rejectDailyOwnerLimit(registrationDate);
+        owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
