@@ -38,4 +38,27 @@ public final class TelephoneE164 {
         }
         return "+" + digits;
     }
+
+    /**
+     * Checks the national-number length of an E.164 number against its country code: '+61'
+     * requires 9 national digits and '+1' requires 10. Country codes without a per-country length
+     * rule here pass (only the generic 8-to-15-digit bound applies to them). Expects {@code e164}
+     * already in valid E.164 form (a '+' followed by 8 to 15 digits), as returned by
+     * {@link #toE164}; a {@code null} or non-E.164 value fails.
+     */
+    public static boolean nationalLengthValid(String e164) {
+        if (e164 == null || !e164.startsWith("+")) {
+            return false;
+        }
+        String digits = e164.substring(1);
+        // Longest known country code first: '+1' would also prefix-match, but '+61' never
+        // starts with '1' and '+1' never starts with '61', so the two do not collide.
+        if (digits.startsWith("61")) {
+            return digits.length() - 2 == 9;
+        }
+        if (digits.startsWith("1")) {
+            return digits.length() - 1 == 10;
+        }
+        return true;
+    }
 }
