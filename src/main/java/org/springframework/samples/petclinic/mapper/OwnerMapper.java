@@ -24,6 +24,7 @@ public abstract class OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality",
             expression = "java(LocalityLookup.regionFor(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
@@ -56,6 +57,36 @@ public abstract class OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Computes a single Luhn check digit (0-9) over the digits contained in the owner's
+     * {@code customerCode}. Non-digit characters (separators) are ignored. Returns
+     * {@code null} when no customer code has been assigned.
+     */
+    protected Integer checkDigit(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return null;
+        }
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
