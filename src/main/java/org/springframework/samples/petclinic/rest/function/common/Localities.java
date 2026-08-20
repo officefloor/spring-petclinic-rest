@@ -34,6 +34,13 @@ public final class Localities {
     /** Locality returned for any city not in the table. */
     public static final String UNKNOWN = "UNKNOWN";
 
+    /**
+     * Fixed version tag mixed into the region code used <em>inside</em> the derived identifiers
+     * (memberId, householdId, identityKey) for identity version 2. It never appears in the
+     * user-facing locality, timezone or owner segment, which keep the plain region code.
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     private Localities() {
     }
 
@@ -70,6 +77,21 @@ public final class Localities {
      */
     public static String timezone(String postcode, String city) {
         return REGION_TIMEZONE.get(region(postcode, city));
+    }
+
+    /**
+     * The region code used <em>inside</em> the version-2 identifiers: the plain region with the
+     * fixed {@link #IDENTITY_VERSION_TAG V2 version tag} mixed in (e.g. {@code "NSWV2"} is the
+     * identity region for NSW). Because the tag is appended, no version-1 region value is ever
+     * reproduced, so every identifier that embeds it changes. The plain {@link #region(String,
+     * String)} still feeds the user-facing locality, timezone and owner segment.
+     *
+     * @param postcode the owner's postcode (may be {@code null} or blank).
+     * @param city     the owner's city (may be {@code null}).
+     * @return the plain region with the {@code V2} tag appended.
+     */
+    public static String identityRegion(String postcode, String city) {
+        return region(postcode, city) + IDENTITY_VERSION_TAG;
     }
 
     /**

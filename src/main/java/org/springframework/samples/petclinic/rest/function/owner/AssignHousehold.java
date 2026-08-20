@@ -7,10 +7,12 @@ import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
  * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
- * {@code normalizedLastName + '|' + postcode}. The household is therefore keyed on
+ * {@code V2 + '|' + normalizedLastName + '|' + postcode}, the {@code V2} being the fixed identity
+ * version tag so version-2 ids never reproduce a version-1 value. The household is therefore keyed on
  * (last name, postcode) alone, so any two owners with the same last name and postcode share the same
  * id automatically — nothing has to opt in and no existing owner is mutated. The {@code householdId}
  * is no longer part of {@link OwnerIdentityKey duplicate detection} (which is now the single identity
@@ -26,11 +28,15 @@ public class AssignHousehold {
         owner.setHouseholdId(deriveHouseholdId(lastName, postcode));
     }
 
-    /** The first 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. */
+    /**
+     * The first 12 hex characters of SHA-256 over
+     * {@code V2 + '|' + normalizedLastName + '|' + postcode}.
+     */
     private static String deriveHouseholdId(String lastName, String postcode) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                    (Localities.IDENTITY_VERSION_TAG + "|" + lastName + "|" + postcode)
+                            .getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02x", digest[i]));

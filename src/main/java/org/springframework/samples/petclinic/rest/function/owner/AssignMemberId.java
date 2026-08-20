@@ -14,11 +14,13 @@ import org.springframework.samples.petclinic.rest.function.common.Localities;
 
 /**
  * Assigns the owner's unified {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where
- * REGION is the region derived from the owner's postcode (falling back to the city table), FY is the
- * two-digit fiscal year (starting 1 July) of the business-day-adjusted {@code registrationDate},
- * HASH8 is the first eight upper-case hex characters of SHA-256 over the normalized telephone
- * concatenated with the last name, and CHK is a single Luhn check digit computed over the digits of
- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D7}). Runs after telephone normalization and
+ * REGION is the version-2 {@link Localities#identityRegion identity region} (the plain region with
+ * the fixed {@code V2} tag mixed in, e.g. {@code NSWV2}), FY is the two-digit fiscal year (starting
+ * 1 July) of the business-day-adjusted {@code registrationDate}, HASH8 is the first eight upper-case
+ * hex characters of SHA-256 over the {@code V2} tag, the normalized telephone and the last name, and
+ * CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>} (e.g.
+ * {@code NSWV2261A2B3C4D7}). Mixing the {@code V2} tag into both the region and the hash guarantees no
+ * version-1 memberId is ever reproduced. Runs after telephone normalization and
  * the registration date default, so the hash is taken over the stored, normalized (E.164) telephone
  * and the fiscal year is known.
  *
@@ -30,9 +32,10 @@ import org.springframework.samples.petclinic.rest.function.common.Localities;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = Localities.region(owner.getPostcode(), owner.getCity());
+        String region = Localities.identityRegion(owner.getPostcode(), owner.getCity());
         String fy = String.format("%02d", FiscalYear.endingYear(owner.getRegistrationDate()) % 100);
-        String hash8 = shaHex(owner.getTelephone() + owner.getLastName(), 8);
+        String hash8 = shaHex(
+                Localities.IDENTITY_VERSION_TAG + owner.getTelephone() + owner.getLastName(), 8);
         String core = region + fy + hash8;
         String base = core + luhn(core);
 

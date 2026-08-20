@@ -28,13 +28,18 @@ public class RespondWithOwnerCreated {
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 
+    /** Schema version of the OWNER_CREATED audit event; bumped to 2 with the version-2 identity. */
+    private static final int SCHEMA_VERSION = 2;
+
     /**
-     * Renders the immutable structured OWNER_CREATED event. The {@code memberId} field carries the
-     * owner's primary identifier, now that the customerCode and membershipNumber have been unified
-     * into the memberId; {@link #primaryIdentifier(Owner)} is the single place that resolves it.
+     * Renders the immutable structured OWNER_CREATED event. The event is now schema version 2
+     * (carrying {@code schemaVersion}) and its {@code memberId} field carries the owner's primary
+     * identifier — the version-2 memberId — now that the customerCode and membershipNumber have been
+     * unified into it; {@link #primaryIdentifier(Owner)} is the single place that resolves it.
      */
     private static String ownerCreatedEvent(long seq, Owner owner, int membershipLevel) {
         return "{\"seq\":" + seq
+                + ",\"schemaVersion\":" + SCHEMA_VERSION
                 + ",\"ownerId\":" + owner.getId()
                 + ",\"memberId\":" + jsonString(primaryIdentifier(owner))
                 + ",\"membershipLevel\":" + membershipLevel
