@@ -8,10 +8,10 @@ import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-public class DuplicateHouseholdExceptionHandler {
+public class DuplicateOwnerExceptionHandler {
 
-    public void handle(@Parameter DuplicateHouseholdException ex,
+    public void handle(@Parameter DuplicateOwnerException ex,
             ObjectResponse<ResponseEntity<Map<String, List<String>>>> response) {
-        response.send(new ResponseEntity<>(Map.of("errors", List.of("lastName", "address")), HttpStatus.CONFLICT));
+        response.send(new ResponseEntity<>(Map.of("errors", List.of("identityKey")), HttpStatus.CONFLICT));
     }
 }

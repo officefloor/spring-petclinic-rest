@@ -6,7 +6,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * leading '0' is dropped from the national digits. Spaces, dashes and brackets are stripped.
  *
  * <p>Not a function class (never wired into a YAML pipeline) — just shared logic for
- * {@link NormalizeOwnerTelephone} and {@link CheckOwnerTelephoneUnique}.
+ * {@link NormalizeOwnerTelephone} and the identity key (see {@link OwnerIdentityKey}).
  */
 public final class TelephoneE164 {
 

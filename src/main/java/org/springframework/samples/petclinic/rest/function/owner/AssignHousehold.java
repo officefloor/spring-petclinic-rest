@@ -15,9 +15,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Joins a deliberately-shared household. When the create request opts in via
  * {@code sharesHousehold} and an existing owner has the same last name and address (the address in
- * its normalized form and the last name case-insensitively with whitespace collapsed, the same rule
- * {@link CheckOwnerHouseholdUnique} uses), the new owner and the existing household member(s) are
- * given the same, stable
+ * its normalized form and the last name case-insensitively with whitespace collapsed), the new
+ * owner and the existing household member(s) are given the same, stable
  * {@code householdId}. If a matching owner already carries a household id it is reused; otherwise a
  * new id is derived from the household's normalized last name and address, so the same household
  * always yields the same value. Does nothing when the request does not opt in or no matching owner
