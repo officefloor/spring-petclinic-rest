@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.common;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -9,8 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * Derives an owner's membership points and the numeric level (1 to 4) mapped from them.
  *
  * <p>Points start at 0 and accumulate: +2 when an email is present, +1 when {@code namesakeCount}
- * is 0, +2 for a household of 3 or more members, and +3 for tenure of more than 365 days between the
- * owner's registration date and today.
+ * is 0, +2 for a household of 3 or more members, and +3 for tenure of more than one elapsed fiscal
+ * year (starting 1 July) between the owner's registration date and today.
  *
  * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a
  * newly created owner has zero tenure, the tenure points are unavailable, so a new owner tops out at
@@ -18,8 +17,8 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class MembershipLevels {
 
-    /** The tenure points require strictly more than this many days of tenure. */
-    private static final long TENURE_DAYS_FOR_TENURE_POINTS = 365;
+    /** The tenure points require strictly more than this many elapsed fiscal years of tenure. */
+    private static final int TENURE_FISCAL_YEARS_FOR_TENURE_POINTS = 1;
 
     private MembershipLevels() {
     }
@@ -65,6 +64,6 @@ public final class MembershipLevels {
         if (registrationDate == null) {
             return false;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_TENURE_POINTS;
+        return FiscalYear.elapsed(registrationDate, LocalDate.now()) > TENURE_FISCAL_YEARS_FOR_TENURE_POINTS;
     }
 }
