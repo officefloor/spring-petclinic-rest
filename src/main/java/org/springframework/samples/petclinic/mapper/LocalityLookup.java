@@ -24,7 +24,22 @@ public final class LocalityLookup {
             "VIC", new int[] {3000, 3099},
             "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name; anything absent (e.g. "UNKNOWN") has no timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney",
+            "VIC", "Australia/Melbourne",
+            "QLD", "Australia/Brisbane");
+
     private LocalityLookup() {
+    }
+
+    /**
+     * @param region the canonical region (e.g. "NSW")
+     * @return the IANA timezone name for {@code region}, or {@code null} when the region
+     *         is {@code null} or not in the fixed region-to-timezone table
+     */
+    public static String timezoneFor(String region) {
+        return region == null ? null : REGION_TIMEZONE.get(region);
     }
 
     /**

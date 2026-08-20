@@ -41,6 +41,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
@@ -175,6 +176,17 @@ public abstract class OwnerMapper {
             return dash >= 0 ? code.substring(0, dash) : code;
         }
         return LocalityLookup.regionFor(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Derives the owner's {@code timezone} as the IANA name for the owner's region, using
+     * the fixed region-to-timezone table (NSW->Australia/Sydney, VIC->Australia/Melbourne,
+     * QLD->Australia/Brisbane). The region is the same {@link #locality(Owner)} value.
+     * Returns {@code null} when the region has no mapped timezone (e.g. "UNKNOWN"), so the
+     * field is then absent from the response.
+     */
+    protected String timezone(Owner owner) {
+        return LocalityLookup.timezoneFor(locality(owner));
     }
 
     /**
