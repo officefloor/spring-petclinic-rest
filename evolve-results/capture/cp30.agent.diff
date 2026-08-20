@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3936f05c..e51ee251 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -61,24 +61,60 @@ public interface OwnerMapper {
+     }
+ 
+     /**
+-     * Fixed city-to-region table used to derive an owner's locality.
++     * Fixed city-to-region table used as the fallback for deriving an owner's locality.
+      */
+     java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+         "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+     /**
+-     * Derives the owner's locality as the canonical region for the owner's city from the fixed
+-     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}),
+-     * or {@code 'UNKNOWN'} when the city is not in the table.
++     * Fixed region-to-postcode range table: each region admits an inclusive 4-digit range
++     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). Used to derive an
++     * owner's locality from its postcode in preference to its city.
++     */
++    java.util.Map<String, int[]> REGION_POSTCODES = java.util.Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Derives the owner's locality as its canonical region. The postcode takes precedence: when the
++     * owner has a well-formed 4-digit postcode that falls within a known region's range
++     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), that region is returned.
++     * Otherwise the region is looked up from the fixed city-to-region table
++     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), yielding {@code 'UNKNOWN'}
++     * when the city is not in the table. Preferring the postcode returns the same region for known
++     * cities but disambiguates cities that share a name.
+      */
+     @Named("toLocality")
+     default String toLocality(Owner owner) {
+         if (owner == null) {
+             return null;
+         }
++        String regionByPostcode = regionForPostcode(owner.getPostcode());
++        if (regionByPostcode != null) {
++            return regionByPostcode;
++        }
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
++    /**
++     * Returns the region whose inclusive postcode range contains the given 4-digit postcode, or
++     * {@code null} when the postcode is absent, malformed, or in no known range.
++     */
++    private static String regionForPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("\\d{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODES.entrySet()) {
++            int[] range = entry.getValue();
++            if (value >= range[0] && value <= range[1]) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++
+     /**
+      * Formats the owner's stored names as {@code 'LastName, FirstName'}.
+      */
