@@ -14,7 +14,7 @@ import java.util.Map;
  * unchanged — so it can normalize both incoming requests and already-stored values for
  * comparison.
  */
-final class TelephoneNormalizer {
+public final class TelephoneNormalizer {
 
     /**
      * Required national-number length (digits after the country code) per known country code.
@@ -60,15 +60,55 @@ final class TelephoneNormalizer {
      */
     static boolean hasValidNationalLength(String e164) {
         String digits = e164.substring(1);
+        String code = longestKnownCode(digits);
+        if (code == null) {
+            return true;
+        }
+        return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
+    }
+
+    /**
+     * Formats an E.164 value for humans: the country code, a space, then the national digits
+     * grouped in threes (space-separated, left to right). For example {@code '+61412345678'}
+     * becomes {@code '+61 412 345 678'}. The country code is taken from the known-code table
+     * ({@code '+61'}, {@code '+1'}); when it is not known the whole number after the {@code '+'}
+     * is grouped in threes with no country-code split.
+     *
+     * @param e164 an E.164 string ({@code '+'} followed by digits), as produced by {@link #toE164};
+     *             may be {@code null}
+     * @return the human-readable form, or {@code null} when {@code e164} is {@code null}
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.substring(1);
+        String code = longestKnownCode(digits);
+        String national = code == null ? digits : digits.substring(code.length());
+        StringBuilder sb = new StringBuilder("+");
+        if (code != null) {
+            sb.append(code).append(' ');
+        }
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                sb.append(' ');
+            }
+            sb.append(national.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Finds the longest known country code that prefixes the given digits, or {@code null} when
+     * none of the known codes match.
+     */
+    private static String longestKnownCode(String digits) {
         String code = null;
         for (String candidate : NATIONAL_LENGTHS.keySet()) {
             if (digits.startsWith(candidate) && (code == null || candidate.length() > code.length())) {
                 code = candidate;
             }
         }
-        if (code == null) {
-            return true;
-        }
-        return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
+        return code;
     }
 }
