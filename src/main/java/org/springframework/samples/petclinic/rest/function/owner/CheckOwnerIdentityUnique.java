@@ -36,6 +36,9 @@ public class CheckOwnerIdentityUnique {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
                 continue; // never a duplicate of itself
             }
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is ignored by the duplicate check
+            }
             if (identityKey.equals(OwnerIdentityKey.of(existing))) {
                 throw new DuplicateOwnerException(identityKey);
             }
