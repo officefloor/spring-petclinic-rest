@@ -316,6 +316,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
     }
 
+    /**
+     * Counts the existing owners who already share the given {@code firstName} and {@code lastName},
+     * compared case-insensitively. This is evaluated before the new owner is saved, so it reflects
+     * the state prior to this create and is stored on the owner as its {@code namesakeCount}.
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (firstName.equalsIgnoreCase(existing.getFirstName())
+                && lastName.equalsIgnoreCase(existing.getLastName())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
@@ -334,6 +350,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
