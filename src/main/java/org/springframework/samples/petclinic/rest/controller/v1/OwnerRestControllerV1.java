@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -159,12 +160,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Pattern E164_PATTERN = Pattern.compile("\\+\\d{8,15}");
 
     /**
+     * Required national-number length per country calling code. When the normalized E.164 number
+     * begins with one of these codes, the digits that follow must number exactly the mapped value:
+     * '+61' (Australia) requires 9 national digits and '+1' (NANP) requires 10. Codes absent from
+     * this map carry no per-country length rule beyond the generic E.164 8-to-15-digit bound.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of(
+        "+61", 9,
+        "+1", 10);
+
+    /**
      * Normalizes an owner's telephone on create into E.164 form. Spaces, dashes and brackets are
      * stripped. When a leading '+' (with its country code) is present it is kept as-is; otherwise
      * the country code '+61' is assumed and a single leading '0' is dropped from the national
      * digits. The result must be a '+' followed by 8 to 15 digits, so e.g. '0412 345 678' is
-     * stored as '+61412345678'. A value that cannot form a valid E.164 number is rejected via
-     * {@link InvalidTelephoneException}, which the exception handler translates to a 400.
+     * stored as '+61412345678'. When the country code has a known national-number length ('+61'
+     * requires 9 national digits, '+1' requires 10) the national digits must match it exactly. A
+     * value that cannot form a valid E.164 number, or whose national length is wrong for its
+     * country, is rejected via {@link InvalidTelephoneException}, which the exception handler
+     * translates to a 400.
      */
     private static String normalizeTelephone(String telephone) {
         String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()\\[\\]]", "");
@@ -177,6 +191,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!E164_PATTERN.matcher(e164).matches()) {
             throw new InvalidTelephoneException(telephone);
+        }
+        for (Map.Entry<String, Integer> rule : NATIONAL_NUMBER_LENGTHS.entrySet()) {
+            String code = rule.getKey();
+            if (e164.startsWith(code)) {
+                int nationalLength = e164.length() - code.length();
+                if (nationalLength != rule.getValue()) {
+                    throw new InvalidTelephoneException(telephone);
+                }
+                break;
+            }
         }
         return e164;
     }
