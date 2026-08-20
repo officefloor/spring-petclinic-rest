@@ -1,0 +1,139 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 01f49c47..b877c865 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,8 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials",
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
++    @Mapping(target = "membershipPoints",
++            expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.points(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(org.springframework.samples.petclinic.rest.function.common.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+index 2b71aade..7c9754c7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/common/MembershipLevels.java
+@@ -6,35 +6,65 @@ import java.time.temporal.ChronoUnit;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's numeric membership level (1 to 4).
++ * Derives an owner's membership points and the numeric level (1 to 4) mapped from them.
+  *
+- * <p>The pre-tenure factors are a base of 1, plus one for holding an email address, plus one for a
+- * {@code namesakeCount} of 0. Those factors are capped at level 3, so even a fully-endowed new owner
+- * (an email, a {@code namesakeCount} of 0 and a multi-member household) never exceeds level 3.
++ * <p>Points start at 0 and accumulate: +2 when an email is present, +1 when {@code namesakeCount}
++ * is 0, +2 for a household of 3 or more members, and +3 for tenure of more than 365 days between the
++ * owner's registration date and today.
+  *
+- * <p>Level 4 is reserved for tenure: it requires more than 365 days between the owner's registration
+- * date and today. Because a newly created owner has zero tenure, a new owner is always at most
+- * level 3.
++ * <p>Points map to a level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a
++ * newly created owner has zero tenure, the tenure points are unavailable, so a new owner tops out at
++ * 5 points and therefore never exceeds level 3.
+  */
+ public final class MembershipLevels {
+ 
+-    /** Level 4 requires strictly more than this many days of tenure. */
+-    private static final long TENURE_DAYS_FOR_LEVEL_4 = 365;
++    /** The tenure points require strictly more than this many days of tenure. */
++    private static final long TENURE_DAYS_FOR_TENURE_POINTS = 365;
+ 
+     private MembershipLevels() {
+     }
+ 
++    /** Computes the owner's membership points. */
++    public static int points(Owner owner) {
++        int points = 0;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            points += 2;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            points += 1;
++        }
++        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
++            points += 2;
++        }
++        if (hasTenurePoints(owner.getRegistrationDate())) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** Computes the owner's membership level from the owner's points. */
+     public static int of(Owner owner) {
+-        int preTenure = Math.min(3, 1
+-                + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0)
+-                + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0));
+-        return preTenure + (hasTenureForLevel4(owner.getRegistrationDate()) ? 1 : 0);
++        return levelForPoints(points(owner));
++    }
++
++    /** Maps points to a level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
++    public static int levelForPoints(int points) {
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
++        }
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
+     }
+ 
+-    private static boolean hasTenureForLevel4(LocalDate registrationDate) {
++    private static boolean hasTenurePoints(LocalDate registrationDate) {
+         if (registrationDate == null) {
+             return false;
+         }
+-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_LEVEL_4;
++        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS_FOR_TENURE_POINTS;
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4fdf13c8..925ee7c3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2181,18 +2181,31 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points. Starts at 0, plus 2 when an email is present,
++                plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more members,
++                plus 3 for tenure of more than 365 days between the registration date and
++                today. Because a newly created owner has zero tenure, a new owner tops out
++                at 5 points.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, from 1 to 4. Starts at 1, plus 1 when an
+-                email is present, plus 1 when namesakeCount is 0; these pre-tenure factors
+-                are capped at 3. Level 4 requires tenure of more than 365 days between the
+-                registration date and today, so a newly created owner never exceeds level 3.
++                The owner's membership level, from 1 to 4, mapped from membershipPoints:
++                1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because a
++                newly created owner has zero tenure, a new owner tops out at 5 points and
++                therefore never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
