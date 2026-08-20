@@ -3,65 +3,37 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Joins a deliberately-shared household. When the create request opts in via
- * {@code sharesHousehold} and an existing owner has the same last name and address (the address in
- * its normalized form and the last name case-insensitively with whitespace collapsed), the new
- * owner and the existing household member(s) are given the same, stable
- * {@code householdId}. If a matching owner already carries a household id it is reused; otherwise a
- * new id is derived from the household's normalized last name and address, so the same household
- * always yields the same value. Does nothing when the request does not opt in or no matching owner
- * exists — a lone owner has no household to share.
+ * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
+ * {@code normalizedLastName + '|' + postcode}. The household is therefore keyed on
+ * (last name, postcode) alone, so any two owners with the same last name and postcode share the same
+ * id automatically — nothing has to opt in and no existing owner is mutated. {@code sharesHousehold}
+ * no longer creates the link; it only lets {@link CheckOwnerIdentityUnique} wave through the
+ * otherwise-blocked household duplicate. Runs on the create pipeline before the duplicate check and
+ * before {@link SaveOwner}, so the stored id, the duplicate detection and the household-size count
+ * all read the same computed value.
  */
 public class AssignHousehold {
 
-    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
+    public void service(@Val Owner owner) {
         String lastName = normalizeName(owner.getLastName());
-        String address = AddressNormalizer.normalize(owner.getAddress());
-        List<Owner> household = new ArrayList<>();
-        String existingId = null;
-        for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalizeName(existing.getLastName()))
-                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
-                household.add(existing);
-                if (existingId == null && existing.getHouseholdId() != null) {
-                    existingId = existing.getHouseholdId();
-                }
-            }
-        }
-        if (household.isEmpty()) {
-            return; // nobody to share a household with
-        }
-        String householdId = existingId != null ? existingId : deriveHouseholdId(lastName, address);
-        owner.setHouseholdId(householdId);
-        for (Owner member : household) {
-            if (member.getHouseholdId() == null) {
-                member.setHouseholdId(householdId);
-                ownerRepository.save(member);
-            }
-        }
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        owner.setHouseholdId(deriveHouseholdId(lastName, postcode));
     }
 
-    /** A stable {@code HH-<12 upper hex>} id derived from the household's normalized identity. */
-    private static String deriveHouseholdId(String lastName, String address) {
+    /** The first 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. */
+    private static String deriveHouseholdId(String lastName, String postcode) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + "|" + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("HH-");
+                    .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();
         }
