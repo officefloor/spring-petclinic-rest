@@ -215,9 +215,10 @@ public class ExceptionControllerAdvice {
 
     /**
      * Handles {@link DuplicateIdentityException} raised when a request attempts to create an owner
-     * whose derived {@code identityKey} (normalized telephone, email and household identifier joined
-     * by {@code '|'}) exactly matches that of an existing owner. This single key consolidates the
-     * former separate telephone, email and household duplicate checks. Returns a 409 Conflict whose
+     * whose derived {@code identityKey} (the SHA-256 hex digest of normalized telephone, lower-cased
+     * email and {@code soundex(lastName)} joined by {@code '|'}) exactly matches that of an existing
+     * owner. This single key consolidates the former separate telephone, email and household duplicate
+     * checks. Returns a 409 Conflict whose
      * body carries an {@code errors} array naming the offending field.
      *
      * @param e The {@link DuplicateIdentityException} to be handled

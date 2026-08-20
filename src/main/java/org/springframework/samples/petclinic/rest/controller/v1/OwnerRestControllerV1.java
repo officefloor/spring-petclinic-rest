@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.mapper.OwnerIdentity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
@@ -716,14 +717,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects the request when the incoming owner's derived {@code identityKey} exactly matches that
-     * of any existing owner. The key ({@code normalizedTelephone + '|' + (email or empty) + '|' +
-     * (householdId or empty)}) is the single consolidated duplicate-detection key that replaces the
-     * former separate telephone, email and household checks. Because the telephone is part of the
-     * key, two members of the same household (same {@code householdId}) with different telephones
-     * have different keys and are both allowed; only an exact full-key match is a duplicate. The key
-     * is derived identically for the incoming and existing owners via {@link OwnerMapper#toIdentityKey}.
+     * of any existing owner. The key (the SHA-256 hex digest of {@code normalizedTelephone + '|' +
+     * lowerEmail + '|' + soundex(lastName)}) is the single consolidated duplicate-detection key that
+     * replaces the former separate telephone, email and household checks. Because the telephone is
+     * part of the key, two owners with the same last name and postcode but different telephones have
+     * different keys and are both allowed (they surface as a soft match instead); only an exact
+     * full-key match is a duplicate. Soft-deleted owners are ignored, and the email-domain blocklist
+     * has already been applied when the email was normalized. The key is derived identically for the
+     * incoming and existing owners via {@link OwnerMapper#toIdentityKey}.
      *
-     * @param owner the incoming owner, with its normalized telephone, email and household identifier
+     * @param owner the incoming owner, with its normalized telephone, email and last name
      *              already populated
      * @throws DuplicateIdentityException if another owner already has this exact identity key
      */
@@ -748,16 +751,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Flags the incoming owner as a possible (soft) duplicate. Called after the hard-duplicate and
-     * household-duplicate checks have passed, so the owner is known not to be a rejected duplicate.
-     * When an existing owner shares this owner's household (same computed {@code householdId}) but
-     * carries a different telephone, the owner is a possible duplicate: {@code possibleDuplicate} is
-     * set {@code true} and {@code possibleDuplicateOf} to that existing owner's id (the earliest such
+     * Flags the incoming owner as a possible (soft) duplicate. Called after the hard-duplicate identity
+     * check has passed, so the owner is known not to be a rejected duplicate. When an existing owner
+     * has the same {@code soundex(lastName)} and the same {@code postcode} as this owner but a
+     * <em>different</em> {@code identityKey}, the owner is a possible duplicate: {@code possibleDuplicate}
+     * is set {@code true} and {@code possibleDuplicateOf} to that existing owner's id (the earliest such
      * owner by id when more than one matches). Otherwise both are cleared. A declared household member
      * ({@code sharesHousehold} true) is never flagged: it is a deliberate member, not a suspected
-     * duplicate. An owner with no {@code householdId} never matches, since it shares no household.
+     * duplicate. An owner with no {@code postcode} never matches, since the soft match is keyed on it.
      *
-     * @param owner the incoming owner, with its computed {@code householdId} and telephone populated
+     * @param owner the incoming owner, with its telephone, email and postcode populated
      * @param sharesHousehold whether the request opted in as a declared household member
      */
     private void markPossibleDuplicate(Owner owner, boolean sharesHousehold) {
@@ -766,14 +769,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             return;
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
             return;
         }
-        String telephone = owner.getTelephone();
+        String soundex = OwnerIdentity.soundex(owner.getLastName());
+        String identityKey = ownerMapper.toIdentityKey(owner);
         this.clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId())
-                && !java.util.Objects.equals(telephone, existing.getTelephone()))
+            .filter(existing -> !isDeleted(existing))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> soundex.equals(OwnerIdentity.soundex(existing.getLastName())))
+            .filter(existing -> !identityKey.equals(ownerMapper.toIdentityKey(existing)))
             .min(java.util.Comparator.comparing(Owner::getId))
             .ifPresent(match -> {
                 owner.setPossibleDuplicate(true);

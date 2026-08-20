@@ -72,11 +72,12 @@ public interface OwnerMapper {
 
     /**
      * Derives the owner's duplicate-detection {@code identityKey}: the single key that consolidates
-     * the former separate telephone, email and household checks. It is the owner's normalized
-     * telephone, its email (lower-cased and trimmed, or the empty string when absent) and its
-     * household identifier (or the empty string when absent), joined in that order by {@code '|'}.
-     * Because the telephone is part of the key, two members of the same household with different
-     * telephones have different identity keys; only an exact full-key match is a duplicate.
+     * the former separate telephone, email and household checks. It is the lower-case, 64-character
+     * SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)},
+     * where {@code lowerEmail} is the email trimmed and lower-cased (or the empty string when absent)
+     * and {@code soundex(lastName)} is the American Soundex code of the owner's last name. Because the
+     * telephone is part of the key, two owners with the same last name (same soundex) and postcode but
+     * different telephones have different identity keys; only an exact full-key match is a duplicate.
      */
     @Named("toIdentityKey")
     default String toIdentityKey(Owner owner) {
@@ -85,8 +86,8 @@ public interface OwnerMapper {
         }
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().trim();
         String email = owner.getEmail() == null ? "" : owner.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
-        return telephone + "|" + email + "|" + householdId;
+        String soundex = OwnerIdentity.soundex(owner.getLastName());
+        return OwnerIdentity.sha256Hex(telephone + "|" + email + "|" + soundex);
     }
 
     /**

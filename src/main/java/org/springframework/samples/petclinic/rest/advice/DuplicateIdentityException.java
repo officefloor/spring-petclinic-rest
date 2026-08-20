@@ -19,9 +19,10 @@ package org.springframework.samples.petclinic.rest.advice;
 import java.util.List;
 
 /**
- * Thrown when creating an owner whose derived {@code identityKey} (normalized telephone, email and
- * household identifier joined by {@code '|'}) exactly matches that of an existing owner. This single
- * key consolidates the former separate telephone, email and household duplicate checks. Carries the
+ * Thrown when creating an owner whose derived {@code identityKey} (the SHA-256 hex digest of
+ * normalized telephone, lower-cased email and {@code soundex(lastName)} joined by {@code '|'})
+ * exactly matches that of an existing owner. This single key consolidates the former separate
+ * telephone, email and household duplicate checks. Carries the
  * offending field name so the exception handler can report it in the {@code errors} response body,
  * and maps to a 409 Conflict response.
  */
