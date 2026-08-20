@@ -170,9 +170,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = toOwnerDtoWithBulkWarning(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel());
+            ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
