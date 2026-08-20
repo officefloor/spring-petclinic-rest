@@ -410,6 +410,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The number of owners that must already carry a given {@code registrationDate} before a
+     * create on that date is flagged with a bulk-signup warning. Once <em>more than</em> this
+     * many owners already exist for the day, the new owner's {@code bulkSignupWarning} is true.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Computes the {@code bulkSignupWarning} for a create on the given business-day-adjusted
+     * {@code registrationDate}: true when more than {@value #BULK_SIGNUP_WARNING_THRESHOLD} owners
+     * have already been created for that date, otherwise false. The count reflects the state prior
+     * to this create, matching how the daily-limit rule accumulates.
+     */
+    private boolean bulkSignupWarningFor(LocalDate registrationDate) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (registrationDate.equals(existing.getRegistrationDate())) {
+                count++;
+            }
+        }
+        return count > BULK_SIGNUP_WARNING_THRESHOLD;
+    }
+
+    /**
      * Rolls an effective registration date forward onto a business day. A Saturday or Sunday is
      * advanced to the following Monday; a weekday is returned unchanged. This is applied to the
      * effective registration date - whether supplied in the request or defaulted to the server
@@ -441,6 +464,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         rejectDailyOwnerLimit(registrationDate);
+        owner.setBulkSignupWarning(bulkSignupWarningFor(registrationDate));
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
