@@ -139,17 +139,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes an owner's telephone on create by stripping every non-digit character and
-     * requiring exactly ten digits to remain. The stripped, digits-only value is what gets
-     * stored and returned. A value that does not reduce to exactly ten digits is rejected via
+     * Matches a well-formed E.164 telephone: a leading '+' followed by 8 to 15 digits.
+     */
+    private static final Pattern E164_PATTERN = Pattern.compile("\\+\\d{8,15}");
+
+    /**
+     * Normalizes an owner's telephone on create into E.164 form. Spaces, dashes and brackets are
+     * stripped. When a leading '+' (with its country code) is present it is kept as-is; otherwise
+     * the country code '+61' is assumed and a single leading '0' is dropped from the national
+     * digits. The result must be a '+' followed by 8 to 15 digits, so e.g. '0412 345 678' is
+     * stored as '+61412345678'. A value that cannot form a valid E.164 number is rejected via
      * {@link InvalidTelephoneException}, which the exception handler translates to a 400.
      */
     private static String normalizeTelephone(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = telephone == null ? "" : telephone.replaceAll("[\\s\\-()\\[\\]]", "");
+        String e164;
+        if (cleaned.startsWith("+")) {
+            e164 = cleaned;
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            e164 = "+61" + national;
+        }
+        if (!E164_PATTERN.matcher(e164).matches()) {
             throw new InvalidTelephoneException(telephone);
         }
-        return digits;
+        return e164;
     }
 
     /**
@@ -177,15 +191,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects a create whose normalized telephone is already used by another owner. Each
-     * existing owner's stored telephone is reduced to digits the same way {@code normalize}
-     * does, so the comparison is on the canonical, digits-only form. A match is reported via
+     * existing owner's stored telephone is reduced to its E.164 form the same way {@code
+     * normalizeTelephone} does, so the comparison is on the canonical E.164 value regardless of
+     * the format each was originally entered in. An existing value that cannot form a valid E.164
+     * number is skipped rather than colliding. A match is reported via
      * {@link DuplicateTelephoneException}, which the exception handler translates to a 409.
      */
     private void rejectDuplicateTelephone(String normalizedTelephone) {
         for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingDigits = existing.getTelephone() == null
-                ? "" : existing.getTelephone().replaceAll("\\D", "");
-            if (normalizedTelephone.equals(existingDigits)) {
+            String existingE164;
+            try {
+                existingE164 = normalizeTelephone(existing.getTelephone());
+            } catch (InvalidTelephoneException ex) {
+                continue;
+            }
+            if (normalizedTelephone.equals(existingE164)) {
                 throw new DuplicateTelephoneException(normalizedTelephone);
             }
         }

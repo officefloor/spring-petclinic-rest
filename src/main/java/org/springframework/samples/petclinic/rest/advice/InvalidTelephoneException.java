@@ -17,13 +17,14 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown when an owner's telephone, once every non-digit character has been stripped, does
- * not contain exactly ten digits. The exception handler translates it to a 400 Bad Request
- * whose {@code errors} array names the offending {@code telephone} field.
+ * Thrown when an owner's telephone cannot be normalized into valid E.164 form — that is, a
+ * leading '+' followed by 8 to 15 digits, after stripping spaces, dashes and brackets and
+ * assuming the '+61' country code when none is given. The exception handler translates it to a
+ * 400 Bad Request whose {@code errors} array names the offending {@code telephone} field.
  */
 public class InvalidTelephoneException extends RuntimeException {
 
     public InvalidTelephoneException(String telephone) {
-        super("Telephone must contain exactly 10 digits after stripping non-digit characters: " + telephone);
+        super("Telephone must form a valid E.164 number ('+' followed by 8 to 15 digits): " + telephone);
     }
 }
