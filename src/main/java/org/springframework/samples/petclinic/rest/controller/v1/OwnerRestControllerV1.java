@@ -588,6 +588,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int points = OwnerMapper.membershipPointsFor(owner, householdSize(owner.getHouseholdId()));
         ownerDto.setMembershipPoints(points);
         ownerDto.setMembershipLevel(capMembershipLevel(owner, OwnerMapper.membershipLevelFor(points)));
+        ownerDto.setRiskFlag(computeRiskFlag(owner));
         return ownerDto;
     }
 
@@ -795,6 +796,70 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
             .count();
         return cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD && cityOwners < MAX_OWNERS_PER_CITY;
+    }
+
+    /**
+     * Computes the owner's {@code riskFlag}: {@code true} when any of three conditions hold, otherwise
+     * {@code false}. The owner is risky when it is a possible (soft) duplicate, when its email domain
+     * is disposable-adjacent (see {@link #isDisposableAdjacentEmail(String)}), or when its city is over
+     * its soft capacity (see {@link #isCityOverSoftCapacity(String)}). Any one condition is sufficient.
+     *
+     * @param owner the owner whose risk flag is computed
+     * @return {@code true} when the owner is a possible duplicate, has a disposable-adjacent email
+     *         domain, or lives in a city over its soft capacity; otherwise {@code false}
+     */
+    private boolean computeRiskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentEmail(owner.getEmail())
+            || isCityOverSoftCapacity(owner.getCity());
+    }
+
+    /**
+     * Returns whether {@code email}'s domain is disposable-adjacent: its domain equals one of the known
+     * disposable-mailbox domains ({@link #DISPOSABLE_EMAIL_DOMAINS}) or is a subdomain of one (ends with
+     * a dot followed by that domain, e.g. {@code inbox.mailinator.com}). Exact-domain matches are
+     * rejected outright when an owner is created, so in practice this catches the subdomains that slip
+     * past the create-time blocklist. The comparison is case-insensitive and returns {@code false} for a
+     * {@code null}, blank, or malformed (no {@code '@'}) address.
+     *
+     * @param email the owner's stored email, or {@code null} when absent
+     * @return {@code true} when the email's domain is on or under a known disposable domain
+     */
+    private static boolean isDisposableAdjacentEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether the owner's city is over its soft capacity: {@code true} when the city already
+     * holds at least {@link #CITY_CAPACITY_WARNING_THRESHOLD} owners (the per-city capacity warning
+     * threshold, distinct from the hard {@link #MAX_OWNERS_PER_CITY} limit that rejects creation),
+     * comparing city names case-insensitively as the capacity checks do. Returns {@code false} when
+     * {@code city} is {@code null}.
+     *
+     * @param city the owner's city, or {@code null}
+     * @return {@code true} when the city holds {@link #CITY_CAPACITY_WARNING_THRESHOLD} or more owners
+     */
+    private boolean isCityOverSoftCapacity(String city) {
+        if (city == null) {
+            return false;
+        }
+        long cityOwners = this.clinicService.findAllOwners().stream()
+            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+            .count();
+        return cityOwners >= CITY_CAPACITY_WARNING_THRESHOLD;
     }
 
     /**
