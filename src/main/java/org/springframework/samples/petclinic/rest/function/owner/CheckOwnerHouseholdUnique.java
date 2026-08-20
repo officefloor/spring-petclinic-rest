@@ -16,8 +16,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouse
 
 /**
  * Governs the household rule for a create-owner request. A "household" is a set of owners
- * that share the same last name and the same address, both compared case-insensitively with
- * runs of whitespace collapsed to a single space and leading/trailing whitespace trimmed.
+ * that share the same last name and the same address. The last name is compared
+ * case-insensitively with runs of whitespace collapsed to a single space and leading/trailing
+ * whitespace trimmed; the address is compared in its {@link AddressNormalizer normalized} form.
  *
  * <p>When the request would join an existing household (a match is found):
  * <ul>
@@ -36,11 +37,11 @@ public class CheckOwnerHouseholdUnique {
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
             Out<HouseholdId> householdId) throws DuplicateOwnerHouseholdException {
         String lastName = canonical(request.getLastName());
-        String address = canonical(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         List<Owner> members = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(canonical(existing.getLastName()))
-                    && address.equals(canonical(existing.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
                 members.add(existing);
             }
         }
