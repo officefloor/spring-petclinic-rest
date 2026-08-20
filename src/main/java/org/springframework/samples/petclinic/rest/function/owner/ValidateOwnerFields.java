@@ -24,9 +24,11 @@ public class ValidateOwnerFields {
         if (isBlank(request.getLastName())) {
             missing.add("lastName");
         }
-        // Address is checked against its normalized form: an entry that collapses to blank once
-        // whitespace is trimmed is rejected just as an absent one is.
-        if (AddressNormalizer.normalize(request.getAddress()).isEmpty()) {
+        // Address may be supplied in EITHER form: the structured 'addressLine1' or the flat
+        // 'address'. It is checked against its normalized form, so an entry that collapses to
+        // blank once whitespace is trimmed counts as absent. Missing in both forms is a 400.
+        if (AddressNormalizer.normalize(request.getAddressLine1()).isEmpty()
+                && AddressNormalizer.normalize(request.getAddress()).isEmpty()) {
             missing.add("address");
         }
         if (isBlank(request.getCity())) {
