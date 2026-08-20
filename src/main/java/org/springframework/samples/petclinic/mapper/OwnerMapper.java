@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.List;
 
@@ -27,6 +29,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.forOwner(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
@@ -109,6 +112,29 @@ public abstract class OwnerMapper {
      */
     protected String contactPreference(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * Derives the owner's age band from their birthDate as of their registrationDate:
+     * 'MINOR' when under 18, 'ADULT' when 18-64, 'SENIOR' when 65 or over. Returns
+     * {@code null} when no birthDate is on file (the field is then absent from the
+     * response). The reference date is the registrationDate, falling back to the current
+     * date only for legacy owners created without one.
+     */
+    protected OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        LocalDate asOf = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
+        int age = Period.between(birthDate, asOf).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
