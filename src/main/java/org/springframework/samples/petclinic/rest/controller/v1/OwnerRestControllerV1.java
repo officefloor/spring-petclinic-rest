@@ -381,22 +381,58 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the {@code customerCode} for a newly created owner, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'} where {@code CITY3} is the upper-cased first three letters of
-     * {@code city}, {@code LAST3} the upper-cased first three letters of {@code lastName}, and
-     * {@code NNNN} a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners already in that city (e.g. {@code 'SYD-SMI-0007'}).
+     * Derives an owner's region code from its postcode, falling back to its city. A present postcode
+     * that falls in a known region's inclusive 4-digit range wins (NSW 2000-2099, VIC 3000-3099, QLD
+     * 4000-4099); otherwise the fixed city-to-region table is consulted (Sydney -> NSW, Melbourne ->
+     * VIC, Brisbane -> QLD); a value resolved by neither is {@code "UNKNOWN"}. This is the single
+     * region derivation shared by the {@code customerCode} and the owner's locality.
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = 1;
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (city.equalsIgnoreCase(existing.getCity())) {
-                sequence++;
+    private static String deriveRegion(String city, String postcode) {
+        if (postcode != null) {
+            try {
+                int pc = Integer.parseInt(postcode.trim());
+                for (Map.Entry<String, int[]> range : REGION_POSTCODES.entrySet()) {
+                    int[] bounds = range.getValue();
+                    if (pc >= bounds[0] && pc <= bounds[1]) {
+                        return range.getKey();
+                    }
+                }
+            } catch (NumberFormatException ignored) {
+                // not a numeric postcode; fall back to the city-to-region table
             }
         }
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Builds the {@code customerCode} for a newly created owner, formatted {@code '<REGION>-<HASH8>'}
+     * where {@code REGION} is the region code derived from the owner's postcode (falling back to its
+     * city) and {@code HASH8} is the first 8 upper-case hex characters of SHA-256 over
+     * {@code normalizedTelephone + lastName} (e.g. {@code 'NSW-1A2B3C4D'}). This is a stable identity:
+     * it carries no sequence number and depends only on the owner's own region, telephone and surname.
+     */
+    private static String customerCodeFor(String region, String normalizedTelephone, String lastName) {
+        return region + "-" + sha256HexPrefix(normalizedTelephone + lastName, 8);
+    }
+
+    /**
+     * Returns the first {@code hexChars} upper-case hex characters of the SHA-256 digest of the UTF-8
+     * bytes of {@code value}.
+     */
+    private static String sha256HexPrefix(String value, int hexChars) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hexChars);
+            for (byte b : digest) {
+                if (sb.length() >= hexChars) {
+                    break;
+                }
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, hexChars);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     /**
@@ -595,7 +631,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDailyOwnerLimit(registrationDate);
         owner.setBulkSignupWarning(bulkSignupWarningFor(registrationDate));
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        String region = deriveRegion(owner.getCity(), owner.getPostcode());
+        owner.setCustomerCode(customerCodeFor(region, normalizedTelephone, owner.getLastName()));
         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));

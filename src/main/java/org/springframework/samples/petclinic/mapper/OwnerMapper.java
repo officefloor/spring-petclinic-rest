@@ -46,14 +46,23 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derive the owner's locality (region). The postcode range takes precedence
-     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); only when the postcode is
-     * absent or falls in no known range do we fall back to the city-to-region table
-     * (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD), otherwise "UNKNOWN".
+     * Derive the owner's locality (region) from its region-and-hash {@code customerCode}: the
+     * {@code REGION} portion is the segment before the first {@code '-'} (e.g. {@code "NSW-1A2B3C4D"}
+     * yields {@code "NSW"}). This shares the identity's region derivation, where the postcode range
+     * takes precedence (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and the city-to-region table is
+     * the fallback. For an owner without a {@code customerCode} the same region is recomputed directly
+     * from the postcode then city, otherwise "UNKNOWN".
      */
     default String deriveLocality(Owner owner) {
         if (owner == null) {
             return null;
+        }
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
+            }
         }
         String postcode = owner.getPostcode();
         if (postcode != null) {
