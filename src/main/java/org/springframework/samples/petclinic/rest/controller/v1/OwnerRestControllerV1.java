@@ -153,7 +153,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
         owner.setRegistrationDate(registrationDate);
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(buildCustomerCode(owner, normalizedTelephone));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         if (sharesHousehold) {
             owner.setHouseholdId(householdIdFor(normalizeForHousehold(owner.getLastName()),
@@ -267,22 +267,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Builds the owner's customer code as {@code '<CITY3>-<LAST3>-<NNNN>'}, where {@code CITY3} is the
-     * upper-cased first three letters of {@code city}, {@code LAST3} the upper-cased first three letters
-     * of {@code lastName}, and {@code NNNN} a per-city 4-digit zero-padded sequence equal to one more
-     * than the number of owners already in that city (e.g. {@code SYD-SMI-0007}).
+     * Builds the owner's customer code as {@code '<REGION>-<HASH8>'}, where {@code REGION} is the
+     * region derived from the owner's postcode (falling back to its city, else {@code 'UNKNOWN'}) via
+     * {@link OwnerMapper#toRegion}, and {@code HASH8} is the first 8 upper-case hex characters of the
+     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}). The code
+     * carries no sequence number: it is a deterministic function of the owner's region and identity.
      *
-     * @param city the owner's city (already validated non-blank)
-     * @param lastName the owner's last name (already validated non-blank)
-     * @return the formatted customer code for the owner being created
+     * @param owner the owner being created, with its region-determining postcode and city populated
+     * @param normalizedTelephone the owner's normalized (E.164) telephone, hashed with the last name
+     * @return the region-and-hash customer code for the owner being created
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String buildCustomerCode(Owner owner, String normalizedTelephone) {
+        String region = ownerMapper.toRegion(owner);
+        String hash8 = sha256Hex8(normalizedTelephone + owner.getLastName());
+        return region + "-" + hash8;
+    }
+
+    /**
+     * Returns the first 8 upper-case hex characters of the SHA-256 digest of {@code value}'s UTF-8
+     * bytes. Deterministic, so the same input always yields the same 8-character hash.
+     */
+    private static String sha256Hex8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+            }
+            return sb.substring(0, 8);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
@@ -394,8 +411,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects the request when the owner's city already contains {@link #MAX_OWNERS_PER_CITY} or more
-     * owners, comparing city names case-insensitively (consistent with the per-city customer-code
-     * sequence). Callers reach this only once {@code city} has been validated non-blank.
+     * owners, comparing city names case-insensitively. Callers reach this only once {@code city} has
+     * been validated non-blank.
      *
      * @param city the incoming owner's city (already validated non-blank)
      * @throws CityAtCapacityException if the city is already at or above its owner capacity

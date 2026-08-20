@@ -78,16 +78,15 @@ public interface OwnerMapper {
         "QLD", new int[] {4000, 4099});
 
     /**
-     * Derives the owner's locality as its canonical region. The postcode takes precedence: when the
-     * owner has a well-formed 4-digit postcode that falls within a known region's range
-     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}), that region is returned.
-     * Otherwise the region is looked up from the fixed city-to-region table
-     * ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}), yielding {@code 'UNKNOWN'}
-     * when the city is not in the table. Preferring the postcode returns the same region for known
-     * cities but disambiguates cities that share a name.
+     * Derives the owner's canonical region, the {@code REGION} component of its {@code customerCode}.
+     * The postcode takes precedence: when the owner has a well-formed 4-digit postcode that falls
+     * within a known region's range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD
+     * 4000-4099}), that region is returned. Otherwise the region is looked up from the fixed
+     * city-to-region table ({@code Sydney->NSW}, {@code Melbourne->VIC}, {@code Brisbane->QLD}),
+     * yielding {@code 'UNKNOWN'} when the city is not in the table. Preferring the postcode returns
+     * the same region for known cities but disambiguates cities that share a name.
      */
-    @Named("toLocality")
-    default String toLocality(Owner owner) {
+    default String toRegion(Owner owner) {
         if (owner == null) {
             return null;
         }
@@ -96,6 +95,28 @@ public interface OwnerMapper {
             return regionByPostcode;
         }
         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+    }
+
+    /**
+     * Derives the owner's locality as the {@code REGION} component of its region-and-hash
+     * {@code customerCode} (the prefix before the first {@code '-'}). The locality therefore shares
+     * the customer code's identity rather than being computed independently. When the customer code
+     * is absent the region is derived directly from the owner's postcode and city via
+     * {@link #toRegion(Owner)}.
+     */
+    @Named("toLocality")
+    default String toLocality(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash >= 0) {
+                return customerCode.substring(0, dash);
+            }
+        }
+        return toRegion(owner);
     }
 
     /**
@@ -141,7 +162,7 @@ public interface OwnerMapper {
 
     /**
      * Formats the owner's membership number as {@code '<customerCode>-M<YY>'}, where {@code YY} is
-     * the last two digits of the {@code registrationDate} year, e.g. {@code 'SYD-SMI-0007-M26'}. Returns
+     * the last two digits of the {@code registrationDate} year, e.g. {@code 'NSW-1A2B3C4D-M26'}. Returns
      * {@code null} when either the customer code or the registration date is absent.
      */
     @Named("toMembershipNumber")
