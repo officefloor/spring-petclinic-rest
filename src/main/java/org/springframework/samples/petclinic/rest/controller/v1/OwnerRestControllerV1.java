@@ -116,7 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * reported. The thrown exception is translated to a 400 whose {@code errors} array lists
      * the name of each offending field.
      */
-    private void rejectMissingOrBlankFields(OwnerFieldsDto ownerFieldsDto) {
+    private void rejectMissingOrBlankFields(OwnerFieldsDto ownerFieldsDto, String normalizedAddress) {
         List<String> missing = new ArrayList<>();
         if (isBlank(ownerFieldsDto.getFirstName())) {
             missing.add("firstName");
@@ -124,7 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isBlank(ownerFieldsDto.getLastName())) {
             missing.add("lastName");
         }
-        if (isBlank(ownerFieldsDto.getAddress())) {
+        if (isBlank(normalizedAddress)) {
             missing.add("address");
         }
         if (isBlank(ownerFieldsDto.getCity())) {
@@ -226,6 +226,43 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Normalizes an owner's address into a canonical form applied on every create: leading and
+     * trailing whitespace is trimmed, any internal run of whitespace is reduced to a single space,
+     * the value is upper-cased, and common street-type abbreviations are expanded on a per-word
+     * basis ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). The result is stored
+     * and returned, and is the form every address comparison (duplicate-household detection and the
+     * shared {@code householdId}) uses. A {@code null} or whitespace-only input normalizes to the
+     * empty string, which the required-field guard then rejects. The transformation is idempotent,
+     * so normalizing an already-normalized address is a no-op.
+     */
+    private static String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            switch (token) {
+                case "ST" -> token = "STREET";
+                case "RD" -> token = "ROAD";
+                case "AVE" -> token = "AVENUE";
+                default -> {
+                }
+            }
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(token);
+        }
+        return sb.toString();
+    }
+
+    /**
      * Rejects a create that would place a second owner in the same household as an existing one -
      * i.e. another owner already has the same {@code lastName} and the same {@code address},
      * compared case-insensitively with collapsed whitespace. The caller can opt in to sharing a
@@ -233,15 +270,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * match is reported via {@link DuplicateHouseholdException}, which the exception handler
      * translates to a 409.
      */
-    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto, String normalizedAddress) {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return;
         }
         String lastName = collapse(ownerFieldsDto.getLastName());
-        String address = collapse(ownerFieldsDto.getAddress());
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (lastName.equals(collapse(existing.getLastName()))
-                && address.equals(collapse(existing.getAddress()))) {
+                && normalizedAddress.equals(normalizeAddress(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
             }
         }
@@ -267,7 +303,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * receives the identical, non-blank identifier without needing to read any other owner's value.
      */
     private static String householdIdFor(String lastName, String address) {
-        String key = collapse(lastName) + "\n" + collapse(address);
+        String key = collapse(lastName) + "\n" + normalizeAddress(address);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(32);
@@ -283,10 +319,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        rejectMissingOrBlankFields(ownerFieldsDto);
-        rejectDuplicateHousehold(ownerFieldsDto);
+        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
+        rejectDuplicateHousehold(ownerFieldsDto, normalizedAddress);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setAddress(normalizedAddress);
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateTelephone(normalizedTelephone);
         owner.setTelephone(normalizedTelephone);
