@@ -46,6 +46,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.common.AgeBands.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "fiscalYear",
             expression = "java(org.springframework.samples.petclinic.rest.function.common.FiscalYear.label(owner.getRegistrationDate()))")
+    @Mapping(target = "riskFlag",
+            expression = "java(org.springframework.samples.petclinic.rest.function.common.RiskFlags.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
