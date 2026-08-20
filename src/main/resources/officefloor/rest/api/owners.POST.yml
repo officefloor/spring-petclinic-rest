@@ -1,6 +1,17 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# Idempotent create: reads the optional 'Idempotency-Key' header before the body is touched.
+# A key already seen replays the originally created owner (200); otherwise the normal create runs.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
+  outputs:
+    proceed: normalizeAddress
+    replay: replayOwner
+
+replayOwner:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithReplayedOwner
+
 normalizeAddress:
   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
   next: validate
@@ -83,6 +94,12 @@ assignMembershipNumber:
 
 save:
   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+  govern: [ transaction ]
+  next: recordIdempotency
+
+# Pairs the request's Idempotency-Key (if any) with the just-saved owner id, so a repeat replays it.
+recordIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
   govern: [ transaction ]
   next: bulkSignupWarning
 
