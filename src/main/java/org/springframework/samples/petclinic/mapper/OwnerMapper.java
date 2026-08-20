@@ -25,6 +25,7 @@ public abstract class OwnerMapper {
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(LocalityLookup.regionFor(owner.getCity()))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -52,6 +53,14 @@ public abstract class OwnerMapper {
             level++;
         }
         return Math.min(level, 3);
+    }
+
+    /**
+     * Derives the owner's preferred contact channel: 'EMAIL' when an email address is
+     * on file, otherwise 'PHONE'.
+     */
+    protected String contactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
