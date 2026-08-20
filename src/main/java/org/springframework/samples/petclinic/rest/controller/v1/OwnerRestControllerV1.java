@@ -138,6 +138,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new MissingRequiredFieldsException(missingFields);
         }
         validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+        validateRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate suppliedOrDefaultDate = ownerFieldsDto.getRegistrationDate() != null
             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
         LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
@@ -535,6 +536,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value < range[0] || value > range[1]) {
             throw new InvalidFieldValueException("postcode",
                 "Postcode must be valid for the city's region " + region);
+        }
+    }
+
+    /**
+     * Validates an owner's optional {@code registrationDate}. When absent nothing is checked (the
+     * date defaults to the server date). When present it must not be later than the current server
+     * date: a registration cannot be recorded in the future, so a future date is rejected with a 400.
+     *
+     * @param registrationDate the supplied registration date (may be {@code null} when not supplied)
+     * @throws InvalidFieldValueException if the supplied date is later than the server date
+     */
+    private void validateRegistrationDate(LocalDate registrationDate) {
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            throw new InvalidFieldValueException("registrationDate",
+                "Registration date must not be later than the current date");
         }
     }
 
