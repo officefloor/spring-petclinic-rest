@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
                                       email      TEXT,
                                       registration_date DATE,
                                       customer_code TEXT,
+                                      membership_number TEXT,
                                       household_id TEXT,
                                       namesake_count INTEGER
 );
