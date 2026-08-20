@@ -32,6 +32,7 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : owner.getTelephone() + \"|\" "
             + "+ (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\" "
             + "+ (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
+    @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -83,6 +84,36 @@ public interface OwnerMapper {
             return "QLD";
         }
         return "UNKNOWN";
+    }
+
+    /**
+     * Derive the owner's check digit: a single Luhn check digit (0-9) computed over the
+     * digits contained in the owner's customerCode. Non-digit characters are ignored.
+     * Returns null when the owner or its customerCode is absent.
+     */
+    default Integer deriveCheckDigit(Owner owner) {
+        if (owner == null || owner.getCustomerCode() == null) {
+            return null;
+        }
+        String code = owner.getCustomerCode();
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = code.length() - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
