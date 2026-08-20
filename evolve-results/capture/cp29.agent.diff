@@ -1,0 +1,198 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ef5c8b48..b4bf0dd8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -51,6 +51,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -98,6 +101,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8c7d9ab4..4a36db52 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -25,6 +25,7 @@ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import org.slf4j.Logger;
+@@ -136,6 +137,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (!missingFields.isEmpty()) {
+             throw new MissingRequiredFieldsException(missingFields);
+         }
++        validatePostcode(ownerFieldsDto.getPostcode(), ownerFieldsDto.getCity());
+         LocalDate suppliedOrDefaultDate = ownerFieldsDto.getRegistrationDate() != null
+             ? ownerFieldsDto.getRegistrationDate() : LocalDate.now();
+         LocalDate registrationDate = toBusinessDay(suppliedOrDefaultDate);
+@@ -475,6 +477,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return date;
+     }
+ 
++    /** Matches a well-formed postcode: exactly four decimal digits. */
++    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
++
++    /**
++     * Fixed region-to-postcode range table: each region admits an inclusive 4-digit range
++     * ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}). Regions are derived
++     * from the owner's city via {@link OwnerMapper#CITY_REGION}; a city with no known region is not
++     * present here and accepts any well-formed postcode.
++     */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
++    /**
++     * Validates an owner's optional {@code postcode}. When absent nothing is checked (postcode is
++     * optional, so the request contract stays backward-compatible). When present it must be exactly
++     * four digits and, for a city whose region is known, fall within that region's inclusive range
++     * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city with no known region accepts any 4-digit
++     * postcode. A malformed or out-of-range value is rejected with a 400.
++     *
++     * @param postcode the raw postcode from the request (may be {@code null} when not supplied)
++     * @param city the owner's city, used to look up the region whose range constrains the postcode
++     * @throws InvalidFieldValueException if the postcode is present but malformed or out of range
++     */
++    private void validatePostcode(String postcode, String city) {
++        if (postcode == null) {
++            return;
++        }
++        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
++            throw new InvalidFieldValueException("postcode", "Postcode must be exactly four digits");
++        }
++        String region = OwnerMapper.CITY_REGION.getOrDefault(city, "UNKNOWN");
++        int[] range = REGION_POSTCODES.get(region);
++        if (range == null) {
++            return;
++        }
++        int value = Integer.parseInt(postcode);
++        if (value < range[0] || value > range[1]) {
++            throw new InvalidFieldValueException("postcode",
++                "Postcode must be valid for the city's region " + region);
++        }
++    }
++
+     private void requireCityBelowCapacity(String city) {
+         long cityOwners = this.clinicService.findAllOwners().stream()
+             .filter(existing -> city.equalsIgnoreCase(existing.getCity()))
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f87b94b3..af86e740 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 9eac6b8c..fba63ecf 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 99297e64..d6ca0816 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e0e9bc6e..32a6356f 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index d450831a..9d49e66e 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bc0ac204..804cfffd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2037,6 +2037,14 @@ components:
+           type: string
+           maxLength: 255
+           example: 'george.franklin@example.com'
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when present it must be valid for the owner's
++            city per the fixed region table (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city
++            with no known region accepts any 4-digit postcode. Stored and returned when supplied.
++          type: string
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: The date the owner was registered. Defaults to the server's current date when not supplied.
