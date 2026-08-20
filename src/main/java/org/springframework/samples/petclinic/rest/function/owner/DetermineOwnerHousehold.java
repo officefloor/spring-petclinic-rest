@@ -12,30 +12,30 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException;
 
 /**
- * Governs the household rule for a create-owner request. A "household" is a set of owners
- * that share the same last name and the same address. The last name is compared
+ * Resolves the shared {@code householdId} for a create-owner request. A "household" is a set of
+ * owners that share the same last name and the same address. The last name is compared
  * case-insensitively with runs of whitespace collapsed to a single space and leading/trailing
  * whitespace trimmed; the address is compared in its {@link AddressNormalizer normalized} form.
  *
- * <p>When the request would join an existing household (a match is found):
- * <ul>
- *   <li>If the request did not set {@code sharesHousehold} true, it is rejected with a 409.</li>
- *   <li>If it set {@code sharesHousehold} true, the join is allowed and a stable shared
- *       {@code householdId} — derived from the canonical last name and address, so every
- *       member of the household derives the same value — is stamped onto the existing
- *       members and published for {@link AssignOwnerHousehold} to stamp onto the new owner.</li>
- * </ul>
+ * <p>When the request opts in with {@code sharesHousehold} true and matches an existing household,
+ * the join is allowed and a stable shared {@code householdId} — derived from the canonical last
+ * name and address, so every member of the household derives the same value — is stamped onto the
+ * existing members and published for {@link AssignOwnerHousehold} to stamp onto the new owner.
  *
- * <p>When there is no existing household match the request is a plain unique owner and no
- * {@code householdId} is assigned.
+ * <p>Otherwise (no opt-in, or no existing household match) no {@code householdId} is assigned and
+ * the owner remains outside any household. Duplicate detection is no longer performed here: it is
+ * handled uniformly by {@link CheckOwnerIdentityUnique} on the whole {@link OwnerIdentityKey
+ * identity key}, of which the resolved {@code householdId} is one part.
  */
-public class CheckOwnerHouseholdUnique {
+public class DetermineOwnerHousehold {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
-            Out<HouseholdId> householdId) throws DuplicateOwnerHouseholdException {
+            Out<HouseholdId> householdId) {
+        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // did not opt into a shared household — no householdId
+        }
         String lastName = canonical(request.getLastName());
         String address = AddressNormalizer.normalize(request.getAddress());
         List<Owner> members = new ArrayList<>();
@@ -46,10 +46,7 @@ public class CheckOwnerHouseholdUnique {
             }
         }
         if (members.isEmpty()) {
-            return; // no existing household — a plain unique owner, no householdId
-        }
-        if (!Boolean.TRUE.equals(request.getSharesHousehold())) {
-            throw new DuplicateOwnerHouseholdException(request.getLastName(), request.getAddress());
+            return; // no existing household to join
         }
         // Opted in to share the household: assign the same stable id to every member.
         String id = deriveHouseholdId(lastName, address);
