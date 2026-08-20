@@ -7,9 +7,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Records the size of the owner's household: the number of owners that share this owner's
  * {@code householdId}, counting the owner itself. An owner with no {@code householdId} is a
- * household of one. Household membership is assigned by {@link AssignHousehold}; this count drives
- * the {@code GOLD} membership tier (3 or more members). Runs on both the create and read pipelines
- * so the count is derived consistently from current data.
+ * household of one. Household membership is assigned by {@link AssignHousehold}. Runs on both the
+ * create and read pipelines so the count is derived consistently from current data.
  */
 public class AssignHouseholdMemberCount {
 
