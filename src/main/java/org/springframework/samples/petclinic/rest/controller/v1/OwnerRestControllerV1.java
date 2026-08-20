@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.advice.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.advice.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.MissingOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -203,6 +204,56 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return e164;
+    }
+
+    /**
+     * Matches a well-formed postcode: exactly four digits.
+     */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("\\d{4}");
+
+    /**
+     * The canonical region for each city that has one. A city absent from this table has no known
+     * region and so accepts any 4-digit postcode. This is the same fixed city-to-region table used
+     * to derive an owner's locality.
+     */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /**
+     * The inclusive 4-digit postcode range for each region, as {@code {low, high}}: NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099.
+     */
+    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Validates an owner's optional postcode. A {@code null} postcode is left as-is (the field is
+     * optional). When present it must be exactly four digits; and when the owner's city maps to a
+     * known region it must fall within that region's inclusive postcode range (NSW 2000-2099, VIC
+     * 3000-3099, QLD 4000-4099). A city with no known region accepts any 4-digit postcode. An
+     * invalid or out-of-range value is rejected via {@link InvalidPostcodeException}, which the
+     * exception handler translates to a 400.
+     */
+    private static void validatePostcode(String city, String postcode) {
+        if (postcode == null) {
+            return;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            throw new InvalidPostcodeException(postcode);
+        }
+        String region = CITY_REGION.get(city);
+        if (region == null) {
+            return;
+        }
+        int[] range = REGION_POSTCODES.get(region);
+        int value = Integer.parseInt(postcode);
+        if (value < range[0] || value > range[1]) {
+            throw new InvalidPostcodeException(postcode);
+        }
     }
 
     /**
@@ -536,6 +587,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(normalizedEmail);
+        validatePostcode(owner.getCity(), owner.getPostcode());
         String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
         rejectDuplicateIdentity(ownerFieldsDto, normalizedTelephone, normalizedEmail, householdId);
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();

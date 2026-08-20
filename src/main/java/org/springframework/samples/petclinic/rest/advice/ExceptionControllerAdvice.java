@@ -223,6 +223,24 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link InvalidPostcodeException} thrown when an owner's postcode is present but is
+     * not four digits, or is out of the valid range for the owner's city region. Returns a 400
+     * Bad Request whose {@code errors} array names the {@code postcode} field.
+     *
+     * @param e The {@link InvalidPostcodeException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(InvalidPostcodeException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidPostcodeException(InvalidPostcodeException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+        detail.setProperty("errors", List.of("postcode"));
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
      * Handles {@link DuplicateTelephoneException} thrown when an owner is created with a
      * normalized telephone that is already used by another owner. Returns a 409 Conflict whose
      * {@code errors} array names the {@code telephone} field.
