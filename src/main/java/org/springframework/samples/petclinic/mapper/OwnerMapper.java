@@ -22,6 +22,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", source = "owner", qualifiedByName = "toDisplayName")
+    @Mapping(target = "salutation", source = "owner", qualifiedByName = "toSalutation")
     @Mapping(target = "telephoneDisplay", source = "owner", qualifiedByName = "toTelephoneDisplay")
     @Mapping(target = "initials", source = "owner", qualifiedByName = "toInitials")
     @Mapping(target = "membershipNumber", source = "owner", qualifiedByName = "toMembershipNumber")
@@ -196,6 +197,23 @@ public interface OwnerMapper {
             return null;
         }
         return owner.getLastName() + ", " + owner.getFirstName();
+    }
+
+    /**
+     * Composes the owner's {@code salutation}: the owner's {@code title} and {@code lastName} joined
+     * by a single space when a title is present, or just the {@code lastName} when no title is
+     * supplied (absent or blank).
+     */
+    @Named("toSalutation")
+    default String toSalutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /**
