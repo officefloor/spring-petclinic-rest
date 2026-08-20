@@ -359,6 +359,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Counts the members of the household the new owner will belong to, as it stands after this
+     * create. Every existing owner carrying the same {@code householdId} is counted, and the new
+     * owner itself is added, so a value of 3 or more means the owner joins a household of at least
+     * three members. This is evaluated with the new owner's {@code householdId} already set and is
+     * stored on the owner as its {@code householdMemberCount}.
+     */
+    private int countHouseholdMembers(String householdId) {
+        int count = 1;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (householdId.equals(existing.getHouseholdId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
      * The maximum number of owners any single city may contain. A create whose city already
      * holds this many owners is rejected.
      */
@@ -470,6 +487,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
