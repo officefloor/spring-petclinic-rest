@@ -24,7 +24,8 @@ public abstract class OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
-    @Mapping(target = "locality", expression = "java(LocalityLookup.regionFor(owner.getCity()))")
+    @Mapping(target = "locality",
+            expression = "java(LocalityLookup.regionFor(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.forOwner(owner))")
