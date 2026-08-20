@@ -5,6 +5,7 @@ import java.util.Locale;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Stamps the soft-duplicate flags onto the newly built owner. A create that is not a hard
@@ -15,12 +16,20 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * owner's id (the earliest-created match when several exist); otherwise {@code possibleDuplicate}
  * is {@code false} and {@code possibleDuplicateOf} is left absent.
  *
+ * <p>A declared household member (the request opted in with {@code sharesHousehold} true, so it
+ * reached this step by bypassing the {@link CheckOwnerIdentityUnique duplicate block}) is never
+ * flagged: a member the caller has explicitly declared is not a <em>suspected</em> duplicate.
+ *
  * <p>Runs before {@link SaveOwner}, so the new owner is not yet persisted and cannot match itself.
  */
 public class FlagOwnerPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request,
+            OwnerRepository ownerRepository) {
         owner.setPossibleDuplicate(false);
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return; // a declared household member is not a suspected duplicate
+        }
         String postcode = owner.getPostcode();
         if (postcode == null || postcode.isBlank()) {
             return; // no postcode to share — cannot be a possible duplicate

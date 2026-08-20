@@ -4,15 +4,13 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Stamps the shared {@code householdId} published by {@link DetermineOwnerHousehold} onto the
- * newly built owner, so a joiner carries the same identifier as the rest of its household. When
- * the request did not join a household the variable is unset and the owner keeps no household id.
+ * Stamps the deterministic {@code householdId} published by {@link DetermineOwnerHousehold} onto
+ * the newly built owner. As the id is now derived purely from {@code (lastName, postcode)}, it is
+ * always present, and every owner sharing the same last name and postcode carries the same value.
  */
 public class AssignOwnerHousehold {
 
     public void service(@Val Owner owner, @Val HouseholdId householdId) {
-        if (householdId != null) {
-            owner.setHouseholdId(householdId.value());
-        }
+        owner.setHouseholdId(householdId.value());
     }
 }
