@@ -34,7 +34,20 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", source = "owner", qualifiedByName = "toContactPreference")
     @Mapping(target = "identityKey", source = "owner", qualifiedByName = "toIdentityKey")
     @Mapping(target = "ageBand", source = "owner", qualifiedByName = "toAgeBand")
+    @Mapping(target = "selfLink", source = "owner", qualifiedByName = "toSelfLink")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code selfLink}: its canonical relative URL, {@code '/api/owners/'}
+     * followed by the owner's id. Returns {@code null} when the owner has no id yet.
+     */
+    @Named("toSelfLink")
+    default String toSelfLink(Owner owner) {
+        if (owner == null || owner.getId() == null) {
+            return null;
+        }
+        return "/api/owners/" + owner.getId();
+    }
 
     /**
      * Derives the owner's {@code ageBand} from its {@code birthDate}, computed against the
