@@ -161,6 +161,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 householdAddressKey(owner.getAddress())));
         }
         requireUniqueIdentity(owner);
+        markPossibleDuplicate(owner);
         if (sharesHousehold) {
             backfillHousehold(owner.getLastName(), owner.getAddress(), owner.getHouseholdId());
         }
@@ -584,6 +585,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (taken) {
             throw new DuplicateIdentityException(identityKey);
         }
+    }
+
+    /**
+     * Flags the incoming owner as a possible (soft) duplicate. Called after the hard-duplicate
+     * identity check has passed, so the owner is known not to be an exact duplicate. When an existing
+     * owner shares this owner's last name (compared case-insensitively) and postcode but carries a
+     * different (normalized) telephone, the owner is a possible duplicate: {@code possibleDuplicate}
+     * is set {@code true} and {@code possibleDuplicateOf} to that existing owner's id (the earliest
+     * such owner by id when more than one matches). Otherwise {@code possibleDuplicate} is set
+     * {@code false} and {@code possibleDuplicateOf} left null. A blank postcode never matches, since
+     * there is then no postcode to share.
+     *
+     * @param owner the incoming owner, with its last name, postcode and normalized telephone populated
+     */
+    private void markPossibleDuplicate(Owner owner) {
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isBlank()) {
+            return;
+        }
+        String lastName = owner.getLastName();
+        String telephone = owner.getTelephone();
+        this.clinicService.findAllOwners().stream()
+            .filter(existing -> lastName.equalsIgnoreCase(existing.getLastName())
+                && postcode.equals(existing.getPostcode())
+                && !java.util.Objects.equals(telephone, existing.getTelephone()))
+            .min(java.util.Comparator.comparing(Owner::getId))
+            .ifPresent(match -> {
+                owner.setPossibleDuplicate(true);
+                owner.setPossibleDuplicateOf(match.getId());
+            });
     }
 
     /**
