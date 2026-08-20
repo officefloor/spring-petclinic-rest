@@ -198,7 +198,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getPostcode()));
         requireUniqueIdentity(owner);
-        requireNoHouseholdDuplicate(owner, sharesHousehold);
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         if (idempotencyKey != null) {
@@ -524,8 +523,50 @@ public class OwnerRestControllerV1 implements OwnersApi {
         ownerDto.setBulkSignupWarning(exceedsBulkSignupThreshold(owner.getRegistrationDate()));
         int points = OwnerMapper.membershipPointsFor(owner, householdSize(owner.getHouseholdId()));
         ownerDto.setMembershipPoints(points);
-        ownerDto.setMembershipLevel(OwnerMapper.membershipLevelFor(points));
+        ownerDto.setMembershipLevel(capMembershipLevel(owner, OwnerMapper.membershipLevelFor(points)));
         return ownerDto;
+    }
+
+    /**
+     * Caps the owner's {@code membershipLevel} so it cannot exceed one above the current maximum
+     * membership level among the other members of its household (existing owners carrying the same
+     * {@code householdId}, excluding the owner itself and any soft-deleted owner). When the household
+     * has no other member — including when the owner has no {@code householdId} — no cap applies and
+     * {@code level} is returned unchanged. Each household member's level is its own base level (points
+     * mapped to a level for its real household size), so the cap does not depend on other capped
+     * values.
+     *
+     * @param owner the owner whose membership level is being computed
+     * @param level the owner's uncapped membership level derived from its membership points
+     * @return the membership level capped at {@code maxHouseholdMemberLevel + 1}, or {@code level}
+     *         when the owner has no other household member
+     */
+    private int capMembershipLevel(Owner owner, int level) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return level;
+        }
+        Integer maxMemberLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !isDeleted(existing))
+            .filter(existing -> !java.util.Objects.equals(existing.getId(), owner.getId()))
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .map(this::membershipLevelForOwner)
+            .max(Integer::compareTo)
+            .orElse(null);
+        if (maxMemberLevel == null) {
+            return level;
+        }
+        return Math.min(level, maxMemberLevel + 1);
+    }
+
+    /**
+     * Computes an existing household member's membership level: its membership points for its real
+     * household size mapped to the numeric level. Used to establish the household's current maximum
+     * level when capping a new owner's level.
+     */
+    private int membershipLevelForOwner(Owner owner) {
+        int points = OwnerMapper.membershipPointsFor(owner, householdSize(owner.getHouseholdId()));
+        return OwnerMapper.membershipLevelFor(points);
     }
 
     /**
@@ -704,35 +745,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static boolean isDeleted(Owner owner) {
         return Boolean.TRUE.equals(owner.getDeleted());
-    }
-
-    /**
-     * Rejects the request when the incoming owner would join an existing household, unless the owner
-     * has opted in via {@code sharesHousehold}. Because the household is keyed on {@code householdId}
-     * (the computed hash of the normalized last name and postcode), any existing owner carrying the
-     * same {@code householdId} is a member of the same household, so a second such owner is a
-     * household duplicate. Setting {@code sharesHousehold} bypasses this block, declaring the owner a
-     * genuine additional member of that household. An owner with no {@code householdId} (no postcode,
-     * so no household key) is never a household duplicate.
-     *
-     * @param owner the incoming owner, with its computed {@code householdId} already populated
-     * @param sharesHousehold whether the request opted in to joining an existing household
-     * @throws DuplicateIdentityException if the household already exists and the owner did not opt in
-     */
-    private void requireNoHouseholdDuplicate(Owner owner, boolean sharesHousehold) {
-        if (sharesHousehold) {
-            return;
-        }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return;
-        }
-        boolean householdExists = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !isDeleted(existing))
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        if (householdExists) {
-            throw new DuplicateIdentityException(ownerMapper.toIdentityKey(owner));
-        }
     }
 
     /**
