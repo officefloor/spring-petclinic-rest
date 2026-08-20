@@ -18,8 +18,9 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        auditLogger.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel());
+        auditLogger.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel(),
+                owner.getMembershipNumber());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
