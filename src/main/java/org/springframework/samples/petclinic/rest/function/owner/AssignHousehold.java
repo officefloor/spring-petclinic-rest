@@ -12,11 +12,11 @@ import org.springframework.samples.petclinic.model.Owner;
  * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
  * {@code normalizedLastName + '|' + postcode}. The household is therefore keyed on
  * (last name, postcode) alone, so any two owners with the same last name and postcode share the same
- * id automatically — nothing has to opt in and no existing owner is mutated. {@code sharesHousehold}
- * no longer creates the link; it only lets {@link CheckOwnerIdentityUnique} wave through the
- * otherwise-blocked household duplicate. Runs on the create pipeline before the duplicate check and
- * before {@link SaveOwner}, so the stored id, the duplicate detection and the household-size count
- * all read the same computed value.
+ * id automatically — nothing has to opt in and no existing owner is mutated. The {@code householdId}
+ * is no longer part of {@link OwnerIdentityKey duplicate detection} (which is now the single identity
+ * key); it still groups household members for the household-size count and membership rules. Runs on
+ * the create pipeline before {@link SaveOwner}, so the stored id and the household-size count read the
+ * same computed value.
  */
 public class AssignHousehold {
 
