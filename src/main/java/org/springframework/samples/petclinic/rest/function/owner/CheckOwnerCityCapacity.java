@@ -8,9 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.OwnerCityFullExcept
 
 /**
  * Rejects a create-owner request whose city already contains {@value #CAPACITY} or more owners
- * with a 409. The city is compared case-insensitively, matching the per-city counting used by
- * {@code AssignOwnerCustomerCode}. Runs before the owner is saved, so the count reflects
- * existing owners only.
+ * with a 409. The city is compared case-insensitively. Runs before the owner is saved, so the
+ * count reflects existing owners only.
  */
 public class CheckOwnerCityCapacity {
 

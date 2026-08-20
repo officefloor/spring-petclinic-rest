@@ -25,8 +25,7 @@ public abstract class OwnerMapper {
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
-    @Mapping(target = "locality",
-            expression = "java(LocalityLookup.regionFor(owner.getCity(), owner.getPostcode()))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "identityKey",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.forOwner(owner))")
@@ -87,6 +86,21 @@ public abstract class OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Derives the owner's {@code locality} from the REGION component of the
+     * {@code <REGION>-<HASH8>} customer code — the region-and-hash identity is now the single
+     * source of the owner's region. Falls back to the postcode/city lookup for an owner that has
+     * no customer code yet (e.g. seed data created outside the create pipeline).
+     */
+    protected String locality(Owner owner) {
+        String code = owner.getCustomerCode();
+        if (code != null) {
+            int dash = code.indexOf('-');
+            return dash >= 0 ? code.substring(0, dash) : code;
+        }
+        return LocalityLookup.regionFor(owner.getCity(), owner.getPostcode());
     }
 
     /**
