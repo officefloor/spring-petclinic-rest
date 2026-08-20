@@ -41,9 +41,19 @@ public final class MembershipLevels {
         return points;
     }
 
-    /** Computes the owner's membership level from the owner's points. */
+    /**
+     * Computes the owner's membership level from the owner's points, then applies the household
+     * level ceiling: when a {@code membershipLevelCap} is set (one above the maximum level among
+     * the owner's household members at the time the owner was created), the level is capped to it.
+     * A null cap means no ceiling applies.
+     */
     public static int of(Owner owner) {
-        return levelForPoints(points(owner));
+        int level = levelForPoints(points(owner));
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
     }
 
     /** Maps points to a level: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */

@@ -31,6 +31,10 @@ public class CheckOwnerIdentityUnique {
             throws DuplicateOwnerException {
         String identityKey = OwnerIdentityKey.of(owner);
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
+        // An owner who supplies their own email is a distinguishable individual and may join an
+        // existing household as a member (subject to the full-identity ground below); without an
+        // email a same-household owner cannot be told apart and is still blocked as a duplicate.
+        boolean hasDistinguishingEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
             if (owner.getId() != null && owner.getId().equals(existing.getId())) {
@@ -42,7 +46,7 @@ public class CheckOwnerIdentityUnique {
             if (identityKey.equals(OwnerIdentityKey.of(existing))) {
                 throw new DuplicateOwnerException(identityKey);
             }
-            if (!sharesHousehold && householdId != null
+            if (!sharesHousehold && !hasDistinguishingEmail && householdId != null
                     && householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateOwnerException("household " + householdId);
             }
