@@ -20,6 +20,10 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName",
         expression = "java(owner == null ? null : owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "initials",
+        expression = "java(owner == null ? null : "
+            + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+            + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
