@@ -2,7 +2,8 @@ package org.springframework.samples.petclinic.rest.escalation;
 
 /**
  * Thrown by {@code NormalizeOwnerTelephone} when a create-owner telephone cannot be converted
- * into a valid E.164 number (8 to 15 digits after the '+'). Handled by
+ * into a valid E.164 number (8 to 15 digits after the '+'), or when its national-number length
+ * does not match its country code ('+61' → 9 national digits, '+1' → 10). Handled by
  * {@link InvalidOwnerTelephoneExceptionHandler}, which responds 400.
  */
 public class InvalidOwnerTelephoneException extends Exception {

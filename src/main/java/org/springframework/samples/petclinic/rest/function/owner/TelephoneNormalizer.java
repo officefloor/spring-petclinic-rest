@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Map;
+
 /**
  * Converts a raw telephone entry into E.164 form.
  *
@@ -13,6 +15,12 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * comparison.
  */
 final class TelephoneNormalizer {
+
+    /**
+     * Required national-number length (digits after the country code) per known country code.
+     * {@code '+61'} (Australia) requires 9 national digits; {@code '+1'} (NANP) requires 10.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
 
     private TelephoneNormalizer() {
     }
@@ -40,5 +48,27 @@ final class TelephoneNormalizer {
             return null;
         }
         return "+" + digits;
+    }
+
+    /**
+     * Checks the national-number length of an E.164 value against its country code. For a known
+     * country code ({@code '+61'} → 9 national digits, {@code '+1'} → 10) the national part must be
+     * exactly that many digits; unknown country codes are left to the generic 8-to-15 rule.
+     *
+     * @param e164 an E.164 string ({@code '+'} followed by digits), as produced by {@link #toE164}
+     * @return {@code true} when the national-number length is valid for the country code
+     */
+    static boolean hasValidNationalLength(String e164) {
+        String digits = e164.substring(1);
+        String code = null;
+        for (String candidate : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(candidate) && (code == null || candidate.length() > code.length())) {
+                code = candidate;
+            }
+        }
+        if (code == null) {
+            return true;
+        }
+        return digits.length() - code.length() == NATIONAL_LENGTHS.get(code);
     }
 }
