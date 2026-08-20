@@ -5,19 +5,21 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 
 /**
- * Normalizes a create-owner telephone by removing every non-digit character, then requires
- * exactly 10 digits. Mutates the validated {@link OwnerFieldsDto} in place (so {@link BuildOwner}
- * stores the normalized value), or throws {@link InvalidTelephoneException} for a 400 when the
- * stripped value is not exactly 10 digits.
+ * Normalizes a create-owner telephone into E.164 form: a leading '+' and country code are kept
+ * when present, otherwise country code '+61' is assumed and a single leading '0' is dropped from
+ * the national digits. Spaces, dashes and brackets are stripped, and 8 to 15 digits are required
+ * after the '+'. Mutates the validated {@link OwnerFieldsDto} in place (so {@link BuildOwner}
+ * stores the E.164 value), or throws {@link InvalidTelephoneException} for a 400 when the value
+ * cannot form a valid E.164 number.
  */
 public class NormalizeOwnerTelephone {
 
     public void service(@Val OwnerFieldsDto request) throws InvalidTelephoneException {
         String original = request.getTelephone();
-        String digits = original == null ? "" : original.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String e164 = TelephoneE164.toE164(original);
+        if (e164 == null) {
             throw new InvalidTelephoneException(original);
         }
-        request.setTelephone(digits);
+        request.setTelephone(e164);
     }
 }
