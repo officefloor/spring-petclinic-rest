@@ -229,43 +229,55 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects a create whose normalized telephone is already used by another owner. Each
-     * existing owner's stored telephone is reduced to its E.164 form the same way {@code
-     * normalizeTelephone} does, so the comparison is on the canonical E.164 value regardless of
-     * the format each was originally entered in. An existing value that cannot form a valid E.164
-     * number is skipped rather than colliding. A match is reported via
-     * {@link DuplicateTelephoneException}, which the exception handler translates to a 409.
+     * The single derived identity of an owner, {@code normalizedTelephone + '|' + (email or empty)
+     * + '|' + householdId}, into which all duplicate detection is consolidated. Two owners are the
+     * same identity only when this whole key matches: because the normalized telephone is part of
+     * the key, two members of the same household (same {@code householdId}) with different
+     * telephones have different identity keys. A {@code null} email contributes an empty middle
+     * segment. This is the value returned to callers as {@code identityKey}.
      */
-    private void rejectDuplicateTelephone(String normalizedTelephone) {
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingE164;
-            try {
-                existingE164 = normalizeTelephone(existing.getTelephone());
-            } catch (InvalidTelephoneException ex) {
-                continue;
-            }
-            if (normalizedTelephone.equals(existingE164)) {
-                throw new DuplicateTelephoneException(normalizedTelephone);
-            }
-        }
+    private static String identityKeyFor(String normalizedTelephone, String normalizedEmail, String householdId) {
+        return normalizedTelephone + "|" + (normalizedEmail == null ? "" : normalizedEmail) + "|" + householdId;
     }
 
     /**
-     * Rejects a create whose lower-cased email is already used by another owner. The candidate
-     * email is already normalized to lower case by {@code normalizeEmail}; each existing owner's
-     * email is lower-cased the same way for the comparison, so the match is case-insensitive
-     * regardless of the case each was originally entered in. An existing owner with no email is
-     * skipped. A {@code null} candidate email is not checked, since email is optional. A match is
-     * reported via {@link DuplicateEmailException}, which the exception handler translates to a 409.
+     * Rejects a create whose derived identity collides with an existing owner's, reported via one
+     * of the {@code Duplicate*} exceptions the handler translates to a 409. The former separate
+     * telephone, email and household checks are now expressed through the components of the single
+     * identity key:
+     * <ul>
+     *   <li>the normalized telephone matches an existing owner's canonical E.164 telephone (an
+     *       existing value that cannot form a valid E.164 number is skipped rather than colliding);</li>
+     *   <li>a present, lower-cased email matches an existing owner's lower-cased email (a {@code null}
+     *       candidate email, being optional, is not compared, and existing owners without an email
+     *       are skipped);</li>
+     *   <li>the {@code householdId} matches an existing owner's - unless the caller opted into sharing
+     *       a household via {@code sharesHousehold}, in which case the household component is not
+     *       compared.</li>
+     * </ul>
      */
-    private void rejectDuplicateEmail(String normalizedEmail) {
-        if (normalizedEmail == null) {
-            return;
-        }
+    private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone,
+                                         String normalizedEmail, String householdId) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         for (Owner existing : this.clinicService.findAllOwners()) {
-            String existingEmail = existing.getEmail();
-            if (existingEmail != null && normalizedEmail.equals(existingEmail.toLowerCase(Locale.ROOT))) {
-                throw new DuplicateEmailException(normalizedEmail);
+            String existingTelephone;
+            try {
+                existingTelephone = normalizeTelephone(existing.getTelephone());
+            } catch (InvalidTelephoneException ex) {
+                existingTelephone = null;
+            }
+            if (normalizedTelephone.equals(existingTelephone)) {
+                throw new DuplicateTelephoneException(normalizedTelephone);
+            }
+            if (normalizedEmail != null) {
+                String existingEmail = existing.getEmail();
+                if (existingEmail != null && normalizedEmail.equals(existingEmail.toLowerCase(Locale.ROOT))) {
+                    throw new DuplicateEmailException(normalizedEmail);
+                }
+            }
+            if (!sharesHousehold
+                && householdId.equals(householdIdFor(existing.getLastName(), existing.getAddress()))) {
+                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
             }
         }
     }
@@ -315,27 +327,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             sb.append(token);
         }
         return sb.toString();
-    }
-
-    /**
-     * Rejects a create that would place a second owner in the same household as an existing one -
-     * i.e. another owner already has the same {@code lastName} and the same {@code address},
-     * compared case-insensitively with collapsed whitespace. The caller can opt in to sharing a
-     * household by setting {@code sharesHousehold} true, in which case this check is skipped. A
-     * match is reported via {@link DuplicateHouseholdException}, which the exception handler
-     * translates to a 409.
-     */
-    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto, String normalizedAddress) {
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return;
-        }
-        String lastName = collapse(ownerFieldsDto.getLastName());
-        for (Owner existing : this.clinicService.findAllOwners()) {
-            if (lastName.equals(collapse(existing.getLastName()))
-                && normalizedAddress.equals(normalizeAddress(existing.getAddress()))) {
-                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
-            }
-        }
     }
 
     /**
@@ -537,17 +528,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
         rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
-        rejectDuplicateHousehold(ownerFieldsDto, normalizedAddress);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setAddress(normalizedAddress);
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
-        rejectDuplicateTelephone(normalizedTelephone);
         owner.setTelephone(normalizedTelephone);
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
-        rejectDuplicateEmail(normalizedEmail);
         owner.setEmail(normalizedEmail);
+        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
+        rejectDuplicateIdentity(ownerFieldsDto, normalizedTelephone, normalizedEmail, householdId);
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         rejectDailyOwnerLimit(registrationDate);
@@ -555,7 +545,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(registrationDate);
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
-        owner.setHouseholdId(householdIdFor(owner.getLastName(), owner.getAddress()));
+        owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         owner.setMembershipLevel(membershipLevelFor(owner));

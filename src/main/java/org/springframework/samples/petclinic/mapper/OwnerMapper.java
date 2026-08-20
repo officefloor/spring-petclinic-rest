@@ -32,6 +32,10 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
+    @Mapping(target = "identityKey",
+        expression = "java(owner == null ? null : owner.getTelephone() + \"|\" "
+            + "+ (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\" "
+            + "+ (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
