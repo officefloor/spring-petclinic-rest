@@ -20,10 +20,13 @@ public class CheckOwnerDailyLimit {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws OwnerDailyLimitException {
-        LocalDate today = LocalDate.now();
+        // Count against the adjusted business day this owner will actually be registered on:
+        // the effective date (supplied or defaulted to today) rolled forward off a weekend.
+        LocalDate effective = request.getRegistrationDate() != null ? request.getRegistrationDate() : LocalDate.now();
+        LocalDate businessDay = BusinessDay.roll(effective);
         long count = ownerRepository.findAll().stream()
                 .map(Owner::getRegistrationDate)
-                .filter(today::equals)
+                .filter(businessDay::equals)
                 .count();
         if (count >= DAILY_LIMIT) {
             throw new OwnerDailyLimitException((int) count);
