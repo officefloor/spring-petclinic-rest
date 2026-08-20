@@ -93,6 +93,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Dedicated audit logger; create side-effects are recorded here so they can be observed independently. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Dedicated notification logger; the welcome notification enqueued on a successful create is emitted here. */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /**
      * Source of the monotonically increasing {@code seq} stamped on each {@link OwnerCreatedEvent}.
      * Incremented once per successful create so the emitted events form a gap-free, strictly increasing
@@ -226,6 +229,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = OwnerCreatedEvent.forCreatedOwner(
             OWNER_CREATED_SEQUENCE.incrementAndGet(), owner, ownerDto.getMembershipLevel());
         AUDIT.info(this.objectMapper.writeValueAsString(event));
+        NOTIFY.info("Welcome notification enqueued for owner id={} memberId={}",
+            owner.getId(), owner.getMemberId());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
