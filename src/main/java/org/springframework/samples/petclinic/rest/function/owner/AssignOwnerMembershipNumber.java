@@ -5,7 +5,7 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's {@code membershipNumber} formatted {@code <customerCode>-M<YY>}, where YY is
- * the last two digits of the registrationDate year (e.g. {@code SMI-0007-M26}). Runs after the
+ * the last two digits of the registrationDate year (e.g. {@code TOW-SMI-0007-M26}). Runs after the
  * customer code is assigned and the registration date is set.
  */
 public class AssignOwnerMembershipNumber {
