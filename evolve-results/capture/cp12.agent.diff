@@ -1,0 +1,149 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 00000000..ac02f960
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,57 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * Canonicalises a raw postal address entry into its normalized form.
++ *
++ * <p>Rules: trim leading/trailing whitespace, collapse internal runs of whitespace to a single
++ * space, upper-case, and expand common street-type abbreviations token-by-token
++ * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). An address that is empty or
++ * whitespace-only normalizes to the empty string.
++ *
++ * <p>The conversion is idempotent — feeding an already-normalized value back in returns it
++ * unchanged — so it can normalize both incoming requests and already-stored values for
++ * comparison (household duplicate detection and the shared household id).
++ */
++final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    /**
++     * @param raw the raw address text (may be {@code null})
++     * @return the normalized address, or {@code ""} when {@code raw} is blank after normalization
++     */
++    static String normalize(String raw) {
++        if (raw == null) {
++            return "";
++        }
++        String collapsed = raw.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        String[] tokens = collapsed.split(" ");
++        StringBuilder result = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                result.append(' ');
++            }
++            result.append(expand(tokens[i]));
++        }
++        return result.toString();
++    }
++
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+index ddb588f4..a5d5eb1b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckOwnerHouseholdUnique.java
+@@ -16,8 +16,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouse
+ 
+ /**
+  * Governs the household rule for a create-owner request. A "household" is a set of owners
+- * that share the same last name and the same address, both compared case-insensitively with
+- * runs of whitespace collapsed to a single space and leading/trailing whitespace trimmed.
++ * that share the same last name and the same address. The last name is compared
++ * case-insensitively with runs of whitespace collapsed to a single space and leading/trailing
++ * whitespace trimmed; the address is compared in its {@link AddressNormalizer normalized} form.
+  *
+  * <p>When the request would join an existing household (a match is found):
+  * <ul>
+@@ -36,11 +37,11 @@ public class CheckOwnerHouseholdUnique {
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository,
+             Out<HouseholdId> householdId) throws DuplicateOwnerHouseholdException {
+         String lastName = canonical(request.getLastName());
+-        String address = canonical(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         List<Owner> members = new ArrayList<>();
+         for (Owner existing : ownerRepository.findAll()) {
+             if (lastName.equals(canonical(existing.getLastName()))
+-                    && address.equals(canonical(existing.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))) {
+                 members.add(existing);
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+new file mode 100644
+index 00000000..18aa2359
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Normalizes the create-owner address: trims and collapses whitespace, upper-cases and expands
++ * common street-type abbreviations ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}).
++ * Mutates the published request in place so later steps store and return the normalized value, and
++ * so household duplicate detection and the shared household id compare the normalized form.
++ *
++ * <p>{@link ValidateOwnerFields} has already rejected an address that is blank after normalization,
++ * so at this point the value normalizes to a non-empty string.
++ */
++public class NormalizeOwnerAddress {
++
++    public void service(@Val OwnerFieldsDto request) {
++        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index cd001790..a8561c51 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -24,7 +24,9 @@ public class ValidateOwnerFields {
+         if (isBlank(request.getLastName())) {
+             missing.add("lastName");
+         }
+-        if (isBlank(request.getAddress())) {
++        // Address is checked against its normalized form: an entry that collapses to blank once
++        // whitespace is trimmed is rejected just as an absent one is.
++        if (AddressNormalizer.normalize(request.getAddress()).isEmpty()) {
+             missing.add("address");
+         }
+         if (isBlank(request.getCity())) {
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index cb39af78..5d4ce22e 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -11,6 +11,10 @@ normalize:
+ 
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerEmail
++  next: normalizeAddress
++
++normalizeAddress:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
+   next: unique
+ 
+ unique:
