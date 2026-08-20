@@ -35,6 +35,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
@@ -218,6 +219,19 @@ public abstract class OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Composes the owner's {@code salutation}: the {@code title} honorific followed by a
+     * single space and the lastName (e.g. 'DR Franklin'), or just the lastName when no
+     * title is on file.
+     */
+    protected String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
