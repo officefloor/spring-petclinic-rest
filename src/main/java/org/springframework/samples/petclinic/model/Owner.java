@@ -21,6 +21,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -258,18 +261,107 @@ public class Owner extends Person {
 
     /**
      * The owner's derived identity key: the single value all duplicate detection is expressed
-     * through. It is {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or
-     * empty)} computed from the already-normalized stored fields. Two owners are duplicates only
-     * when their whole identity keys are equal; in particular two members of the same household
-     * (same {@code householdId}) with different telephones have different identity keys. Not
-     * persisted: it is derived on demand from the identity-bearing fields.
+     * through. It is the lower-case hex SHA-256 digest of
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} computed from the
+     * already-normalized stored fields. Two owners are duplicates only when their whole identity
+     * keys are equal; in particular two owners with the same last name (hence the same soundex) and
+     * postcode but different telephones have different identity keys, so they are a soft match rather
+     * than a hard duplicate. Not persisted: it is derived on demand from the identity-bearing fields.
      */
     @Transient
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        String soundexPart = soundex(getLastName());
+        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+    }
+
+    /**
+     * Return the full lower-case hex SHA-256 digest of the UTF-8 bytes of {@code input}.
+     *
+     * @param input the value to digest
+     * @return the 64-character lower-case hex digest
+     */
+    private static String sha256Hex(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
+     * Compute the American Soundex code of a name: the retained first letter followed by three
+     * digits encoding the remaining consonants (padded with zeros / truncated to four characters).
+     * The vowels {@code A E I O U Y} act as separators, {@code H} and {@code W} are transparent, and
+     * runs of the same code collapse to a single digit. A {@code null}/letter-less value yields the
+     * empty string. Case- and punctuation-insensitive, so two spellings of the same surname share a
+     * code.
+     *
+     * @param value the name to encode, may be {@code null}
+     * @return the four-character Soundex code, or the empty string when there are no letters
+     */
+    public static String soundex(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isLetter(c)) {
+                letters.append(Character.toUpperCase(c));
+            }
+        }
+        if (letters.length() == 0) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char prev = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                // Transparent: keep the previous code so consonants either side stay adjacent.
+                continue;
+            }
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            prev = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.substring(0, 4);
+    }
+
+    /**
+     * Map a single upper-case letter to its Soundex digit; {@code '0'} for the vowels {@code A E I
+     * O U Y} and the transparent letters {@code H W}.
+     */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

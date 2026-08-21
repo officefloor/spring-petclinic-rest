@@ -18,9 +18,9 @@ package org.springframework.samples.petclinic.rest.advice;
 
 /**
  * Thrown by REST controllers when an owner cannot be created because its whole derived identity key
- * (normalized telephone, email and household id) exactly matches an existing owner's. This single
- * check subsumes the former separate telephone, email and household duplicate checks. The exception
- * handler reports it as a {@code 409 Conflict}.
+ * (the SHA-256 hex of normalized telephone, lower-cased email and the soundex of the last name)
+ * exactly matches an existing owner's. This single check subsumes the former separate telephone,
+ * email and household duplicate checks. The exception handler reports it as a {@code 409 Conflict}.
  */
 public class DuplicateIdentityException extends RuntimeException {
 

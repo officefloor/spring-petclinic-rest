@@ -40,7 +40,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -313,35 +312,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The household is keyed deterministically on (normalizedLastName, postcode): the householdId
         // is the first 12 hex characters of the SHA-256 digest of '<normalizedLastName>|<postcode>',
         // so any two owners with the same last name and postcode automatically resolve to the same
-        // household without an explicit opt-in. It is assigned up front so it feeds duplicate
-        // detection (the identity key below), the household-size read-back and household-duplicate
-        // detection alike.
+        // household without an explicit opt-in. It is assigned up front so it feeds the household-size
+        // read-back, the membership-level cap and the household-of-3 points. It is NO LONGER part of
+        // duplicate detection: that is expressed solely through the identity key below.
         String householdId = generateHouseholdId(owner.getLastName(), owner.getPostcode());
         owner.setHouseholdId(householdId);
-        // Household-duplicate detection: because the household is keyed on (lastName, postcode), any
-        // existing owner already carrying this householdId is a member of the same household, so this
-        // create looks like a household duplicate. Reject it with 409 unless it is a declared distinct
-        // household member: either the caller opts in via 'sharesHousehold', or the new owner supplies
-        // an email, a per-person identifier that marks it as a genuinely distinct member rather than a
-        // mistyped duplicate of an existing one. Either way the household link already exists by
-        // construction; an exact full-identity repeat is still caught by the identity-key check below.
-        boolean householdMemberExists = this.clinicService.findAllOwners().stream()
-            .filter(existing -> !existing.isDeleted())
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
-        boolean declaredHouseholdMember = false;
-        if (householdMemberExists) {
-            if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                || StringUtils.hasText(owner.getEmail())) {
-                declaredHouseholdMember = true;
-            } else {
-                throw new DuplicateHouseholdException(owner.getLastName(), owner.getPostcode());
-            }
-        }
-        // All duplicate detection is consolidated into this single derived identity key
-        // ('<normalizedTelephone>|<email or empty>|<householdId or empty>'): reject with 409 only
-        // when the new owner's WHOLE identity key exactly matches an existing owner's. Because the
-        // telephone is part of the key, two members of the same household with different telephones
-        // have different keys and are both allowed; only an exact full-key match is a duplicate.
+        // All duplicate detection is consolidated into this single derived identity key: the SHA-256
+        // hex of '<normalizedTelephone>|<lowerEmail>|<soundex(lastName)>'. Reject with 409 only when
+        // the new owner's WHOLE identity key exactly matches a non-deleted existing owner's. Because
+        // the telephone is part of the key, two owners with the same last name and postcode but
+        // different telephones have different keys and are both allowed (the second is a soft match,
+        // see below); only an exact full-key match is a hard duplicate.
         String identityKey = owner.getIdentityKey();
         boolean identityCollision = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
@@ -351,13 +332,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Soft-match detection: the new owner is not a hard (identity-key) duplicate, but it may
         // still be a likely duplicate of an existing owner. Flag it when an existing owner shares
-        // this owner's last name (compared case-insensitively with collapsed whitespace) and
-        // postcode while carrying a DIFFERENT normalized telephone. When several existing owners
-        // match, the one with the lowest id is chosen so the result is deterministic. A declared
-        // household member is an intentional co-resident, not a suspected duplicate, so it is never
-        // flagged (a create that reaches this point sharing a last name and postcode with an
-        // existing owner is precisely a declared household member).
-        Owner softMatch = declaredHouseholdMember ? null : findPossibleDuplicate(owner);
+        // this owner's soundex(lastName) and postcode while carrying a DIFFERENT identity key. When
+        // several existing owners match, the one with the lowest id is chosen so the result is
+        // deterministic.
+        Owner softMatch = findPossibleDuplicate(owner);
         if (softMatch != null) {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(softMatch.getId());
@@ -681,24 +659,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Find the existing owner the given (not-yet-persisted) owner is a soft duplicate of: one that
-     * shares the owner's last name (compared case-insensitively with collapsed whitespace) and
-     * postcode while carrying a different normalized telephone. A blank postcode never soft-matches
-     * (postcode is required for the match). When several owners match, the one with the lowest id is
-     * returned so the result is deterministic; {@code null} when there is no soft match.
+     * shares the owner's {@code soundex(lastName)} and postcode while carrying a DIFFERENT identity
+     * key. A blank postcode never soft-matches (postcode is required for the match). When several
+     * owners match, the one with the lowest id is returned so the result is deterministic;
+     * {@code null} when there is no soft match.
      *
-     * @param owner the incoming owner (with normalized telephone and last name resolved)
+     * @param owner the incoming owner (with normalized telephone, email and last name resolved)
      * @return the lowest-id matching existing owner, or {@code null} when none matches
      */
     private Owner findPossibleDuplicate(Owner owner) {
         if (!StringUtils.hasText(owner.getPostcode())) {
             return null;
         }
-        String normalizedLastName = normalizeForComparison(owner.getLastName());
-        String telephone = owner.getTelephone();
+        String soundex = Owner.soundex(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+            .filter(existing -> Owner.soundex(existing.getLastName()).equals(soundex)
                 && owner.getPostcode().equals(existing.getPostcode())
-                && !java.util.Objects.equals(telephone, existing.getTelephone()))
+                && !identityKey.equals(existing.getIdentityKey()))
             .min(java.util.Comparator.comparing(Owner::getId))
             .orElse(null);
     }
