@@ -2088,6 +2088,29 @@ components:
         - lastName
         - city
         - telephone
+    Identity:
+      title: Identity
+      description: Server-derived version-2 owner identity - the memberId, identityKey and householdId grouped together. Every identifier is rederived with a fixed 'V2' version tag mixed in, so no value produced under version 1 recurs. The user-facing 'locality', 'timezone' and owner segment stay the plain region and never carry the V2 tag.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: Server-assigned unified member identifier formatted '<REGION><FY><HASH8><CHK>', where REGION is the version-2 region (the plain region derived from the owner's postcode with a city fallback, with the fixed 'V2' tag mixed in), FY is the two-digit fiscal year (fiscal year starts 1 July) of the business-day-adjusted registrationDate, HASH8 is the first eight upper-case hex characters of SHA-256 over ('V2' + normalizedTelephone + lastName), and CHK is a single Luhn check digit over the digits of '<REGION><FY><HASH8>'.
+          type: string
+          example: 'V2NSW261A2B3C4D7'
+          readOnly: true
+        householdId:
+          title: Household ID
+          description: Server-assigned deterministic version-2 household identifier - the first 12 hex characters of SHA-256 over ('V2' + '|' + normalizedLastName + '|' + postcode). Owners with the same last name and postcode share it automatically. Always present.
+          type: string
+          example: '1a2b3c4d5e6f'
+          readOnly: true
+        identityKey:
+          title: Identity key
+          description: Server-derived version-2 duplicate-detection key, the lower-case hex SHA-256 of 'V2|normalizedTelephone|lowerEmail|soundex(lastName)' (a missing email contributes an empty segment). Two owners are duplicates only when their identity keys are equal, so a create is rejected with 409 only on an exact match; because the telephone is part of the key, same-household owners with different telephones are not hard duplicates.
+          type: string
+          example: '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b'
+          readOnly: true
     Owner:
       title: Owner
       description: A pet owner.
@@ -2127,24 +2150,15 @@ components:
               type: string
               example: 'G.F.'
               readOnly: true
-            memberId:
-              title: Member ID
-              description: Server-assigned unified member identifier formatted '<REGION><FY><HASH8><CHK>', where REGION is the region derived from the owner's postcode (city fallback), FY is the two-digit fiscal year (fiscal year starts 1 July) of the business-day-adjusted registrationDate, HASH8 is the first eight upper-case hex characters of SHA-256 over (normalizedTelephone + lastName), and CHK is a single Luhn check digit over the digits of '<REGION><FY><HASH8>'.
-              type: string
-              example: 'NSW261A2B3C4D7'
+            apiVersion:
+              title: API version
+              description: The version of the owner API contract this representation follows. Fixed at 2 for the version-2 identity release.
+              type: integer
+              format: int32
+              example: 2
               readOnly: true
-            householdId:
-              title: Household ID
-              description: Server-assigned deterministic household identifier - the first 12 hex characters of SHA-256 over (normalizedLastName + '|' + postcode). Owners with the same last name and postcode share it automatically. Always present.
-              type: string
-              example: '1a2b3c4d5e6f'
-              readOnly: true
-            identityKey:
-              title: Identity key
-              description: Server-derived duplicate-detection key, the lower-case hex SHA-256 of 'normalizedTelephone|lowerEmail|soundex(lastName)' (a missing email contributes an empty segment). Two owners are duplicates only when their identity keys are equal, so a create is rejected with 409 only on an exact match; because the telephone is part of the key, same-household owners with different telephones are not hard duplicates.
-              type: string
-              example: '+61412345678||HH-1A2B3C4D5E6F'
-              readOnly: true
+            identity:
+              $ref: '#/components/schemas/Identity'
             namesakeCount:
               title: Namesake count
               description: Server-assigned count of existing owners (at the time this owner was created) that share the same firstName and lastName, compared case-insensitively.

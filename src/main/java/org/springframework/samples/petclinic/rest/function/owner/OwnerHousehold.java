@@ -32,12 +32,14 @@ final class OwnerHousehold {
     }
 
     /**
-     * Deterministic identifier for the household of the given last name and postcode: the first 12
-     * hex characters of {@code SHA-256(normalizedLastName + '|' + postcode)}. A null postcode
-     * contributes an empty segment, so owners with the same last name and no postcode still share.
+     * Deterministic version-2 identifier for the household of the given last name and postcode: the
+     * first 12 hex characters of {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}.
+     * A null postcode contributes an empty segment, so owners with the same last name and no
+     * postcode still share.
      */
     static String id(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = org.springframework.samples.petclinic.util.IdentityVersion.TAG + "|"
+                + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         return sha256hex(key).substring(0, 12);
     }
 

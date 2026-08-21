@@ -13,13 +13,13 @@ import org.springframework.samples.petclinic.model.Owner;
  *
  * <p>The id is formatted {@code <REGION><FY><HASH8><CHK>} (no separators) where:
  * <ul>
- * <li>REGION is the region derived from the owner's postcode (via the shared {@link Locality}
- * derivation, which prefers the postcode and falls back to the city);</li>
+ * <li>REGION is the version-2 region code: the plain region derived from the owner's postcode (via
+ * the shared {@link Locality} derivation, which prefers the postcode and falls back to the city)
+ * with the fixed {@code 'V2'} tag mixed in, so the region inside the id differs from version 1;</li>
  * <li>FY is the two-digit fiscal year (fiscal year starts 1 July) of the business-day-adjusted
  * registrationDate;</li>
  * <li>HASH8 is the first eight UPPER-case hex characters of SHA-256 over the concatenation of the
- * owner's normalized (E.164) telephone and last name - the same HASH8 used by the region-and-hash
- * identity;</li>
+ * fixed {@code 'V2'} tag, the owner's normalized (E.164) telephone and last name;</li>
  * <li>CHK is a single Luhn check digit computed over the digits of {@code <REGION><FY><HASH8>}.</li>
  * </ul>
  * The id is a pure function of the owner's own fields, so it does not depend on how many owners
@@ -38,11 +38,24 @@ public final class MemberId {
      * @return the unified member id.
      */
     public static String of(Owner owner) {
-        String region = Locality.of(owner.getPostcode(), owner.getCity());
+        String region = regionCodeV2(owner);
         String fy = String.format("%02d", FiscalYear.yearSegment(owner.getRegistrationDate()));
-        String hash8 = hash8(owner.getTelephone(), owner.getLastName());
+        String hash8 = hash8(IdentityVersion.TAG + owner.getTelephone(), owner.getLastName());
         String base = region + fy + hash8;
         return base + CheckDigit.luhn(base);
+    }
+
+    /**
+     * The version-2 region code used <em>inside</em> the {@code memberId}: the plain region (see
+     * {@link #regionOf(Owner)}) with the fixed {@code 'V2'} tag mixed in. The tag lives only inside
+     * the identifier - the user-facing {@code locality}, {@code timezone} and the owner segment's
+     * derived region all read the plain {@link #regionOf(Owner)} and never carry the tag.
+     *
+     * @param owner the owner whose version-2 region code to derive.
+     * @return the {@code 'V2'}-tagged region code.
+     */
+    private static String regionCodeV2(Owner owner) {
+        return IdentityVersion.TAG + regionOf(owner);
     }
 
     /**

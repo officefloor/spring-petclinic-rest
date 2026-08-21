@@ -25,8 +25,8 @@ public final class OwnerIdentity {
      * @return the 64-character lower-case hex SHA-256 identity key.
      */
     public static String key(Owner owner) {
-        String raw = segment(owner.getTelephone()) + "|" + segment(owner.getEmail()).toLowerCase()
-                + "|" + Soundex.of(owner.getLastName());
+        String raw = IdentityVersion.TAG + "|" + segment(owner.getTelephone()) + "|"
+                + segment(owner.getEmail()).toLowerCase() + "|" + Soundex.of(owner.getLastName());
         return sha256hex(raw);
     }
 
