@@ -25,6 +25,7 @@ public interface OwnerMapper {
             + "Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
+    @Mapping(target = "timezone", expression = "java(deriveTimezone(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
@@ -95,6 +96,29 @@ public interface OwnerMapper {
             return "QLD";
         }
         return "UNKNOWN";
+    }
+
+    /**
+     * Derive the owner's IANA timezone from its locality/region using the fixed region-to-timezone
+     * table (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane). The region is
+     * the same value reported as {@code locality}. Returns null when the owner is absent or the region
+     * has no known timezone.
+     */
+    default String deriveTimezone(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String region = deriveLocality(owner);
+        if ("NSW".equals(region)) {
+            return "Australia/Sydney";
+        }
+        if ("VIC".equals(region)) {
+            return "Australia/Melbourne";
+        }
+        if ("QLD".equals(region)) {
+            return "Australia/Brisbane";
+        }
+        return null;
     }
 
     /**
