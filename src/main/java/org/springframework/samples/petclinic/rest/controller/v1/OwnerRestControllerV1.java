@@ -341,8 +341,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      *       candidate email, being optional, is not compared, and existing owners without an email
      *       are skipped);</li>
      *   <li>the {@code householdId} matches an existing owner's - unless the caller opted into sharing
-     *       a household via {@code sharesHousehold}, in which case the household component is not
-     *       compared.</li>
+     *       a household via {@code sharesHousehold}, or the new owner carries a (distinguishing) email,
+     *       in which case the household component is not compared. An email-bearing owner that shares a
+     *       household is admitted as an implicit household member rather than rejected, and its
+     *       {@code membershipLevel} is then capped one above the household's current maximum.</li>
      * </ul>
      */
     private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone,
@@ -367,7 +369,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     throw new DuplicateEmailException(normalizedEmail);
                 }
             }
-            if (!sharesHousehold
+            if (!sharesHousehold && normalizedEmail == null
                 && householdId.equals(householdIdFor(existing.getLastName(), existing.getPostcode()))) {
                 throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
             }
@@ -688,6 +690,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Caps a newly computed {@code membershipLevel} so it never exceeds one above the current maximum
+     * {@code membershipLevel} among the new owner's household members - the existing, non-deleted
+     * owners already carrying the same {@code householdId}. When the household has no existing member
+     * (or none with a recorded level) no cap applies and the level is returned unchanged; otherwise the
+     * level is limited to {@code max(member level) + 1}. The count reflects the state prior to this
+     * create, as the new owner has not yet been saved.
+     */
+    private int capMembershipLevelByHousehold(int membershipLevel, String householdId) {
+        Integer maxMemberLevel = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
+            if (!householdId.equals(existing.getHouseholdId())) {
+                continue;
+            }
+            Integer existingLevel = existing.getMembershipLevel();
+            if (existingLevel == null) {
+                continue;
+            }
+            if (maxMemberLevel == null || existingLevel > maxMemberLevel) {
+                maxMemberLevel = existingLevel;
+            }
+        }
+        if (maxMemberLevel == null) {
+            return membershipLevel;
+        }
+        return Math.min(membershipLevel, maxMemberLevel + 1);
+    }
+
+    /**
      * The owner's tenure in whole elapsed fiscal years: the number of 1 July fiscal-year boundaries
      * crossed between its {@code registrationDate} and the current server date. An owner with no
      * registration date, or one dated in the future, has a tenure of zero.
@@ -871,7 +904,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         int membershipPoints = membershipPointsFor(owner);
         owner.setMembershipPoints(membershipPoints);
-        owner.setMembershipLevel(membershipLevelForPoints(membershipPoints));
+        int membershipLevel = membershipLevelForPoints(membershipPoints);
+        // A declared household member (sharesHousehold) keeps its point-derived level; an owner
+        // admitted into an existing household implicitly has its level capped one above the
+        // household's current maximum.
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            membershipLevel = capMembershipLevelByHousehold(membershipLevel, owner.getHouseholdId());
+        }
+        owner.setMembershipLevel(membershipLevel);
         Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
