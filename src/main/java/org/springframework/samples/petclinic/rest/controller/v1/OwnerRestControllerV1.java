@@ -97,6 +97,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** A valid E.164 body: a leading '+' followed by 8 to 15 digits. */
     private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
 
+    /**
+     * Country calling codes with a fixed national-number length. An E.164 number whose country code
+     * is listed here must carry exactly the required number of national digits, otherwise it is
+     * rejected ({@code +61} requires 9 national digits, {@code +1} requires 10). Ordered so that a
+     * longer prefix is matched before a shorter one (e.g. {@code 61} before {@code 1}).
+     */
+    private static final Map<String, Integer> COUNTRY_NATIONAL_LENGTH = Map.of(
+        "61", 9,
+        "1", 10);
+
     /** Common street-type abbreviations expanded (on upper-cased tokens) during address normalization. */
     private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
         "ST", "STREET",
@@ -529,6 +539,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         if (!E164_PATTERN.matcher(candidate).matches()) {
             throw new InvalidRequestException(List.of("telephone"));
+        }
+        // For country codes with a known fixed national-number length, reject a candidate whose
+        // national digits (everything after the '+' and the country code) do not match that length.
+        String digits = candidate.substring(1);
+        for (Map.Entry<String, Integer> entry : COUNTRY_NATIONAL_LENGTH.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalLength = digits.length() - countryCode.length();
+                if (nationalLength != entry.getValue()) {
+                    throw new InvalidRequestException(List.of("telephone"));
+                }
+                break;
+            }
         }
         return candidate;
     }
