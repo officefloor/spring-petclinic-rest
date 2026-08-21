@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -161,10 +163,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         // Reject the request if another owner already shares the same last name and address
         // (compared case-insensitively with collapsed whitespace), unless the caller opts in
-        // by setting 'sharesHousehold' true.
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-            && householdAlreadyExists(owner.getLastName(), owner.getAddress())) {
-            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        // by setting 'sharesHousehold' true. When they do opt in and an existing household is
+        // matched, assign a stable shared 'householdId' to the new owner and backfill it onto
+        // every existing member that does not yet carry it.
+        List<Owner> householdMembers = findHouseholdMembers(owner.getLastName(), owner.getAddress());
+        if (!householdMembers.isEmpty()) {
+            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+            }
+            String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
+            owner.setHouseholdId(householdId);
+            for (Owner member : householdMembers) {
+                if (!householdId.equals(member.getHouseholdId())) {
+                    member.setHouseholdId(householdId);
+                    this.clinicService.saveOwner(member);
+                }
+            }
         }
         // Assign the customer code '<LAST3>-<NNNN>' before persisting.
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
@@ -207,20 +221,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Determine whether another owner already lives in the same household, i.e. shares both the
-     * last name and the address with the given values when each is compared case-insensitively with
+     * Find the existing owners that live in the same household as the given values, i.e. those that
+     * share both the last name and the address when each is compared case-insensitively with
      * collapsed whitespace.
      *
      * @param lastName the incoming owner's last name
      * @param address  the incoming owner's address
-     * @return {@code true} if an existing owner matches both fields
+     * @return the matching existing owners (possibly empty)
      */
-    private boolean householdAlreadyExists(String lastName, String address) {
+    private List<Owner> findHouseholdMembers(String lastName, String address) {
         String normalizedLastName = normalizeForComparison(lastName);
         String normalizedAddress = normalizeForComparison(address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress));
+            .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
+            .toList();
+    }
+
+    /**
+     * Generate a stable shared household identifier for the given last name and address. The value is
+     * derived deterministically from the normalized (case-insensitive, whitespace-collapsed) last name
+     * and address, so every owner joining the same household resolves to the same identifier. It is the
+     * first 12 upper-case hex characters of the SHA-256 digest of {@code <lastName>|<address>}.
+     *
+     * @param lastName the household's last name
+     * @param address  the household's address
+     * @return the stable household identifier
+     */
+    private String generateHouseholdId(String lastName, String address) {
+        String key = normalizeForComparison(lastName) + "|" + normalizeForComparison(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 12).toUpperCase(Locale.ROOT);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
