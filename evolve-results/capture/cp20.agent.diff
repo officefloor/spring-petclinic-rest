@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a0c9821b..4f7ea21b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -18,6 +18,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -177,6 +178,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        // The effective registration date must fall on a business day: when it lands on a Saturday or
++        // Sunday (whether supplied or defaulted above), roll it forward to the next Monday. Every value
++        // derived from the registration date below (daily create-limit, membership number) uses this
++        // adjusted date.
++        owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
+         // Reject the request once the maximum number of owners for the owner's registration day has
+         // been reached (100 or more owners already created on that date).
+         if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+@@ -262,6 +268,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             lastPrefix.toUpperCase(Locale.ROOT), sequence);
+     }
+ 
++    /**
++     * Roll a registration date forward onto a business day: a Saturday or Sunday is advanced to the
++     * following Monday, while a weekday is returned unchanged. This is the effective registration date
++     * that is stored, returned and used for every value derived from it.
++     *
++     * @param date the effective registration date (supplied or defaulted)
++     * @return the same date when it is a weekday, otherwise the next Monday
++     */
++    private LocalDate rollToBusinessDay(LocalDate date) {
++        DayOfWeek dayOfWeek = date.getDayOfWeek();
++        if (dayOfWeek == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (dayOfWeek == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++
+     /**
+      * Generate a membership number formatted {@code <customerCode>-M<YY>}, where {@code YY} is the
+      * last two digits of the {@code registrationDate} year (e.g. {@code SYD-SMI-0007-M26}).
