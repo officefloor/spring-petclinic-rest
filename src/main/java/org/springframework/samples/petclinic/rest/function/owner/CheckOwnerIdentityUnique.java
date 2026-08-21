@@ -8,14 +8,18 @@ import org.springframework.samples.petclinic.util.OwnerIdentity;
 
 /**
  * The single duplicate-detection step for the create-owner pipeline: it rejects a request whose
- * derived {@code identityKey} (normalizedTelephone|email|householdId) exactly equals an existing
- * owner's. This one check subsumes the former separate telephone, email and household checks.
+ * derived {@code identityKey} - the SHA-256 over
+ * {@code normalizedTelephone|lowerEmail|soundex(lastName)} - exactly equals an existing owner's.
+ * This one check subsumes the former separate telephone, email and household checks.
  *
- * <p>Runs after {@link BuildOwner} and {@link AssignHousehold}, so the new owner's telephone and
- * email are normalized and its household id is finalized (including any back-fill of existing
- * members) - the key is therefore compared against every other owner's finalized key. Because the
- * telephone is part of the key, two household members with different telephones have different keys
- * and both are allowed; only an exact whole-key match is a duplicate. Throws
+ * <p>The email-domain blocklist is applied earlier by {@link ValidateOwnerFields} (a blocklisted
+ * domain is a 400 before this step runs), so identity comparison never sees a blocklisted email.
+ *
+ * <p>Runs after {@link BuildOwner}, so the new owner's telephone and email are normalized - the key
+ * is compared against every other owner's key. A soft-deleted owner is ignored, so its key never
+ * blocks a new create. Because the telephone is part of the key, two owners with the same last name
+ * and postcode but different telephones have different keys and both are allowed (they become a soft
+ * match later); only an exact whole-key match is a duplicate. Throws
  * {@link DuplicateIdentityException} (handled as 409) on a collision.
  */
 public class CheckOwnerIdentityUnique {

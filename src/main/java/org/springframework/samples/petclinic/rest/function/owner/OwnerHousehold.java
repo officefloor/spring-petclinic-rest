@@ -12,8 +12,9 @@ import java.util.regex.Pattern;
  * coordination. Concretely the id is the first 12 hex characters of {@code SHA-256} over
  * {@code normalizedLastName + '|' + postcode}. Because the id is a pure function of those two
  * fields, sharing a household is no longer something a request opts into to create a link - it
- * happens automatically. The {@code sharesHousehold} flag now only bypasses the household-duplicate
- * block (see {@link CheckOwnerHouseholdUnique}).
+ * happens automatically. Duplicate detection is now the single {@code identityKey}, so there is no
+ * separate household-duplicate block; the {@code sharesHousehold} flag now only suppresses the
+ * soft-match flag (see {@link AssignPossibleDuplicate}) for a declared household member.
  */
 final class OwnerHousehold {
 
