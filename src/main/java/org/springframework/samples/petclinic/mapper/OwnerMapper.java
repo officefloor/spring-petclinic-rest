@@ -24,9 +24,10 @@ public interface OwnerMapper {
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(3, 1 "
+        expression = "java(Math.min(4, 1 "
             + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
-            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0) "
+            + "+ (tenureDays(owner) > 365 ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
@@ -86,6 +87,20 @@ public interface OwnerMapper {
             return OwnerDto.AgeBandEnum.ADULT;
         }
         return OwnerDto.AgeBandEnum.SENIOR;
+    }
+
+    /**
+     * Compute the owner's tenure in whole days: the number of days between the owner's registration
+     * date and today. A newly created owner registered today therefore has a tenure of zero, and an
+     * owner with no registration date is treated as having zero tenure. Used to gate membership
+     * level 4, which requires a tenure of more than 365 days.
+     */
+    default long tenureDays(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
     }
 
     /**
