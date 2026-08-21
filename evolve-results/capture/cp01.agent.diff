@@ -1,0 +1,137 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a82ccaab..a464e2bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -138,6 +138,11 @@ public class ExceptionControllerAdvice {
+         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
+         if (bindingResult.hasErrors()) {
+             errors.addAllErrors(bindingResult);
++            List<String> invalidFields = bindingResult.getFieldErrors().stream()
++                .map(fieldError -> fieldError.getField())
++                .distinct()
++                .toList();
++            detail.setProperty("errors", invalidFields);
+             List<ValidationMessageDto> schemaValidationErrors = bindingResult.getFieldErrors().stream()
+                 .map(fieldError -> {
+                     String rejectedValue = Objects.toString(fieldError.getRejectedValue(), "null");
+@@ -162,4 +167,22 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link InvalidRequestException} raised when a request payload is missing or blank in one
++     * or more required fields. Returns a 400 Bad Request whose {@code errors} array lists the name of
++     * each missing field.
++     *
++     * @param e The {@link InvalidRequestException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(InvalidRequestException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidRequestException(InvalidRequestException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        detail.setProperty("errors", e.getErrors());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidRequestException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidRequestException.java
+new file mode 100644
+index 00000000..dd9cb55f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/InvalidRequestException.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.List;
++
++/**
++ * Thrown by REST controllers when a request payload is missing or blank in one or more
++ * required fields. Carries the names of the offending fields so the exception handler can
++ * report them in the {@code errors} array of a {@code 400 Bad Request} response.
++ */
++public class InvalidRequestException extends RuntimeException {
++
++    private final List<String> errors;
++
++    public InvalidRequestException(List<String> errors) {
++        super("Missing or blank required fields: " + errors);
++        this.errors = List.copyOf(errors);
++    }
++
++    public List<String> getErrors() {
++        return this.errors;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a62a9e5..b55a31ce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -16,6 +16,7 @@
+ 
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -41,6 +43,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.util.UriComponentsBuilder;
++import org.springframework.util.StringUtils;
+ 
+ import jakarta.transaction.Transactional;
+ 
+@@ -99,6 +102,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        List<String> missingFields = new ArrayList<>();
++        if (!StringUtils.hasText(ownerFieldsDto.getFirstName())) {
++            missingFields.add("firstName");
++        }
++        if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
++            missingFields.add("lastName");
++        }
++        if (!StringUtils.hasText(ownerFieldsDto.getAddress())) {
++            missingFields.add("address");
++        }
++        if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
++            missingFields.add("city");
++        }
++        if (!StringUtils.hasText(ownerFieldsDto.getTelephone())) {
++            missingFields.add("telephone");
++        }
++        if (!missingFields.isEmpty()) {
++            throw new InvalidRequestException(missingFields);
++        }
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
