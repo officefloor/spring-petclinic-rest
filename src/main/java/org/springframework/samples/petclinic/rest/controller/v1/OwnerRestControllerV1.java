@@ -336,7 +336,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Assign the customer code '<REGION>-<HASH8>' before persisting.
         owner.setCustomerCode(generateCustomerCode(owner));
         // Assign the membership number '<customerCode>-M<YY>' where YY is the last two
-        // digits of the registration date year (e.g. 'NSW-1A2B3C4D-M26').
+        // digits of the fiscal year the registration date falls in (e.g. 'NSW-1A2B3C4D-M27').
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         populateHouseholdSize(owner);
@@ -510,15 +510,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Generate a membership number formatted {@code <customerCode>-M<YY>}, where {@code YY} is the
-     * last two digits of the {@code registrationDate} year (e.g. {@code SYD-SMI-0007-M26}).
+     * last two digits of the fiscal year that the (business-day-adjusted) {@code registrationDate}
+     * falls in (e.g. {@code SYD-SMI-0007-M27} for a registration in FY27).
      *
      * @param customerCode     the owner's already-assigned customer code
-     * @param registrationDate the owner's registration date
+     * @param registrationDate the owner's business-day-adjusted registration date
      * @return the generated membership number
      */
     private String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        String yy = String.format("%02d", fiscalYear(registrationDate) % 100);
         return String.format("%s-M%s", customerCode, yy);
+    }
+
+    /**
+     * The fiscal year that the given date falls in. The fiscal year starts on 1 July, so a date in
+     * July to December belongs to the fiscal year ending in the following calendar year, and a date
+     * in January to June belongs to the fiscal year ending in the same calendar year. The fiscal
+     * year is identified by that ending calendar year (e.g. 1 July 2026 to 30 June 2027 is 2027).
+     *
+     * @param date the date whose fiscal year is required
+     * @return the fiscal year's ending calendar year
+     */
+    private int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
     }
 
     /**

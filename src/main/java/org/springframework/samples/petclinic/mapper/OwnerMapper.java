@@ -35,6 +35,7 @@ public interface OwnerMapper {
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -108,7 +109,7 @@ public interface OwnerMapper {
     /**
      * Compute the owner's membership points: starting at 0, add 2 when an email is present, add 1
      * when {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3 for a
-     * tenure of more than 365 days.
+     * tenure of one or more elapsed fiscal years.
      */
     default int membershipPoints(Owner owner) {
         int points = 0;
@@ -121,7 +122,7 @@ public interface OwnerMapper {
         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -145,17 +146,40 @@ public interface OwnerMapper {
     }
 
     /**
-     * Compute the owner's tenure in whole days: the number of days between the owner's registration
-     * date and today. A newly created owner registered today therefore has a tenure of zero, and an
-     * owner with no registration date is treated as having zero tenure. Used to gate the tenure
-     * membership points, which require a tenure of more than 365 days.
+     * Compute the owner's tenure as the number of elapsed fiscal years: the difference between the
+     * fiscal year of today and the fiscal year of the owner's registration date. A newly created
+     * owner registered in the current fiscal year therefore has a tenure of zero, and an owner with
+     * no registration date is treated as having zero tenure. Used to gate the tenure membership
+     * points, which require a tenure of one or more elapsed fiscal years.
      */
-    default long tenureDays(Owner owner) {
+    default long tenureFiscalYears(Owner owner) {
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
+        return (long) fiscalYear(java.time.LocalDate.now()) - fiscalYear(registrationDate);
+    }
+
+    /**
+     * The fiscal year that the given date falls in. The fiscal year starts on 1 July, so a date in
+     * July to December belongs to the fiscal year ending in the following calendar year, and a date
+     * in January to June belongs to the fiscal year ending in the same calendar year. The fiscal
+     * year is identified by that ending calendar year (e.g. 1 July 2026 to 30 June 2027 is 2027).
+     */
+    default int fiscalYear(java.time.LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * Derive the owner's fiscal year label, formatted {@code FY<YY>}, where {@code YY} is the last
+     * two digits of the fiscal year that the (business-day-adjusted) registration date falls in
+     * (e.g. {@code FY27} for a registration in the fiscal year ending 30 June 2027). Falls back to
+     * the current date when no registration date is present.
+     */
+    default String deriveFiscalYear(Owner owner) {
+        java.time.LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        return String.format("FY%02d", fiscalYear(reference) % 100);
     }
 
     /**
