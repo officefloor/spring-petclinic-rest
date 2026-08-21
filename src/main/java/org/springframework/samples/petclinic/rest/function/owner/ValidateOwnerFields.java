@@ -6,6 +6,7 @@ import java.util.List;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerEmailException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,7 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidOwnerEmailException, InvalidOwnerTelephoneException {
+            throws MissingOwnerFieldsException, InvalidOwnerEmailException, InvalidOwnerTelephoneException,
+            InvalidOwnerPostcodeException {
         // Normalize the address before the required-field check, so an address that is blank after
         // normalization is rejected and later steps see (and store) the canonical form.
         OwnerAddress.normalize(request);
@@ -45,6 +47,8 @@ public class ValidateOwnerFields {
         OwnerTelephone.normalize(request);
         // An owner may include an email; when present it must be valid and is stored lower-cased.
         OwnerEmail.normalize(request);
+        // An owner may include a postcode; when present it must be 4 digits valid for the city's region.
+        OwnerPostcode.validate(request);
         validated.set(request);
     }
 
