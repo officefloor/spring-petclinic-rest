@@ -28,6 +28,7 @@ public interface OwnerMapper {
             + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
             + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
+    @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
@@ -75,6 +76,35 @@ public interface OwnerMapper {
             return "QLD";
         }
         return "UNKNOWN";
+    }
+
+    /**
+     * Compute the single Luhn check digit (0-9) over the digits contained in the given value.
+     * Non-digit characters (such as the hyphens in a customer code) are ignored. A null or
+     * digit-free value yields a check digit of 0.
+     */
+    default Integer luhnCheckDigit(String value) {
+        if (value == null) {
+            return 0;
+        }
+        int sum = 0;
+        boolean doubleDigit = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubleDigit) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubleDigit = !doubleDigit;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
