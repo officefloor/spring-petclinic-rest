@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * The {@code address} is normalized (see {@link AddressNormalizer}) and republished so it
  * is stored and returned in canonical form; an address that is blank after normalization
  * is a required-field 400.
+ * The optional {@code registrationDate} is validated only when present: a date later than
+ * the server's current date is a 400.
  * Runs first and republishes the body as a variable for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
@@ -86,6 +89,12 @@ public class ValidateOwnerFields {
             else {
                 request.setPostcode(trimmed);
             }
+        }
+        // registrationDate is optional; validated only when present. A date later than the
+        // server's current date is a 400 — an owner cannot be registered in the future.
+        LocalDate registrationDate = request.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            errors.add("registrationDate");
         }
         if (!errors.isEmpty()) {
             throw new MissingFieldsException(errors);
