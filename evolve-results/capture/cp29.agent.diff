@@ -1,0 +1,162 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index fc379e59..684fe306 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -51,6 +51,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -107,6 +110,14 @@ public class Owner extends Person {
+         this.email = email;
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public LocalDate getRegistrationDate() {
+         return this.registrationDate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index ad5bce7d..64e31d81 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -2,9 +2,11 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Map;
+ import java.util.regex.Pattern;
+ 
+ import net.officefloor.plugin.variable.Out;
++import org.springframework.samples.petclinic.mapper.Localities;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.MissingFieldsException;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -28,6 +30,14 @@ public class ValidateOwnerFields {
+     /** Syntactic email check: one '@', non-empty local part, and a dotted domain. */
+     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /** A well-formed postcode is exactly four digits. */
++    private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
++
++    /** Region -> inclusive 4-digit postcode range {low, high}. A city whose region is not
++     *  listed (derives "UNKNOWN") accepts any well-formed 4-digit postcode. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingFieldsException {
+         List<String> errors = new ArrayList<>();
+@@ -64,6 +74,19 @@ public class ValidateOwnerFields {
+                 request.setEmail(normalized);
+             }
+         }
++        // Postcode is optional; validated only when present. A malformed (non-4-digit) postcode
++        // is a 400, and a well-formed postcode outside its city's region range is a 400 too.
++        // A city with no known region accepts any 4-digit postcode.
++        String postcode = request.getPostcode();
++        if (postcode != null && !postcode.isBlank()) {
++            String trimmed = postcode.trim();
++            if (!POSTCODE.matcher(trimmed).matches() || !inRegionRange(request.getCity(), trimmed)) {
++                errors.add("postcode");
++            }
++            else {
++                request.setPostcode(trimmed);
++            }
++        }
+         if (!errors.isEmpty()) {
+             throw new MissingFieldsException(errors);
+         }
+@@ -73,4 +96,16 @@ public class ValidateOwnerFields {
+     private static boolean isBlank(String value) {
+         return value == null || value.isBlank();
+     }
++
++    /** True when the 4-digit {@code postcode} is acceptable for the city's region: either the
++     *  city has no known region (accepts any 4-digit postcode) or the postcode falls within the
++     *  region's inclusive range. */
++    private static boolean inRegionRange(String city, String postcode) {
++        int[] range = REGION_POSTCODES.get(Localities.region(city));
++        if (range == null) {
++            return true;
++        }
++        int value = Integer.parseInt(postcode);
++        return value >= range[0] && value <= range[1];
++    }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 89fdfaf4..e945b93a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 675b9a81..461583fa 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index e1cfc6a0..0dd76168 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
++  postcode VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0f7089af..60309f36 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
++                                      postcode   TEXT,
+                                       registration_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 44cff797..fdf3d0ae 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2038,6 +2038,12 @@ components:
+           format: email
+           maxLength: 255
+           example: 'george.franklin@example.com'
++        postcode:
++          title: Postcode
++          description: "A 4-digit postcode. Optional; validated only when present. When supplied it must be valid for the owner's city per a fixed region table (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city with no known region accepts any 4-digit postcode. Stored and returned when given."
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+         registrationDate:
+           title: Registration date
+           description: The date the pet owner was registered. Optional on create; when omitted it defaults to the server's current date. Returned in ISO 'YYYY-MM-DD' format.
