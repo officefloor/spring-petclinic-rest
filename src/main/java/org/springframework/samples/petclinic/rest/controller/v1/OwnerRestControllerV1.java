@@ -44,8 +44,6 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitExceededException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.FutureRegistrationDateException;
 import org.springframework.samples.petclinic.rest.advice.InvalidEmailException;
@@ -318,38 +316,101 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The single derived identity of an owner, {@code normalizedTelephone + '|' + (email or empty)
-     * + '|' + householdId}, into which all duplicate detection is consolidated. Two owners are the
-     * same identity only when this whole key matches: because the normalized telephone is part of
-     * the key, two members of the same household (same {@code householdId}) with different
-     * telephones have different identity keys. A {@code null} email contributes an empty middle
-     * segment. This is the value returned to callers as {@code identityKey}.
+     * The single derived identity of an owner: the 64-character lower-case SHA-256 hex digest over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, into which all
+     * duplicate detection is consolidated. Two owners are the same identity only when this whole key
+     * matches: because the normalized telephone is part of the pre-image, two owners who share a
+     * surname (same soundex) and postcode but carry different telephones have different identity
+     * keys. A {@code null} email contributes an empty middle segment. This is the value returned to
+     * callers as {@code identityKey}.
      */
-    private static String identityKeyFor(String normalizedTelephone, String normalizedEmail, String householdId) {
-        return normalizedTelephone + "|" + (normalizedEmail == null ? "" : normalizedEmail) + "|" + householdId;
+    private static String identityKeyFor(String normalizedTelephone, String normalizedEmail, String lastName) {
+        String preimage = normalizedTelephone + "|" + (normalizedEmail == null ? "" : normalizedEmail)
+            + "|" + soundex(lastName);
+        return sha256Hex(preimage);
     }
 
     /**
-     * Rejects a create whose derived identity collides with an existing owner's, reported via one
-     * of the {@code Duplicate*} exceptions the handler translates to a 409. The former separate
-     * telephone, email and household checks are now expressed through the components of the single
-     * identity key:
-     * <ul>
-     *   <li>the normalized telephone matches an existing owner's canonical E.164 telephone (an
-     *       existing value that cannot form a valid E.164 number is skipped rather than colliding);</li>
-     *   <li>a present, lower-cased email matches an existing owner's lower-cased email (a {@code null}
-     *       candidate email, being optional, is not compared, and existing owners without an email
-     *       are skipped);</li>
-     *   <li>the {@code householdId} matches an existing owner's - unless the caller opted into sharing
-     *       a household via {@code sharesHousehold}, or the new owner carries a (distinguishing) email,
-     *       in which case the household component is not compared. An email-bearing owner that shares a
-     *       household is admitted as an implicit household member rather than rejected, and its
-     *       {@code membershipLevel} is then capped one above the household's current maximum.</li>
-     * </ul>
+     * The American Soundex code of a name: its first letter followed by up to three digits encoding
+     * the remaining consonants (b/f/p/v->1, c/g/j/k/q/s/x/z->2, d/t->3, l->4, m/n->5, r->6), with
+     * adjacent duplicate codes collapsed, vowels (and y) resetting the run, and h/w transparent so
+     * consonants they separate are still treated as adjacent. The result is padded with zeros to
+     * exactly four characters. A {@code null} or letterless name yields the empty string.
      */
-    private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone,
-                                         String normalizedEmail, String householdId) {
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+    private static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char prev = soundexCode(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexCode(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            prev = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * The Soundex digit for a single upper-case letter, or {@code '0'} for a vowel, y, h or w (which
+     * carry no code).
+     */
+    private static char soundexCode(char c) {
+        return switch (c) {
+            case 'B', 'F', 'P', 'V' -> '1';
+            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
+            case 'D', 'T' -> '3';
+            case 'L' -> '4';
+            case 'M', 'N' -> '5';
+            case 'R' -> '6';
+            default -> '0';
+        };
+    }
+
+    /**
+     * The full lower-case SHA-256 hex digest (64 characters) of the UTF-8 bytes of {@code value}.
+     */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
+    }
+
+    /**
+     * Rejects a create whose derived identity collides with an existing owner's, reported via
+     * {@link DuplicateTelephoneException} which the handler translates to a 409. Duplicate detection
+     * is now the single identity key: the new owner's {@link #identityKeyFor identityKey} (the
+     * SHA-256 over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}) is
+     * compared against each existing owner's, ignoring owners flagged deleted. The email-domain
+     * block list has already been applied while normalizing the email, so it takes effect first. An
+     * existing telephone that cannot form a valid E.164 number is skipped rather than colliding.
+     * Because the telephone is part of the key, two owners with the same surname and postcode but
+     * different telephones no longer collide here - they are surfaced as a soft match instead. The
+     * former separate telephone, email and household 409 blocks are all subsumed by this key.
+     */
+    private void rejectDuplicateIdentity(String normalizedTelephone, String normalizedEmail, String lastName) {
+        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName);
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (existing.isDeleted()) {
                 continue;
@@ -358,20 +419,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
             try {
                 existingTelephone = normalizeTelephone(existing.getTelephone());
             } catch (InvalidTelephoneException ex) {
-                existingTelephone = null;
+                continue;
             }
-            if (normalizedTelephone.equals(existingTelephone)) {
+            String existingEmail = existing.getEmail() == null ? null : existing.getEmail().toLowerCase(Locale.ROOT);
+            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName());
+            if (identityKey.equals(existingKey)) {
                 throw new DuplicateTelephoneException(normalizedTelephone);
-            }
-            if (normalizedEmail != null) {
-                String existingEmail = existing.getEmail();
-                if (existingEmail != null && normalizedEmail.equals(existingEmail.toLowerCase(Locale.ROOT))) {
-                    throw new DuplicateEmailException(normalizedEmail);
-                }
-            }
-            if (!sharesHousehold && normalizedEmail == null
-                && householdId.equals(householdIdFor(existing.getLastName(), existing.getPostcode()))) {
-                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
             }
         }
     }
@@ -583,19 +636,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Finds an existing owner that makes the new owner a <em>possible</em> (soft) duplicate: one
-     * that is not a hard identity collision but shares the new owner's {@code lastName} (compared
-     * case-insensitively) and {@code postcode} while carrying a different normalized telephone. The
-     * new owner's postcode must be present for a soft match to be possible. When several existing
-     * owners qualify the one with the lowest id is chosen. Returns the matching owner's id, or
-     * {@code null} when there is no soft match. This is evaluated after the hard-duplicate check has
-     * already passed, so any owner sharing the lastName and postcode necessarily differs in telephone.
-     *
-     * <p>Because the household is now keyed on {@code (lastName, postcode)} - exactly the soft-match
-     * key - a co-member reached here can only be one the caller declared via {@code sharesHousehold}
-     * (otherwise the hard household-duplicate check would already have rejected it). A declared
-     * household member is not a suspected duplicate, so no soft match is reported in that case.
+     * that is not a hard identity collision but whose {@code lastName} has the same
+     * {@link #soundex soundex} code as the new owner's and whose {@code postcode} matches, while its
+     * {@link #identityKeyFor identityKey} differs. The new owner's postcode must be present for a
+     * soft match to be possible. When several existing owners qualify the one with the lowest id is
+     * chosen. Returns the matching owner's id, or {@code null} when there is no soft match. This is
+     * evaluated after the hard-duplicate check has already passed, so any surviving owner sharing the
+     * surname's soundex and postcode necessarily has a different identity key (typically a different
+     * telephone). A caller that declares {@code sharesHousehold} is deliberately joining an existing
+     * household, so it is not flagged as a suspected duplicate.
      */
-    private Integer findPossibleDuplicateOf(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone) {
+    private Integer findPossibleDuplicateOf(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone,
+                                            String normalizedEmail) {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return null;
         }
@@ -604,12 +656,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String lastName = ownerFieldsDto.getLastName();
+        if (lastName == null) {
+            return null;
+        }
+        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName);
+        String soundex = soundex(lastName);
         Integer matchId = null;
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (existing.isDeleted()) {
                 continue;
             }
-            if (lastName == null || !lastName.equalsIgnoreCase(existing.getLastName())) {
+            if (!soundex.equals(soundex(existing.getLastName()))) {
                 continue;
             }
             if (!postcode.equals(existing.getPostcode())) {
@@ -619,9 +676,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             try {
                 existingTelephone = normalizeTelephone(existing.getTelephone());
             } catch (InvalidTelephoneException ex) {
-                existingTelephone = null;
+                continue;
             }
-            if (normalizedTelephone.equals(existingTelephone)) {
+            String existingEmail = existing.getEmail() == null ? null : existing.getEmail().toLowerCase(Locale.ROOT);
+            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName());
+            if (identityKey.equals(existingKey)) {
                 continue;
             }
             if (existing.getId() != null && (matchId == null || existing.getId() < matchId)) {
@@ -889,7 +948,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setEmail(normalizedEmail);
         validatePostcode(owner.getCity(), owner.getPostcode());
         String householdId = householdIdFor(owner.getLastName(), owner.getPostcode());
-        rejectDuplicateIdentity(ownerFieldsDto, normalizedTelephone, normalizedEmail, householdId);
+        rejectDuplicateIdentity(normalizedTelephone, normalizedEmail, owner.getLastName());
         rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
@@ -912,7 +971,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             membershipLevel = capMembershipLevelByHousehold(membershipLevel, owner.getHouseholdId());
         }
         owner.setMembershipLevel(membershipLevel);
-        Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone);
+        Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone, normalizedEmail);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);

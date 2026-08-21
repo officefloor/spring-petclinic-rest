@@ -9,8 +9,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -29,10 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
-    @Mapping(target = "identityKey",
-        expression = "java(owner == null ? null : owner.getTelephone() + \"|\" "
-            + "+ (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\" "
-            + "+ (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
+    @Mapping(target = "identityKey", expression = "java(deriveIdentityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
@@ -250,6 +251,88 @@ public interface OwnerMapper {
         int fiscalYear = registrationDate.getMonthValue() >= java.time.Month.JULY.getValue()
             ? registrationDate.getYear() + 1 : registrationDate.getYear();
         return String.format("FY%02d", fiscalYear % 100);
+    }
+
+    /**
+     * Derive the owner's {@code identityKey}: the 64-character lower-case SHA-256 hex digest over
+     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The telephone and
+     * email are the owner's already-normalized stored values (E.164 telephone, lower-cased email); a
+     * null email contributes an empty middle segment. Returns null when the owner is absent. This is
+     * the same key duplicate detection compares on create.
+     */
+    default String deriveIdentityKey(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        return sha256Hex(telephone + "|" + email + "|" + soundex(owner.getLastName()));
+    }
+
+    /**
+     * The American Soundex code of a name: its first letter followed by up to three digits encoding
+     * the remaining consonants (b/f/p/v->1, c/g/j/k/q/s/x/z->2, d/t->3, l->4, m/n->5, r->6), with
+     * adjacent duplicate codes collapsed, vowels (and y) resetting the run, and h/w transparent. The
+     * result is padded with zeros to exactly four characters. A null or letterless name yields "".
+     */
+    private static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char prev = soundexCode(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            if (c == 'H' || c == 'W') {
+                continue;
+            }
+            char digit = soundexCode(c);
+            if (digit != '0' && digit != prev) {
+                code.append(digit);
+            }
+            prev = digit;
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * The Soundex digit for a single upper-case letter, or {@code '0'} for a vowel, y, h or w.
+     */
+    private static char soundexCode(char c) {
+        return switch (c) {
+            case 'B', 'F', 'P', 'V' -> '1';
+            case 'C', 'G', 'J', 'K', 'Q', 'S', 'X', 'Z' -> '2';
+            case 'D', 'T' -> '3';
+            case 'L' -> '4';
+            case 'M', 'N' -> '5';
+            case 'R' -> '6';
+            default -> '0';
+        };
+    }
+
+    /**
+     * The full lower-case SHA-256 hex digest (64 characters) of the UTF-8 bytes of {@code value}.
+     */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
