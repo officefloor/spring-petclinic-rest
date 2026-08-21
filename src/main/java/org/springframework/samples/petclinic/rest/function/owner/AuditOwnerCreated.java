@@ -8,21 +8,31 @@ import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.samples.petclinic.util.MembershipLevel;
 
 /**
- * Emits an audit trail line for a newly created owner. Runs after the owner has been
- * saved so the assigned id is available. The line is published to the dedicated
- * {@code AUDIT} logger and carries the owner id, the customerCode, the
- * registrationDate, the numeric membershipLevel and the membershipNumber.
+ * Emits the audit trail for a newly created owner. Runs after the owner has been saved so the
+ * assigned id is available. Two things are published to the dedicated {@code AUDIT} logger:
+ * <ol>
+ * <li>a human-readable line carrying the owner id, the customerCode, the registrationDate, the
+ * numeric membershipLevel and the membershipNumber; and</li>
+ * <li>an immutable structured {@link OwnerCreatedEvent} (as JSON) carrying a monotonic sequence
+ * number, the owner id, the owner's current primary identifier and the membershipLevel.</li>
+ * </ol>
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
+        int membershipLevel = MembershipLevel.of(owner);
         String membershipNumber = String.format("%s-M%02d", owner.getCustomerCode(),
                 FiscalYear.yearSegment(owner.getRegistrationDate()));
         AUDIT.info(
                 "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                MembershipLevel.of(owner), membershipNumber);
+                membershipLevel, membershipNumber);
+
+        // The event carries the owner's CURRENT primary identifier — the customerCode today; when a
+        // later checkpoint unifies it into the memberId, feed the memberId here instead.
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(owner.getId(), owner.getCustomerCode(), membershipLevel);
+        AUDIT.info(event.toJson());
     }
 }
