@@ -6,15 +6,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * Immutable, structured audit event for a newly created owner, emitted (as JSON) to the
  * {@code AUDIT} logger alongside the human-readable audit line.
  *
- * <p>The event carries the owner id and the owner's <em>current primary identifier</em>. Today
- * that identifier is the {@code customerCode}; when a later checkpoint unifies the customerCode
- * into a {@code memberId}, the caller passes the memberId here instead and the event carries it —
- * the shape of the event does not change, only the value fed into {@code customerCode}.
+ * <p>The event carries the owner id and the owner's primary identifier, the unified
+ * {@code memberId}.
  *
  * <p>{@code seq} is a process-wide, monotonically increasing sequence across creates: each built
  * event takes the next value, so the order and count of creates is recoverable from the log.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, int membershipLevel,
         String event) {
 
     /** The single event marker this type emits. */
@@ -27,12 +25,12 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
      * Build the next event for a saved owner.
      *
      * @param ownerId           the saved owner's id.
-     * @param customerCode      the owner's current primary identifier (customerCode today).
+     * @param memberId          the owner's primary identifier (the unified memberId).
      * @param membershipLevel   the owner's effective membership level.
      * @return an event stamped with the next sequence number.
      */
-    public static OwnerCreatedEvent of(Integer ownerId, String customerCode, int membershipLevel) {
-        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), ownerId, customerCode, membershipLevel,
+    public static OwnerCreatedEvent of(Integer ownerId, String memberId, int membershipLevel) {
+        return new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), ownerId, memberId, membershipLevel,
                 OWNER_CREATED);
     }
 
@@ -41,7 +39,7 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, 
         return "{"
                 + "\"seq\":" + this.seq
                 + ",\"ownerId\":" + this.ownerId
-                + ",\"customerCode\":" + quote(this.customerCode)
+                + ",\"memberId\":" + quote(this.memberId)
                 + ",\"membershipLevel\":" + this.membershipLevel
                 + ",\"event\":" + quote(this.event)
                 + "}";

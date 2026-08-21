@@ -23,7 +23,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Derives an owner's segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM}
  * when the {@link MembershipLevel} is 3 or more, otherwise {@code STANDARD}. AREA is
- * {@code METRO} when the {@link CustomerCode#regionOf(Owner) locality} is a known region
+ * {@code METRO} when the {@link MemberId#regionOf(Owner) locality} is a known region
  * (NSW, VIC or QLD), otherwise {@code REGIONAL}. The four possible values are therefore
  * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} and
  * {@code STANDARD_REGIONAL}.
@@ -45,7 +45,7 @@ public final class OwnerSegment {
      */
     public static String of(Owner owner) {
         String tier = MembershipLevel.of(owner) >= PREMIUM_LEVEL ? "PREMIUM" : "STANDARD";
-        String area = METRO_REGIONS.contains(CustomerCode.regionOf(owner)) ? "METRO" : "REGIONAL";
+        String area = METRO_REGIONS.contains(MemberId.regionOf(owner)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
 }
