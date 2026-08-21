@@ -19,6 +19,9 @@ public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidOwnerEmailException, InvalidOwnerTelephoneException {
+        // Normalize the address before the required-field check, so an address that is blank after
+        // normalization is rejected and later steps see (and store) the canonical form.
+        OwnerAddress.normalize(request);
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
