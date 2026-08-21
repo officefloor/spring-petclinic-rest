@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerEmailException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException {
+            throws MissingOwnerFieldsException, InvalidOwnerEmailException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -42,6 +43,8 @@ public class ValidateOwnerFields {
             throw new MissingOwnerFieldsException(List.of("telephone"));
         }
         request.setTelephone(telephone);
+        // An owner may include an email; when present it must be valid and is stored lower-cased.
+        OwnerEmail.normalize(request);
         validated.set(request);
     }
 
