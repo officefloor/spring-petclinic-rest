@@ -72,7 +72,7 @@ public class Owner extends Person {
     /**
      * The number of owners in this owner's household (owners sharing the same
      * {@link #householdId}), including this owner. Not persisted: it is computed on demand
-     * when an owner is read back so that membership tier reflects the current household size.
+     * when an owner is read back so that it reflects the current household size.
      */
     @Transient
     private Integer householdSize;

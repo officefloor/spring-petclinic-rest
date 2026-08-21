@@ -238,11 +238,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // digits of the registration date year (e.g. 'SYD-SMI-0007-M26').
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
-        // Emit an audit line carrying the new owner's id, customer code and registration date.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         populateHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        // Emit an audit line carrying the new owner's id, customer code, registration date
+        // and numeric membership level.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -268,7 +270,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Populate the owner's household size: the number of owners sharing this owner's
      * {@code householdId} (including the owner itself). An owner with no household is a household
-     * of one. This value drives the {@code GOLD} membership tier (a household of three or more).
+     * of one.
      *
      * @param owner the owner whose household size should be computed and set
      */
