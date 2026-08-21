@@ -25,6 +25,10 @@ public class CheckOwnerIdentityUnique {
         String identityKey = OwnerIdentity.key(owner);
         for (Owner existing : ownerRepository.findAll()) {
             // The owner being created is not yet persisted, so findAll() returns only other owners.
+            // A soft-deleted owner is ignored, so its key never blocks a new create.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (identityKey.equals(OwnerIdentity.key(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }

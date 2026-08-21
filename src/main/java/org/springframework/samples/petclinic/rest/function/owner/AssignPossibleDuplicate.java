@@ -41,6 +41,9 @@ public class AssignPossibleDuplicate {
 
         Integer matchId = null;
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue; // a soft-deleted owner is not a duplicate to match against
+            }
             if (lastName.equalsIgnoreCase(existing.getLastName())
                     && postcode.equals(existing.getPostcode())
                     && !telephone.equals(existing.getTelephone())

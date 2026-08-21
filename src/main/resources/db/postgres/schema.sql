@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INT,
                                       address_line1 TEXT,
-                                      address_line2 TEXT
+                                      address_line2 TEXT,
+                                      deleted BOOLEAN
 );
 CREATE INDEX ON owners (last_name);
 

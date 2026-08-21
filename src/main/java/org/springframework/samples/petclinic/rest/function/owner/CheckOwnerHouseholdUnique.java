@@ -28,6 +28,10 @@ public class CheckOwnerHouseholdUnique {
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
             // The owner being created is not yet persisted, so findAll() returns only other owners.
+            // A soft-deleted owner is ignored, so its household never blocks a new create.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (householdId.equals(existing.getHouseholdId())) {
                 throw new HouseholdDuplicateException(householdId);
             }
