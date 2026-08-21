@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Rejects a create request that is missing or blank in any required owner field, so an
  * incomplete body is a 400 whose {@code errors} array names each offending field. Also
- * normalizes the telephone by stripping every non-digit character and requiring exactly
- * ten digits, republishing the normalized 10-digit value so it is stored and returned as
- * {@code telephone}; a telephone that is not ten digits after stripping is a 400 too.
+ * normalizes the telephone to E.164 form (see {@link TelephoneE164}), republishing the
+ * normalized value so it is stored and returned as {@code telephone}; a telephone that
+ * cannot form a valid E.164 number is a 400 too.
  * The optional {@code email} is validated only when present: a syntactically invalid
  * address is a 400, otherwise it is normalized to lower-case and republished so it is
  * stored and returned lower-cased.
@@ -40,9 +40,8 @@ public class ValidateOwnerFields {
         if (isBlank(request.getCity())) {
             errors.add("city");
         }
-        String telephone = request.getTelephone() == null ? ""
-                : request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = TelephoneE164.normalize(request.getTelephone());
+        if (telephone == null) {
             errors.add("telephone");
         }
         else {
