@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4e0e4ef4..5fbfa250 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.of(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.regionOf(owner))")
+     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.fromValue(org.springframework.samples.petclinic.util.ContactPreference.of(owner)))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.key(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index 8f45b5ea..75472489 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -22,39 +22,62 @@ import java.time.temporal.ChronoUnit;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Derives an owner's numeric membership level. Starts at 1, adds 1 when an email is
+- * present, adds 1 when {@code namesakeCount} is 0, and adds 1 when tenure exceeds
+- * {@value #TENURE_DAYS} days. Level 4 requires that tenure: because a newly created
+- * owner has zero tenure, a new owner never exceeds level 3.
++ * Derives an owner's membership from a points system. Starts at 0 points, adds 2 when an
++ * email is present, adds 1 when {@code namesakeCount} is 0, adds 2 for a household of 3 or
++ * more, and adds 3 when tenure exceeds {@value #TENURE_DAYS} days. Points map to a numeric
++ * level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because level 4
++ * requires 6 points and the only route to 6 is tenure, a newly created owner (zero tenure)
++ * never exceeds level 3.
+  */
+ public final class MembershipLevel {
+ 
+-    /** Highest level this derivation produces. */
+-    private static final int CAP = 4;
++    /** Household size, in members, at or above which the household factor applies. */
++    private static final int HOUSEHOLD_SIZE = 3;
+ 
+-    /** Tenure, in days, that must be exceeded for the level-4 factor to apply. */
++    /** Tenure, in days, that must be exceeded for the tenure factor to apply. */
+     private static final int TENURE_DAYS = 365;
+ 
+     private MembershipLevel() {
+     }
+ 
+     /**
+-     * @param owner the owner whose level to derive (its {@code email},
+-     *              {@code namesakeCount} and tenure decide the level).
+-     * @return the membership level, from 1 to {@value #CAP}.
++     * @param owner the owner whose points to derive (its {@code email},
++     *              {@code namesakeCount}, {@code householdSize} and tenure decide the points).
++     * @return the membership points, 0 or more.
+      */
+-    public static int of(Owner owner) {
+-        int level = 1;
++    public static int points(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE) {
++            points += 2;
+         }
+         if (tenureDays(owner) > TENURE_DAYS) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * @param owner the owner whose level to derive.
++     * @return the membership level, from 1 to 4, mapped from {@link #points(Owner)}.
++     */
++    public static int of(Owner owner) {
++        int points = points(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        return Math.min(level, CAP);
++        return 4;
+     }
+ 
+     /** Days from the owner's {@code registrationDate} to today, or 0 when unknown. */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 30d413a3..0782fff9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2134,14 +2134,22 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: Server-derived membership points fixed at creation - starts at 0, adds 2 when an email is present, adds 1 when namesakeCount is 0, adds 2 for a household of 3 or more, and adds 3 for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: Server-derived numeric membership level fixed at creation - starts at 1, adds 1 when an email is present, adds 1 when namesakeCount is 0, and is capped at 3. Level 4 is reserved for tenure.
++              description: Server-derived numeric membership level fixed at creation, mapped from membershipPoints - level 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more). Because level 4 requires 6 points and the only route to 6 is tenure, a new owner never exceeds level 3.
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
