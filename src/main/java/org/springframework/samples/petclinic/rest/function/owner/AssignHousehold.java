@@ -11,10 +11,11 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * When a create request opts in with {@code sharesHousehold} true, joins the new owner to
- * the household identified by its lastName and address (compared case-insensitively with
- * collapsed whitespace, matching {@link EnsureUniqueHousehold}). The household's stable
- * shared {@code householdId} is derived deterministically from that lastName/address, so
- * every member computes the same value. The new owner and every already-stored member of
+ * the household identified by its lastName (compared case-insensitively with collapsed
+ * whitespace) and address (compared in its normalized form; see
+ * {@link AddressNormalizer}), matching {@link EnsureUniqueHousehold}. The household's
+ * stable shared {@code householdId} is derived deterministically from that
+ * lastName/address, so every member computes the same value. The new owner and every already-stored member of
  * the household are assigned that identifier, so both sides of a join share it.
  *
  * <p>Runs after {@code build}, so the new Owner entity exists but is not yet saved (and so
@@ -28,12 +29,12 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         String householdId = householdId(lastName, address);
         owner.setHouseholdId(householdId);
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))
+                    && address.equals(AddressNormalizer.normalize(existing.getAddress()))
                     && !householdId.equals(existing.getHouseholdId())) {
                 existing.setHouseholdId(householdId);
                 ownerRepository.save(existing);

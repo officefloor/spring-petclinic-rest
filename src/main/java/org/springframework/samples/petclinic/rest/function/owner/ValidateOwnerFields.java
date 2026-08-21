@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  * The optional {@code email} is validated only when present: a syntactically invalid
  * address is a 400, otherwise it is normalized to lower-case and republished so it is
  * stored and returned lower-cased.
+ * The {@code address} is normalized (see {@link AddressNormalizer}) and republished so it
+ * is stored and returned in canonical form; an address that is blank after normalization
+ * is a required-field 400.
  * Runs first and republishes the body as a variable for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
@@ -34,8 +37,12 @@ public class ValidateOwnerFields {
         if (isBlank(request.getLastName())) {
             errors.add("lastName");
         }
-        if (isBlank(request.getAddress())) {
+        String address = AddressNormalizer.normalize(request.getAddress());
+        if (address.isEmpty()) {
             errors.add("address");
+        }
+        else {
+            request.setAddress(address);
         }
         if (isBlank(request.getCity())) {
             errors.add("city");
