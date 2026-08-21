@@ -50,6 +50,7 @@ public abstract class OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.forOwner(owner))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneNormalizer.toDisplay(owner.getTelephone()))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
     public abstract Owner toOwner(OwnerDto ownerDto);
@@ -284,6 +285,21 @@ public abstract class OwnerMapper {
             return owner.getLastName();
         }
         return title + " " + owner.getLastName();
+    }
+
+    /**
+     * The owner's {@code riskFlag}: true when any of three signals holds — the owner is a
+     * possible duplicate ({@code possibleDuplicate} is true), the email domain is
+     * {@link org.springframework.samples.petclinic.rest.function.owner.DisposableEmailDomains#isDisposableAdjacent(String)
+     * disposable-adjacent}, or the city is over its soft capacity ({@code capacityWarning} is
+     * true); otherwise false.
+     */
+    protected Boolean riskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean disposableAdjacent = org.springframework.samples.petclinic.rest.function.owner.DisposableEmailDomains
+                .isDisposableAdjacent(owner.getEmail());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
