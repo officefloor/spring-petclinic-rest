@@ -10,8 +10,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 /**
  * Rejects a create request that is missing or blank in any required owner field, so an
- * incomplete body is a 400 whose {@code errors} array names each offending field. Runs
- * first and republishes the body as a variable for {@link BuildOwner}.
+ * incomplete body is a 400 whose {@code errors} array names each offending field. Also
+ * normalizes the telephone by stripping every non-digit character and requiring exactly
+ * ten digits, republishing the normalized 10-digit value so it is stored and returned as
+ * {@code telephone}; a telephone that is not ten digits after stripping is a 400 too.
+ * Runs first and republishes the body as a variable for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
 
@@ -30,8 +33,13 @@ public class ValidateOwnerFields {
         if (isBlank(request.getCity())) {
             errors.add("city");
         }
-        if (isBlank(request.getTelephone())) {
+        String telephone = request.getTelephone() == null ? ""
+                : request.getTelephone().replaceAll("\\D", "");
+        if (telephone.length() != 10) {
             errors.add("telephone");
+        }
+        else {
+            request.setTelephone(telephone);
         }
         if (!errors.isEmpty()) {
             throw new MissingFieldsException(errors);
