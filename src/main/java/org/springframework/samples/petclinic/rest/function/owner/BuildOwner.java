@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.LocalDate;
-
 import net.officefloor.plugin.variable.Out;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -12,10 +10,10 @@ public class BuildOwner {
 
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        // Default the registration date to the server's current date when none was supplied.
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        // The effective registration date — supplied or defaulted to the server date — must fall on
+        // a business day, so a weekend date rolls forward to the next Monday. Everything derived from
+        // the registration date (e.g. the membership number's year segment) then uses this value.
+        owner.setRegistrationDate(BusinessDay.effective(owner.getRegistrationDate()));
         built.set(owner);
     }
 }
