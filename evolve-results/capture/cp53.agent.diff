@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 83a787a3..a6f3c2a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -146,6 +146,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit logger; a create side-effect is recorded here on success. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Monotonically increasing sequence number stamped onto each structured {@code OWNER_CREATED}
++     * audit event, so successive creates carry strictly increasing {@code seq} values across the
++     * whole application.
++     */
++    private static final java.util.concurrent.atomic.AtomicLong AUDIT_EVENT_SEQ =
++        new java.util.concurrent.atomic.AtomicLong();
++
+     /** Request header carrying the client-supplied idempotency key for a create. */
+     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+ 
+@@ -366,11 +374,72 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), owner.getMembershipNumber());
++        // Besides the human-readable audit line, emit an immutable structured event carrying a
++        // monotonically increasing sequence number, the owner id, the owner's current primary
++        // identifier (the customer code for now; the member id once the two are unified) and the
++        // numeric membership level. Serialized once, up front, so the logged event cannot change.
++        AUDIT.info(ownerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(),
++            owner.getCustomerCode(), ownerDto.getMembershipLevel()));
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Build the immutable structured {@code OWNER_CREATED} audit event as a JSON object string:
++     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. The
++     * {@code customerCode} field carries the owner's current primary identifier (the customer code
++     * today; whatever replaces it later), so the event always names the owner's canonical identity.
++     * A {@code null} membership level is serialized as JSON {@code null}.
++     *
++     * @param seq             the monotonically increasing event sequence number
++     * @param ownerId         the created owner's id
++     * @param primaryId       the owner's current primary identifier (customer code)
++     * @param membershipLevel the owner's numeric membership level, may be {@code null}
++     * @return the JSON-serialized event
++     */
++    private String ownerCreatedEvent(long seq, Integer ownerId, String primaryId, Integer membershipLevel) {
++        return "{\"seq\":" + seq
++            + ",\"ownerId\":" + ownerId
++            + ",\"customerCode\":" + jsonString(primaryId)
++            + ",\"membershipLevel\":" + (membershipLevel == null ? "null" : membershipLevel)
++            + ",\"event\":\"OWNER_CREATED\"}";
++    }
++
++    /**
++     * Render a nullable string as a JSON value: {@code null} for a {@code null} input, otherwise the
++     * value wrapped in double quotes with the JSON-significant characters escaped.
++     *
++     * @param value the value to render, may be {@code null}
++     * @return the JSON string literal (or the token {@code null})
++     */
++    private String jsonString(String value) {
++        if (value == null) {
++            return "null";
++        }
++        StringBuilder sb = new StringBuilder(value.length() + 2);
++        sb.append('"');
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            switch (c) {
++                case '"' -> sb.append("\\\"");
++                case '\\' -> sb.append("\\\\");
++                case '\n' -> sb.append("\\n");
++                case '\r' -> sb.append("\\r");
++                case '\t' -> sb.append("\\t");
++                default -> {
++                    if (c < 0x20) {
++                        sb.append(String.format("\\u%04x", (int) c));
++                    } else {
++                        sb.append(c);
++                    }
++                }
++            }
++        }
++        sb.append('"');
++        return sb.toString();
++    }
++
+     /**
+      * Return the current request's {@code Idempotency-Key} header value, or {@code null} when the
+      * header is absent/blank or there is no bound servlet request.
