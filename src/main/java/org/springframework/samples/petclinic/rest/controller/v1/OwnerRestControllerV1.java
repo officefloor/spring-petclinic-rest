@@ -135,6 +135,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.isEmpty()) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owners.forEach(this::populateHouseholdSize);
         return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
     }
 
@@ -145,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        populateHouseholdSize(owner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
@@ -239,6 +241,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Emit an audit line carrying the new owner's id, customer code and registration date.
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        populateHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
@@ -260,6 +263,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+    }
+
+    /**
+     * Populate the owner's household size: the number of owners sharing this owner's
+     * {@code householdId} (including the owner itself). An owner with no household is a household
+     * of one. This value drives the {@code GOLD} membership tier (a household of three or more).
+     *
+     * @param owner the owner whose household size should be computed and set
+     */
+    private void populateHouseholdSize(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (!StringUtils.hasText(householdId)) {
+            owner.setHouseholdSize(1);
+            return;
+        }
+        int size = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .count();
+        owner.setHouseholdSize(size);
     }
 
     /**
