@@ -34,6 +34,7 @@ public interface OwnerMapper {
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
+    @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -224,6 +225,20 @@ public interface OwnerMapper {
             grouped.append(national.charAt(i));
         }
         return "+" + countryCode + " " + grouped;
+    }
+
+    /**
+     * Compose the owner's salutation from its title and last name: the title and last name separated
+     * by a single space (e.g. {@code DR who}) when a title is present, or just the last name when no
+     * title (null or blank) was supplied.
+     */
+    default String deriveSalutation(Owner owner) {
+        String lastName = owner.getLastName();
+        String title = owner.getTitle();
+        if (title == null || title.isEmpty()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
