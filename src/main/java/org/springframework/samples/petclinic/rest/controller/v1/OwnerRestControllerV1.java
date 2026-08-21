@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -129,6 +130,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidRequestException(List.of("telephone"));
         }
         owner.setTelephone(normalizedTelephone);
+        // Reject the request if the normalized telephone is already used by another owner.
+        if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
+            throw new DuplicateTelephoneException(normalizedTelephone);
+        }
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
