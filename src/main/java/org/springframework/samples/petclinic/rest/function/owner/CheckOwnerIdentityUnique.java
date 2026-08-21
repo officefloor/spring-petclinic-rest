@@ -31,6 +31,9 @@ public class CheckOwnerIdentityUnique {
         String identityKey = OwnerIdentityKey.of(request.getTelephone(), request.getEmail(),
                 household);
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner never blocks a create
+            }
             if (identityKey.equals(OwnerIdentityKey.forOwner(existing))) {
                 throw new DuplicateOwnerIdentityException(identityKey);
             }
