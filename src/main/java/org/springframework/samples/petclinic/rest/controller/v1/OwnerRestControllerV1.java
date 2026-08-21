@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -238,20 +239,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityException(owner.getCity());
         }
-        // Resolve household membership before computing the identity key: when another owner already
-        // shares the same last name and address (compared case-insensitively with collapsed
-        // whitespace) and the caller opts in by setting 'sharesHousehold' true, assign a stable
-        // shared 'householdId' to the new owner and backfill it onto every existing member that does
-        // not yet carry it. The household is thus reflected in the owner's identity key.
-        List<Owner> householdMembers = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        if (!householdMembers.isEmpty() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
-            owner.setHouseholdId(householdId);
-            for (Owner member : householdMembers) {
-                if (!householdId.equals(member.getHouseholdId())) {
-                    member.setHouseholdId(householdId);
-                    this.clinicService.saveOwner(member);
-                }
+        // The household is keyed deterministically on (normalizedLastName, postcode): the householdId
+        // is the first 12 hex characters of the SHA-256 digest of '<normalizedLastName>|<postcode>',
+        // so any two owners with the same last name and postcode automatically resolve to the same
+        // household without an explicit opt-in. It is assigned up front so it feeds duplicate
+        // detection (the identity key below), the household-size read-back and household-duplicate
+        // detection alike.
+        String householdId = generateHouseholdId(owner.getLastName(), owner.getPostcode());
+        owner.setHouseholdId(householdId);
+        // Household-duplicate detection: because the household is keyed on (lastName, postcode), any
+        // existing owner already carrying this householdId is a member of the same household, so this
+        // create is a household duplicate. Reject it with 409 unless the caller opts in via
+        // 'sharesHousehold', which now only bypasses this block (the household link already exists by
+        // construction) and marks the owner as a declared household member.
+        boolean householdMemberExists = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+        boolean declaredHouseholdMember = false;
+        if (householdMemberExists) {
+            if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+                declaredHouseholdMember = true;
+            } else {
+                throw new DuplicateHouseholdException(owner.getLastName(), owner.getPostcode());
             }
         }
         // All duplicate detection is consolidated into this single derived identity key
@@ -269,8 +277,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // still be a likely duplicate of an existing owner. Flag it when an existing owner shares
         // this owner's last name (compared case-insensitively with collapsed whitespace) and
         // postcode while carrying a DIFFERENT normalized telephone. When several existing owners
-        // match, the one with the lowest id is chosen so the result is deterministic.
-        Owner softMatch = findPossibleDuplicate(owner);
+        // match, the one with the lowest id is chosen so the result is deterministic. A declared
+        // household member is an intentional co-resident, not a suspected duplicate, so it is never
+        // flagged (a create that reaches this point sharing a last name and postcode with an
+        // existing owner is precisely a declared household member).
+        Owner softMatch = declaredHouseholdMember ? null : findPossibleDuplicate(owner);
         if (softMatch != null) {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(softMatch.getId());
@@ -475,24 +486,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Find the existing owners that live in the same household as the given values, i.e. those that
-     * share both the last name and the address when each is compared case-insensitively with
-     * collapsed whitespace.
-     *
-     * @param lastName the incoming owner's last name
-     * @param address  the incoming owner's address
-     * @return the matching existing owners (possibly empty)
-     */
-    private List<Owner> findHouseholdMembers(String lastName, String address) {
-        String normalizedLastName = normalizeForComparison(lastName);
-        String normalizedAddress = normalizeForComparison(address);
-        return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
-                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
-            .toList();
-    }
-
-    /**
      * Find the existing owner the given (not-yet-persisted) owner is a soft duplicate of: one that
      * shares the owner's last name (compared case-insensitively with collapsed whitespace) and
      * postcode while carrying a different normalized telephone. A blank postcode never soft-matches
@@ -517,17 +510,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Generate a stable shared household identifier for the given last name and address. The value is
-     * derived deterministically from the normalized (case-insensitive, whitespace-collapsed) last name
-     * and address, so every owner joining the same household resolves to the same identifier. It is the
-     * first 12 upper-case hex characters of the SHA-256 digest of {@code <lastName>|<address>}.
+     * Generate the deterministic household identifier for the given last name and postcode. The value
+     * is derived from the normalized (case-insensitive, whitespace-collapsed) last name and the
+     * postcode, so every owner with the same last name and postcode resolves to the same identifier
+     * automatically. It is the first 12 upper-case hex characters of the SHA-256 digest of
+     * {@code <normalizedLastName>|<postcode>} (an absent postcode contributes the empty string).
      *
-     * @param lastName the household's last name
-     * @param address  the household's address
-     * @return the stable household identifier
+     * @param lastName the owner's last name
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the deterministic household identifier
      */
-    private String generateHouseholdId(String lastName, String address) {
-        String key = normalizeForComparison(lastName) + "|" + normalizeForComparison(address);
+    private String generateHouseholdId(String lastName, String postcode) {
+        String key = normalizeForComparison(lastName) + "|" + (postcode == null ? "" : postcode);
         return shortSha256Hex(key, 12);
     }
 

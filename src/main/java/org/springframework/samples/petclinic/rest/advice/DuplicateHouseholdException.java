@@ -17,14 +17,15 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 /**
- * Thrown by REST controllers when an owner cannot be created because another owner already has the
- * same last name and address (compared case-insensitively with collapsed whitespace) and the request
- * did not opt in via {@code sharesHousehold}. The exception handler reports it as a
- * {@code 409 Conflict}.
+ * Thrown by REST controllers when an owner cannot be created because another owner already belongs to
+ * the same household, which is keyed deterministically on the owner's last name (compared
+ * case-insensitively with collapsed whitespace) and postcode, and the request did not opt in via
+ * {@code sharesHousehold}. The exception handler reports it as a {@code 409 Conflict}.
  */
 public class DuplicateHouseholdException extends RuntimeException {
 
-    public DuplicateHouseholdException(String lastName, String address) {
-        super("An owner with last name '" + lastName + "' already exists at address '" + address + "'");
+    public DuplicateHouseholdException(String lastName, String postcode) {
+        super("An owner with last name '" + lastName + "' already exists in the household for postcode '"
+            + postcode + "'");
     }
 }
