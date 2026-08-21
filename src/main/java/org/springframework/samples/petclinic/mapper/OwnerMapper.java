@@ -36,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
+    @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -212,6 +213,23 @@ public interface OwnerMapper {
             display.append(' ').append(national, i, Math.min(i + 3, national.length()));
         }
         return display.toString();
+    }
+
+    /**
+     * Derive the owner's salutation: the honorific {@code title} followed by a single space and the
+     * {@code lastName} (e.g. {@code "DR Who"}). When the owner has no title (null or blank) the
+     * salutation is just the {@code lastName}. Returns null when the owner is absent.
+     */
+    default String deriveSalutation(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        String title = owner.getTitle();
+        String lastName = owner.getLastName();
+        if (title == null || title.isBlank()) {
+            return lastName;
+        }
+        return title + " " + lastName;
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
