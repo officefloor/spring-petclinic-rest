@@ -87,6 +87,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners that may be registered on a single day; a create is rejected once it is reached. */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /** Once more than this many owners have already been created on a day, a create carries a bulk-signup warning. */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     /** Separators (spaces, dashes and brackets) stripped from a telephone before parsing. */
     private static final Pattern TELEPHONE_SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
 
@@ -190,9 +193,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         // Reject the request once the maximum number of owners for the owner's registration day has
         // been reached (100 or more owners already created on that date).
-        if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+        int ownersRegisteredToday = countOwnersRegisteredOn(owner.getRegistrationDate());
+        if (ownersRegisteredToday >= MAX_OWNERS_PER_DAY) {
             throw new DailyOwnerLimitException(owner.getRegistrationDate());
         }
+        // Flag a bulk-signup warning when more than 80 owners had already been created on this
+        // owner's registration day at the moment this owner was created; otherwise clear it.
+        owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         // Reject the request when the owner's city has already reached its owner capacity.
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityException(owner.getCity());
