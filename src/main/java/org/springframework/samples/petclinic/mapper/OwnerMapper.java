@@ -39,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(deriveOwnerSegment(owner))")
     @Mapping(target = "selfLink",
         expression = "java(owner == null || owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
@@ -101,6 +102,24 @@ public interface OwnerMapper {
             return "QLD";
         }
         return "UNKNOWN";
+    }
+
+    /**
+     * Derive the owner's marketing segment, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code "PREMIUM"} when the owner's {@code membershipLevel} is 3 or more, otherwise
+     * {@code "STANDARD"} (a missing membershipLevel counts as below 3). AREA is {@code "METRO"}
+     * when the owner's locality is a known region (NSW, VIC or QLD), otherwise {@code "REGIONAL"}.
+     * Returns null when the owner is absent.
+     */
+    default String deriveOwnerSegment(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        Integer membershipLevel = owner.getMembershipLevel();
+        String tier = (membershipLevel != null && membershipLevel >= 3) ? "PREMIUM" : "STANDARD";
+        String locality = deriveLocality(owner);
+        boolean metro = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
+        return tier + "_" + (metro ? "METRO" : "REGIONAL");
     }
 
     /**
