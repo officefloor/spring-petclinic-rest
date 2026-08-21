@@ -40,9 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -217,24 +215,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityException(owner.getCity());
         }
-        // Reject the request if the E.164 telephone is already used by another owner.
-        if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
-            throw new DuplicateTelephoneException(normalizedTelephone);
-        }
-        // Reject the request if the (normalized, lower-cased) email is already used by another owner.
-        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
-            throw new DuplicateEmailException(owner.getEmail());
-        }
-        // Reject the request if another owner already shares the same last name and address
-        // (compared case-insensitively with collapsed whitespace), unless the caller opts in
-        // by setting 'sharesHousehold' true. When they do opt in and an existing household is
-        // matched, assign a stable shared 'householdId' to the new owner and backfill it onto
-        // every existing member that does not yet carry it.
+        // Resolve household membership before computing the identity key: when another owner already
+        // shares the same last name and address (compared case-insensitively with collapsed
+        // whitespace) and the caller opts in by setting 'sharesHousehold' true, assign a stable
+        // shared 'householdId' to the new owner and backfill it onto every existing member that does
+        // not yet carry it. The household is thus reflected in the owner's identity key.
         List<Owner> householdMembers = findHouseholdMembers(owner.getLastName(), owner.getAddress());
-        if (!householdMembers.isEmpty()) {
-            if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-                throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
-            }
+        if (!householdMembers.isEmpty() && Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             String householdId = generateHouseholdId(owner.getLastName(), owner.getAddress());
             owner.setHouseholdId(householdId);
             for (Owner member : householdMembers) {
@@ -243,6 +230,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
                     this.clinicService.saveOwner(member);
                 }
             }
+        }
+        // All duplicate detection is consolidated into this single derived identity key
+        // ('<normalizedTelephone>|<email or empty>|<householdId or empty>'): reject with 409 only
+        // when the new owner's WHOLE identity key exactly matches an existing owner's. Because the
+        // telephone is part of the key, two members of the same household with different telephones
+        // have different keys and are both allowed; only an exact full-key match is a duplicate.
+        String identityKey = owner.getIdentityKey();
+        boolean identityCollision = this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+        if (identityCollision) {
+            throw new DuplicateIdentityException(identityKey);
         }
         // Record how many existing owners already share this first name and last name
         // (compared case-insensitively) before this owner is created.
@@ -397,20 +395,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
-    }
-
-    /**
-     * Determine whether the given (already lower-cased) email is already used by any existing owner,
-     * comparing case-insensitively. The incoming owner is not yet persisted, so it is not included.
-     *
-     * @param email the incoming owner's normalized email
-     * @return {@code true} when another owner already uses that email
-     */
-    private boolean isEmailInUse(String email) {
-        String normalizedEmail = email.toLowerCase(Locale.ROOT);
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> existing.getEmail() != null
-                && existing.getEmail().toLowerCase(Locale.ROOT).equals(normalizedEmail));
     }
 
     /**

@@ -168,6 +168,22 @@ public class Owner extends Person {
         this.householdSize = householdSize;
     }
 
+    /**
+     * The owner's derived identity key: the single value all duplicate detection is expressed
+     * through. It is {@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or
+     * empty)} computed from the already-normalized stored fields. Two owners are duplicates only
+     * when their whole identity keys are equal; in particular two members of the same household
+     * (same {@code householdId}) with different telephones have different identity keys. Not
+     * persisted: it is derived on demand from the identity-bearing fields.
+     */
+    @Transient
+    public String getIdentityKey() {
+        String telephonePart = this.telephone == null ? "" : this.telephone;
+        String emailPart = this.email == null ? "" : this.email;
+        String householdPart = this.householdId == null ? "" : this.householdId;
+        return telephonePart + "|" + emailPart + "|" + householdPart;
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();

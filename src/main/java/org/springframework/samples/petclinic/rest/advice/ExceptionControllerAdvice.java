@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_EMAIL = "An owner with the given email already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
+    private static final String ERROR_DUPLICATE_IDENTITY = "An owner with the given identity already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its maximum capacity of owners";
     private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners for the day has already been reached";
 
@@ -237,6 +238,24 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DuplicateIdentityException} raised when an owner cannot be created because its
+     * whole derived identity key (normalized telephone, email and household id) exactly matches an
+     * existing owner's. This single check subsumes the former separate telephone, email and household
+     * duplicate checks. Returns a 409 Conflict.
+     *
+     * @param e The {@link DuplicateIdentityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(DuplicateIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(DuplicateIdentityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_IDENTITY);
         return ResponseEntity.status(status).body(detail);
     }
 
