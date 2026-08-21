@@ -22,39 +22,62 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's numeric membership level. Starts at 1, adds 1 when an email is
- * present, adds 1 when {@code namesakeCount} is 0, and adds 1 when tenure exceeds
- * {@value #TENURE_DAYS} days. Level 4 requires that tenure: because a newly created
- * owner has zero tenure, a new owner never exceeds level 3.
+ * Derives an owner's membership from a points system. Starts at 0 points, adds 2 when an
+ * email is present, adds 1 when {@code namesakeCount} is 0, adds 2 for a household of 3 or
+ * more, and adds 3 when tenure exceeds {@value #TENURE_DAYS} days. Points map to a numeric
+ * level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because level 4
+ * requires 6 points and the only route to 6 is tenure, a newly created owner (zero tenure)
+ * never exceeds level 3.
  */
 public final class MembershipLevel {
 
-    /** Highest level this derivation produces. */
-    private static final int CAP = 4;
+    /** Household size, in members, at or above which the household factor applies. */
+    private static final int HOUSEHOLD_SIZE = 3;
 
-    /** Tenure, in days, that must be exceeded for the level-4 factor to apply. */
+    /** Tenure, in days, that must be exceeded for the tenure factor to apply. */
     private static final int TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
 
     /**
-     * @param owner the owner whose level to derive (its {@code email},
-     *              {@code namesakeCount} and tenure decide the level).
-     * @return the membership level, from 1 to {@value #CAP}.
+     * @param owner the owner whose points to derive (its {@code email},
+     *              {@code namesakeCount}, {@code householdSize} and tenure decide the points).
+     * @return the membership points, 0 or more.
      */
-    public static int of(Owner owner) {
-        int level = 1;
+    public static int points(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE) {
+            points += 2;
         }
         if (tenureDays(owner) > TENURE_DAYS) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, CAP);
+        return points;
+    }
+
+    /**
+     * @param owner the owner whose level to derive.
+     * @return the membership level, from 1 to 4, mapped from {@link #points(Owner)}.
+     */
+    public static int of(Owner owner) {
+        int points = points(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /** Days from the owner's {@code registrationDate} to today, or 0 when unknown. */
