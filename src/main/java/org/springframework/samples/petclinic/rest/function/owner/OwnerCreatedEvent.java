@@ -4,10 +4,9 @@ package org.springframework.samples.petclinic.rest.function.owner;
  * Immutable structured audit event emitted when an owner is created. Serialized to
  * JSON and logged to the dedicated {@code AUDIT} logger by {@link AuditOwnerCreated}.
  *
- * <p>{@code identifier} carries the owner's current primary identifier. Today that is
- * the {@code customerCode}; when the customer code is later unified into the member id
- * the event carries the member id instead — the field name in the emitted JSON tracks
- * whichever identifier is primary (see {@link AuditOwnerCreated}).
+ * <p>{@code identifier} carries the owner's primary identifier — the unified
+ * {@code memberId}. The field name in the emitted JSON tracks that identifier (see
+ * {@link AuditOwnerCreated}).
  *
  * <p>Being a record, an instance cannot be mutated once constructed.
  */

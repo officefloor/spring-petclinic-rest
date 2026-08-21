@@ -68,8 +68,8 @@ public final class LocalityLookup {
     }
 
     /**
-     * Derives the canonical region purely from the postcode, as used by the owner's
-     * {@code <REGION>-<HASH8>} customer code. A 4-digit postcode inside a known region range
+     * Derives the canonical region purely from the postcode, as used by the REGION segment of
+     * the owner's unified {@code memberId}. A 4-digit postcode inside a known region range
      * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) yields that region; anything else —
      * postcode absent, not 4 digits, or in no known range — yields {@code "UNKNOWN"}.
      *

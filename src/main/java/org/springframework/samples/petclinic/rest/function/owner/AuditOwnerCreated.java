@@ -18,17 +18,15 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * <p>Two things are emitted:
  * <ul>
- * <li>a human-readable audit line carrying the id, {@code customerCode},
- * {@code registrationDate}, {@code membershipLevel} and {@code membershipNumber}; and
+ * <li>a human-readable audit line carrying the id, {@code memberId},
+ * {@code registrationDate} and {@code membershipLevel}; and
  * <li>an immutable structured {@link OwnerCreatedEvent}, serialized to JSON, whose
  * {@code seq} increases monotonically across every owner created by this process. The
- * event carries the owner's current primary identifier — the {@code customerCode} today
- * (see {@link #primaryIdentifier}/{@link #PRIMARY_IDENTIFIER_KEY}); when the customer
- * code is later unified into the member id, those two members are the only place to
- * change and the event will carry the member id instead.
+ * event carries the owner's primary identifier — the unified {@code memberId} (see
+ * {@link #primaryIdentifier}/{@link #PRIMARY_IDENTIFIER_KEY}).
  * </ul>
- * The membership fields are read from the mapped {@link OwnerDto} so they match the
- * values the endpoint reports.
+ * The membership level is read from the mapped {@link OwnerDto} so it matches the value
+ * the endpoint reports.
  */
 public class AuditOwnerCreated {
 
@@ -39,28 +37,24 @@ public class AuditOwnerCreated {
     /** Monotonic sequence across every owner created by this process. */
     private static final AtomicLong SEQ = new AtomicLong();
 
-    /** JSON key under which the current primary identifier is emitted. */
-    private static final String PRIMARY_IDENTIFIER_KEY = "customerCode";
+    /** JSON key under which the primary identifier is emitted. */
+    private static final String PRIMARY_IDENTIFIER_KEY = "memberId";
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         AUDIT.info(
-                "owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                dto.getMembershipLevel(), dto.getMembershipNumber());
+                "owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                dto.getMembershipLevel());
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
                 primaryIdentifier(owner), dto.getMembershipLevel());
         AUDIT.info(toJson(event));
     }
 
-    /**
-     * The owner's current primary identifier. This is the {@code customerCode} today;
-     * once the customer code is unified into the member id, return the member id here
-     * (and rename {@link #PRIMARY_IDENTIFIER_KEY} to match).
-     */
+    /** The owner's primary identifier: the unified {@code memberId}. */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /** Serialize the event to a JSON object, emitting the identifier under its current key. */

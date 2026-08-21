@@ -41,7 +41,6 @@ public abstract class OwnerMapper {
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -182,12 +181,19 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's {@code fiscalYear} label {@code FY<YY>}, derived from the fiscal year of the
-     * business-day-adjusted {@code registrationDate} (fiscal years start on 1 July). Returns
-     * {@code null} when no registrationDate is on file, so the field is then absent from the
-     * response.
+     * The owner's {@code fiscalYear} label {@code FY<YY>}, derived from the FY segment of the
+     * unified {@code memberId} — the member id is now the single source of the owner's fiscal
+     * year. Falls back to the fiscal year of the business-day-adjusted {@code registrationDate}
+     * (fiscal years start on 1 July) for an owner that has no member id yet (e.g. seed data
+     * created outside the create pipeline). Returns {@code null} when neither is on file, so the
+     * field is then absent from the response.
      */
     protected String fiscalYear(Owner owner) {
+        String fy = org.springframework.samples.petclinic.rest.function.owner.MemberId
+                .fiscalYearDigits(owner.getMemberId());
+        if (fy != null) {
+            return "FY" + fy;
+        }
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return null;
@@ -196,46 +202,16 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Computes a single Luhn check digit (0-9) over the digits contained in the owner's
-     * {@code customerCode}. Non-digit characters (separators) are ignored. Returns
-     * {@code null} when no customer code has been assigned.
-     */
-    protected Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
-    }
-
-    /**
-     * Derives the owner's {@code locality} from the REGION component of the
-     * {@code <REGION>-<HASH8>} customer code — the region-and-hash identity is now the single
-     * source of the owner's region. Falls back to the postcode/city lookup for an owner that has
-     * no customer code yet (e.g. seed data created outside the create pipeline).
+     * Derives the owner's {@code locality} from the REGION segment of the unified
+     * {@code memberId} — the member id is now the single source of the owner's region. Falls
+     * back to the postcode/city lookup for an owner that has no member id yet (e.g. seed data
+     * created outside the create pipeline).
      */
     protected String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code != null) {
-            int dash = code.indexOf('-');
-            return dash >= 0 ? code.substring(0, dash) : code;
+        String region = org.springframework.samples.petclinic.rest.function.owner.MemberId
+                .region(owner.getMemberId());
+        if (region != null) {
+            return region;
         }
         return LocalityLookup.regionFor(owner.getCity(), owner.getPostcode());
     }
