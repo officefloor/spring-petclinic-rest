@@ -87,6 +87,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. On a successful owner create a welcome-notification line
+     * carrying the owner id and the {@code memberId} is enqueued by emitting it to this named logger.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Monotonically increasing sequence number stamped onto every {@code OWNER_CREATED} structured
      * event, so events can be totally ordered across creates. Shared across all creates for the life
      * of the application; a plain counter is enough since it only ever grows.
@@ -1042,6 +1048,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             idempotentCreates.put(idempotencyKey, ownerDto);
