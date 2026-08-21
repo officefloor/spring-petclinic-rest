@@ -34,6 +34,7 @@ public interface OwnerMapper {
             + "+ (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
     @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -147,6 +148,46 @@ public interface OwnerMapper {
             return "ADULT";
         }
         return "SENIOR";
+    }
+
+    /**
+     * Known E.164 country calling codes, longest first, used to split a stored telephone into its
+     * country code and national digits. A number whose code is not listed falls back to a two-digit
+     * country code, the most common E.164 length.
+     */
+    String[] KNOWN_CALLING_CODES = { "61", "1" };
+
+    /**
+     * Format the owner's stored E.164 {@code telephone} for humans: the country code, a space, then
+     * the national digits grouped in threes (e.g. {@code "+61412345678"} becomes
+     * {@code "+61 412 345 678"}). Returns null when the owner or its telephone is absent, and returns
+     * the value unchanged when it is not in E.164 form.
+     */
+    default String deriveTelephoneDisplay(Owner owner) {
+        if (owner == null || owner.getTelephone() == null) {
+            return null;
+        }
+        String telephone = owner.getTelephone();
+        if (!telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        int codeLength = 2;
+        for (String code : KNOWN_CALLING_CODES) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                codeLength = code.length();
+                break;
+            }
+        }
+        if (digits.length() <= codeLength) {
+            return telephone;
+        }
+        String national = digits.substring(codeLength);
+        StringBuilder display = new StringBuilder("+").append(digits, 0, codeLength);
+        for (int i = 0; i < national.length(); i += 3) {
+            display.append(' ').append(national, i, Math.min(i + 3, national.length()));
+        }
+        return display.toString();
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
