@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 24f8de24..cd228aa9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.regionOf(owner))")
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.util.Timezone.of(owner))")
++    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.rest.dto.OwnerDto.OwnerSegmentEnum.fromValue(org.springframework.samples.petclinic.util.OwnerSegment.of(owner)))")
+     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.fromValue(org.springframework.samples.petclinic.util.ContactPreference.of(owner)))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.key(owner))")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.CheckDigit.luhn(owner.getCustomerCode()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+new file mode 100644
+index 00000000..04325464
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegment.java
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM}
++ * when the {@link MembershipLevel} is 3 or more, otherwise {@code STANDARD}. AREA is
++ * {@code METRO} when the {@link CustomerCode#regionOf(Owner) locality} is a known region
++ * (NSW, VIC or QLD), otherwise {@code REGIONAL}. The four possible values are therefore
++ * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} and
++ * {@code STANDARD_REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    /** Membership level at or above which the owner is in the PREMIUM tier. */
++    private static final int PREMIUM_LEVEL = 3;
++
++    /** Regions treated as METRO areas. */
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /**
++     * @param owner the owner whose segment to derive.
++     * @return the segment formatted {@code <TIER>_<AREA>}.
++     */
++    public static String of(Owner owner) {
++        String tier = MembershipLevel.of(owner) >= PREMIUM_LEVEL ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(CustomerCode.regionOf(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0c081148..707db1ac 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2203,6 +2203,17 @@ components:
+               type: string
+               example: 'Australia/Sydney'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: Server-derived segment '<TIER>_<AREA>'. TIER is 'PREMIUM' when membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
++              type: string
++              enum:
++                - PREMIUM_METRO
++                - PREMIUM_REGIONAL
++                - STANDARD_METRO
++                - STANDARD_REGIONAL
++              example: 'STANDARD_METRO'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: Server-derived preferred contact channel - 'EMAIL' when an email is present, otherwise 'PHONE'.
