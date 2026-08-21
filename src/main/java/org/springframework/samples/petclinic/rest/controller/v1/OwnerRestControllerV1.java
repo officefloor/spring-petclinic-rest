@@ -265,6 +265,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (identityCollision) {
             throw new DuplicateIdentityException(identityKey);
         }
+        // Soft-match detection: the new owner is not a hard (identity-key) duplicate, but it may
+        // still be a likely duplicate of an existing owner. Flag it when an existing owner shares
+        // this owner's last name (compared case-insensitively with collapsed whitespace) and
+        // postcode while carrying a DIFFERENT normalized telephone. When several existing owners
+        // match, the one with the lowest id is chosen so the result is deterministic.
+        Owner softMatch = findPossibleDuplicate(owner);
+        if (softMatch != null) {
+            owner.setPossibleDuplicate(true);
+            owner.setPossibleDuplicateOf(softMatch.getId());
+        } else {
+            owner.setPossibleDuplicate(false);
+        }
         // Record how many existing owners already share this first name and last name
         // (compared case-insensitively) before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
@@ -478,6 +490,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
                 && normalizeForComparison(existing.getAddress()).equals(normalizedAddress))
             .toList();
+    }
+
+    /**
+     * Find the existing owner the given (not-yet-persisted) owner is a soft duplicate of: one that
+     * shares the owner's last name (compared case-insensitively with collapsed whitespace) and
+     * postcode while carrying a different normalized telephone. A blank postcode never soft-matches
+     * (postcode is required for the match). When several owners match, the one with the lowest id is
+     * returned so the result is deterministic; {@code null} when there is no soft match.
+     *
+     * @param owner the incoming owner (with normalized telephone and last name resolved)
+     * @return the lowest-id matching existing owner, or {@code null} when none matches
+     */
+    private Owner findPossibleDuplicate(Owner owner) {
+        if (!StringUtils.hasText(owner.getPostcode())) {
+            return null;
+        }
+        String normalizedLastName = normalizeForComparison(owner.getLastName());
+        String telephone = owner.getTelephone();
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                && owner.getPostcode().equals(existing.getPostcode())
+                && !java.util.Objects.equals(telephone, existing.getTelephone()))
+            .min(java.util.Comparator.comparing(Owner::getId))
+            .orElse(null);
     }
 
     /**
