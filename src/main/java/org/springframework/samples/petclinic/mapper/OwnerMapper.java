@@ -38,6 +38,8 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
+    @Mapping(target = "selfLink",
+        expression = "java(owner == null || owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
