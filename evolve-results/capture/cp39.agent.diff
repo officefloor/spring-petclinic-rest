@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5d3fc130..cb73a483 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
+ import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
+@@ -569,16 +570,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * The membership level ceiling assigned on create; level 4 is reserved for tenure and so is
+-     * never reached here.
++     * The maximum membership level. Level 4 is the tenure tier and is only reached once an owner's
++     * tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS} days.
+      */
+-    private static final int MAX_MEMBERSHIP_LEVEL = 3;
++    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+ 
+     /**
+-     * Computes the numeric {@code membershipLevel} for a newly created owner. It starts at 1,
+-     * gains 1 when an email is present, gains 1 when the owner's {@code namesakeCount} is 0, and
+-     * is capped at {@value #MAX_MEMBERSHIP_LEVEL} (level 4 is reserved for tenure). Evaluated after
+-     * the owner's email and namesakeCount have been set.
++     * The tenure, in days, that an owner must exceed before qualifying for the level-4 tenure tier.
++     * Tenure is measured from the owner's {@code registrationDate}, so a newly created owner (whose
++     * tenure is zero) never satisfies this and thus never exceeds level 3.
++     */
++    private static final int TENURE_LEVEL_THRESHOLD_DAYS = 365;
++
++    /**
++     * Computes the numeric {@code membershipLevel} for an owner. It starts at 1, gains 1 when an
++     * email is present, gains 1 when the owner's {@code namesakeCount} is 0, gains 1 when the
++     * owner's tenure (days elapsed since its {@code registrationDate}) exceeds
++     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days, and is capped at {@value #MAX_MEMBERSHIP_LEVEL}.
++     * Because a newly created owner has zero tenure, the tenure factor never applies on create, so a
++     * new owner never exceeds level 3. Evaluated after the owner's email, namesakeCount and
++     * registrationDate have been set.
+      */
+     private static int membershipLevelFor(Owner owner) {
+         int level = 1;
+@@ -588,9 +599,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+             level++;
+         }
++        if (tenureInDays(owner) > TENURE_LEVEL_THRESHOLD_DAYS) {
++            level++;
++        }
+         return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+     }
+ 
++    /**
++     * The owner's tenure in whole days: the number of days elapsed from its {@code registrationDate}
++     * up to the current server date. An owner with no registration date, or one dated in the future,
++     * has a tenure of zero.
++     */
++    private static long tenureInDays(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        return Math.max(0, ChronoUnit.DAYS.between(registrationDate, LocalDate.now()));
++    }
++
+     /**
+      * The maximum number of owners any single city may contain. A create whose city already
+      * holds this many owners is rejected.
