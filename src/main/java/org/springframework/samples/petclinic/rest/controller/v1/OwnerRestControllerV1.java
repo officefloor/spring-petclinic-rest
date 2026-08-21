@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
@@ -81,6 +82,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** A valid E.164 body: a leading '+' followed by 8 to 15 digits. */
     private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
 
+    /** Common street-type abbreviations expanded (on upper-cased tokens) during address normalization. */
+    private static final Map<String, String> ADDRESS_ABBREVIATIONS = Map.of(
+        "ST", "STREET",
+        "RD", "ROAD",
+        "AVE", "AVENUE");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -134,7 +141,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        if (!StringUtils.hasText(ownerFieldsDto.getAddress())) {
+        // Normalize the address up front; the required-field check rejects it when it is blank
+        // after normalization (e.g. a whitespace-only value collapses to the empty string).
+        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        if (!StringUtils.hasText(normalizedAddress)) {
             missingFields.add("address");
         }
         if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
@@ -148,6 +158,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // Store (and later return) the normalized address computed above.
+        owner.setAddress(normalizedAddress);
         // Normalize the telephone into E.164 form (reject with 400 when it cannot form a valid one).
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
@@ -261,6 +273,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Normalize an owner address for storage: trim and collapse every internal run of whitespace to a
+     * single space, upper-case the result and expand common street-type abbreviations token by token
+     * ({@code ST -> STREET}, {@code RD -> ROAD}, {@code AVE -> AVENUE}). A {@code null} value normalizes
+     * to the empty string. The result is the canonical form that is stored, returned and used for every
+     * address comparison (household duplicate detection and the shared household id).
+     *
+     * @param address the raw address, may be {@code null}
+     * @return the normalized address
+     */
+    private String normalizeAddress(String address) {
+        if (address == null) {
+            return "";
+        }
+        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (collapsed.isEmpty()) {
+            return "";
+        }
+        String[] tokens = collapsed.split(" ");
+        StringBuilder sb = new StringBuilder(collapsed.length());
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(ADDRESS_ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
+        }
+        return sb.toString();
     }
 
     /**
