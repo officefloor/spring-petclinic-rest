@@ -1,0 +1,79 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d14a581b..5d92e131 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -34,6 +34,7 @@ public interface OwnerMapper {
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
+             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
+             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
++    @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+@@ -116,6 +117,46 @@ public interface OwnerMapper {
+         return (10 - (sum % 10)) % 10;
+     }
+ 
++    /**
++     * Known country calling codes, ordered longest-prefix-first, used to split a stored E.164
++     * telephone into its country code and national digits when building {@code telephoneDisplay}.
++     * Mirrors the country codes the create endpoint recognises ({@code +61} and {@code +1}).
++     */
++    List<String> TELEPHONE_COUNTRY_CODES = List.of("61", "1");
++
++    /**
++     * Format the owner's stored E.164 telephone for humans: the country code, a single space, then
++     * the national digits grouped in threes (e.g. {@code +61412345678} becomes
++     * {@code +61 412 345 678}). Returns the raw value unchanged when it is null, not in E.164 form,
++     * or carries an unrecognised country code.
++     */
++    default String deriveTelephoneDisplay(Owner owner) {
++        String telephone = owner.getTelephone();
++        if (telephone == null || !telephone.startsWith("+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        String countryCode = null;
++        for (String code : TELEPHONE_COUNTRY_CODES) {
++            if (digits.startsWith(code) && digits.length() > code.length()) {
++                countryCode = code;
++                break;
++            }
++        }
++        if (countryCode == null) {
++            return telephone;
++        }
++        String national = digits.substring(countryCode.length());
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < national.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(national.charAt(i));
++        }
++        return "+" + countryCode + " " + grouped;
++    }
++
+     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0979aee7..208a623a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2257,6 +2257,15 @@ components:
+                 - PHONE
+               example: 'EMAIL'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 telephone formatted for humans: the country code,
++                a space, then the national digits grouped in threes (e.g.
++                '+61 412 345 678'). The raw 'telephone' stays in E.164 form.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
