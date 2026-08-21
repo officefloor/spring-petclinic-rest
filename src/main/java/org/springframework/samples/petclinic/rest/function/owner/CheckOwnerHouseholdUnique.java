@@ -1,0 +1,43 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+import java.util.regex.Pattern;
+
+import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
+
+/**
+ * Rejects a create-owner request that shares both last name and address with an existing owner.
+ * Last name and address are each compared case-insensitively with runs of whitespace collapsed to a
+ * single space (and leading/trailing whitespace trimmed). Throws {@link DuplicateHouseholdException}
+ * (handled as 409) on a collision, unless the request opted in with {@code sharesHousehold: true}.
+ */
+public class CheckOwnerHouseholdUnique {
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
+    public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+            throws DuplicateHouseholdException {
+        // The request may opt out of the household-uniqueness rule.
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return;
+        }
+        String lastName = normalize(request.getLastName());
+        String address = normalize(request.getAddress());
+        for (Owner existing : ownerRepository.findAll()) {
+            if (lastName.equals(normalize(existing.getLastName()))
+                    && address.equals(normalize(existing.getAddress()))) {
+                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+            }
+        }
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase();
+    }
+}
