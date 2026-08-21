@@ -500,6 +500,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * Finds an existing owner that makes the new owner a <em>possible</em> (soft) duplicate: one
+     * that is not a hard identity collision but shares the new owner's {@code lastName} (compared
+     * case-insensitively) and {@code postcode} while carrying a different normalized telephone. The
+     * new owner's postcode must be present for a soft match to be possible. When several existing
+     * owners qualify the one with the lowest id is chosen. Returns the matching owner's id, or
+     * {@code null} when there is no soft match. This is evaluated after the hard-duplicate check has
+     * already passed, so any owner sharing the lastName and postcode necessarily differs in telephone.
+     */
+    private Integer findPossibleDuplicateOf(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone) {
+        String postcode = ownerFieldsDto.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        String lastName = ownerFieldsDto.getLastName();
+        Integer matchId = null;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (lastName == null || !lastName.equalsIgnoreCase(existing.getLastName())) {
+                continue;
+            }
+            if (!postcode.equals(existing.getPostcode())) {
+                continue;
+            }
+            String existingTelephone;
+            try {
+                existingTelephone = normalizeTelephone(existing.getTelephone());
+            } catch (InvalidTelephoneException ex) {
+                existingTelephone = null;
+            }
+            if (normalizedTelephone.equals(existingTelephone)) {
+                continue;
+            }
+            if (existing.getId() != null && (matchId == null || existing.getId() < matchId)) {
+                matchId = existing.getId();
+            }
+        }
+        return matchId;
+    }
+
+    /**
      * The membership level ceiling assigned on create; level 4 is reserved for tenure and so is
      * never reached here.
      */
@@ -653,6 +692,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
         owner.setMembershipLevel(membershipLevelFor(owner));
+        Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());

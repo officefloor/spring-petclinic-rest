@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       membership_number TEXT,
                                       bulk_signup_warning BOOLEAN,
                                       membership_level INTEGER,
-                                      postcode TEXT
+                                      postcode TEXT,
+                                      possible_duplicate BOOLEAN,
+                                      possible_duplicate_of INTEGER
 );
 CREATE INDEX ON owners (last_name);
 
