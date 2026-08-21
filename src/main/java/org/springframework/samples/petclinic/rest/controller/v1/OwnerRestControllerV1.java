@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -65,6 +66,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 
 /**
@@ -90,14 +92,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final HttpServletRequest request;
+
+    /**
+     * The HTTP header carrying a client-supplied idempotency token for owner creation.
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers the owner originally created under each seen {@code Idempotency-Key}. A create that
+     * repeats a key already present here is replayed - the stored owner is returned with 200 instead
+     * of creating a duplicate.
+     */
+    private final Map<String, OwnerDto> idempotentCreates = new ConcurrentHashMap<>();
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 HttpServletRequest request) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.request = request;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -804,6 +822,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = request.getHeader(IDEMPOTENCY_KEY_HEADER);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            OwnerDto replay = idempotentCreates.get(idempotencyKey);
+            if (replay != null) {
+                return new ResponseEntity<>(replay, HttpStatus.OK);
+            }
+        }
         String normalizedLine1 = null;
         String normalizedLine2 = null;
         String composedAddress;
@@ -854,6 +879,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel(), owner.getMembershipNumber());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            idempotentCreates.put(idempotencyKey, ownerDto);
+        }
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
