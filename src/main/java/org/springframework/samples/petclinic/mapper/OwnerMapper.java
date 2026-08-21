@@ -13,7 +13,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -40,6 +39,7 @@ public abstract class OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
                     + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -64,8 +64,8 @@ public abstract class OwnerMapper {
     /**
      * Scores the owner's membership points. Starts at 0; add 2 when an email address is on
      * file; add 1 when the owner is the first with their name ({@code namesakeCount} is 0);
-     * add 2 for a household of 3 or more members; add 3 once the owner's tenure exceeds 365
-     * days.
+     * add 2 for a household of 3 or more members; add 3 once the owner's tenure spans at least
+     * one full fiscal year (their registration fiscal year is before the current fiscal year).
      */
     protected Integer membershipPoints(Owner owner) {
         int points = 0;
@@ -78,7 +78,7 @@ public abstract class OwnerMapper {
         if (householdSize(owner) >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -122,16 +122,32 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's tenure in whole days, measured from their {@code registrationDate} to
-     * the current date. Returns 0 when no registrationDate is on file (e.g. a brand-new
-     * owner before one is assigned), so such an owner has zero tenure.
+     * The owner's tenure in whole elapsed fiscal years, measured from the fiscal year of their
+     * {@code registrationDate} to the current fiscal year (fiscal years start on 1 July). Returns 0
+     * when no registrationDate is on file (e.g. a brand-new owner before one is assigned), so such
+     * an owner has zero tenure.
      */
-    private long tenureDays(Owner owner) {
+    private int tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear
+                .elapsed(registrationDate, LocalDate.now());
+    }
+
+    /**
+     * The owner's {@code fiscalYear} label {@code FY<YY>}, derived from the fiscal year of the
+     * business-day-adjusted {@code registrationDate} (fiscal years start on 1 July). Returns
+     * {@code null} when no registrationDate is on file, so the field is then absent from the
+     * response.
+     */
+    protected String fiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(registrationDate);
     }
 
     /**
