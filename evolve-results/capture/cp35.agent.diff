@@ -1,0 +1,188 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 718ab767..1fe7a051 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,12 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -196,6 +202,22 @@ public class Owner extends Person {
+         this.postcode = postcode;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ae527233..c505d6ca 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -499,6 +499,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return count;
+     }
+ 
++    /**
++     * Finds an existing owner that makes the new owner a <em>possible</em> (soft) duplicate: one
++     * that is not a hard identity collision but shares the new owner's {@code lastName} (compared
++     * case-insensitively) and {@code postcode} while carrying a different normalized telephone. The
++     * new owner's postcode must be present for a soft match to be possible. When several existing
++     * owners qualify the one with the lowest id is chosen. Returns the matching owner's id, or
++     * {@code null} when there is no soft match. This is evaluated after the hard-duplicate check has
++     * already passed, so any owner sharing the lastName and postcode necessarily differs in telephone.
++     */
++    private Integer findPossibleDuplicateOf(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone) {
++        String postcode = ownerFieldsDto.getPostcode();
++        if (postcode == null) {
++            return null;
++        }
++        String lastName = ownerFieldsDto.getLastName();
++        Integer matchId = null;
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            if (lastName == null || !lastName.equalsIgnoreCase(existing.getLastName())) {
++                continue;
++            }
++            if (!postcode.equals(existing.getPostcode())) {
++                continue;
++            }
++            String existingTelephone;
++            try {
++                existingTelephone = normalizeTelephone(existing.getTelephone());
++            } catch (InvalidTelephoneException ex) {
++                existingTelephone = null;
++            }
++            if (normalizedTelephone.equals(existingTelephone)) {
++                continue;
++            }
++            if (existing.getId() != null && (matchId == null || existing.getId() < matchId)) {
++                matchId = existing.getId();
++            }
++        }
++        return matchId;
++    }
++
+     /**
+      * The membership level ceiling assigned on create; level 4 is reserved for tenure and so is
+      * never reached here.
+@@ -653,6 +692,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
+         owner.setMembershipLevel(membershipLevelFor(owner));
++        Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone);
++        owner.setPossibleDuplicate(possibleDuplicateOf != null);
++        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         this.clinicService.saveOwner(owner);
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), owner.getMembershipLevel());
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 799d8422..55a22c17 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   membership_level INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 1d2043f0..f274c03d 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,7 +52,9 @@ CREATE TABLE owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   membership_level INTEGER,
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index ee3f6438..b1ba9488 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BIT(1),
+   membership_level INTEGER,
+   postcode VARCHAR(4),
++  possible_duplicate BIT(1),
++  possible_duplicate_of INTEGER,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 459a77ba..e8757a58 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+                                       membership_level INTEGER,
+-                                      postcode TEXT
++                                      postcode TEXT,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INTEGER
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index fd1452c1..577cb825 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2221,6 +2221,25 @@ components:
+               maximum: 9
+               example: 3
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                Assigned on create: true when the new owner is not a hard duplicate but shares an
++                existing owner's lastName and postcode while carrying a different telephone,
++                otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner whose lastName and postcode the new owner shares (with a
++                different telephone), when 'possibleDuplicate' is true. Absent otherwise.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
