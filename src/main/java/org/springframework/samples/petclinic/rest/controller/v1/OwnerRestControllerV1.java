@@ -227,6 +227,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // A newly created owner is never soft-deleted.
+        owner.setDeleted(false);
         // Store (and later return) the normalized structured lines and the composed address. The
         // structured lines are kept only when the structured form was supplied; otherwise they are
         // cleared so the response reflects the flat form that was actually used.
@@ -283,6 +285,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // 'sharesHousehold', which now only bypasses this block (the household link already exists by
         // construction) and marks the owner as a declared household member.
         boolean householdMemberExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         boolean declaredHouseholdMember = false;
         if (householdMemberExists) {
@@ -299,6 +302,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // have different keys and are both allowed; only an exact full-key match is a duplicate.
         String identityKey = owner.getIdentityKey();
         boolean identityCollision = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
         if (identityCollision) {
             throw new DuplicateIdentityException(identityKey);
@@ -725,7 +729,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft delete: flag the owner deleted and retain the record rather than removing it. The
+        // owner is still readable afterwards (with 'deleted' true) but is ignored by the create
+        // endpoint's duplicate/identity checks.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
