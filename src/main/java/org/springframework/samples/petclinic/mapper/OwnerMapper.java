@@ -39,6 +39,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
     @Mapping(target = "ownerSegment", expression = "java(deriveOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(deriveRiskFlag(owner))")
     @Mapping(target = "selfLink",
         expression = "java(owner == null || owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
@@ -111,6 +112,56 @@ public interface OwnerMapper {
         String locality = deriveLocality(owner);
         boolean metro = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
         return tier + "_" + (metro ? "METRO" : "REGIONAL");
+    }
+
+    /**
+     * Disposable-email domains whose subdomains are treated as disposable-adjacent. This is the same
+     * fixed block list the create endpoint rejects on an exact match; an owner therefore never carries
+     * an email whose domain is exactly one of these, so only a subdomain of one survives to be flagged.
+     */
+    java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
+    /**
+     * Derive the owner's {@code riskFlag}: true when any of these hold, otherwise false. The owner is
+     * a possible duplicate ({@code possibleDuplicate} is true); the owner's email domain is
+     * disposable-adjacent ({@link #isDisposableAdjacent}); or the owner's city is over its soft
+     * capacity ({@code capacityWarning} is true, i.e. the city already held 40 or more owners when
+     * this owner was created). Returns false when the owner is absent.
+     */
+    default boolean deriveRiskFlag(Owner owner) {
+        if (owner == null) {
+            return false;
+        }
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        boolean disposableAdjacent = isDisposableAdjacent(owner.getEmail());
+        return possibleDuplicate || disposableAdjacent || overSoftCapacity;
+    }
+
+    /**
+     * Whether an email's domain is disposable-adjacent: the domain (the part after the final
+     * {@code @}, compared case-insensitively) is a proper subdomain of a known disposable-email
+     * domain, i.e. it ends with {@code '.' + disposableDomain}. An exact match to a disposable domain
+     * is rejected on create, so it never reaches here. A null or malformed email is not adjacent.
+     */
+    default boolean isDisposableAdjacent(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (domain.endsWith("." + disposable)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
