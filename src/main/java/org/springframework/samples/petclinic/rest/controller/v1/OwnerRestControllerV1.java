@@ -308,11 +308,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         populateHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        // Emit an audit line carrying the new owner's id, customer code, registration date
-        // and numeric membership level.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        // Emit an audit line carrying the new owner's id, customer code, registration date,
+        // numeric membership level and membership number.
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel());
+            ownerDto.getMembershipLevel(), owner.getMembershipNumber());
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
