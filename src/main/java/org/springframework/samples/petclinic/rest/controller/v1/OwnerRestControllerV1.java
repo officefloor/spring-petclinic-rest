@@ -123,6 +123,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        // Normalize the telephone: strip every non-digit character, then require exactly 10 digits.
+        String normalizedTelephone = owner.getTelephone().replaceAll("\\D", "");
+        if (normalizedTelephone.length() != 10) {
+            throw new InvalidRequestException(List.of("telephone"));
+        }
+        owner.setTelephone(normalizedTelephone);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
