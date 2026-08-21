@@ -34,7 +34,6 @@ public interface OwnerMapper {
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
     @Mapping(target = "identityKey", expression = "java(deriveIdentityKey(owner))")
-    @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
@@ -55,23 +54,15 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derive the owner's locality (region) from its region-and-hash {@code customerCode}: the
-     * {@code REGION} portion is the segment before the first {@code '-'} (e.g. {@code "NSW-1A2B3C4D"}
-     * yields {@code "NSW"}). This shares the identity's region derivation, where the postcode range
-     * takes precedence (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) and the city-to-region table is
-     * the fallback. For an owner without a {@code customerCode} the same region is recomputed directly
-     * from the postcode then city, otherwise "UNKNOWN".
+     * Derive the owner's locality (region) from its postcode, falling back to its city. This shares
+     * the identity's region derivation, where the postcode range takes precedence (NSW 2000-2099, VIC
+     * 3000-3099, QLD 4000-4099) and the city-to-region table (Sydney->NSW, Melbourne->VIC,
+     * Brisbane->QLD) is the fallback, otherwise "UNKNOWN". This is the same region embedded as the
+     * {@code REGION} prefix of the owner's {@code memberId}.
      */
     default String deriveLocality(Owner owner) {
         if (owner == null) {
             return null;
-        }
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
-            }
         }
         String postcode = owner.getPostcode();
         if (postcode != null) {
@@ -143,36 +134,6 @@ public interface OwnerMapper {
             return "Australia/Brisbane";
         }
         return null;
-    }
-
-    /**
-     * Derive the owner's check digit: a single Luhn check digit (0-9) computed over the
-     * digits contained in the owner's customerCode. Non-digit characters are ignored.
-     * Returns null when the owner or its customerCode is absent.
-     */
-    default Integer deriveCheckDigit(Owner owner) {
-        if (owner == null || owner.getCustomerCode() == null) {
-            return null;
-        }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**

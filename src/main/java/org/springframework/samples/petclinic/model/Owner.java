@@ -66,8 +66,8 @@ public class Owner extends Person {
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -77,9 +77,6 @@ public class Owner extends Person {
 
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
-
-    @Column(name = "membership_number")
-    private String membershipNumber;
 
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
@@ -180,12 +177,12 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -210,14 +207,6 @@ public class Owner extends Person {
 
     public void setHouseholdMemberCount(Integer householdMemberCount) {
         this.householdMemberCount = householdMemberCount;
-    }
-
-    public String getMembershipNumber() {
-        return this.membershipNumber;
-    }
-
-    public void setMembershipNumber(String membershipNumber) {
-        this.membershipNumber = membershipNumber;
     }
 
     public Boolean getBulkSignupWarning() {
