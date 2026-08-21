@@ -14,6 +14,7 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warning(owner.getRegistrationDate(), ownerRepository));
         dto.setCapacityWarning(CapacityWarning.warning(owner, ownerRepository));
+        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
         response.send(dto);
     }
 }

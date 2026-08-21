@@ -47,4 +47,40 @@ final class OwnerEmail {
         }
         request.setEmail(normalized);
     }
+
+    /**
+     * Whether an email's domain is <em>disposable-adjacent</em>: not an exact blocklist match (those
+     * are rejected at create time, so a stored owner never has one) but clearly related to a known
+     * disposable domain - the same registrable name under a different suffix (e.g. mailinator.org),
+     * or a subdomain of a blocked domain (e.g. smtp.mailinator.com). A null, blank or address-less
+     * value is not disposable-adjacent.
+     */
+    static boolean isDisposableAdjacent(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase();
+        if (domain.isEmpty()) {
+            return false;
+        }
+        for (String blocked : DISPOSABLE_DOMAINS) {
+            if (domain.equals(blocked)
+                    || domain.endsWith("." + blocked)
+                    || secondLevelLabel(domain).equals(secondLevelLabel(blocked))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The registrable label of a domain - the label immediately left of the final one
+     *  (e.g. 'mailinator' for both 'mailinator.com' and 'smtp.mailinator.org'). */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        return labels.length >= 2 ? labels[labels.length - 2] : domain;
+    }
 }
