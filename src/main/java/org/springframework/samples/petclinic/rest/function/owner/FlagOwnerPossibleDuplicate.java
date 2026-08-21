@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Locale;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -10,14 +8,14 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 /**
  * Stamps the soft-duplicate flags onto the newly built owner. A create that is not a hard
  * duplicate (already enforced by {@link CheckOwnerIdentityUnique}) is still flagged as a
- * possible duplicate when it shares an existing owner's last name (compared case-insensitively)
- * and postcode while carrying a different telephone. When such a match is found,
- * {@code possibleDuplicate} is set {@code true} and {@code possibleDuplicateOf} to the matching
- * owner's id (the earliest-created match when several exist); otherwise {@code possibleDuplicate}
- * is {@code false} and {@code possibleDuplicateOf} is left absent.
+ * possible duplicate when it shares an existing owner's postcode and phonetic last name
+ * ({@link Soundex} code) while carrying a <em>different</em> {@link OwnerIdentityKey identity key}
+ * — typically a different telephone or email. When such a match is found, {@code possibleDuplicate}
+ * is set {@code true} and {@code possibleDuplicateOf} to the matching owner's id (the
+ * earliest-created match when several exist); otherwise {@code possibleDuplicate} is {@code false}
+ * and {@code possibleDuplicateOf} is left absent.
  *
- * <p>A declared household member (the request opted in with {@code sharesHousehold} true, so it
- * reached this step by bypassing the {@link CheckOwnerIdentityUnique duplicate block}) is never
+ * <p>A declared household member (the request opted in with {@code sharesHousehold} true) is never
  * flagged: a member the caller has explicitly declared is not a <em>suspected</em> duplicate.
  *
  * <p>Runs before {@link SaveOwner}, so the new owner is not yet persisted and cannot match itself.
@@ -34,13 +32,13 @@ public class FlagOwnerPossibleDuplicate {
         if (postcode == null || postcode.isBlank()) {
             return; // no postcode to share — cannot be a possible duplicate
         }
-        String lastName = canonical(owner.getLastName());
-        String telephone = owner.getTelephone();
+        String soundex = Soundex.encode(owner.getLastName());
+        String identityKey = OwnerIdentityKey.forOwner(owner);
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
             if (postcode.equals(existing.getPostcode())
-                    && lastName.equals(canonical(existing.getLastName()))
-                    && !equalsTelephone(telephone, existing.getTelephone())) {
+                    && soundex.equals(Soundex.encode(existing.getLastName()))
+                    && !identityKey.equals(OwnerIdentityKey.forOwner(existing))) {
                 if (match == null || existing.getId() < match.getId()) {
                     match = existing;
                 }
@@ -50,13 +48,5 @@ public class FlagOwnerPossibleDuplicate {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(match.getId());
         }
-    }
-
-    private static boolean equalsTelephone(String a, String b) {
-        return a == null ? b == null : a.equals(b);
-    }
-
-    private static String canonical(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT);
     }
 }

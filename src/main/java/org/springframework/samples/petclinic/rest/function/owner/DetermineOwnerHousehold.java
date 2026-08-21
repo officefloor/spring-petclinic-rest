@@ -18,11 +18,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * space and leading/trailing whitespace trimmed; the postcode is used as supplied (trimmed).
  *
  * <p>The id is computed for <em>every</em> request and published as {@link HouseholdId} for
- * {@link AssignOwnerHousehold} to stamp onto the new owner and for {@link CheckOwnerIdentityUnique}
- * to key duplicate detection on. Unlike before, this step neither inspects existing owners nor
- * stamps a link onto them — {@code sharesHousehold} no longer creates the link, it only lets a
- * second member of an existing household bypass the duplicate block (see
- * {@link CheckOwnerIdentityUnique}).
+ * {@link AssignOwnerHousehold} to stamp onto the new owner (it is exposed on the response but no
+ * longer keys duplicate detection — that is now the single {@link OwnerIdentityKey identity key}).
+ * This step neither inspects existing owners nor stamps a link onto them.
  */
 public class DetermineOwnerHousehold {
 
