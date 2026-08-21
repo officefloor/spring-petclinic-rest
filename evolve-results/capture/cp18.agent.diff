@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/CityCapacityException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityCapacityException.java
+new file mode 100644
+index 00000000..eba2e3e8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/CityCapacityException.java
+@@ -0,0 +1,28 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Thrown by REST controllers when an owner cannot be created because its city already contains the
++ * maximum number of owners (50). The exception handler reports it as a {@code 409 Conflict}.
++ */
++public class CityCapacityException extends RuntimeException {
++
++    public CityCapacityException(String city) {
++        super("The city '" + city + "' has reached its maximum capacity of owners");
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 19b5ed11..0b99cbe7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
+     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
++    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its maximum capacity of owners";
+ 
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+@@ -221,4 +222,20 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link CityCapacityException} raised when an owner cannot be created because its city
++     * already contains the maximum number of owners (50). Returns a 409 Conflict.
++     *
++     * @param e The {@link CityCapacityException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
++     */
++    @ExceptionHandler(CityCapacityException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleCityCapacityException(CityCapacityException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c775de08..d7fb3bdc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
++import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
+@@ -76,6 +77,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Default country code assumed for national numbers that carry no explicit '+' prefix. */
+     private static final String DEFAULT_COUNTRY_CODE = "61";
+ 
++    /** Maximum number of owners a single city may contain; a create is rejected once it is reached. */
++    private static final int MAX_OWNERS_PER_CITY = 50;
++
+     /** Separators (spaces, dashes and brackets) stripped from a telephone before parsing. */
+     private static final Pattern TELEPHONE_SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
+ 
+@@ -169,6 +173,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        // Reject the request when the owner's city has already reached its owner capacity.
++        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
++            throw new CityCapacityException(owner.getCity());
++        }
+         // Reject the request if the E.164 telephone is already used by another owner.
+         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
+             throw new DuplicateTelephoneException(normalizedTelephone);
+@@ -276,6 +284,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count();
+     }
+ 
++    /**
++     * Count the existing owners whose city matches the given city, comparing case-insensitively with
++     * collapsed whitespace. The incoming owner is not yet persisted, so it is not included in the count.
++     *
++     * @param city the incoming owner's city
++     * @return the number of existing owners already in that city
++     */
++    private int countOwnersInCity(String city) {
++        String normalizedCity = normalizeForComparison(city);
++        return (int) this.clinicService.findAllOwners().stream()
++            .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
++            .count();
++    }
++
+     /**
+      * Find the existing owners that live in the same household as the given values, i.e. those that
+      * share both the last name and the address when each is compared case-insensitively with
