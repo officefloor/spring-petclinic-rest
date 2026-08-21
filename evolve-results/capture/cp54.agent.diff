@@ -1,0 +1,126 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 6378aab6..ae7c1f5c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -87,6 +87,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -227,6 +230,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a6f3c2a7..486ef683 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -92,6 +92,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Maximum number of owners a single city may contain; a create is rejected once it is reached. */
+     private static final int MAX_OWNERS_PER_CITY = 50;
+ 
++    /** Owner count in a city at or above which a create is flagged as approaching the capacity limit. */
++    private static final int CAPACITY_WARNING_THRESHOLD = 40;
++
+     /** Maximum number of owners that may be registered on a single day; a create is rejected once it is reached. */
+     private static final int MAX_OWNERS_PER_DAY = 100;
+ 
+@@ -314,9 +317,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // owner's registration day at the moment this owner was created; otherwise clear it.
+         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
+         // Reject the request when the owner's city has already reached its owner capacity.
+-        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
++        int ownersInCity = countOwnersInCity(owner.getCity());
++        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
+             throw new CityCapacityException(owner.getCity());
+         }
++        // Flag a capacity warning when the owner's city already holds between 40 and 49 owners
++        // (approaching the hard limit of 50) at the moment this owner was created; otherwise clear it.
++        owner.setCapacityWarning(ownersInCity >= CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY);
+         // The household is keyed deterministically on (normalizedLastName, postcode): the householdId
+         // is the first 12 hex characters of the SHA-256 digest of '<normalizedLastName>|<postcode>',
+         // so any two owners with the same last name and postcode automatically resolve to the same
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 44948f77..18b6c268 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 2b1a74e4..3d8cd6af 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index da57a88f..d1e4b7e5 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   namesake_count INTEGER,
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 8ce0d4a1..b2df6439 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       namesake_count INTEGER,
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       birth_date DATE,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5db06a3d..0a8a911e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2279,6 +2279,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already held between 40 and 49 owners (approaching
++                the hard capacity limit of 50) at the moment this owner was created; otherwise
++                false.
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
