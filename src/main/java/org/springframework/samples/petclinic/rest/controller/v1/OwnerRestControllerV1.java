@@ -194,11 +194,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
             missingFields.add("lastName");
         }
-        // Normalize the address up front; the required-field check rejects it when it is blank
-        // after normalization (e.g. a whitespace-only value collapses to the empty string).
-        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
-        if (!StringUtils.hasText(normalizedAddress)) {
+        // Normalize each supplied address form up front. The structured fields are preferred when
+        // present; the flat 'address' input remains accepted for backward compatibility. An owner is
+        // valid when it supplies an address in EITHER form (a non-blank addressLine1, or the flat
+        // address). A whitespace-only value collapses to the empty string and counts as absent.
+        String normalizedAddressLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+        String normalizedAddressLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+        String normalizedFlatAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        boolean hasStructuredAddress = StringUtils.hasText(normalizedAddressLine1);
+        boolean hasFlatAddress = StringUtils.hasText(normalizedFlatAddress);
+        if (!hasStructuredAddress && !hasFlatAddress) {
             missingFields.add("address");
+        }
+        // Compose the stored/returned address: the structured lines when present (addressLine1, with a
+        // single space and addressLine2 appended when addressLine2 is present), otherwise the flat form.
+        String composedAddress;
+        if (hasStructuredAddress) {
+            composedAddress = StringUtils.hasText(normalizedAddressLine2)
+                ? normalizedAddressLine1 + " " + normalizedAddressLine2
+                : normalizedAddressLine1;
+        } else {
+            composedAddress = normalizedFlatAddress;
         }
         if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
             missingFields.add("city");
@@ -211,8 +227,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Store (and later return) the normalized address computed above.
-        owner.setAddress(normalizedAddress);
+        // Store (and later return) the normalized structured lines and the composed address. The
+        // structured lines are kept only when the structured form was supplied; otherwise they are
+        // cleared so the response reflects the flat form that was actually used.
+        owner.setAddressLine1(hasStructuredAddress ? normalizedAddressLine1 : null);
+        owner.setAddressLine2(hasStructuredAddress && StringUtils.hasText(normalizedAddressLine2)
+            ? normalizedAddressLine2 : null);
+        owner.setAddress(composedAddress);
         // Normalize the telephone into E.164 form (reject with 400 when it cannot form a valid one).
         String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
