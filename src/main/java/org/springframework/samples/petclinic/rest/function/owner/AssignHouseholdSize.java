@@ -7,11 +7,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Assigns the owner's {@code householdSize}: the number of members in the owner's household
  * (owners sharing the same {@code householdId}) after this create — the already-stored members
- * plus this new owner. Runs after {@link AssignHousehold} (so the new owner's {@code householdId}
- * is set and existing members are backfilled) and before {@code save} (so the new owner is not yet
- * counted among the stored members, and is instead added as the {@code + 1}).
+ * plus this new owner. Runs after {@link AssignHousehold} (so the new owner's computed
+ * {@code householdId} is set) and before {@code save} (so the new owner is not yet counted among
+ * the stored members, and is instead added as the {@code + 1}). Existing members are found by their
+ * own stored {@code householdId}, which — being deterministic from lastName + postcode — already
+ * equals the new owner's for the whole household.
  *
- * <p>An owner not part of a shared household ({@code householdId} null) has a household size of 1.
+ * <p>An owner with no household ({@code householdId} null, e.g. no postcode) has a size of 1.
  */
 public class AssignHouseholdSize {
 

@@ -5,6 +5,7 @@ import java.util.Locale;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Assigns the owner's soft-match duplicate signal. A create request that clears the hard
@@ -14,13 +15,24 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * with {@code possibleDuplicate} true and {@code possibleDuplicateOf} set to that existing
  * owner's id. Otherwise {@code possibleDuplicate} is false and {@code possibleDuplicateOf} null.
  *
+ * <p>A declared household member ({@code sharesHousehold} true) is never flagged: it shares an
+ * existing member's lastName and postcode by design, so it is a known household member rather than
+ * a suspected duplicate. (A same lastName + postcode owner that did <em>not</em> declare the
+ * household is already rejected as a household duplicate by {@link EnsureUniqueIdentity} and never
+ * reaches this step.)
+ *
  * <p>Only owners with a postcode participate: a match requires both postcodes to be present and
  * equal. When several existing owners match, the earliest (lowest id) is reported. Runs before
  * {@code save}, so the new owner is not compared against itself.
  */
 public class AssignPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            owner.setPossibleDuplicate(false);
+            owner.setPossibleDuplicateOf(null);
+            return; // a declared household member is not a suspected duplicate
+        }
         String lastName = normalize(owner.getLastName());
         String postcode = owner.getPostcode();
         String telephone = owner.getTelephone();
