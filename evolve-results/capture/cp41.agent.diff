@@ -1,0 +1,47 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9d8e12cd..50dc772e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -362,12 +362,40 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * longer any per-city sequence number.
+      *
+      * @param owner the owner whose (already-normalized) telephone, last name, postcode and city are read
+-     * @return the generated customer code
++     * @return the generated (collision-free) customer code
+      */
+     private String generateCustomerCode(Owner owner) {
+         String region = deriveRegion(owner.getPostcode(), owner.getCity());
+         String hash8 = shortSha256Hex(owner.getTelephone() + owner.getLastName(), 8);
+-        return region + "-" + hash8;
++        String baseCode = region + "-" + hash8;
++        return deduplicateCustomerCode(baseCode);
++    }
++
++    /**
++     * Return a customer code that does not collide with any existing owner's customer code. When the
++     * given base code is already unique it is returned unchanged; otherwise {@code -<n>} is appended
++     * with the smallest {@code n} of 2 or more that makes the result unique (e.g. {@code NSW-1A2B3C4D},
++     * then {@code NSW-1A2B3C4D-2}, {@code NSW-1A2B3C4D-3}, ...). The incoming owner is not yet
++     * persisted, so it never counts as a collision with itself.
++     *
++     * @param baseCode the computed {@code <REGION>-<HASH8>} customer code
++     * @return the de-duplicated customer code
++     */
++    private String deduplicateCustomerCode(String baseCode) {
++        java.util.Set<String> existingCodes = this.clinicService.findAllOwners().stream()
++            .map(Owner::getCustomerCode)
++            .filter(java.util.Objects::nonNull)
++            .collect(java.util.stream.Collectors.toSet());
++        if (!existingCodes.contains(baseCode)) {
++            return baseCode;
++        }
++        int n = 2;
++        String candidate = baseCode + "-" + n;
++        while (existingCodes.contains(candidate)) {
++            n++;
++            candidate = baseCode + "-" + n;
++        }
++        return candidate;
+     }
+ 
+     /**
