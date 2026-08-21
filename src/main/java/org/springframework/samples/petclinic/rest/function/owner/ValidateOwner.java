@@ -16,6 +16,8 @@ public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws InvalidOwnerEmailException, InvalidOwnerPostcodeException {
+        // Normalize the address (structured or flat) and compose the canonical 'address' form.
+        OwnerAddress.normalize(request);
         // An owner may include an email; when present it must be valid and is stored lower-cased.
         OwnerEmail.normalize(request);
         // An owner may include a postcode; when present it must be 4 digits valid for the city's region.

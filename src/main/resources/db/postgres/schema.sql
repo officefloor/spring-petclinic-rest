@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       namesake_count INT,
                                       household_size INT,
                                       possible_duplicate BOOLEAN,
-                                      possible_duplicate_of INT
+                                      possible_duplicate_of INT,
+                                      address_line1 TEXT,
+                                      address_line2 TEXT
 );
 CREATE INDEX ON owners (last_name);
 

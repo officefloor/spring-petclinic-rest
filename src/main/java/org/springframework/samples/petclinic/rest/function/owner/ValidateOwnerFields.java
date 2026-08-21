@@ -13,9 +13,13 @@ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsE
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
- * Runs first in the create-owner pipeline. Rejects a request that is missing or blank in any of
- * firstName, lastName, address, city or telephone by throwing {@link MissingOwnerFieldsException}
- * with the names of every offending field. Otherwise it publishes the body for later steps.
+ * Runs first in the create-owner pipeline. An owner must supply an address in EITHER form - a
+ * non-blank {@code addressLine1} or the flat {@code address} - plus firstName, lastName, city and
+ * telephone; a request missing or blank in any of these is rejected with
+ * {@link MissingOwnerFieldsException} naming every offending field. Because {@link OwnerAddress}
+ * normalizes and composes the address first, a supplied structured or flat address leaves a
+ * non-blank composed {@code address}, so the single {@code address} check covers both forms.
+ * Otherwise it publishes the body for later steps.
  */
 public class ValidateOwnerFields {
 
