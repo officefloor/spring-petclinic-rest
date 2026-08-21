@@ -33,6 +33,7 @@ public interface OwnerMapper {
             + "+ (owner.getEmail() == null ? \"\" : owner.getEmail()) + \"|\" "
             + "+ (owner.getHouseholdId() == null ? \"\" : owner.getHouseholdId()))")
     @Mapping(target = "checkDigit", expression = "java(deriveCheckDigit(owner))")
+    @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -123,6 +124,29 @@ public interface OwnerMapper {
             dbl = !dbl;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Derive the owner's age band from its birthDate against the registrationDate: 'MINOR' when
+     * under 18, 'ADULT' from 18 to 64, and 'SENIOR' at 65 or older. The age is the number of whole
+     * years between birthDate and registrationDate (falling back to the current date when the owner
+     * has no registrationDate). Returns null when the owner or its birthDate is absent, so no
+     * ageBand is reported.
+     */
+    default String deriveAgeBand(Owner owner) {
+        if (owner == null || owner.getBirthDate() == null) {
+            return null;
+        }
+        java.time.LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        int age = java.time.Period.between(owner.getBirthDate(), reference).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        if (age < 65) {
+            return "ADULT";
+        }
+        return "SENIOR";
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
