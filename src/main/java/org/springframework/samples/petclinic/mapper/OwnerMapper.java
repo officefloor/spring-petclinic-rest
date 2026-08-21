@@ -46,34 +46,18 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derive the locality region for an owner. The postcode is preferred: when present and it falls
-     * within a known region's inclusive 4-digit range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099)
-     * that region is returned. Otherwise fall back to the pinned city-to-region table (Sydney->NSW,
-     * Melbourne->VIC, Brisbane->QLD), and finally "UNKNOWN" for a city with no known region.
+     * Derive the locality region for an owner from its region-and-hash customer code. The customer code
+     * is {@code <REGION>-<HASH8>}, so the locality is the region segment before the first hyphen (the
+     * same region the identity itself was built from: postcode range first, then the city-to-region
+     * table, otherwise "UNKNOWN"). When no customer code is present, the locality is "UNKNOWN".
      */
     default String deriveLocality(Owner owner) {
-        String postcode = owner.getPostcode();
-        if (postcode != null && postcode.matches("[0-9]{4}")) {
-            int value = Integer.parseInt(postcode);
-            if (value >= 2000 && value <= 2099) {
-                return "NSW";
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash > 0) {
+                return customerCode.substring(0, dash);
             }
-            if (value >= 3000 && value <= 3099) {
-                return "VIC";
-            }
-            if (value >= 4000 && value <= 4099) {
-                return "QLD";
-            }
-        }
-        String city = owner.getCity();
-        if ("Sydney".equals(city)) {
-            return "NSW";
-        }
-        if ("Melbourne".equals(city)) {
-            return "VIC";
-        }
-        if ("Brisbane".equals(city)) {
-            return "QLD";
         }
         return "UNKNOWN";
     }

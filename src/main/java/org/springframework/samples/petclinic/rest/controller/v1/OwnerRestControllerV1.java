@@ -263,10 +263,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this first name and last name
         // (compared case-insensitively) before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        // Assign the customer code '<CITY3>-<LAST3>-<NNNN>' before persisting.
-        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+        // Assign the customer code '<REGION>-<HASH8>' before persisting.
+        owner.setCustomerCode(generateCustomerCode(owner));
         // Assign the membership number '<customerCode>-M<YY>' where YY is the last two
-        // digits of the registration date year (e.g. 'SYD-SMI-0007-M26').
+        // digits of the registration date year (e.g. 'NSW-1A2B3C4D-M26').
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         populateHouseholdSize(owner);
@@ -318,24 +318,66 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Generate a customer code formatted {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the
-     * upper-cased first three letters of {@code city}, {@code LAST3} is the upper-cased first three
-     * letters of {@code lastName} and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to
-     * one more than the current number of owners already in that city (e.g. {@code SYD-SMI-0007}).
+     * Generate a customer code formatted {@code <REGION>-<HASH8>}, where {@code REGION} is the region
+     * code derived from the owner's identity (postcode range first, then the city-to-region table,
+     * otherwise {@code UNKNOWN}) and {@code HASH8} is the first eight upper-case hex characters of the
+     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}). There is no
+     * longer any per-city sequence number.
      *
-     * @param city     the owner's city
-     * @param lastName the owner's last name
+     * @param owner the owner whose (already-normalized) telephone, last name, postcode and city are read
      * @return the generated customer code
      */
-    private String generateCustomerCode(String city, String lastName) {
-        String cityPrefix = city.length() >= 3 ? city.substring(0, 3) : city;
-        String lastPrefix = lastName.length() >= 3 ? lastName.substring(0, 3) : lastName;
-        String normalizedCity = normalizeForComparison(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
-            .count() + 1;
-        return String.format("%s-%s-%04d", cityPrefix.toUpperCase(Locale.ROOT),
-            lastPrefix.toUpperCase(Locale.ROOT), sequence);
+    private String generateCustomerCode(Owner owner) {
+        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String hash8 = shortSha256Hex(owner.getTelephone() + owner.getLastName(), 8);
+        return region + "-" + hash8;
+    }
+
+    /**
+     * Derive the region code for an owner's identity. The postcode is preferred: when present and it
+     * falls within a known region's inclusive 4-digit range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) that region is returned. Otherwise fall back to the pinned city-to-region table
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), and finally {@code UNKNOWN} for a city with no
+     * known region.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @param city     the owner's city
+     * @return the derived region code
+     */
+    private String deriveRegion(String postcode, String city) {
+        if (postcode != null && POSTCODE_PATTERN.matcher(postcode).matches()) {
+            int value = Integer.parseInt(postcode);
+            for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
+                int[] range = entry.getValue();
+                if (value >= range[0] && value <= range[1]) {
+                    return entry.getKey();
+                }
+            }
+        }
+        String region = CITY_REGION.get(city);
+        return region != null ? region : "UNKNOWN";
+    }
+
+    /**
+     * Return the first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
+     * bytes of {@code input}.
+     *
+     * @param input  the value to digest
+     * @param length the number of leading hex characters to return
+     * @return the truncated upper-case hex digest
+     */
+    private String shortSha256Hex(String input, int length) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, length).toUpperCase(Locale.ROOT);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
@@ -445,17 +487,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String generateHouseholdId(String lastName, String address) {
         String key = normalizeForComparison(lastName) + "|" + normalizeForComparison(address);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.substring(0, 12).toUpperCase(Locale.ROOT);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return shortSha256Hex(key, 12);
     }
 
     /**
