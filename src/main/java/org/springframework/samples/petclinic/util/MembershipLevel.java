@@ -64,10 +64,21 @@ public final class MembershipLevel {
 
     /**
      * @param owner the owner whose level to derive.
-     * @return the membership level, from 1 to 4, mapped from {@link #points(Owner)}.
+     * @return the membership level, from 1 to 4, mapped from {@link #points(Owner)}, then
+     *         capped by the owner's {@code membershipLevelCap} when one is set (see
+     *         {@code AssignMembershipCap}). A null cap leaves the level unchanged.
      */
     public static int of(Owner owner) {
-        int points = points(owner);
+        int level = level(points(owner));
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            return cap;
+        }
+        return level;
+    }
+
+    /** Maps points to the uncapped numeric level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6+. */
+    private static int level(int points) {
         if (points <= 1) {
             return 1;
         }

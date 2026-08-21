@@ -51,6 +51,7 @@ CREATE TABLE owners (
   household_id VARCHAR(40),
   namesake_count INTEGER,
   household_size INTEGER,
+  membership_level_cap INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   address_line1 VARCHAR(255),

@@ -17,6 +17,12 @@ import org.springframework.samples.petclinic.rest.escalation.HouseholdDuplicateE
  * The two checks are distinct: this one is bypassed by {@code sharesHousehold}, whereas the identity
  * check (the full {@code telephone|email|householdId} key) never is - so a full duplicate that also
  * declares {@code sharesHousehold} still collides on its identity key.
+ *
+ * <p>The block is also bypassed when the new owner brings its own email: an email identifies a
+ * genuinely distinct household member (the identity check still rejects a full duplicate that
+ * repeats an existing telephone/email/household), so such an owner joins the household rather than
+ * being rejected as a duplicate. An owner with no email that merely shares an existing household is
+ * still treated as a duplicate and rejected.
  */
 public class CheckOwnerHouseholdUnique {
 
@@ -24,6 +30,10 @@ public class CheckOwnerHouseholdUnique {
             throws HouseholdDuplicateException {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member - bypass the duplicate block
+        }
+        String email = owner.getEmail();
+        if (email != null && !email.isBlank()) {
+            return; // brings its own email - a distinct household member, not a duplicate
         }
         String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
