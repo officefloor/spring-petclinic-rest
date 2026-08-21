@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ce9cdc27..a616267c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -23,6 +23,7 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -434,6 +435,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return region + "-" + sha256HexPrefix(normalizedTelephone + lastName, 8);
+     }
+ 
++    /**
++     * De-duplicates a freshly computed {@code customerCode} against the codes already carried by
++     * existing owners. When the base code is unused it is returned unchanged; otherwise
++     * {@code '-<n>'} is appended with the smallest {@code n} of 2 or more that yields a code no
++     * existing owner already holds. The count reflects the state prior to this create.
++     */
++    private String deduplicateCustomerCode(String baseCode) {
++        Set<String> existingCodes = new HashSet<>();
++        for (Owner existing : this.clinicService.findAllOwners()) {
++            String code = existing.getCustomerCode();
++            if (code != null) {
++                existingCodes.add(code);
++            }
++        }
++        if (!existingCodes.contains(baseCode)) {
++            return baseCode;
++        }
++        int n = 2;
++        while (existingCodes.contains(baseCode + "-" + n)) {
++            n++;
++        }
++        return baseCode + "-" + n;
++    }
++
+     /**
+      * Returns the first {@code hexChars} upper-case hex characters of the SHA-256 digest of the UTF-8
+      * bytes of {@code value}.
+@@ -763,7 +788,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setBulkSignupWarning(bulkSignupWarningFor(registrationDate));
+         owner.setRegistrationDate(registrationDate);
+         String region = deriveRegion(owner.getCity(), owner.getPostcode());
+-        owner.setCustomerCode(customerCodeFor(region, normalizedTelephone, owner.getLastName()));
++        owner.setCustomerCode(deduplicateCustomerCode(customerCodeFor(region, normalizedTelephone, owner.getLastName())));
+         owner.setMembershipNumber(membershipNumberFor(owner.getCustomerCode(), owner.getRegistrationDate()));
+         owner.setHouseholdId(householdId);
+         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
