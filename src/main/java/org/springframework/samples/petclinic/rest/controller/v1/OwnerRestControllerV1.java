@@ -188,7 +188,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         owners.forEach(this::populateHouseholdSize);
-        return new ResponseEntity<>(ownerMapper.toOwnerDtoCollection(owners), HttpStatus.OK);
+        List<OwnerDto> ownerDtos = new ArrayList<>();
+        for (Owner owner : owners) {
+            OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+            applyHouseholdMembershipCap(owner, ownerDto);
+            ownerDtos.add(ownerDto);
+        }
+        return new ResponseEntity<>(ownerDtos, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -199,7 +205,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         populateHouseholdSize(owner);
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        applyHouseholdMembershipCap(owner, ownerDto);
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -312,15 +320,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId);
         // Household-duplicate detection: because the household is keyed on (lastName, postcode), any
         // existing owner already carrying this householdId is a member of the same household, so this
-        // create is a household duplicate. Reject it with 409 unless the caller opts in via
-        // 'sharesHousehold', which now only bypasses this block (the household link already exists by
-        // construction) and marks the owner as a declared household member.
+        // create looks like a household duplicate. Reject it with 409 unless it is a declared distinct
+        // household member: either the caller opts in via 'sharesHousehold', or the new owner supplies
+        // an email, a per-person identifier that marks it as a genuinely distinct member rather than a
+        // mistyped duplicate of an existing one. Either way the household link already exists by
+        // construction; an exact full-identity repeat is still caught by the identity-key check below.
         boolean householdMemberExists = this.clinicService.findAllOwners().stream()
             .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
         boolean declaredHouseholdMember = false;
         if (householdMemberExists) {
-            if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+                || StringUtils.hasText(owner.getEmail())) {
                 declaredHouseholdMember = true;
             } else {
                 throw new DuplicateHouseholdException(owner.getLastName(), owner.getPostcode());
@@ -369,6 +380,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         populateHouseholdSize(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        // Cap the new owner's membership level at one above the current maximum among their
+        // existing household members (no cap when the household has no other member).
+        applyHouseholdMembershipCap(owner, ownerDto);
         // Emit an audit line carrying the new owner's id, customer code, registration date,
         // numeric membership level and membership number.
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
@@ -431,6 +445,45 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .count();
         owner.setHouseholdSize(size);
+    }
+
+    /**
+     * Cap the owner's membership level so it never exceeds one above the current maximum membership
+     * level among the owner's household members (the other non-deleted owners sharing this owner's
+     * {@code householdId}). When the household has no other member, no cap applies and the level is
+     * left untouched. Any reduction is written back onto the given dto.
+     *
+     * @param owner    the owner whose household members bound the level (excluded from its own household)
+     * @param ownerDto the mapped dto whose {@code membershipLevel} is capped in place
+     */
+    private void applyHouseholdMembershipCap(Owner owner, OwnerDto ownerDto) {
+        String householdId = owner.getHouseholdId();
+        if (!StringUtils.hasText(householdId) || ownerDto.getMembershipLevel() == null) {
+            return;
+        }
+        Integer maxMemberLevel = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .filter(existing -> !java.util.Objects.equals(existing.getId(), owner.getId()))
+            .map(this::membershipLevelOf)
+            .max(Integer::compareTo)
+            .orElse(null);
+        if (maxMemberLevel != null && ownerDto.getMembershipLevel() > maxMemberLevel + 1) {
+            ownerDto.setMembershipLevel(maxMemberLevel + 1);
+        }
+    }
+
+    /**
+     * Compute an existing household member's numeric membership level. The member's household size is
+     * populated first so the level reflects the current household (the household-of-3 membership
+     * points depend on it), then the mapper's derived {@code membershipLevel} is read back.
+     *
+     * @param member the household member to evaluate
+     * @return the member's derived membership level
+     */
+    private int membershipLevelOf(Owner member) {
+        populateHouseholdSize(member);
+        return ownerMapper.toOwnerDto(member).getMembershipLevel();
     }
 
     /**
