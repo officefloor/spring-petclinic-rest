@@ -1,0 +1,92 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7f6c88e4..44488a9e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,10 +23,10 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
+             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipTier",
+-        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" "
+-            + ": (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 "
+-            + "&& owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"SILVER\" : \"BRONZE\"))")
++    @Mapping(target = "membershipLevel",
++        expression = "java(Math.min(3, 1 "
++            + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
++            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+     @Mapping(target = "locality",
+         expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
+             + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5cec2f47..7c56b554 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,7 +72,7 @@ public class Owner extends Person {
+     /**
+      * The number of owners in this owner's household (owners sharing the same
+      * {@link #householdId}), including this owner. Not persisted: it is computed on demand
+-     * when an owner is read back so that membership tier reflects the current household size.
++     * when an owner is read back so that it reflects the current household size.
+      */
+     @Transient
+     private Integer householdSize;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5a057f45..0e4c6aab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -238,11 +238,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // digits of the registration date year (e.g. 'SYD-SMI-0007-M26').
+         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
+-        // Emit an audit line carrying the new owner's id, customer code and registration date.
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         populateHouseholdSize(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        // Emit an audit line carrying the new owner's id, customer code, registration date
++        // and numeric membership level.
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerDto.getMembershipLevel());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -268,7 +270,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Populate the owner's household size: the number of owners sharing this owner's
+      * {@code householdId} (including the owner itself). An owner with no household is a household
+-     * of one. This value drives the {@code GOLD} membership tier (a household of three or more).
++     * of one.
+      *
+      * @param owner the owner whose household size should be computed and set
+      */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1aca5cf2..569fdc32 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2137,15 +2137,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
++            membershipLevel:
++              title: Membership level
+               description: >-
+-                The owner's membership tier: 'GOLD' when the owner's household (owners
+-                sharing the same householdId) has 3 or more members after this create;
+-                otherwise 'SILVER' when namesakeCount is 0 and an email is present, and
+-                'BRONZE' otherwise.
+-              type: string
+-              example: 'SILVER'
++                The owner's numeric membership level from 1 to 3, fixed at creation:
++                starting at 1, add 1 when an email is present and add 1 when
++                namesakeCount is 0, capped at 3. (Level 4 is reserved for tenure.)
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
