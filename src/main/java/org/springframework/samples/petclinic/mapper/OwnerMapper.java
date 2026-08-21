@@ -31,6 +31,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected OwnerRepository ownerRepository;
 
+    @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
