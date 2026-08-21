@@ -1,0 +1,228 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 743732ab..ea2f6db1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,12 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -163,6 +169,22 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+new file mode 100644
+index 00000000..4305b250
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignPossibleDuplicate.java
+@@ -0,0 +1,49 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Soft-match detection for the create-owner pipeline. By the time this step runs the owner is
++ * already known not to be a hard duplicate (an exact {@code identityKey} match is rejected earlier
++ * with 409 by {@link CheckOwnerIdentityUnique}), so this step never sees one. It instead flags a
++ * weaker resemblance: an owner that shares an existing owner's {@code lastName} and {@code postcode}
++ * but has a different {@code telephone}. Such an owner is still created, with
++ * {@code possibleDuplicate} set true and {@code possibleDuplicateOf} set to the matching owner's id;
++ * otherwise the flag is false and the id null.
++ *
++ * <p>Runs after the owner's fields are finalized and before {@link SaveOwner}, so the comparison is
++ * against every already-persisted owner and the new owner (not yet saved) is excluded. When several
++ * existing owners match, the one with the smallest id wins, so the result is deterministic.
++ */
++public class AssignPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        owner.setPossibleDuplicate(false);
++        owner.setPossibleDuplicateOf(null);
++
++        String lastName = owner.getLastName();
++        String postcode = owner.getPostcode();
++        String telephone = owner.getTelephone();
++        if (lastName == null || postcode == null || telephone == null) {
++            return;
++        }
++
++        Integer matchId = null;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (lastName.equalsIgnoreCase(existing.getLastName())
++                    && postcode.equals(existing.getPostcode())
++                    && !telephone.equals(existing.getTelephone())
++                    && existing.getId() != null
++                    && (matchId == null || existing.getId() < matchId)) {
++                matchId = existing.getId();
++            }
++        }
++
++        if (matchId != null) {
++            owner.setPossibleDuplicate(true);
++            owner.setPossibleDuplicateOf(matchId);
++        }
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index e44429cc..1503dee3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  household_size INTEGER
++  household_size INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 046ebcfc..72f1bf6f 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', NULL, '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', NULL, '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', NULL, '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', NULL, '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', NULL, '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', NULL, '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', NULL, '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', NULL, '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', NULL, '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', NULL, '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', NULL, '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', NULL, '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', NULL, '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', NULL, '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', NULL, '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', NULL, '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', NULL, '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', NULL, '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', NULL, '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', NULL, '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 5ea5ec5f..565f0fdf 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,7 +49,9 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(40),
+   namesake_count INTEGER,
+-  household_size INTEGER
++  household_size INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 589600c6..30251919 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(40),
+   namesake_count INT,
+   household_size INT,
++  possible_duplicate BIT,
++  possible_duplicate_of INT,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index c01fd734..44b832e0 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INT,
+-                                      household_size INT
++                                      household_size INT,
++                                      possible_duplicate BOOLEAN,
++                                      possible_duplicate_of INT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 828e2e95..9c6a0cbf 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -46,6 +46,14 @@ assignCustomerCode:
+ assignNamesakeCount:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignNamesakeCount
+   govern: [ transaction ]
++  next: assignPossibleDuplicate
++
++# Soft-match flag: not a hard duplicate (already rejected above), but shares an existing owner's
++# lastName and postcode with a different telephone. Runs after the owner's fields are finalized and
++# before save, so it compares against every already-persisted owner.
++assignPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 66c8b723..8b4c2501 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2174,6 +2174,20 @@ components:
+                 - SENIOR
+               example: 'ADULT'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: Server-derived soft-match flag - true when this owner is not a hard duplicate but shares an existing owner's lastName and postcode with a different telephone, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner soft-matches on lastName and postcode. Null unless possibleDuplicate is true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
