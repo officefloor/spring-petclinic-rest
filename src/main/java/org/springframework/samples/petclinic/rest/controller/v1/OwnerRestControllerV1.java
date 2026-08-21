@@ -69,6 +69,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
             + "@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$");
 
+    /** Default country code assumed for national numbers that carry no explicit '+' prefix. */
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** Separators (spaces, dashes and brackets) stripped from a telephone before parsing. */
+    private static final Pattern TELEPHONE_SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
+
+    /** A valid E.164 body: a leading '+' followed by 8 to 15 digits. */
+    private static final Pattern E164_PATTERN = Pattern.compile("^\\+[0-9]{8,15}$");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -136,11 +145,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        // Normalize the telephone: strip every non-digit character, then require exactly 10 digits.
-        String normalizedTelephone = owner.getTelephone().replaceAll("\\D", "");
-        if (normalizedTelephone.length() != 10) {
-            throw new InvalidRequestException(List.of("telephone"));
-        }
+        // Normalize the telephone into E.164 form (reject with 400 when it cannot form a valid one).
+        String normalizedTelephone = normalizeTelephone(owner.getTelephone());
         owner.setTelephone(normalizedTelephone);
         // Normalize the (optional) email: reject a syntactically invalid address, otherwise store it lower-cased.
         owner.setEmail(normalizeEmail(owner.getEmail()));
@@ -148,7 +154,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        // Reject the request if the normalized telephone is already used by another owner.
+        // Reject the request if the E.164 telephone is already used by another owner.
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
         }
@@ -193,6 +199,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidRequestException(List.of("email"));
         }
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Normalize a telephone into E.164 form. Spaces, dashes and brackets are stripped. A value that
+     * already carries a leading '+' keeps its country code; otherwise the default country code
+     * ({@code +61}) is assumed and a single leading '0' is dropped from the national digits. The
+     * result must be a '+' followed by 8 to 15 digits, otherwise an {@link InvalidRequestException}
+     * is thrown (mapped to 400 Bad Request).
+     *
+     * @param telephone the raw telephone from the request payload
+     * @return the E.164 string (e.g. {@code +61412345678})
+     */
+    private String normalizeTelephone(String telephone) {
+        String cleaned = TELEPHONE_SEPARATORS.matcher(telephone).replaceAll("");
+        String candidate;
+        if (cleaned.startsWith("+")) {
+            candidate = cleaned;
+        } else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            candidate = "+" + DEFAULT_COUNTRY_CODE + national;
+        }
+        if (!E164_PATTERN.matcher(candidate).matches()) {
+            throw new InvalidRequestException(List.of("telephone"));
+        }
+        return candidate;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
