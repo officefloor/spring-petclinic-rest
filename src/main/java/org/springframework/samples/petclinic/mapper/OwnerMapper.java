@@ -34,6 +34,7 @@ public interface OwnerMapper {
         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
             + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
+    @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -114,6 +115,46 @@ public interface OwnerMapper {
             doubleDigit = !doubleDigit;
         }
         return (10 - (sum % 10)) % 10;
+    }
+
+    /**
+     * Known country calling codes, ordered longest-prefix-first, used to split a stored E.164
+     * telephone into its country code and national digits when building {@code telephoneDisplay}.
+     * Mirrors the country codes the create endpoint recognises ({@code +61} and {@code +1}).
+     */
+    List<String> TELEPHONE_COUNTRY_CODES = List.of("61", "1");
+
+    /**
+     * Format the owner's stored E.164 telephone for humans: the country code, a single space, then
+     * the national digits grouped in threes (e.g. {@code +61412345678} becomes
+     * {@code +61 412 345 678}). Returns the raw value unchanged when it is null, not in E.164 form,
+     * or carries an unrecognised country code.
+     */
+    default String deriveTelephoneDisplay(Owner owner) {
+        String telephone = owner.getTelephone();
+        if (telephone == null || !telephone.startsWith("+")) {
+            return telephone;
+        }
+        String digits = telephone.substring(1);
+        String countryCode = null;
+        for (String code : TELEPHONE_COUNTRY_CODES) {
+            if (digits.startsWith(code) && digits.length() > code.length()) {
+                countryCode = code;
+                break;
+            }
+        }
+        if (countryCode == null) {
+            return telephone;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < national.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(national.charAt(i));
+        }
+        return "+" + countryCode + " " + grouped;
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
