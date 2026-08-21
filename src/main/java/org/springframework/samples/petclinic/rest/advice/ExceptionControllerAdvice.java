@@ -54,6 +54,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
+    private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its maximum capacity of owners";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -218,6 +219,22 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_HOUSEHOLD);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link CityCapacityException} raised when an owner cannot be created because its city
+     * already contains the maximum number of owners (50). Returns a 409 Conflict.
+     *
+     * @param e The {@link CityCapacityException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
+     */
+    @ExceptionHandler(CityCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityCapacityException(CityCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
         return ResponseEntity.status(status).body(detail);
     }
 

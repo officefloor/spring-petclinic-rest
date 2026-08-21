@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
@@ -75,6 +76,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Default country code assumed for national numbers that carry no explicit '+' prefix. */
     private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    /** Maximum number of owners a single city may contain; a create is rejected once it is reached. */
+    private static final int MAX_OWNERS_PER_CITY = 50;
 
     /** Separators (spaces, dashes and brackets) stripped from a telephone before parsing. */
     private static final Pattern TELEPHONE_SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
@@ -168,6 +172,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Default the (optional) registration date to the server's current date when none was supplied.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
+        }
+        // Reject the request when the owner's city has already reached its owner capacity.
+        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+            throw new CityCapacityException(owner.getCity());
         }
         // Reject the request if the E.164 telephone is already used by another owner.
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
@@ -273,6 +281,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForComparison(existing.getFirstName()).equals(normalizedFirstName)
                 && normalizeForComparison(existing.getLastName()).equals(normalizedLastName))
+            .count();
+    }
+
+    /**
+     * Count the existing owners whose city matches the given city, comparing case-insensitively with
+     * collapsed whitespace. The incoming owner is not yet persisted, so it is not included in the count.
+     *
+     * @param city the incoming owner's city
+     * @return the number of existing owners already in that city
+     */
+    private int countOwnersInCity(String city) {
+        String normalizedCity = normalizeForComparison(city);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
             .count();
     }
 
