@@ -211,6 +211,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Validate the (optional) postcode: reject with 400 when present but malformed or out of range
         // for the city's region. The value (mapped straight from the request) is stored and returned as given.
         validatePostcode(owner.getCity(), owner.getPostcode());
+        // Reject a supplied registration date that lies in the future (later than the server's current
+        // date) with a 400 Bad Request. Checked against the raw supplied value, before defaulting below.
+        if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
+            throw new InvalidRequestException(List.of("registrationDate"));
+        }
         // Default the (optional) registration date to the server's current date when none was supplied.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
