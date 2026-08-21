@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -143,6 +144,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         // Normalize the (optional) email: reject a syntactically invalid address, otherwise store it lower-cased.
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        // Default the (optional) registration date to the server's current date when none was supplied.
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
         // Reject the request if the normalized telephone is already used by another owner.
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
