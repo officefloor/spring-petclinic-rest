@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_size")
+    private Integer householdSize;
+
     // Create-time signal only: derived from the count of owners already created today, not an
     // intrinsic owner attribute, so it is never persisted. Defaults to false, which is what a
     // reloaded owner (e.g. served by GET) reports.
@@ -134,6 +137,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
     }
 
     public boolean isBulkSignupWarning() {
