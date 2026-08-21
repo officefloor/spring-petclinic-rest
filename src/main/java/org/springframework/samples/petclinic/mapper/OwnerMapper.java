@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.nio.charset.StandardCharsets;
@@ -33,7 +34,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java(owner == null ? null : "
             + "(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\"))")
-    @Mapping(target = "identityKey", expression = "java(deriveIdentityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(deriveIdentity(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
@@ -285,11 +287,45 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derive the owner's {@code identityKey}: the 64-character lower-case SHA-256 hex digest over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The telephone and
-     * email are the owner's already-normalized stored values (E.164 telephone, lower-cased email); a
-     * null email contributes an empty middle segment. Returns null when the owner is absent. This is
-     * the same key duplicate detection compares on create.
+     * The fixed version tag mixed into the region code of every version-2 identifier, so their
+     * values differ from the version-1 identifiers. It appears only inside the identifiers, never
+     * in the plain {@code locality}, {@code timezone} or {@code ownerSegment} region.
+     */
+    String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The version-2 region code embedded inside the owner's identifiers: the plain region reported
+     * as {@code locality}, mixed with the fixed {@value #IDENTITY_VERSION_TAG} tag. This value is
+     * only ever folded into an identifier's derivation; the user-facing region fields stay plain.
+     */
+    default String deriveIdentityRegion(Owner owner) {
+        return IDENTITY_VERSION_TAG + deriveLocality(owner);
+    }
+
+    /**
+     * Build the owner's version-2 {@code identity} object, grouping the {@code memberId},
+     * {@code householdId} and {@code identityKey}. The memberId and householdId are the owner's
+     * stored values (already rederived with the V2 region tag on create); the identityKey is
+     * derived on read by {@link #deriveIdentityKey}. Returns null when the owner is absent.
+     */
+    default OwnerIdentityDto deriveIdentity(Owner owner) {
+        if (owner == null) {
+            return null;
+        }
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(deriveIdentityKey(owner));
+        return identity;
+    }
+
+    /**
+     * Derive the owner's version-2 {@code identityKey}: the 64-character lower-case SHA-256 hex
+     * digest over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName) + '|' +
+     * v2Region}, where {@code v2Region} is the {@link #deriveIdentityRegion version-2 region code}.
+     * The telephone and email are the owner's already-normalized stored values (E.164 telephone,
+     * lower-cased email); a null email contributes an empty middle segment. Returns null when the
+     * owner is absent. This is the same key duplicate detection compares on create.
      */
     default String deriveIdentityKey(Owner owner) {
         if (owner == null) {
@@ -297,7 +333,8 @@ public interface OwnerMapper {
         }
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail();
-        return sha256Hex(telephone + "|" + email + "|" + soundex(owner.getLastName()));
+        return sha256Hex(telephone + "|" + email + "|" + soundex(owner.getLastName())
+            + "|" + deriveIdentityRegion(owner));
     }
 
     /**

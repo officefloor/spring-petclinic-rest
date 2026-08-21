@@ -343,12 +343,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * duplicate detection is consolidated. Two owners are the same identity only when this whole key
      * matches: because the normalized telephone is part of the pre-image, two owners who share a
      * surname (same soundex) and postcode but carry different telephones have different identity
-     * keys. A {@code null} email contributes an empty middle segment. This is the value returned to
-     * callers as {@code identityKey}.
+     * keys. A {@code null} email contributes an empty middle segment. Under version 2 the owner's
+     * {@link #regionCodeV2 version-2 region code} is mixed into the pre-image as a trailing segment,
+     * so the key differs from its version-1 value. This is the value returned to callers as the
+     * {@code identityKey} inside the {@code identity} object.
      */
-    private static String identityKeyFor(String normalizedTelephone, String normalizedEmail, String lastName) {
+    private static String identityKeyFor(String normalizedTelephone, String normalizedEmail, String lastName,
+                                         String regionV2) {
         String preimage = normalizedTelephone + "|" + (normalizedEmail == null ? "" : normalizedEmail)
-            + "|" + soundex(lastName);
+            + "|" + soundex(lastName) + "|" + regionV2;
         return sha256Hex(preimage);
     }
 
@@ -431,8 +434,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * different telephones no longer collide here - they are surfaced as a soft match instead. The
      * former separate telephone, email and household 409 blocks are all subsumed by this key.
      */
-    private void rejectDuplicateIdentity(String normalizedTelephone, String normalizedEmail, String lastName) {
-        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName);
+    private void rejectDuplicateIdentity(String normalizedTelephone, String normalizedEmail, String lastName,
+                                         String regionV2) {
+        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName, regionV2);
         for (Owner existing : this.clinicService.findAllOwners()) {
             if (existing.isDeleted()) {
                 continue;
@@ -444,7 +448,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 continue;
             }
             String existingEmail = existing.getEmail() == null ? null : existing.getEmail().toLowerCase(Locale.ROOT);
-            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName());
+            String existingRegion = regionCodeV2(existing.getCity(), existing.getPostcode());
+            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName(),
+                existingRegion);
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateTelephoneException(normalizedTelephone);
             }
@@ -520,6 +526,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * The fixed version tag mixed into the region code of every version-2 identifier
+     * ({@code memberId}, {@code householdId} and {@code identityKey}), so no value produced under
+     * version 1 is produced again. It appears only inside those identifiers; the user-facing
+     * {@code locality}, {@code timezone} and owner-segment region remain the plain region code.
+     */
+    private static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The version-2 region code folded into the owner's identifiers: the plain region from
+     * {@link #deriveRegion} mixed with the fixed {@value #IDENTITY_VERSION_TAG} tag (e.g. the plain
+     * region {@code "NSW"} becomes {@code "V2NSW"}). This tagged value is only ever embedded inside
+     * an identifier; the plain region is what the owner's locality and timezone report.
+     */
+    private static String regionCodeV2(String city, String postcode) {
+        return IDENTITY_VERSION_TAG + deriveRegion(city, postcode);
     }
 
     /**
@@ -626,10 +650,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * it is a pure function of that pair, every owner in the same household - whether created first
      * or joining later via {@code sharesHousehold} - receives the identical, non-blank identifier
      * without needing to read any other owner's value. A {@code null} postcode contributes an empty
-     * segment.
+     * segment. Under version 2 the {@link #regionCodeV2 version-2 region code} is mixed in as a
+     * trailing segment, so the value differs from its version-1 form. Because that region is derived
+     * from the same postcode (falling back to the city), household members still share it.
      */
-    private static String householdIdFor(String lastName, String postcode) {
-        String key = collapse(lastName) + "|" + (postcode == null ? "" : postcode);
+    private static String householdIdFor(String lastName, String postcode, String regionV2) {
+        String key = collapse(lastName) + "|" + (postcode == null ? "" : postcode) + "|" + regionV2;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(12);
@@ -703,7 +729,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (lastName == null) {
             return null;
         }
-        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName);
+        String regionV2 = regionCodeV2(ownerFieldsDto.getCity(), postcode);
+        String identityKey = identityKeyFor(normalizedTelephone, normalizedEmail, lastName, regionV2);
         String soundex = soundex(lastName);
         Integer matchId = null;
         for (Owner existing : this.clinicService.findAllOwners()) {
@@ -723,7 +750,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 continue;
             }
             String existingEmail = existing.getEmail() == null ? null : existing.getEmail().toLowerCase(Locale.ROOT);
-            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName());
+            String existingRegion = regionCodeV2(existing.getCity(), existing.getPostcode());
+            String existingKey = identityKeyFor(existingTelephone, existingEmail, existing.getLastName(),
+                existingRegion);
             if (identityKey.equals(existingKey)) {
                 continue;
             }
@@ -1016,8 +1045,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(normalizedEmail);
         validatePostcode(owner.getCity(), owner.getPostcode());
-        String householdId = householdIdFor(owner.getLastName(), owner.getPostcode());
-        rejectDuplicateIdentity(normalizedTelephone, normalizedEmail, owner.getLastName());
+        String regionV2 = regionCodeV2(owner.getCity(), owner.getPostcode());
+        String householdId = householdIdFor(owner.getLastName(), owner.getPostcode(), regionV2);
+        rejectDuplicateIdentity(normalizedTelephone, normalizedEmail, owner.getLastName(), regionV2);
         rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
         LocalDate registrationDate = toBusinessDay(effectiveDate);
@@ -1025,9 +1055,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setBulkSignupWarning(bulkSignupWarningFor(registrationDate));
         owner.setCapacityWarning(capacityWarningFor(owner.getCity()));
         owner.setRegistrationDate(registrationDate);
-        String region = deriveRegion(owner.getCity(), owner.getPostcode());
         owner.setMemberId(deduplicateMemberId(
-            memberIdFor(region, owner.getRegistrationDate(), normalizedTelephone, owner.getLastName())));
+            memberIdFor(regionV2, owner.getRegistrationDate(), normalizedTelephone, owner.getLastName())));
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
@@ -1059,18 +1088,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The schema version of the {@code OWNER_CREATED} structured event. Version 2 groups the owner
+     * identity under an {@code identity} object in the API response, so the event records this
+     * version alongside its payload and recomputes the owner segment from the version-2 identity.
+     */
+    private static final int OWNER_EVENT_SCHEMA_VERSION = 2;
+
+    /**
      * Emits the immutable {@code OWNER_CREATED} structured event to the {@code AUDIT} logger as a
-     * JSON object {@code {seq, ownerId, memberId, membershipLevel, event}}. The {@code seq} is a
-     * per-application monotonically increasing integer that totally orders creates, and
-     * {@code memberId} carries the owner's current primary identifier
-     * ({@link #primaryIdentifierOf}). This is a distinct line from the human-readable audit line.
+     * JSON object {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment,
+     * event}}. The {@code schemaVersion} is {@value #OWNER_EVENT_SCHEMA_VERSION}; the {@code seq} is
+     * a per-application monotonically increasing integer that totally orders creates; {@code memberId}
+     * carries the owner's current primary identifier ({@link #primaryIdentifierOf}), now the version-2
+     * memberId; and {@code ownerSegment} is recomputed from the version-2 identity. This is a distinct
+     * line from the human-readable audit line.
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         Map<String, Object> event = new LinkedHashMap<>();
+        event.put("schemaVersion", OWNER_EVENT_SCHEMA_VERSION);
         event.put("seq", OWNER_EVENT_SEQ.incrementAndGet());
         event.put("ownerId", owner.getId());
         event.put("memberId", primaryIdentifierOf(owner));
         event.put("membershipLevel", owner.getMembershipLevel());
+        event.put("ownerSegment", ownerMapper.deriveOwnerSegment(owner));
         event.put("event", "OWNER_CREATED");
         AUDIT.info(EVENT_MAPPER.writeValueAsString(event));
     }
