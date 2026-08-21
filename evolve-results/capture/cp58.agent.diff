@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index 49d716c6..1fc630e4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -47,4 +47,40 @@ final class OwnerEmail {
+         }
+         request.setEmail(normalized);
+     }
++
++    /**
++     * Whether an email's domain is <em>disposable-adjacent</em>: not an exact blocklist match (those
++     * are rejected at create time, so a stored owner never has one) but clearly related to a known
++     * disposable domain - the same registrable name under a different suffix (e.g. mailinator.org),
++     * or a subdomain of a blocked domain (e.g. smtp.mailinator.com). A null, blank or address-less
++     * value is not disposable-adjacent.
++     */
++    static boolean isDisposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase();
++        if (domain.isEmpty()) {
++            return false;
++        }
++        for (String blocked : DISPOSABLE_DOMAINS) {
++            if (domain.equals(blocked)
++                    || domain.endsWith("." + blocked)
++                    || secondLevelLabel(domain).equals(secondLevelLabel(blocked))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /** The registrable label of a domain - the label immediately left of the final one
++     *  (e.g. 'mailinator' for both 'mailinator.com' and 'smtp.mailinator.org'). */
++    private static String secondLevelLabel(String domain) {
++        String[] labels = domain.split("\\.");
++        return labels.length >= 2 ? labels[labels.length - 2] : domain;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 24b666fd..539c49e4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warning(owner.getRegistrationDate(), ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.warning(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index de75d670..544a0da3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,6 +17,7 @@ public class RespondWithOwnerCreated {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warning(owner.getRegistrationDate(), ownerRepository));
+         dto.setCapacityWarning(CapacityWarning.warning(owner, ownerRepository));
++        dto.setRiskFlag(RiskFlag.of(owner, ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 00000000..13cf1ce3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Read-time risk signal for an owner. The response's {@code riskFlag} is true when any of three
++ * signals hold, otherwise false:
++ *
++ * <ul>
++ * <li>the owner is a possible duplicate - the stored {@link Owner#getPossibleDuplicate()} soft-match
++ * flag set by {@link AssignPossibleDuplicate};</li>
++ * <li>the email domain is disposable-adjacent - {@link OwnerEmail#isDisposableAdjacent(String)};</li>
++ * <li>the city is over its soft capacity - the same 40-owner band that raises
++ * {@link CapacityWarning}, short of the hard limit of 50.</li>
++ * </ul>
++ *
++ * <p>Purely derived at read time from already-persisted state, so it carries no storage of its own.
++ */
++final class RiskFlag {
++
++    private RiskFlag() {
++    }
++
++    static boolean of(Owner owner, OwnerRepository ownerRepository) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || OwnerEmail.isDisposableAdjacent(owner.getEmail())
++                || CapacityWarning.warning(owner, ownerRepository);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f12323e5..0040de7b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2244,6 +2244,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: Server-derived flag - true when any risk signal holds - the owner is a possible duplicate, the email domain is disposable-adjacent, or the city is over its soft capacity - otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             telephoneDisplay:
+               title: Telephone display
+               description: The stored E.164 telephone formatted for humans - the country code, a space, then the national digits grouped in threes (e.g. '+61 412 345 678'). The raw 'telephone' stays in E.164 form.
