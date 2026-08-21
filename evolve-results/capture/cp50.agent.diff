@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4a0e2e34..4d5a5c6b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -147,6 +147,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /** Dedicated audit logger; a create side-effect is recorded here on success. */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Request header carrying the client-supplied idempotency key for a create. */
++    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
++
++    /**
++     * Remembers the id of the owner created for each already-seen idempotency key, so a create that
++     * repeats with a key already seen returns the originally created owner (with 200) instead of
++     * creating a duplicate.
++     */
++    private final Map<String, Integer> idempotencyKeyToOwnerId = new java.util.concurrent.ConcurrentHashMap<>();
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -195,6 +205,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
++        // Idempotent create: when the request carries an 'Idempotency-Key' already seen, return the
++        // originally created owner with 200 instead of creating (and duplicate-checking) a new one.
++        String idempotencyKey = currentIdempotencyKey();
++        if (idempotencyKey != null) {
++            Integer existingId = idempotencyKeyToOwnerId.get(idempotencyKey);
++            if (existingId != null) {
++                Owner existingOwner = this.clinicService.findOwnerById(existingId);
++                if (existingOwner != null) {
++                    populateHouseholdSize(existingOwner);
++                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existingOwner), HttpStatus.OK);
++                }
++            }
++        }
+         List<String> missingFields = new ArrayList<>();
+         if (!StringUtils.hasText(ownerFieldsDto.getFirstName())) {
+             missingFields.add("firstName");
+@@ -339,6 +362,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         // digits of the fiscal year the registration date falls in (e.g. 'NSW-1A2B3C4D-M27').
+         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+         this.clinicService.saveOwner(owner);
++        // Remember the created owner under the request's idempotency key so a later create repeating
++        // the same key returns this owner instead of creating a duplicate.
++        if (idempotencyKey != null) {
++            idempotencyKeyToOwnerId.put(idempotencyKey, owner.getId());
++        }
+         populateHouseholdSize(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         // Emit an audit line carrying the new owner's id, customer code, registration date,
+@@ -351,6 +379,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+     }
+ 
++    /**
++     * Return the current request's {@code Idempotency-Key} header value, or {@code null} when the
++     * header is absent/blank or there is no bound servlet request.
++     *
++     * @return the trimmed idempotency key, or {@code null} when none was supplied
++     */
++    private String currentIdempotencyKey() {
++        org.springframework.web.context.request.RequestAttributes attributes =
++            org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
++        if (attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servletAttributes) {
++            String key = servletAttributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
++            if (StringUtils.hasText(key)) {
++                return key.trim();
++            }
++        }
++        return null;
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Override
+     public ResponseEntity<OwnerDto> updateOwner(Integer ownerId, OwnerFieldsDto ownerFieldsDto) {
