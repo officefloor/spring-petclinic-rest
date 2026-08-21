@@ -1,7 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.regex.Pattern;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -16,28 +14,17 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
  */
 public class CheckOwnerHouseholdUnique {
 
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateHouseholdException {
         // The request may opt out of the household-uniqueness rule.
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (OwnerHousehold.sameHousehold(request.getLastName(), request.getAddress(),
+                    existing.getLastName(), existing.getAddress())) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
-    }
-
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return WHITESPACE.matcher(value.trim()).replaceAll(" ").toLowerCase();
     }
 }
