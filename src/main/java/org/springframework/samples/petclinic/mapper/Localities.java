@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Map;
 
+import org.springframework.samples.petclinic.model.Owner;
+
 /**
  * Derives an owner's canonical locality (region). The postcode range is preferred:
  * a postcode within a known region range decides the region and disambiguates cities
@@ -38,6 +40,29 @@ public final class Localities {
             return byPostcode;
         }
         return region(city);
+    }
+
+    /**
+     * The owner's locality, taken from the region component of its region-and-hash
+     * {@code customerCode} ({@code <REGION>-<HASH8>}) — so the locality is the same
+     * identity the customerCode is built from. Falls back to the shared
+     * {@link #region(String, String)} derivation for owners without a customerCode.
+     */
+    public static String region(Owner owner) {
+        String fromCode = regionOfCode(owner.getCustomerCode());
+        if (fromCode != null) {
+            return fromCode;
+        }
+        return region(owner.getCity(), owner.getPostcode());
+    }
+
+    /** The REGION prefix of a {@code <REGION>-<HASH8>} customerCode, or null when absent. */
+    private static String regionOfCode(String customerCode) {
+        if (customerCode == null) {
+            return null;
+        }
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? customerCode : customerCode.substring(0, dash);
     }
 
     /** The region whose postcode range contains the given postcode, or null if none. */
