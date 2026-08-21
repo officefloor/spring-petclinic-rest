@@ -4,19 +4,21 @@ import net.officefloor.plugin.variable.Val;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.MembershipLevel;
 
 /**
  * Emits an audit trail line for a newly created owner. Runs after the owner has been
  * saved so the assigned id is available. The line is published to the dedicated
- * {@code AUDIT} logger and carries the owner id, the customerCode and the
- * registrationDate.
+ * {@code AUDIT} logger and carries the owner id, the customerCode, the
+ * registrationDate and the numeric membershipLevel.
  */
 public class AuditOwnerCreated {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     public void service(@Val Owner owner) {
-        AUDIT.info("Owner created: id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("Owner created: id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+                MembershipLevel.of(owner));
     }
 }
