@@ -86,10 +86,26 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * Bands {@link #membershipPoints(Owner)} into the numeric membership level: 1 for 0-1
-     * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+     * The owner's numeric membership level: their {@link #naturalMembershipLevel(Owner) natural}
+     * level, capped so it never exceeds one above the current maximum level among their existing
+     * household members (other owners sharing the same {@code householdId}). With no existing
+     * household member on file no cap applies, so the natural level is returned unchanged.
      */
     protected Integer membershipLevel(Owner owner) {
+        int level = naturalMembershipLevel(owner);
+        Integer householdMax = householdMaxMembershipLevel(owner);
+        if (householdMax == null) {
+            return level;
+        }
+        return Math.min(level, householdMax + 1);
+    }
+
+    /**
+     * Bands {@link #membershipPoints(Owner)} into the numeric membership level: 1 for 0-1
+     * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more. This is the owner's level before the
+     * household ceiling in {@link #membershipLevel(Owner)} is applied.
+     */
+    private Integer naturalMembershipLevel(Owner owner) {
         int points = membershipPoints(owner);
         if (points <= 1) {
             return 1;
@@ -101,6 +117,33 @@ public abstract class OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * The maximum {@link #naturalMembershipLevel(Owner) natural} membership level among the owner's
+     * existing household members — the other, non-deleted owners sharing the same
+     * {@code householdId}. Returns {@code null} when the owner has no household member on file (or
+     * the repository is unavailable), signalling that no household cap applies.
+     */
+    private Integer householdMaxMembershipLevel(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null || ownerRepository == null) {
+            return null;
+        }
+        Integer max = null;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted() || !householdId.equals(existing.getHouseholdId())) {
+                continue;
+            }
+            if (existing.getId() != null && existing.getId().equals(owner.getId())) {
+                continue; // the owner is not their own household member
+            }
+            int level = naturalMembershipLevel(existing);
+            if (max == null || level > max) {
+                max = level;
+            }
+        }
+        return max;
     }
 
     /**
