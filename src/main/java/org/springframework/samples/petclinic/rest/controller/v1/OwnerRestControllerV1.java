@@ -92,6 +92,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** Maximum number of owners a single city may contain; a create is rejected once it is reached. */
     private static final int MAX_OWNERS_PER_CITY = 50;
 
+    /** Owner count in a city at or above which a create is flagged as approaching the capacity limit. */
+    private static final int CAPACITY_WARNING_THRESHOLD = 40;
+
     /** Maximum number of owners that may be registered on a single day; a create is rejected once it is reached. */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
@@ -314,9 +317,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // owner's registration day at the moment this owner was created; otherwise clear it.
         owner.setBulkSignupWarning(ownersRegisteredToday > BULK_SIGNUP_WARNING_THRESHOLD);
         // Reject the request when the owner's city has already reached its owner capacity.
-        if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
+        int ownersInCity = countOwnersInCity(owner.getCity());
+        if (ownersInCity >= MAX_OWNERS_PER_CITY) {
             throw new CityCapacityException(owner.getCity());
         }
+        // Flag a capacity warning when the owner's city already holds between 40 and 49 owners
+        // (approaching the hard limit of 50) at the moment this owner was created; otherwise clear it.
+        owner.setCapacityWarning(ownersInCity >= CAPACITY_WARNING_THRESHOLD && ownersInCity < MAX_OWNERS_PER_CITY);
         // The household is keyed deterministically on (normalizedLastName, postcode): the householdId
         // is the first 12 hex characters of the SHA-256 digest of '<normalizedLastName>|<postcode>',
         // so any two owners with the same last name and postcode automatically resolve to the same
