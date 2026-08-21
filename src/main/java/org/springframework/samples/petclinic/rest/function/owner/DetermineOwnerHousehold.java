@@ -32,11 +32,13 @@ public class DetermineOwnerHousehold {
 
     /**
      * A stable household identifier: the first 12 hex characters of
-     * {@code SHA-256(normalizedLastName + '|' + postcode)}, so every owner sharing the same last
-     * name and postcode independently derives an identical value.
+     * {@code SHA-256('V2' + '|' + normalizedLastName + '|' + postcode)}, so every owner sharing the
+     * same last name and postcode independently derives an identical (version-2) value.
      */
     static String deriveHouseholdId(String normalizedLastName, String postcode) {
-        String seed = normalizedLastName + "|" + postcode;
+        // Version 2: mix in the fixed 'V2' tag so every household id changes and no version-1
+        // value is reproduced. The household is still keyed on (lastName, postcode).
+        String seed = OwnerIdentityVersion.TAG + "|" + normalizedLastName + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));

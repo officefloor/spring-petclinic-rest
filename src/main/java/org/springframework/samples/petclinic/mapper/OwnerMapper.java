@@ -9,7 +9,10 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityVersion;
 
 import java.time.LocalDate;
 import java.time.Period;
@@ -46,8 +49,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey.forOwner(owner))")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
+    @Mapping(target = "apiVersion", expression = "java(apiVersion())")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneNormalizer.toDisplay(owner.getTelephone()))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
@@ -212,7 +215,10 @@ public abstract class OwnerMapper {
         String region = org.springframework.samples.petclinic.rest.function.owner.MemberId
                 .region(owner.getMemberId());
         if (region != null) {
-            return region;
+            // The member id's region carries the version-2 'V2' tag (e.g. NSWV2); the user-facing
+            // locality is the plain region code, so the tag is stripped and never leaks out here.
+            return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityVersion
+                    .stripTag(region);
         }
         return LocalityLookup.regionFor(owner.getCity(), owner.getPostcode());
     }
@@ -300,6 +306,24 @@ public abstract class OwnerMapper {
                 .isDisposableAdjacent(owner.getEmail());
         boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
         return possibleDuplicate || disposableAdjacent || overSoftCapacity;
+    }
+
+    /**
+     * Groups the owner's three version-2 identifiers under the nested {@code identity} object of
+     * the response: the unified {@code memberId}, the derived {@code identityKey} (recomputed on
+     * read) and the {@code householdId}. These are no longer exposed at the top level.
+     */
+    protected OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(OwnerIdentityKey.forOwner(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
+
+    /** The response's top-level {@code apiVersion}: 2 for the version-2 owner identity. */
+    protected Integer apiVersion() {
+        return OwnerIdentityVersion.API_VERSION;
     }
 
     public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {

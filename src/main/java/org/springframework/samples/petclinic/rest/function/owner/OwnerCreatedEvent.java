@@ -6,17 +6,19 @@ package org.springframework.samples.petclinic.rest.function.owner;
  *
  * <p>{@code identifier} carries the owner's primary identifier — the unified
  * {@code memberId}. The field name in the emitted JSON tracks that identifier (see
- * {@link AuditOwnerCreated}).
+ * {@link AuditOwnerCreated}). {@code schemaVersion} is the event schema version; version 2
+ * accompanies the version-2 owner identity.
  *
  * <p>Being a record, an instance cannot be mutated once constructed.
  */
 public record OwnerCreatedEvent(long seq, Integer ownerId, String identifier,
-        Integer membershipLevel, String event) {
+        Integer membershipLevel, int schemaVersion, String event) {
 
     /** The single event type this record represents. */
     public static final String OWNER_CREATED = "OWNER_CREATED";
 
     public OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel) {
-        this(seq, ownerId, identifier, membershipLevel, OWNER_CREATED);
+        this(seq, ownerId, identifier, membershipLevel, OwnerIdentityVersion.AUDIT_SCHEMA_VERSION,
+                OWNER_CREATED);
     }
 }

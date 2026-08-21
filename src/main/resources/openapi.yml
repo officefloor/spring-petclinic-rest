@@ -2112,6 +2112,48 @@ components:
         - lastName
         - city
         - telephone
+    OwnerIdentity:
+      title: Owner identity
+      description: >-
+        The owner's version-2 identifiers, grouped together. Each identifier rederives the
+        region code used inside it with the version-2 algorithm (mixing in a fixed 'V2' tag),
+        so every value differs from the version-1 identifiers and the tag never appears in the
+        user-facing 'locality', 'timezone' or owner segment.
+      type: object
+      properties:
+        memberId:
+          title: Member ID
+          description: >-
+            Unified member identifier formatted '<REGION><FY><HASH8><CHK>', where REGION is the
+            version-2 region code — the postcode-derived region (NSW/VIC/QLD, otherwise 'UNKNOWN')
+            with the fixed 'V2' tag appended (e.g. 'NSWV2') — FY the two-digit fiscal year of the
+            business-day-adjusted registrationDate (fiscal years start on 1 July), HASH8 the first
+            8 upper-case hex characters of the SHA-256 of the normalized (E.164) telephone
+            concatenated with the last name, and CHK a single Luhn check digit computed over the
+            digits of '<REGION><FY><HASH8>'. On collision '-<n>' (n starting at 2) is appended.
+          type: string
+          readOnly: true
+          example: 'NSWV2261A2B3C4D8'
+        identityKey:
+          title: Identity key
+          description: >-
+            The single derived key used for duplicate detection: the lower-case hex SHA-256
+            of 'V2|normalizedTelephone|lowerEmail|soundex(lastName)', mixing in the fixed 'V2'
+            version tag, where the telephone is its E.164 form, the email is its lower-cased form
+            (empty when absent) and the last name is reduced to its Soundex code. Two owners are
+            duplicates only when their whole identity keys are equal.
+          type: string
+          readOnly: true
+          example: 'a3f5c9e2b1d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6'
+        householdId:
+          title: Household ID
+          description: >-
+            Stable shared identifier derived (version 2) from the fixed 'V2' tag, last name and
+            postcode: the first 12 hex characters of SHA-256('V2|normalizedLastName|postcode').
+            Every owner sharing the same last name and postcode carries the same value.
+          type: string
+          readOnly: true
+          example: '3F9A1C2B7D0E'
     Owner:
       title: Owner
       description: A pet owner.
@@ -2181,19 +2223,18 @@ components:
               type: string
               readOnly: true
               example: 'Australia/Sydney'
-            memberId:
-              title: Member ID
+            apiVersion:
+              title: API version
               description: >-
-                Unified member identifier formatted '<REGION><FY><HASH8><CHK>', where REGION
-                is the postcode-derived region code (NSW/VIC/QLD, otherwise 'UNKNOWN'), FY the
-                two-digit fiscal year of the business-day-adjusted registrationDate (fiscal
-                years start on 1 July), HASH8 the first 8 upper-case hex characters of the
-                SHA-256 of the normalized (E.164) telephone concatenated with the last name,
-                and CHK a single Luhn check digit computed over the digits of
-                '<REGION><FY><HASH8>'. On collision '-<n>' (n starting at 2) is appended.
-              type: string
+                The version of the owner representation. Version 2 groups the owner's
+                identifiers under the nested 'identity' object and rederives them with the
+                version-2 identity algorithm.
+              type: integer
+              format: int32
               readOnly: true
-              example: 'NSW261A2B3C4D8'
+              example: 2
+            identity:
+              $ref: '#/components/schemas/OwnerIdentity'
             fiscalYear:
               title: Fiscal year
               description: >-
@@ -2204,16 +2245,6 @@ components:
               type: string
               readOnly: true
               example: 'FY26'
-            householdId:
-              title: Household ID
-              description: >-
-                Stable shared identifier assigned when an owner is registered into an
-                existing household (same last name and address) via 'sharesHousehold'.
-                Every owner in the household carries the same value. Absent for owners
-                that do not share a household.
-              type: string
-              readOnly: true
-              example: 'HH-3F9A1C2B7D0E'
             namesakeCount:
               title: Namesake count
               description: >-
@@ -2286,17 +2317,6 @@ components:
                 - SENIOR
               readOnly: true
               example: 'ADULT'
-            identityKey:
-              title: Identity key
-              description: >-
-                The single derived key used for duplicate detection: the lower-case hex SHA-256
-                of 'normalizedTelephone|lowerEmail|soundex(lastName)', where the telephone is its
-                E.164 form, the email is its lower-cased form (empty when absent) and the last name
-                is reduced to its Soundex code. Two owners are duplicates only when their whole
-                identity keys are equal.
-              type: string
-              readOnly: true
-              example: 'a3f5c9e2b1d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6'
             possibleDuplicate:
               title: Possible duplicate
               description: >-

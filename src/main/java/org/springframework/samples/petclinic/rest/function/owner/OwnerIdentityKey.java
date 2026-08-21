@@ -11,7 +11,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * The single derived identity of an owner used for duplicate detection.
  *
  * <p>An owner's {@code identityKey} is the lower-case hex {@code SHA-256} of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the telephone is
+ * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, where the
+ * fixed {@code 'V2'} version tag is mixed in (version 2), the telephone is
  * its E.164 form, the email is its lower-cased form (empty when absent or blank) and the last name
  * is reduced to its {@link Soundex} code. Two owners are duplicates only when their whole identity
  * keys are equal — so, for example, two people with the same (phonetic) last name and postcode but
@@ -35,7 +36,9 @@ public final class OwnerIdentityKey {
         String tel = telephoneE164 == null ? "" : telephoneE164;
         String mail = (email == null || email.trim().isEmpty()) ? ""
                 : email.trim().toLowerCase(Locale.ROOT);
-        String seed = tel + "|" + mail + "|" + Soundex.encode(lastName);
+        // Version 2: mix in the fixed 'V2' tag so every identity key changes and no version-1
+        // value is reproduced. New and existing owners are compared on the same version-2 footing.
+        String seed = OwnerIdentityVersion.TAG + "|" + tel + "|" + mail + "|" + Soundex.encode(lastName);
         return sha256hex(seed);
     }
 

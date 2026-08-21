@@ -20,10 +20,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <ul>
  * <li>a human-readable audit line carrying the id, {@code memberId},
  * {@code registrationDate} and {@code membershipLevel}; and
- * <li>an immutable structured {@link OwnerCreatedEvent}, serialized to JSON, whose
- * {@code seq} increases monotonically across every owner created by this process. The
- * event carries the owner's primary identifier — the unified {@code memberId} (see
- * {@link #primaryIdentifier}/{@link #PRIMARY_IDENTIFIER_KEY}).
+ * <li>an immutable structured {@link OwnerCreatedEvent}, serialized to JSON (schema version 2),
+ * whose {@code seq} increases monotonically across every owner created by this process. The
+ * event carries a {@code schemaVersion} of 2 and the owner's primary identifier — the unified
+ * {@code memberId} (see {@link #primaryIdentifier}/{@link #PRIMARY_IDENTIFIER_KEY}).
  * </ul>
  * The membership level is read from the mapped {@link OwnerDto} so it matches the value
  * the endpoint reports.
@@ -60,6 +60,7 @@ public class AuditOwnerCreated {
     /** Serialize the event to a JSON object, emitting the identifier under its current key. */
     private static String toJson(OwnerCreatedEvent event) {
         ObjectNode node = JSON.createObjectNode();
+        node.put("schemaVersion", event.schemaVersion());
         node.put("seq", event.seq());
         node.put("ownerId", event.ownerId());
         node.put(PRIMARY_IDENTIFIER_KEY, event.identifier());

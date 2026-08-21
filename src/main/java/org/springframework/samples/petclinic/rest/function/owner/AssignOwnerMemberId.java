@@ -13,12 +13,13 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's unified {@code memberId} formatted {@code <REGION><FY><HASH8><CHK>}, where
- * REGION is the region code derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099,
- * otherwise {@code UNKNOWN}), FY the two-digit fiscal year of the business-day-adjusted
+ * REGION is the version-2 region code — the postcode-derived region (NSW 2000-2099, VIC 3000-3099,
+ * QLD 4000-4099, otherwise {@code UNKNOWN}) with the fixed {@code V2} tag appended (e.g.
+ * {@code NSWV2}) — FY the two-digit fiscal year of the business-day-adjusted
  * registrationDate, HASH8 the first 8 upper-case hex characters of the SHA-256 digest of the
  * normalized (E.164) telephone concatenated with the last name (the same hash used by the
  * region-and-hash identity), and CHK a single Luhn check digit over the digits of
- * {@code <REGION><FY><HASH8>} (e.g. {@code NSW261A2B3C4D8}). The identity is deterministic — no
+ * {@code <REGION><FY><HASH8>} (e.g. {@code NSWV2261A2B3C4D8}). The identity is deterministic — no
  * sequence numbers — so the same postcode, telephone, last name and fiscal year always produce the
  * same member id. Runs after the owner is built and normalized and its registration date is set.
  *
@@ -30,7 +31,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignOwnerMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = LocalityLookup.postcodeRegion(owner.getPostcode());
+        // Version 2: the REGION segment carries the plain region code plus the fixed 'V2' tag
+        // (e.g. NSW -> NSWV2), so every member id changes and no version-1 value is reproduced.
+        String region = LocalityLookup.postcodeRegion(owner.getPostcode()) + OwnerIdentityVersion.TAG;
         String normalizedTelephone = TelephoneNormalizer.toE164(owner.getTelephone());
         String basis = (normalizedTelephone == null ? "" : normalizedTelephone) + owner.getLastName();
         int fiscalYear = FiscalYear.of(owner.getRegistrationDate());
