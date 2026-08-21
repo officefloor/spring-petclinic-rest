@@ -28,6 +28,7 @@ public interface OwnerMapper {
             + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
             + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
+    @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
@@ -60,6 +61,30 @@ public interface OwnerMapper {
             }
         }
         return "UNKNOWN";
+    }
+
+    /**
+     * Derive the owner's age band from its birth date, computed against the registration date. The age
+     * is the number of whole years between the birth date and the effective registration date (falling
+     * back to the current date when no registration date is present): {@code MINOR} when under 18,
+     * {@code ADULT} for 18-64 and {@code SENIOR} for 65 and over. Returns {@code null} when no birth
+     * date was supplied, so the field is absent from the response.
+     */
+    default OwnerDto.AgeBandEnum deriveAgeBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return null;
+        }
+        java.time.LocalDate reference = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : java.time.LocalDate.now();
+        int age = java.time.Period.between(birthDate, reference).getYears();
+        if (age < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (age < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
     }
 
     /**
