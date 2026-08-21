@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
+import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
@@ -79,6 +80,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /** Maximum number of owners a single city may contain; a create is rejected once it is reached. */
     private static final int MAX_OWNERS_PER_CITY = 50;
+
+    /** Maximum number of owners that may be registered on a single day; a create is rejected once it is reached. */
+    private static final int MAX_OWNERS_PER_DAY = 100;
 
     /** Separators (spaces, dashes and brackets) stripped from a telephone before parsing. */
     private static final Pattern TELEPHONE_SEPARATORS = Pattern.compile("[\\s()\\[\\]-]");
@@ -172,6 +176,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Default the (optional) registration date to the server's current date when none was supplied.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
+        }
+        // Reject the request once the maximum number of owners for the owner's registration day has
+        // been reached (100 or more owners already created on that date).
+        if (countOwnersRegisteredOn(owner.getRegistrationDate()) >= MAX_OWNERS_PER_DAY) {
+            throw new DailyOwnerLimitException(owner.getRegistrationDate());
         }
         // Reject the request when the owner's city has already reached its owner capacity.
         if (countOwnersInCity(owner.getCity()) >= MAX_OWNERS_PER_CITY) {
@@ -295,6 +304,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedCity = normalizeForComparison(city);
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
+            .count();
+    }
+
+    /**
+     * Count the existing owners whose registration date equals the given date. The incoming owner is
+     * not yet persisted, so it is not included in the count.
+     *
+     * @param registrationDate the incoming owner's registration date
+     * @return the number of existing owners already registered on that date
+     */
+    private int countOwnersRegisteredOn(LocalDate registrationDate) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
     }
 

@@ -55,6 +55,7 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
     private static final String ERROR_DUPLICATE_HOUSEHOLD = "An owner with the given last name and address already exists";
     private static final String ERROR_CITY_AT_CAPACITY = "The owner's city has reached its maximum capacity of owners";
+    private static final String ERROR_DAILY_LIMIT_REACHED = "The maximum number of owners for the day has already been reached";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -235,6 +236,23 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleCityCapacityException(CityCapacityException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_CITY_AT_CAPACITY);
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link DailyOwnerLimitException} raised when an owner cannot be created because the
+     * maximum number of owners that may be registered on a single day (100) has already been reached
+     * for that day (compared by {@code registrationDate}). Returns a 429 Too Many Requests.
+     *
+     * @param e The {@link DailyOwnerLimitException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 429 Too Many Requests status.
+     */
+    @ExceptionHandler(DailyOwnerLimitException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyOwnerLimitException(DailyOwnerLimitException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DAILY_LIMIT_REACHED);
         return ResponseEntity.status(status).body(detail);
     }
 
