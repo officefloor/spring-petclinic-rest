@@ -23,11 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" "
             + "+ Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
-    @Mapping(target = "membershipLevel",
-        expression = "java(Math.min(4, 1 "
-            + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
-            + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0) "
-            + "+ (tenureDays(owner) > 365 ? 1 : 0)))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(membershipPoints(owner)))")
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
@@ -90,10 +87,49 @@ public interface OwnerMapper {
     }
 
     /**
+     * Compute the owner's membership points: starting at 0, add 2 when an email is present, add 1
+     * when {@code namesakeCount} is 0, add 2 for a household of 3 or more members, and add 3 for a
+     * tenure of more than 365 days.
+     */
+    default int membershipPoints(Owner owner) {
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            points += 2;
+        }
+        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
+        if (tenureDays(owner) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Map membership points onto the numeric membership level: 1 for 0-1 points, 2 for 2-3 points,
+     * 3 for 4-5 points and 4 for 6 or more points.
+     */
+    default int membershipLevel(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
+    }
+
+    /**
      * Compute the owner's tenure in whole days: the number of days between the owner's registration
      * date and today. A newly created owner registered today therefore has a tenure of zero, and an
-     * owner with no registration date is treated as having zero tenure. Used to gate membership
-     * level 4, which requires a tenure of more than 365 days.
+     * owner with no registration date is treated as having zero tenure. Used to gate the tenure
+     * membership points, which require a tenure of more than 365 days.
      */
     default long tenureDays(Owner owner) {
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
