@@ -1,0 +1,307 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a32c007b..97bddadb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -49,6 +49,9 @@ public class Owner extends Person {
+     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+     private String telephone;
+ 
++    @Column(name = "email")
++    private String email;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -76,6 +79,14 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    public String getEmail() {
++        return this.email;
++    }
++
++    public void setEmail(String email) {
++        this.email = email;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+index da6088bc..1a494698 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+@@ -83,7 +83,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("lastName", lastName + "%");
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE last_name like :lastName",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE last_name like :lastName",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -98,7 +98,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE last_name like :lastName ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -116,7 +116,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         Map<String, Object> params = new HashMap<>();
+         params.put("telephone", telephone);
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE telephone = :telephone",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE telephone = :telephone",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class)
+         );
+@@ -135,7 +135,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+             Map<String, Object> params = new HashMap<>();
+             params.put("id", id);
+             owner = this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE id= :id",
++                "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE id= :id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class)
+             );
+@@ -170,7 +170,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         } else {
+             this.namedParameterJdbcTemplate.update(
+                 "UPDATE owners SET first_name=:firstName, last_name=:lastName, address=:address, " +
+-                    "city=:city, telephone=:telephone WHERE id=:id",
++                    "city=:city, telephone=:telephone, email=:email WHERE id=:id",
+                 parameterSource);
+         }
+     }
+@@ -196,7 +196,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+ 	@Override
+ 	public Collection<Owner> findAll() throws DataAccessException {
+ 		List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-	            "SELECT id, first_name, last_name, address, city, telephone FROM owners",
++	            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners",
+ 	            new HashMap<String, Object>(),
+ 	            BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (Owner owner : owners) {
+@@ -211,7 +211,7 @@ public class JdbcOwnerRepositoryImpl implements OwnerRepository {
+         params.put("size", pageable.getPageSize());
+         params.put("offset", pageable.getOffset());
+         List<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners ORDER BY id LIMIT :size OFFSET :offset",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners ORDER BY id LIMIT :size OFFSET :offset",
+             params,
+             BeanPropertyRowMapper.newInstance(Owner.class));
+         loadOwnersPetsAndVisits(owners);
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java
+index 71ab856b..3598d0e8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java
+@@ -138,7 +138,7 @@ public class JdbcPetRepositoryImpl implements PetRepository {
+ 				new HashMap<String,
+ 				Object>(), BeanPropertyRowMapper.newInstance(PetType.class));
+ 		Collection<Owner> owners = this.namedParameterJdbcTemplate.query(
+-				"SELECT id, first_name, last_name, address, city, telephone FROM owners ORDER BY last_name",
++				"SELECT id, first_name, last_name, address, city, telephone, email FROM owners ORDER BY last_name",
+ 				new HashMap<String, Object>(),
+ 				BeanPropertyRowMapper.newInstance(Owner.class));
+ 		for (JdbcPet jdbcPet : jdbcPets) {
+@@ -165,7 +165,7 @@ public class JdbcPetRepositoryImpl implements PetRepository {
+             BeanPropertyRowMapper.newInstance(PetType.class));
+ 
+         Collection<Owner> owners = this.namedParameterJdbcTemplate.query(
+-            "SELECT id, first_name, last_name, address, city, telephone FROM owners ORDER BY last_name",
++            "SELECT id, first_name, last_name, address, city, telephone, email FROM owners ORDER BY last_name",
+             new HashMap<String, Object>(),
+             BeanPropertyRowMapper.newInstance(Owner.class));
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java
+index 9fd69ead..a8f11f81 100644
+--- a/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java
+@@ -167,7 +167,7 @@ public class JdbcVisitRepositoryImpl implements VisitRepository {
+             pet.setType(petType);
+             params.put("owner_id", pet.getOwnerId());
+             Owner owner = JdbcVisitRepositoryImpl.this.namedParameterJdbcTemplate.queryForObject(
+-                "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE id= :owner_id",
++                "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE id= :owner_id",
+                 params,
+                 BeanPropertyRowMapper.newInstance(Owner.class));
+             pet.setOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 9ceec9fd..271b3a33 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.Locale;
++import java.util.regex.Pattern;
+ 
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+@@ -57,6 +59,15 @@ import jakarta.transaction.Transactional;
+ @RequestMapping("/api")
+ public class OwnerRestControllerV1 implements OwnersApi {
+ 
++    /**
++     * Syntactic email validation: a non-empty local part and a dotted domain, with no whitespace.
++     * Matches addresses such as {@code test.user@example.com} and rejects strings without an '@'
++     * and a dotted domain (e.g. {@code not-an-email}).
++     */
++    private static final Pattern EMAIL_PATTERN = Pattern.compile(
++        "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
++            + "@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$");
++
+     private final ClinicService clinicService;
+ 
+     private final OwnerMapper ownerMapper;
+@@ -130,6 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             throw new InvalidRequestException(List.of("telephone"));
+         }
+         owner.setTelephone(normalizedTelephone);
++        // Normalize the (optional) email: reject a syntactically invalid address, otherwise store it lower-cased.
++        owner.setEmail(normalizeEmail(owner.getEmail()));
+         // Reject the request if the normalized telephone is already used by another owner.
+         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
+             throw new DuplicateTelephoneException(normalizedTelephone);
+@@ -153,10 +166,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
+         currentOwner.setLastName(ownerFieldsDto.getLastName());
+         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
++        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
+         this.clinicService.saveOwner(currentOwner);
+         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+     }
+ 
++    /**
++     * Normalize an optional owner email address. A blank/absent value is treated as "not provided"
++     * and returns {@code null}. When present, the value must be a syntactically valid address; if it
++     * is not, an {@link InvalidRequestException} is thrown (mapped to 400 Bad Request). A valid value
++     * is returned lower-cased.
++     *
++     * @param email the raw email from the request payload, may be {@code null}
++     * @return the lower-cased email, or {@code null} when none was provided
++     */
++    private String normalizeEmail(String email) {
++        if (!StringUtils.hasText(email)) {
++            return null;
++        }
++        if (!EMAIL_PATTERN.matcher(email).matches()) {
++            throw new InvalidRequestException(List.of("email"));
++        }
++        return email.toLowerCase(Locale.ROOT);
++    }
++
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
+     @Transactional
+     @Override
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index db1adf51..33bc0c80 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
+   city VARCHAR(80) NOT NULL,
+-  telephone VARCHAR(20) NOT NULL
++  telephone VARCHAR(20) NOT NULL,
++  email VARCHAR(255)
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index fa2c1c73..c61e6fe0 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index ac9440ef..005b04d1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -41,7 +41,8 @@ CREATE TABLE owners (
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+-  telephone  VARCHAR(20)
++  telephone  VARCHAR(20),
++  email      VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 316c2229..e2082e0b 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   address VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
++  email VARCHAR(255),
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 56af1a01..c1e01cc4 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       last_name  TEXT,
+                                       address    TEXT,
+                                       city       TEXT,
+-                                      telephone  TEXT
++                                      telephone  TEXT,
++                                      email      TEXT
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7a6f0e93..fcf94ba7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2033,6 +2033,17 @@ components:
+           minLength: 1
+           maxLength: 20
+           example: '6085551023'
++        email:
++          title: Email address
++          description: >-
++            The email address of the pet owner. Optional; when present it must be a
++            syntactically valid address. The stored and returned value is normalized
++            to lower case.
++          type: string
++          format: email
++          minLength: 1
++          maxLength: 255
++          example: 'george.franklin@example.com'
+       required:
+         - firstName
+         - lastName
