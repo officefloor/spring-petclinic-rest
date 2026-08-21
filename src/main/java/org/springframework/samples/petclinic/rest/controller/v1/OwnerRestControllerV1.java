@@ -195,10 +195,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this first name and last name
         // (compared case-insensitively) before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        // Assign the customer code '<LAST3>-<NNNN>' before persisting.
-        owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
+        // Assign the customer code '<CITY3>-<LAST3>-<NNNN>' before persisting.
+        owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
         // Assign the membership number '<customerCode>-M<YY>' where YY is the last two
-        // digits of the registration date year (e.g. 'SMI-0007-M26').
+        // digits of the registration date year (e.g. 'SYD-SMI-0007-M26').
         owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -225,22 +225,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Generate a customer code formatted {@code <LAST3>-<NNNN>}, where {@code LAST3} is the
-     * upper-cased first three letters of {@code lastName} and {@code NNNN} is a global 4-digit
-     * zero-padded sequence equal to one more than the current number of owners (e.g. {@code SMI-0007}).
+     * Generate a customer code formatted {@code <CITY3>-<LAST3>-<NNNN>}, where {@code CITY3} is the
+     * upper-cased first three letters of {@code city}, {@code LAST3} is the upper-cased first three
+     * letters of {@code lastName} and {@code NNNN} is a per-city 4-digit zero-padded sequence equal to
+     * one more than the current number of owners already in that city (e.g. {@code SYD-SMI-0007}).
      *
+     * @param city     the owner's city
      * @param lastName the owner's last name
      * @return the generated customer code
      */
-    private String generateCustomerCode(String lastName) {
-        String prefix = lastName.length() >= 3 ? lastName.substring(0, 3) : lastName;
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", prefix.toUpperCase(Locale.ROOT), sequence);
+    private String generateCustomerCode(String city, String lastName) {
+        String cityPrefix = city.length() >= 3 ? city.substring(0, 3) : city;
+        String lastPrefix = lastName.length() >= 3 ? lastName.substring(0, 3) : lastName;
+        String normalizedCity = normalizeForComparison(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getCity()).equals(normalizedCity))
+            .count() + 1;
+        return String.format("%s-%s-%04d", cityPrefix.toUpperCase(Locale.ROOT),
+            lastPrefix.toUpperCase(Locale.ROOT), sequence);
     }
 
     /**
      * Generate a membership number formatted {@code <customerCode>-M<YY>}, where {@code YY} is the
-     * last two digits of the {@code registrationDate} year (e.g. {@code SMI-0007-M26}).
+     * last two digits of the {@code registrationDate} year (e.g. {@code SYD-SMI-0007-M26}).
      *
      * @param customerCode     the owner's already-assigned customer code
      * @param registrationDate the owner's registration date
