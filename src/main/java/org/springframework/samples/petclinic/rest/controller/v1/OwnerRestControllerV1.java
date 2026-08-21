@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -158,6 +159,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
         }
+        // Reject the request if another owner already shares the same last name and address
+        // (compared case-insensitively with collapsed whitespace), unless the caller opts in
+        // by setting 'sharesHousehold' true.
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+            && householdAlreadyExists(owner.getLastName(), owner.getAddress())) {
+            throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+        }
         // Assign the customer code '<LAST3>-<NNNN>' before persisting.
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -196,6 +204,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String prefix = lastName.length() >= 3 ? lastName.substring(0, 3) : lastName;
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", prefix.toUpperCase(Locale.ROOT), sequence);
+    }
+
+    /**
+     * Determine whether another owner already lives in the same household, i.e. shares both the
+     * last name and the address with the given values when each is compared case-insensitively with
+     * collapsed whitespace.
+     *
+     * @param lastName the incoming owner's last name
+     * @param address  the incoming owner's address
+     * @return {@code true} if an existing owner matches both fields
+     */
+    private boolean householdAlreadyExists(String lastName, String address) {
+        String normalizedLastName = normalizeForComparison(lastName);
+        String normalizedAddress = normalizeForComparison(address);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalizeForComparison(existing.getLastName()).equals(normalizedLastName)
+                && normalizeForComparison(existing.getAddress()).equals(normalizedAddress));
+    }
+
+    /**
+     * Normalize a value for identity comparison: trim, collapse every internal run of whitespace to a
+     * single space and lower-case the result. A {@code null} value normalizes to the empty string.
+     *
+     * @param value the raw value, may be {@code null}
+     * @return the normalized value
+     */
+    private String normalizeForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /**
