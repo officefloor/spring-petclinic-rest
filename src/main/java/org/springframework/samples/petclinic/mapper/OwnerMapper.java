@@ -37,6 +37,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
     @Mapping(target = "selfLink", expression = "java(deriveSelfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(deriveOwnerSegment(owner))")
+    @Mapping(target = "riskFlag", expression = "java(deriveRiskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -269,6 +270,69 @@ public interface OwnerMapper {
         String tier = membershipLevel(membershipPoints(owner)) >= 3 ? "PREMIUM" : "STANDARD";
         String area = METRO_REGIONS.contains(deriveLocality(owner)) ? "METRO" : "REGIONAL";
         return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
+    }
+
+    /**
+     * Known disposable-email domains. Mirrors the create endpoint's blocklist: an email whose domain
+     * exactly matches one of these is rejected at creation, so a stored owner never carries one. They
+     * anchor the weaker "disposable-adjacent" relation used by {@link #deriveRiskFlag(Owner)}.
+     */
+    java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * Derive the owner's risk flag: {@code true} when the owner warrants a manual risk review because
+     * any of these holds — the owner is a possible duplicate ({@code possibleDuplicate} is true), the
+     * owner's email domain is disposable-adjacent (see {@link #isDisposableAdjacentEmail(String)}), or
+     * the owner's city is over its soft capacity ({@code capacityWarning} is true) — otherwise
+     * {@code false}.
+     */
+    default boolean deriveRiskFlag(Owner owner) {
+        boolean possibleDuplicate = Boolean.TRUE.equals(owner.getPossibleDuplicate());
+        boolean overSoftCapacity = Boolean.TRUE.equals(owner.getCapacityWarning());
+        return possibleDuplicate || overSoftCapacity || isDisposableAdjacentEmail(owner.getEmail());
+    }
+
+    /**
+     * Whether an email's domain is "disposable-adjacent": not necessarily one of the exactly-blocked
+     * disposable domains (those are rejected at creation and never stored), but close enough to warrant
+     * review. A domain qualifies when it is, or is a subdomain of, a known disposable domain, or when it
+     * shares the second-level label of one (e.g. {@code mailinator.org} or {@code mail.mailinator.com}
+     * for the blocked {@code mailinator.com}). A {@code null}/blank email or one with no domain is not
+     * disposable-adjacent.
+     */
+    private boolean isDisposableAdjacentEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0 || at == email.length() - 1) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(java.util.Locale.ROOT);
+        String base = secondLevelLabel(domain);
+        for (String disposable : DISPOSABLE_EMAIL_DOMAINS) {
+            if (domain.equals(disposable) || domain.endsWith("." + disposable)) {
+                return true;
+            }
+            if (base != null && base.equals(secondLevelLabel(disposable))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The second-level label of a dotted domain: the label immediately preceding the final (top-level)
+     * label (e.g. {@code mailinator} for {@code mail.mailinator.com}). Returns {@code null} for a domain
+     * with fewer than two labels.
+     */
+    private String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return null;
+        }
+        return labels[labels.length - 2];
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
