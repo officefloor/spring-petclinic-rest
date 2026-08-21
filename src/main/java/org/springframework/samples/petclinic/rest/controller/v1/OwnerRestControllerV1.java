@@ -78,6 +78,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
             + "@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$");
 
+    /**
+     * Disposable email domains that are not allowed for an owner. An email whose domain (the part
+     * after the '@', compared case-insensitively) is listed here is rejected with 400 Bad Request.
+     */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS = java.util.Set.of(
+        "mailinator.com",
+        "tempmail.com",
+        "guerrillamail.com");
+
     /** Default country code assumed for national numbers that carry no explicit '+' prefix. */
     private static final String DEFAULT_COUNTRY_CODE = "61";
 
@@ -584,7 +593,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
             throw new InvalidRequestException(List.of("email"));
         }
-        return email.toLowerCase(Locale.ROOT);
+        String lowerCased = email.toLowerCase(Locale.ROOT);
+        // Reject an address whose domain is on the disposable-domain blocklist.
+        String domain = lowerCased.substring(lowerCased.indexOf('@') + 1);
+        if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            throw new InvalidRequestException(List.of("email"));
+        }
+        return lowerCased;
     }
 
     /**
