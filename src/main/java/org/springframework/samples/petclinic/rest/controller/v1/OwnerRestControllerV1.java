@@ -19,6 +19,8 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -56,6 +58,15 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic email validation: a non-empty local part and a dotted domain, with no whitespace.
+     * Matches addresses such as {@code test.user@example.com} and rejects strings without an '@'
+     * and a dotted domain (e.g. {@code not-an-email}).
+     */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+        "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+            + "@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$");
 
     private final ClinicService clinicService;
 
@@ -130,6 +141,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidRequestException(List.of("telephone"));
         }
         owner.setTelephone(normalizedTelephone);
+        // Normalize the (optional) email: reject a syntactically invalid address, otherwise store it lower-cased.
+        owner.setEmail(normalizeEmail(owner.getEmail()));
         // Reject the request if the normalized telephone is already used by another owner.
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
@@ -153,8 +166,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        currentOwner.setEmail(normalizeEmail(ownerFieldsDto.getEmail()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
+    }
+
+    /**
+     * Normalize an optional owner email address. A blank/absent value is treated as "not provided"
+     * and returns {@code null}. When present, the value must be a syntactically valid address; if it
+     * is not, an {@link InvalidRequestException} is thrown (mapped to 400 Bad Request). A valid value
+     * is returned lower-cased.
+     *
+     * @param email the raw email from the request payload, may be {@code null}
+     * @return the lower-cased email, or {@code null} when none was provided
+     */
+    private String normalizeEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return null;
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidRequestException(List.of("email"));
+        }
+        return email.toLowerCase(Locale.ROOT);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

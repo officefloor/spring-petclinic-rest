@@ -167,7 +167,7 @@ public class JdbcVisitRepositoryImpl implements VisitRepository {
             pet.setType(petType);
             params.put("owner_id", pet.getOwnerId());
             Owner owner = JdbcVisitRepositoryImpl.this.namedParameterJdbcTemplate.queryForObject(
-                "SELECT id, first_name, last_name, address, city, telephone FROM owners WHERE id= :owner_id",
+                "SELECT id, first_name, last_name, address, city, telephone, email FROM owners WHERE id= :owner_id",
                 params,
                 BeanPropertyRowMapper.newInstance(Owner.class));
             pet.setOwner(owner);
