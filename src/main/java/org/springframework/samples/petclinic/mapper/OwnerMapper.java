@@ -36,6 +36,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
+    @Mapping(target = "selfLink", expression = "java(deriveSelfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -263,6 +264,14 @@ public interface OwnerMapper {
             return lastName;
         }
         return title + " " + lastName;
+    }
+
+    /**
+     * Derive the owner's canonical self link, formatted {@code /api/owners/<id>}. Returns
+     * {@code null} when the owner has no id yet, so the field is absent from the response.
+     */
+    default String deriveSelfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
