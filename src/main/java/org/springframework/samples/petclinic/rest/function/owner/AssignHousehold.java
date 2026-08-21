@@ -13,7 +13,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * When a create request opts in with {@code sharesHousehold} true, joins the new owner to
  * the household identified by its lastName (compared case-insensitively with collapsed
  * whitespace) and address (compared in its normalized form; see
- * {@link AddressNormalizer}), matching {@link EnsureUniqueHousehold}. The household's
+ * {@link AddressNormalizer}). The household's
  * stable shared {@code householdId} is derived deterministically from that
  * lastName/address, so every member computes the same value. The new owner and every already-stored member of
  * the household are assigned that identifier, so both sides of a join share it.
@@ -63,7 +63,7 @@ public class AssignHousehold {
     }
 
     /** Case-insensitive with collapsed whitespace: trim, fold internal whitespace runs to a
-     *  single space, and lower-case. Mirrors {@link EnsureUniqueHousehold}. */
+     *  single space, and lower-case. */
     private static String normalize(String value) {
         if (value == null) {
             return "";
