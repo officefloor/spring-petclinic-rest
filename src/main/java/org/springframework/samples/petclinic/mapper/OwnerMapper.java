@@ -43,6 +43,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -237,6 +238,21 @@ public abstract class OwnerMapper {
             return dash >= 0 ? code.substring(0, dash) : code;
         }
         return LocalityLookup.regionFor(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment} formatted {@code <TIER>_<AREA>}. TIER is
+     * 'PREMIUM' when {@link #membershipLevel(Owner)} is 3 or more, otherwise 'STANDARD'.
+     * AREA is 'METRO' when the {@link #locality(Owner)} is a known region (NSW, VIC or QLD),
+     * otherwise 'REGIONAL'. So one of 'PREMIUM_METRO', 'PREMIUM_REGIONAL', 'STANDARD_METRO'
+     * or 'STANDARD_REGIONAL'.
+     */
+    protected OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String locality = locality(owner);
+        boolean knownRegion = "NSW".equals(locality) || "VIC".equals(locality) || "QLD".equals(locality);
+        String area = knownRegion ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**
