@@ -192,6 +192,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
         }
+        // Record how many existing owners already share this first name and last name
+        // (compared case-insensitively) before this owner is created.
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         // Assign the customer code '<LAST3>-<NNNN>' before persisting.
         owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -230,6 +233,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String prefix = lastName.length() >= 3 ? lastName.substring(0, 3) : lastName;
         int sequence = this.clinicService.findAllOwners().size() + 1;
         return String.format("%s-%04d", prefix.toUpperCase(Locale.ROOT), sequence);
+    }
+
+    /**
+     * Count the existing owners that share the given first name and last name, comparing each
+     * case-insensitively (trimmed, with internal whitespace collapsed). The incoming owner is not
+     * yet persisted, so it is not included in the count.
+     *
+     * @param firstName the incoming owner's first name
+     * @param lastName  the incoming owner's last name
+     * @return the number of existing namesakes
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        String normalizedFirstName = normalizeForComparison(firstName);
+        String normalizedLastName = normalizeForComparison(lastName);
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeForComparison(existing.getFirstName()).equals(normalizedFirstName)
+                && normalizeForComparison(existing.getLastName()).equals(normalizedLastName))
+            .count();
     }
 
     /**
