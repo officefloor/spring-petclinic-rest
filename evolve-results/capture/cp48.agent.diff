@@ -1,0 +1,180 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index aa831fac..dc123c1a 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,8 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.util.Salutation.of(owner))")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "membershipNumber", expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipNumber", expression = "java(String.format(\"%s-M%02d\", owner.getCustomerCode(), org.springframework.samples.petclinic.util.FiscalYear.yearSegment(owner.getRegistrationDate())))")
++    @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.of(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.MembershipLevel.points(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.regionOf(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index 4eb00f66..7b107554 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -4,6 +4,7 @@ import net.officefloor.plugin.variable.Val;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.samples.petclinic.util.MembershipLevel;
+ 
+ /**
+@@ -18,7 +19,7 @@ public class AuditOwnerCreated {
+ 
+     public void service(@Val Owner owner) {
+         String membershipNumber = String.format("%s-M%02d", owner.getCustomerCode(),
+-                owner.getRegistrationDate().getYear() % 100);
++                FiscalYear.yearSegment(owner.getRegistrationDate()));
+         AUDIT.info(
+                 "Owner created: id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+new file mode 100644
+index 00000000..82df63d7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.Month;
++
++/**
++ * Derives fiscal-year values from a date. The fiscal year starts on 1 July: a date on or after
++ * 1 July belongs to the fiscal year named for that calendar year, a date before 1 July belongs to
++ * the fiscal year named for the previous calendar year (e.g. 2026-03-15 is fiscal year 2025).
++ *
++ * <p>The inputs are the business-day-adjusted registration date, so every derived value (the
++ * {@code fiscalYear} label, the membership number's year segment, tenure) shares one basis.
++ */
++public final class FiscalYear {
++
++    /** First month of the fiscal year. */
++    private static final Month FISCAL_START = Month.JULY;
++
++    private FiscalYear() {
++    }
++
++    /**
++     * The starting calendar year of the fiscal year that contains {@code date}: the date's own year
++     * from 1 July onward, otherwise the previous year.
++     */
++    public static int startYear(LocalDate date) {
++        int year = date.getYear();
++        return date.getMonthValue() >= FISCAL_START.getValue() ? year : year - 1;
++    }
++
++    /** The two-digit year segment (fiscal start year mod 100) for the fiscal year of {@code date}. */
++    public static int yearSegment(LocalDate date) {
++        return startYear(date) % 100;
++    }
++
++    /** The {@code 'FY<YY>'} label for the fiscal year that contains {@code date}. */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", yearSegment(date));
++    }
++
++    /**
++     * Elapsed fiscal years between {@code from} and {@code to}: the number of 1-July boundaries
++     * crossed, i.e. the difference of their fiscal start years.
++     */
++    public static long elapsed(LocalDate from, LocalDate to) {
++        return startYear(to) - startYear(from);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+index 75472489..d17608b9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevel.java
+@@ -17,25 +17,25 @@
+ package org.springframework.samples.petclinic.util;
+ 
+ import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.FiscalYear;
+ 
+ /**
+  * Derives an owner's membership from a points system. Starts at 0 points, adds 2 when an
+  * email is present, adds 1 when {@code namesakeCount} is 0, adds 2 for a household of 3 or
+- * more, and adds 3 when tenure exceeds {@value #TENURE_DAYS} days. Points map to a numeric
+- * level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more. Because level 4
+- * requires 6 points and the only route to 6 is tenure, a newly created owner (zero tenure)
+- * never exceeds level 3.
++ * more, and adds 3 when tenure exceeds {@value #TENURE_FISCAL_YEARS} elapsed fiscal year(s).
++ * Points map to a numeric level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4 for 6 or more.
++ * Because level 4 requires 6 points and the only route to 6 is tenure, a newly created owner
++ * (zero tenure) never exceeds level 3.
+  */
+ public final class MembershipLevel {
+ 
+     /** Household size, in members, at or above which the household factor applies. */
+     private static final int HOUSEHOLD_SIZE = 3;
+ 
+-    /** Tenure, in days, that must be exceeded for the tenure factor to apply. */
+-    private static final int TENURE_DAYS = 365;
++    /** Tenure, in elapsed fiscal years, that must be exceeded for the tenure factor to apply. */
++    private static final int TENURE_FISCAL_YEARS = 1;
+ 
+     private MembershipLevel() {
+     }
+@@ -56,7 +56,7 @@ public final class MembershipLevel {
+         if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= HOUSEHOLD_SIZE) {
+             points += 2;
+         }
+-        if (tenureDays(owner) > TENURE_DAYS) {
++        if (tenureFiscalYears(owner) > TENURE_FISCAL_YEARS) {
+             points += 3;
+         }
+         return points;
+@@ -80,12 +80,15 @@ public final class MembershipLevel {
+         return 4;
+     }
+ 
+-    /** Days from the owner's {@code registrationDate} to today, or 0 when unknown. */
+-    private static long tenureDays(Owner owner) {
++    /**
++     * Elapsed fiscal years from the owner's {@code registrationDate} to today (the number of
++     * 1-July boundaries crossed since registration), or 0 when unknown.
++     */
++    private static long tenureFiscalYears(Owner owner) {
+         LocalDate registrationDate = owner.getRegistrationDate();
+         if (registrationDate == null) {
+             return 0;
+         }
+-        return ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
++        return FiscalYear.elapsed(registrationDate, LocalDate.now());
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b08d6809..618f3d19 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2158,13 +2158,19 @@ components:
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+-              description: Server-derived membership number formatted '<customerCode>-M<YY>', where YY is the last two digits of the registrationDate year.
++              description: Server-derived membership number formatted '<customerCode>-M<YY>', where YY is the two-digit fiscal year (the fiscal year starts 1 July) of the business-day-adjusted registrationDate.
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: Server-derived fiscal year formatted 'FY<YY>', where YY is the two-digit starting calendar year of the fiscal year (which starts 1 July) that contains the business-day-adjusted registrationDate.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             membershipPoints:
+               title: Membership points
+-              description: Server-derived membership points fixed at creation - starts at 0, adds 2 when an email is present, adds 1 when namesakeCount is 0, adds 2 for a household of 3 or more, and adds 3 for tenure over 365 days.
++              description: Server-derived membership points fixed at creation - starts at 0, adds 2 when an email is present, adds 1 when namesakeCount is 0, adds 2 for a household of 3 or more, and adds 3 for tenure over one elapsed fiscal year.
+               type: integer
+               format: int32
+               minimum: 0
