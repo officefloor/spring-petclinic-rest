@@ -305,7 +305,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // The effective registration date must fall on a business day: when it lands on a Saturday,
         // Sunday or a listed public holiday (whether supplied or defaulted above), roll it forward to
         // the next non-holiday business day. Every value derived from the registration date below
-        // (daily create-limit, membership number) uses this adjusted date.
+        // (daily create-limit, member id) uses this adjusted date.
         owner.setRegistrationDate(rollToBusinessDay(owner.getRegistrationDate()));
         // Reject the request once the maximum number of owners for the owner's registration day has
         // been reached (100 or more owners already created on that date).
@@ -360,11 +360,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Record how many existing owners already share this first name and last name
         // (compared case-insensitively) before this owner is created.
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
-        // Assign the customer code '<REGION>-<HASH8>' before persisting.
-        owner.setCustomerCode(generateCustomerCode(owner));
-        // Assign the membership number '<customerCode>-M<YY>' where YY is the last two
-        // digits of the fiscal year the registration date falls in (e.g. 'NSW-1A2B3C4D-M27').
-        owner.setMembershipNumber(generateMembershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
+        // Assign the unified member id '<REGION><FY><HASH8><CHK>' before persisting.
+        owner.setMemberId(generateMemberId(owner));
         this.clinicService.saveOwner(owner);
         // Remember the created owner under the request's idempotency key so a later create repeating
         // the same key returns this owner instead of creating a duplicate.
@@ -376,17 +373,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Cap the new owner's membership level at one above the current maximum among their
         // existing household members (no cap when the household has no other member).
         applyHouseholdMembershipCap(owner, ownerDto);
-        // Emit an audit line carrying the new owner's id, customer code, registration date,
-        // numeric membership level and membership number.
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerDto.getMembershipLevel(), owner.getMembershipNumber());
+        // Emit an audit line carrying the new owner's id, unified member id, registration date
+        // and numeric membership level.
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            ownerDto.getMembershipLevel());
         // Besides the human-readable audit line, emit an immutable structured event carrying a
-        // monotonically increasing sequence number, the owner id, the owner's current primary
-        // identifier (the customer code for now; the member id once the two are unified) and the
-        // numeric membership level. Serialized once, up front, so the logged event cannot change.
+        // monotonically increasing sequence number, the owner id, the owner's primary identifier
+        // (the unified member id) and the numeric membership level. Serialized once, up front, so
+        // the logged event cannot change.
         AUDIT.info(ownerCreatedEvent(AUDIT_EVENT_SEQ.incrementAndGet(), owner.getId(),
-            owner.getCustomerCode(), ownerDto.getMembershipLevel()));
+            owner.getMemberId(), ownerDto.getMembershipLevel()));
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -394,21 +391,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the immutable structured {@code OWNER_CREATED} audit event as a JSON object string:
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. The
-     * {@code customerCode} field carries the owner's current primary identifier (the customer code
-     * today; whatever replaces it later), so the event always names the owner's canonical identity.
-     * A {@code null} membership level is serialized as JSON {@code null}.
+     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. The
+     * {@code memberId} field carries the owner's primary identifier (the unified member id), so the
+     * event always names the owner's canonical identity. A {@code null} membership level is
+     * serialized as JSON {@code null}.
      *
      * @param seq             the monotonically increasing event sequence number
      * @param ownerId         the created owner's id
-     * @param primaryId       the owner's current primary identifier (customer code)
+     * @param primaryId       the owner's primary identifier (member id)
      * @param membershipLevel the owner's numeric membership level, may be {@code null}
      * @return the JSON-serialized event
      */
     private String ownerCreatedEvent(long seq, Integer ownerId, String primaryId, Integer membershipLevel) {
         return "{\"seq\":" + seq
             + ",\"ownerId\":" + ownerId
-            + ",\"customerCode\":" + jsonString(primaryId)
+            + ",\"memberId\":" + jsonString(primaryId)
             + ",\"membershipLevel\":" + (membershipLevel == null ? "null" : membershipLevel)
             + ",\"event\":\"OWNER_CREATED\"}";
     }
@@ -541,47 +538,83 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Generate a customer code formatted {@code <REGION>-<HASH8>}, where {@code REGION} is the region
-     * code derived from the owner's identity (postcode range first, then the city-to-region table,
-     * otherwise {@code UNKNOWN}) and {@code HASH8} is the first eight upper-case hex characters of the
-     * SHA-256 digest of {@code normalizedTelephone + lastName} (e.g. {@code NSW-1A2B3C4D}). There is no
-     * longer any per-city sequence number.
+     * Generate the unified member id formatted {@code <REGION><FY><HASH8><CHK>}, where {@code REGION}
+     * is the region code derived from the owner's identity (postcode range first, then the
+     * city-to-region table, otherwise {@code UNKNOWN}), {@code FY} is the two-digit fiscal year that
+     * the owner's business-day-adjusted registration date falls in, {@code HASH8} is the first eight
+     * upper-case hex characters of the SHA-256 digest of {@code normalizedTelephone + lastName} (the
+     * same HASH8 the region-and-hash identity uses), and {@code CHK} is a single Luhn check digit
+     * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW271A2B3C4D5}).
      *
-     * @param owner the owner whose (already-normalized) telephone, last name, postcode and city are read
-     * @return the generated (collision-free) customer code
+     * @param owner the owner whose (already-normalized) telephone, last name, postcode, city and
+     *              registration date are read
+     * @return the generated (collision-free) member id
      */
-    private String generateCustomerCode(Owner owner) {
+    private String generateMemberId(Owner owner) {
         String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String fy = String.format("%02d", fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = shortSha256Hex(owner.getTelephone() + owner.getLastName(), 8);
-        String baseCode = region + "-" + hash8;
-        return deduplicateCustomerCode(baseCode);
+        String base = region + fy + hash8;
+        String memberId = base + luhnCheckDigit(base);
+        return deduplicateMemberId(memberId);
     }
 
     /**
-     * Return a customer code that does not collide with any existing owner's customer code. When the
-     * given base code is already unique it is returned unchanged; otherwise {@code -<n>} is appended
-     * with the smallest {@code n} of 2 or more that makes the result unique (e.g. {@code NSW-1A2B3C4D},
-     * then {@code NSW-1A2B3C4D-2}, {@code NSW-1A2B3C4D-3}, ...). The incoming owner is not yet
+     * Return a member id that does not collide with any existing owner's member id. When the given
+     * base id is already unique it is returned unchanged; otherwise {@code -<n>} is appended with the
+     * smallest {@code n} of 2 or more that makes the result unique (e.g. {@code NSW271A2B3C4D5}, then
+     * {@code NSW271A2B3C4D5-2}, {@code NSW271A2B3C4D5-3}, ...). The incoming owner is not yet
      * persisted, so it never counts as a collision with itself.
      *
-     * @param baseCode the computed {@code <REGION>-<HASH8>} customer code
-     * @return the de-duplicated customer code
+     * @param baseId the computed {@code <REGION><FY><HASH8><CHK>} member id
+     * @return the de-duplicated member id
      */
-    private String deduplicateCustomerCode(String baseCode) {
-        java.util.Set<String> existingCodes = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+    private String deduplicateMemberId(String baseId) {
+        java.util.Set<String> existingIds = this.clinicService.findAllOwners().stream()
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
-        if (!existingCodes.contains(baseCode)) {
-            return baseCode;
+        if (!existingIds.contains(baseId)) {
+            return baseId;
         }
         int n = 2;
-        String candidate = baseCode + "-" + n;
-        while (existingCodes.contains(candidate)) {
+        String candidate = baseId + "-" + n;
+        while (existingIds.contains(candidate)) {
             n++;
-            candidate = baseCode + "-" + n;
+            candidate = baseId + "-" + n;
         }
         return candidate;
+    }
+
+    /**
+     * Compute the single Luhn check digit (0-9) over the digits contained in the given value.
+     * Non-digit characters are ignored. A {@code null} or digit-free value yields a check digit of 0.
+     *
+     * @param value the value whose digits the check digit is computed over
+     * @return the Luhn check digit
+     */
+    private int luhnCheckDigit(String value) {
+        if (value == null) {
+            return 0;
+        }
+        int sum = 0;
+        boolean doubleDigit = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubleDigit) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubleDigit = !doubleDigit;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     /**
@@ -659,20 +692,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return false;
         }
         return !PUBLIC_HOLIDAYS.contains(date);
-    }
-
-    /**
-     * Generate a membership number formatted {@code <customerCode>-M<YY>}, where {@code YY} is the
-     * last two digits of the fiscal year that the (business-day-adjusted) {@code registrationDate}
-     * falls in (e.g. {@code SYD-SMI-0007-M27} for a registration in FY27).
-     *
-     * @param customerCode     the owner's already-assigned customer code
-     * @param registrationDate the owner's business-day-adjusted registration date
-     * @return the generated membership number
-     */
-    private String generateMembershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", fiscalYear(registrationDate) % 100);
-        return String.format("%s-M%s", customerCode, yy);
     }
 
     /**

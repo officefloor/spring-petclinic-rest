@@ -28,7 +28,6 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
     @Mapping(target = "timezone", expression = "java(deriveTimezone(owner))")
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
-    @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
@@ -51,17 +50,24 @@ public interface OwnerMapper {
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
     /**
-     * Derive the locality region for an owner from its region-and-hash customer code. The customer code
-     * is {@code <REGION>-<HASH8>}, so the locality is the region segment before the first hyphen (the
-     * same region the identity itself was built from: postcode range first, then the city-to-region
-     * table, otherwise "UNKNOWN"). When no customer code is present, the locality is "UNKNOWN".
+     * The known region codes a member id can begin with, longest first so a longer code is matched
+     * before any shorter one that shares its prefix.
+     */
+    List<String> MEMBER_ID_REGIONS = List.of("UNKNOWN", "NSW", "VIC", "QLD");
+
+    /**
+     * Derive the locality region for an owner from its unified member id. The member id is formatted
+     * {@code <REGION><FY><HASH8><CHK>}, so the locality is its leading region segment (the same region
+     * the identity itself was built from: postcode range first, then the city-to-region table,
+     * otherwise "UNKNOWN"). When no member id is present, the locality is "UNKNOWN".
      */
     default String deriveLocality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash > 0) {
-                return customerCode.substring(0, dash);
+        String memberId = owner.getMemberId();
+        if (memberId != null) {
+            for (String region : MEMBER_ID_REGIONS) {
+                if (memberId.startsWith(region)) {
+                    return region;
+                }
             }
         }
         return "UNKNOWN";
@@ -182,35 +188,6 @@ public interface OwnerMapper {
         java.time.LocalDate reference = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : java.time.LocalDate.now();
         return String.format("FY%02d", fiscalYear(reference) % 100);
-    }
-
-    /**
-     * Compute the single Luhn check digit (0-9) over the digits contained in the given value.
-     * Non-digit characters (such as the hyphens in a customer code) are ignored. A null or
-     * digit-free value yields a check digit of 0.
-     */
-    default Integer luhnCheckDigit(String value) {
-        if (value == null) {
-            return 0;
-        }
-        int sum = 0;
-        boolean doubleDigit = true;
-        for (int i = value.length() - 1; i >= 0; i--) {
-            char c = value.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int digit = c - '0';
-            if (doubleDigit) {
-                digit *= 2;
-                if (digit > 9) {
-                    digit -= 9;
-                }
-            }
-            sum += digit;
-            doubleDigit = !doubleDigit;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 
     /**
