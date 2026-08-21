@@ -31,6 +31,10 @@ public interface OwnerMapper {
         expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" "
             + ": \"Melbourne\".equals(owner.getCity()) ? \"VIC\" "
             + ": \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+    @Mapping(target = "contactPreference",
+        expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
+            + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
+            + ": org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE)")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
