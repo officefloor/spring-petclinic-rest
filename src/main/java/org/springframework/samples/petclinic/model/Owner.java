@@ -63,6 +63,12 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    // Create-time signal only: derived from the count of owners already created today, not an
+    // intrinsic owner attribute, so it is never persisted. Defaults to false, which is what a
+    // reloaded owner (e.g. served by GET) reports.
+    @Transient
+    private boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -128,6 +134,14 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) {
         this.namesakeCount = namesakeCount;
+    }
+
+    public boolean isBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     protected Set<Pet> getPetsInternal() {
