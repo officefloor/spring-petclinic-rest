@@ -5,16 +5,16 @@ import java.util.List;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class InvalidOwnerEmailExceptionHandler {
 
     public void handle(@Parameter InvalidOwnerEmailException ex,
-            ObjectResponse<ResponseEntity<Errors>> response) {
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new Errors(List.of("email"))));
-    }
-
-    /** Response body: {@code {"errors": ["email"]}}. */
-    public record Errors(List<String> errors) {
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+                "The 'email' field is invalid");
+        detail.setProperty("errors", List.of("email"));
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }

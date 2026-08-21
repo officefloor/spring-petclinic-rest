@@ -5,16 +5,16 @@ import java.util.List;
 import net.officefloor.plugin.section.clazz.Parameter;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 
 public class InvalidOwnerTelephoneExceptionHandler {
 
     public void handle(@Parameter InvalidOwnerTelephoneException ex,
-            ObjectResponse<ResponseEntity<Errors>> response) {
-        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new Errors(List.of("telephone"))));
-    }
-
-    /** Response body: {@code {"errors": ["telephone"]}}. */
-    public record Errors(List<String> errors) {
+            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
+        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST,
+                "The 'telephone' field is invalid");
+        detail.setProperty("errors", List.of("telephone"));
+        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
 }
