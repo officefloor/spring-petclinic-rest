@@ -111,6 +111,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         "RD", "ROAD",
         "AVE", "AVENUE");
 
+    /** A well-formed postcode: exactly four digits. */
+    private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
+
+    /** City to canonical region for the fixed city-to-region table (cities not listed have no region). */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /** Region to its inclusive 4-digit postcode range {low, high}. */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
     /** Dedicated audit logger; a create side-effect is recorded here on success. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -193,6 +208,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setTelephone(normalizedTelephone);
         // Normalize the (optional) email: reject a syntactically invalid address, otherwise store it lower-cased.
         owner.setEmail(normalizeEmail(owner.getEmail()));
+        // Validate the (optional) postcode: reject with 400 when present but malformed or out of range
+        // for the city's region. The value (mapped straight from the request) is stored and returned as given.
+        validatePostcode(owner.getCity(), owner.getPostcode());
         // Default the (optional) registration date to the server's current date when none was supplied.
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
@@ -500,6 +518,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidRequestException(List.of("email"));
         }
         return email.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Validate an optional owner postcode. A blank/absent value is treated as "not provided" and
+     * passes (postcode is optional). When present it must be exactly four digits, and when the owner's
+     * city has a known region (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) the postcode must fall within
+     * that region's inclusive range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no known
+     * region accepts any 4-digit postcode. A violation throws an {@link InvalidRequestException} (mapped
+     * to 400 Bad Request).
+     *
+     * @param city     the owner's city (used to resolve the region)
+     * @param postcode the raw postcode from the request payload, may be {@code null}
+     */
+    private void validatePostcode(String city, String postcode) {
+        if (!StringUtils.hasText(postcode)) {
+            return;
+        }
+        if (!POSTCODE_PATTERN.matcher(postcode).matches()) {
+            throw new InvalidRequestException(List.of("postcode"));
+        }
+        String region = CITY_REGION.get(city);
+        int[] range = region == null ? null : REGION_POSTCODE_RANGE.get(region);
+        if (range != null) {
+            int value = Integer.parseInt(postcode);
+            if (value < range[0] || value > range[1]) {
+                throw new InvalidRequestException(List.of("postcode"));
+            }
+        }
     }
 
     /**
