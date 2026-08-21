@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -38,6 +39,8 @@ public interface OwnerMapper {
     @Mapping(target = "selfLink", expression = "java(deriveSelfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(deriveOwnerSegment(owner))")
     @Mapping(target = "riskFlag", expression = "java(deriveRiskFlag(owner))")
+    @Mapping(target = "apiVersion", expression = "java(API_VERSION)")
+    @Mapping(target = "identity", expression = "java(deriveIdentity(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -50,28 +53,54 @@ public interface OwnerMapper {
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
 
-    /**
-     * The known region codes a member id can begin with, longest first so a longer code is matched
-     * before any shorter one that shares its prefix.
-     */
-    List<String> MEMBER_ID_REGIONS = List.of("UNKNOWN", "NSW", "VIC", "QLD");
+    /** The owner identity response contract version; surfaced as the top-level {@code apiVersion}. */
+    Integer API_VERSION = 2;
+
+    /** City -> canonical region for the fixed city-to-region table (cities not listed have no region). */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /** Region -> its inclusive 4-digit postcode range {low, high}. */
+    java.util.Map<String, int[]> REGION_POSTCODE_RANGE = java.util.Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+
+    /** A well-formed postcode: exactly four digits. */
+    java.util.regex.Pattern POSTCODE_PATTERN = java.util.regex.Pattern.compile("^[0-9]{4}$");
 
     /**
-     * Derive the locality region for an owner from its unified member id. The member id is formatted
-     * {@code <REGION><FY><HASH8><CHK>}, so the locality is its leading region segment (the same region
-     * the identity itself was built from: postcode range first, then the city-to-region table,
-     * otherwise "UNKNOWN"). When no member id is present, the locality is "UNKNOWN".
+     * Group the owner's version-2 identifiers under the nested {@code identity} object: the version-2
+     * member id, household id and identity key (each derived with the fixed {@code V2} version tag
+     * mixed in). These identifiers no longer appear at the top level of the owner response.
+     */
+    default OwnerIdentityDto deriveIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(owner.getIdentityKey());
+        return identity;
+    }
+
+    /**
+     * Derive the owner's user-facing locality: the plain canonical region derived directly from the
+     * owner's identity fields — the structured postcode's region range first (NSW 2000-2099,
+     * VIC 3000-3099, QLD 4000-4099), then the fixed city-to-region table (Sydney->NSW, Melbourne->VIC,
+     * Brisbane->QLD), otherwise "UNKNOWN". This is the same canonical region the version-2 identifiers
+     * are built from, but WITHOUT the {@code V2} version tag: the tag stays confined to the
+     * identifiers, so the locality remains the plain region code (e.g. "NSW").
      */
     default String deriveLocality(Owner owner) {
-        String memberId = owner.getMemberId();
-        if (memberId != null) {
-            for (String region : MEMBER_ID_REGIONS) {
-                if (memberId.startsWith(region)) {
-                    return region;
+        String postcode = owner.getPostcode();
+        if (postcode != null && POSTCODE_PATTERN.matcher(postcode).matches()) {
+            int value = Integer.parseInt(postcode);
+            for (java.util.Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
+                int[] range = entry.getValue();
+                if (value >= range[0] && value <= range[1]) {
+                    return entry.getKey();
                 }
             }
         }
-        return "UNKNOWN";
+        String region = CITY_REGION.get(owner.getCity());
+        return region != null ? region : "UNKNOWN";
     }
 
     /**

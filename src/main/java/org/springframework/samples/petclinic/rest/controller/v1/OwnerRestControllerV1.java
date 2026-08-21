@@ -394,21 +394,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
+    /** Schema version of the structured {@code OWNER_CREATED} audit event; version 2 for the v2 identity. */
+    private static final int AUDIT_EVENT_SCHEMA_VERSION = 2;
+
     /**
      * Build the immutable structured {@code OWNER_CREATED} audit event as a JSON object string:
-     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. The
-     * {@code memberId} field carries the owner's primary identifier (the unified member id), so the
-     * event always names the owner's canonical identity. A {@code null} membership level is
+     * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. The
+     * {@code schemaVersion} field is fixed at 2 (the version-2 audit schema). The {@code memberId}
+     * field carries the owner's primary identifier — now the version-2 unified member id — so the
+     * event always names the owner's canonical version-2 identity. A {@code null} membership level is
      * serialized as JSON {@code null}.
      *
      * @param seq             the monotonically increasing event sequence number
      * @param ownerId         the created owner's id
-     * @param primaryId       the owner's primary identifier (member id)
+     * @param primaryId       the owner's primary identifier (version-2 member id)
      * @param membershipLevel the owner's numeric membership level, may be {@code null}
      * @return the JSON-serialized event
      */
     private String ownerCreatedEvent(long seq, Integer ownerId, String primaryId, Integer membershipLevel) {
-        return "{\"seq\":" + seq
+        return "{\"schemaVersion\":" + AUDIT_EVENT_SCHEMA_VERSION
+            + ",\"seq\":" + seq
             + ",\"ownerId\":" + ownerId
             + ",\"memberId\":" + jsonString(primaryId)
             + ",\"membershipLevel\":" + (membershipLevel == null ? "null" : membershipLevel)
@@ -543,20 +548,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Generate the unified member id formatted {@code <REGION><FY><HASH8><CHK>}, where {@code REGION}
-     * is the region code derived from the owner's identity (postcode range first, then the
-     * city-to-region table, otherwise {@code UNKNOWN}), {@code FY} is the two-digit fiscal year that
-     * the owner's business-day-adjusted registration date falls in, {@code HASH8} is the first eight
-     * upper-case hex characters of the SHA-256 digest of {@code normalizedTelephone + lastName} (the
-     * same HASH8 the region-and-hash identity uses), and {@code CHK} is a single Luhn check digit
-     * computed over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code NSW271A2B3C4D5}).
+     * Generate the version-2 unified member id formatted {@code <REGION><FY><HASH8><CHK>}, where
+     * {@code REGION} is the version-2 region code (the canonical region derived from the owner's
+     * identity with the fixed {@code V2} version tag mixed in, see {@link #deriveRegionV2}),
+     * {@code FY} is the two-digit fiscal year that the owner's business-day-adjusted registration
+     * date falls in, {@code HASH8} is the first eight upper-case hex characters of the SHA-256 digest
+     * of {@code normalizedTelephone + lastName}, and {@code CHK} is a single Luhn check digit computed
+     * over the digits of {@code <REGION><FY><HASH8>} (e.g. {@code V2NSW271A2B3C4D5}). Because the
+     * version-2 region prefix carries the {@code V2} tag, the id can never equal a version-1 member id.
      *
      * @param owner the owner whose (already-normalized) telephone, last name, postcode, city and
      *              registration date are read
      * @return the generated (collision-free) member id
      */
     private String generateMemberId(Owner owner) {
-        String region = deriveRegion(owner.getPostcode(), owner.getCity());
+        String region = deriveRegionV2(owner.getPostcode(), owner.getCity());
         String fy = String.format("%02d", fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = shortSha256Hex(owner.getTelephone() + owner.getLastName(), 8);
         String base = region + fy + hash8;
@@ -645,6 +651,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String region = CITY_REGION.get(city);
         return region != null ? region : "UNKNOWN";
+    }
+
+    /**
+     * Derive the version-2 region code used INSIDE the owner's identifiers: the canonical region
+     * (see {@link #deriveRegion}) with the fixed {@code V2} version tag mixed in as a prefix (e.g.
+     * {@code NSW} becomes {@code V2NSW}). Mixing the tag into the region guarantees the member id it
+     * feeds differs from any version-1 member id. The plain canonical region is used unchanged for
+     * the user-facing {@code locality}, {@code timezone} and the owner segment, so the {@code V2} tag
+     * never leaks outside the identifiers.
+     *
+     * @param postcode the owner's postcode, may be {@code null}
+     * @param city     the owner's city
+     * @return the version-2 region code
+     */
+    private String deriveRegionV2(String postcode, String city) {
+        return Owner.IDENTITY_VERSION_TAG + deriveRegion(postcode, city);
     }
 
     /**
@@ -785,15 +807,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Generate the deterministic household identifier for the given last name and postcode. The value
      * is derived from the normalized (case-insensitive, whitespace-collapsed) last name and the
      * postcode, so every owner with the same last name and postcode resolves to the same identifier
-     * automatically. It is the first 12 upper-case hex characters of the SHA-256 digest of
-     * {@code <normalizedLastName>|<postcode>} (an absent postcode contributes the empty string).
+     * automatically. It is the version-2 identifier: the first 12 upper-case hex characters of the
+     * SHA-256 digest of {@code 'V2' + '|' + <normalizedLastName>|<postcode>} (an absent postcode
+     * contributes the empty string), with the fixed {@code V2} version tag mixed in so it differs
+     * from the version-1 household id.
      *
      * @param lastName the owner's last name
      * @param postcode the owner's postcode, may be {@code null}
-     * @return the deterministic household identifier
+     * @return the deterministic version-2 household identifier
      */
     private String generateHouseholdId(String lastName, String postcode) {
-        String key = normalizeForComparison(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = Owner.IDENTITY_VERSION_TAG + "|"
+            + normalizeForComparison(lastName) + "|" + (postcode == null ? "" : postcode);
         return shortSha256Hex(key, 12);
     }
 

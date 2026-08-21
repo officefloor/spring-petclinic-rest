@@ -260,11 +260,21 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's derived identity key: the single value all duplicate detection is expressed
-     * through. It is the lower-case hex SHA-256 digest of
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} computed from the
-     * already-normalized stored fields. Two owners are duplicates only when their whole identity
-     * keys are equal; in particular two owners with the same last name (hence the same soundex) and
+     * The fixed version tag mixed into the derived identifiers (member id, household id and identity
+     * key) by the version-2 identity algorithm. Prefixing it into every hashed input guarantees each
+     * version-2 identifier differs from the value the version-1 algorithm produced for the same owner,
+     * so no version-1 value is ever produced again. The tag is confined to the identifiers: it never
+     * leaks into the user-facing region ({@code locality}, {@code timezone} or the owner segment).
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
+    /**
+     * The owner's version-2 derived identity key: the single value all duplicate detection is
+     * expressed through. It is the lower-case hex SHA-256 digest of
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)} computed
+     * from the already-normalized stored fields, with the fixed {@code V2} version tag mixed in so it
+     * differs from the version-1 key. Two owners are duplicates only when their whole identity keys
+     * are equal; in particular two owners with the same last name (hence the same soundex) and
      * postcode but different telephones have different identity keys, so they are a soft match rather
      * than a hard duplicate. Not persisted: it is derived on demand from the identity-bearing fields.
      */
@@ -273,7 +283,7 @@ public class Owner extends Person {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
         String soundexPart = soundex(getLastName());
-        return sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+        return sha256Hex(IDENTITY_VERSION_TAG + "|" + telephonePart + "|" + emailPart + "|" + soundexPart);
     }
 
     /**
