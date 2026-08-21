@@ -768,12 +768,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        String normalizedAddress = normalizeAddress(ownerFieldsDto.getAddress());
-        rejectMissingOrBlankFields(ownerFieldsDto, normalizedAddress);
+        String normalizedLine1 = null;
+        String normalizedLine2 = null;
+        String composedAddress;
+        if (!isBlank(ownerFieldsDto.getAddressLine1())) {
+            normalizedLine1 = normalizeAddress(ownerFieldsDto.getAddressLine1());
+            if (!isBlank(ownerFieldsDto.getAddressLine2())) {
+                normalizedLine2 = normalizeAddress(ownerFieldsDto.getAddressLine2());
+            }
+            composedAddress = normalizedLine2 == null
+                ? normalizedLine1
+                : normalizedLine1 + " " + normalizedLine2;
+        } else {
+            composedAddress = normalizeAddress(ownerFieldsDto.getAddress());
+        }
+        rejectMissingOrBlankFields(ownerFieldsDto, composedAddress);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        owner.setAddress(normalizedAddress);
+        owner.setAddress(composedAddress);
+        owner.setAddressLine1(normalizedLine1);
+        owner.setAddressLine2(normalizedLine2);
         String normalizedTelephone = normalizeTelephone(ownerFieldsDto.getTelephone());
         owner.setTelephone(normalizedTelephone);
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
