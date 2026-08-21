@@ -6,6 +6,7 @@ import java.util.List;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerEmailException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidOwnerEmailException {
+            throws MissingOwnerFieldsException, InvalidOwnerEmailException, InvalidOwnerTelephoneException {
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");
@@ -37,12 +38,8 @@ public class ValidateOwnerFields {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        // Normalize telephone to its digits, then require exactly 10 of them.
-        String telephone = request.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
-            throw new MissingOwnerFieldsException(List.of("telephone"));
-        }
-        request.setTelephone(telephone);
+        // Store the telephone in E.164 form; reject a number that cannot form valid E.164.
+        OwnerTelephone.normalize(request);
         // An owner may include an email; when present it must be valid and is stored lower-cased.
         OwnerEmail.normalize(request);
         validated.set(request);
