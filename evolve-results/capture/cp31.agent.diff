@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8d714e9f..ff07e270 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+             + "+ (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) "
+             + "+ (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(deriveLocality(owner))")
++    @Mapping(target = "checkDigit", expression = "java(luhnCheckDigit(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() "
+             + "? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL "
+@@ -77,6 +78,35 @@ public interface OwnerMapper {
+         return "UNKNOWN";
+     }
+ 
++    /**
++     * Compute the single Luhn check digit (0-9) over the digits contained in the given value.
++     * Non-digit characters (such as the hyphens in a customer code) are ignored. A null or
++     * digit-free value yields a check digit of 0.
++     */
++    default Integer luhnCheckDigit(String value) {
++        if (value == null) {
++            return 0;
++        }
++        int sum = 0;
++        boolean doubleDigit = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int digit = c - '0';
++            if (doubleDigit) {
++                digit *= 2;
++                if (digit > 9) {
++                    digit -= 9;
++                }
++            }
++            sum += digit;
++            doubleDigit = !doubleDigit;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 12af44db..f84d31f3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2126,6 +2126,17 @@ components:
+               type: string
+               example: 'SYD-SMI-0007-M26'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained in the
++                owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: >-
