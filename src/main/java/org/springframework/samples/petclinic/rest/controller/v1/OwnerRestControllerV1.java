@@ -570,39 +570,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The maximum membership level. Level 4 is the tenure tier and is only reached once an owner's
-     * tenure exceeds {@value #TENURE_LEVEL_THRESHOLD_DAYS} days.
+     * The tenure, in days, that an owner must exceed before its tenure contributes membership
+     * points. Tenure is measured from the owner's {@code registrationDate}, so a newly created owner
+     * (whose tenure is zero) never satisfies this and thus never earns the tenure points on create.
      */
-    private static final int MAX_MEMBERSHIP_LEVEL = 4;
+    private static final int TENURE_POINTS_THRESHOLD_DAYS = 365;
 
     /**
-     * The tenure, in days, that an owner must exceed before qualifying for the level-4 tenure tier.
-     * Tenure is measured from the owner's {@code registrationDate}, so a newly created owner (whose
-     * tenure is zero) never satisfies this and thus never exceeds level 3.
+     * The household size (number of members) at or above which an owner earns the household points.
      */
-    private static final int TENURE_LEVEL_THRESHOLD_DAYS = 365;
+    private static final int HOUSEHOLD_POINTS_THRESHOLD = 3;
 
     /**
-     * Computes the numeric {@code membershipLevel} for an owner. It starts at 1, gains 1 when an
-     * email is present, gains 1 when the owner's {@code namesakeCount} is 0, gains 1 when the
-     * owner's tenure (days elapsed since its {@code registrationDate}) exceeds
-     * {@value #TENURE_LEVEL_THRESHOLD_DAYS} days, and is capped at {@value #MAX_MEMBERSHIP_LEVEL}.
-     * Because a newly created owner has zero tenure, the tenure factor never applies on create, so a
-     * new owner never exceeds level 3. Evaluated after the owner's email, namesakeCount and
-     * registrationDate have been set.
+     * Computes the {@code membershipPoints} for an owner. Points start at 0, gain 2 when an email is
+     * present, gain 1 when the owner's {@code namesakeCount} is 0, gain 2 when the owner's household
+     * has {@value #HOUSEHOLD_POINTS_THRESHOLD} or more members, and gain 3 when the owner's tenure
+     * (days elapsed since its {@code registrationDate}) exceeds {@value #TENURE_POINTS_THRESHOLD_DAYS}
+     * days. Because a newly created owner has zero tenure, the tenure points never apply on create.
+     * Evaluated after the owner's email, namesakeCount, householdMemberCount and registrationDate
+     * have been set.
      */
-    private static int membershipLevelFor(Owner owner) {
-        int level = 1;
+    private static int membershipPointsFor(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += 1;
         }
-        if (tenureInDays(owner) > TENURE_LEVEL_THRESHOLD_DAYS) {
-            level++;
+        if (owner.getHouseholdMemberCount() != null
+            && owner.getHouseholdMemberCount() >= HOUSEHOLD_POINTS_THRESHOLD) {
+            points += 2;
         }
-        return Math.min(level, MAX_MEMBERSHIP_LEVEL);
+        if (tenureInDays(owner) > TENURE_POINTS_THRESHOLD_DAYS) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /**
+     * Maps {@code membershipPoints} to the numeric {@code membershipLevel}: level 1 for 0-1 points,
+     * 2 for 2-3, 3 for 4-5, and 4 for 6 or more points.
+     */
+    private static int membershipLevelForPoints(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
@@ -748,7 +768,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setHouseholdMemberCount(countHouseholdMembers(owner.getHouseholdId()));
-        owner.setMembershipLevel(membershipLevelFor(owner));
+        int membershipPoints = membershipPointsFor(owner);
+        owner.setMembershipPoints(membershipPoints);
+        owner.setMembershipLevel(membershipLevelForPoints(membershipPoints));
         Integer possibleDuplicateOf = findPossibleDuplicateOf(ownerFieldsDto, normalizedTelephone);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   bulk_signup_warning BOOLEAN,
   membership_level INTEGER,
+  membership_points INTEGER,
   postcode VARCHAR(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER
