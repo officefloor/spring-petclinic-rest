@@ -834,6 +834,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The number of owners a city must already hold before a create in it is flagged with a
+     * capacity warning. Once a city holds at least this many owners - but is still below the
+     * {@value #CITY_CAPACITY} hard limit - it is approaching capacity and the new owner's
+     * {@code capacityWarning} is true.
+     */
+    private static final int CITY_CAPACITY_WARNING_THRESHOLD = 40;
+
+    /**
+     * Computes the {@code capacityWarning} for a create in the given city: true when the city
+     * already holds between {@value #CITY_CAPACITY_WARNING_THRESHOLD} and
+     * {@value #CITY_CAPACITY} (exclusive) owners - approaching the hard capacity limit - otherwise
+     * false. The city is matched case-insensitively and the count reflects the state prior to this
+     * create, exactly as {@link #rejectCityAtCapacity(String)} accumulates it.
+     */
+    private boolean capacityWarningFor(String city) {
+        int count = 0;
+        for (Owner existing : this.clinicService.findAllOwners()) {
+            if (city.equalsIgnoreCase(existing.getCity())) {
+                count++;
+            }
+        }
+        return count >= CITY_CAPACITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
+    }
+
+    /**
      * The maximum number of owners that may be created on any single day (by
      * {@code registrationDate}). A create attempted once this many owners already carry the
      * current day's registration date is rejected.
@@ -970,6 +995,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = toBusinessDay(effectiveDate);
         rejectDailyOwnerLimit(registrationDate);
         owner.setBulkSignupWarning(bulkSignupWarningFor(registrationDate));
+        owner.setCapacityWarning(capacityWarningFor(owner.getCity()));
         owner.setRegistrationDate(registrationDate);
         String region = deriveRegion(owner.getCity(), owner.getPostcode());
         owner.setCustomerCode(deduplicateCustomerCode(customerCodeFor(region, normalizedTelephone, owner.getLastName())));
