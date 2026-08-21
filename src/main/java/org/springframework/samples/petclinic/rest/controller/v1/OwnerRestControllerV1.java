@@ -328,8 +328,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 }
             }
             if (!sharesHousehold
-                && householdId.equals(householdIdFor(existing.getLastName(), existing.getAddress()))) {
-                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+                && householdId.equals(householdIdFor(existing.getLastName(), existing.getPostcode()))) {
+                throw new DuplicateHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getPostcode());
             }
         }
     }
@@ -447,20 +447,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Derives the stable {@code householdId} for an owner from the collapsed {@code lastName} and
-     * {@code address} - the same pair used to detect a shared household. Because it is a pure
-     * function of that pair (upper-case hex of SHA-256 over the two collapsed values), every owner
-     * in the same household - whether created first or joining later via {@code sharesHousehold} -
-     * receives the identical, non-blank identifier without needing to read any other owner's value.
+     * its {@code postcode} - the same pair used to detect a shared household. It is the first 12
+     * lower-case hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. Because
+     * it is a pure function of that pair, every owner in the same household - whether created first
+     * or joining later via {@code sharesHousehold} - receives the identical, non-blank identifier
+     * without needing to read any other owner's value. A {@code null} postcode contributes an empty
+     * segment.
      */
-    private static String householdIdFor(String lastName, String address) {
-        String key = collapse(lastName) + "\n" + normalizeAddress(address);
+    private static String householdIdFor(String lastName, String postcode) {
+        String key = collapse(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(32);
-            for (int i = 0; i < 8; i++) {
-                sb.append(String.format("%02X", digest[i]));
+            StringBuilder sb = new StringBuilder(12);
+            for (byte b : digest) {
+                if (sb.length() >= 12) {
+                    break;
+                }
+                sb.append(String.format("%02x", b));
             }
-            return sb.toString();
+            return sb.substring(0, 12);
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);
         }
@@ -507,8 +512,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * owners qualify the one with the lowest id is chosen. Returns the matching owner's id, or
      * {@code null} when there is no soft match. This is evaluated after the hard-duplicate check has
      * already passed, so any owner sharing the lastName and postcode necessarily differs in telephone.
+     *
+     * <p>Because the household is now keyed on {@code (lastName, postcode)} - exactly the soft-match
+     * key - a co-member reached here can only be one the caller declared via {@code sharesHousehold}
+     * (otherwise the hard household-duplicate check would already have rejected it). A declared
+     * household member is not a suspected duplicate, so no soft match is reported in that case.
      */
     private Integer findPossibleDuplicateOf(OwnerFieldsDto ownerFieldsDto, String normalizedTelephone) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return null;
+        }
         String postcode = ownerFieldsDto.getPostcode();
         if (postcode == null) {
             return null;
@@ -677,7 +690,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String normalizedEmail = normalizeEmail(ownerFieldsDto.getEmail());
         owner.setEmail(normalizedEmail);
         validatePostcode(owner.getCity(), owner.getPostcode());
-        String householdId = householdIdFor(owner.getLastName(), owner.getAddress());
+        String householdId = householdIdFor(owner.getLastName(), owner.getPostcode());
         rejectDuplicateIdentity(ownerFieldsDto, normalizedTelephone, normalizedEmail, householdId);
         rejectFutureRegistrationDate(owner.getRegistrationDate());
         LocalDate effectiveDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();

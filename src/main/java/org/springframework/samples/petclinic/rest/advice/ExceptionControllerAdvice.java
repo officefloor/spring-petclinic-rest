@@ -295,10 +295,10 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateHouseholdException} thrown when an owner is created with the same
-     * last name and address as an existing owner (compared case-insensitively with collapsed
-     * whitespace) without opting in via {@code sharesHousehold}. Returns a 409 Conflict whose
-     * {@code errors} array names the {@code lastName} and {@code address} fields.
+     * Handles {@link DuplicateHouseholdException} thrown when an owner is created that resolves to
+     * the same household (the computed {@code householdId} over {@code (lastName, postcode)}) as an
+     * existing owner without opting in via {@code sharesHousehold}. Returns a 409 Conflict whose
+     * {@code errors} array names the {@code lastName} and {@code postcode} fields.
      *
      * @param e The {@link DuplicateHouseholdException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
@@ -309,7 +309,7 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(DuplicateHouseholdException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
-        detail.setProperty("errors", List.of("lastName", "address"));
+        detail.setProperty("errors", List.of("lastName", "postcode"));
         return ResponseEntity.status(status).body(detail);
     }
 
