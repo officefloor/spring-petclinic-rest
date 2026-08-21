@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -41,6 +43,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.util.StringUtils;
 
 import jakarta.transaction.Transactional;
 
@@ -99,6 +102,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        List<String> missingFields = new ArrayList<>();
+        if (!StringUtils.hasText(ownerFieldsDto.getFirstName())) {
+            missingFields.add("firstName");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getLastName())) {
+            missingFields.add("lastName");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getAddress())) {
+            missingFields.add("address");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getCity())) {
+            missingFields.add("city");
+        }
+        if (!StringUtils.hasText(ownerFieldsDto.getTelephone())) {
+            missingFields.add("telephone");
+        }
+        if (!missingFields.isEmpty()) {
+            throw new InvalidRequestException(missingFields);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
