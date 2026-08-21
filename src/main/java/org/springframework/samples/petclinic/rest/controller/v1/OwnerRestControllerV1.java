@@ -331,6 +331,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
                                          String normalizedEmail, String householdId) {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             String existingTelephone;
             try {
                 existingTelephone = normalizeTelephone(existing.getTelephone());
@@ -572,6 +575,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String lastName = ownerFieldsDto.getLastName();
         Integer matchId = null;
         for (Owner existing : this.clinicService.findAllOwners()) {
+            if (existing.isDeleted()) {
+                continue;
+            }
             if (lastName == null || !lastName.equalsIgnoreCase(existing.getLastName())) {
                 continue;
             }
@@ -848,7 +854,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
