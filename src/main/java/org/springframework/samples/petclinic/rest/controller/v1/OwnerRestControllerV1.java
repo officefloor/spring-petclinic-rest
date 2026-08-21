@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidRequestException;
@@ -209,6 +210,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // Reject the request if the E.164 telephone is already used by another owner.
         if (!this.clinicService.findOwnerByTelephone(normalizedTelephone).isEmpty()) {
             throw new DuplicateTelephoneException(normalizedTelephone);
+        }
+        // Reject the request if the (normalized, lower-cased) email is already used by another owner.
+        if (owner.getEmail() != null && isEmailInUse(owner.getEmail())) {
+            throw new DuplicateEmailException(owner.getEmail());
         }
         // Reject the request if another owner already shares the same last name and address
         // (compared case-insensitively with collapsed whitespace), unless the caller opts in
@@ -382,6 +387,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> registrationDate.equals(existing.getRegistrationDate()))
             .count();
+    }
+
+    /**
+     * Determine whether the given (already lower-cased) email is already used by any existing owner,
+     * comparing case-insensitively. The incoming owner is not yet persisted, so it is not included.
+     *
+     * @param email the incoming owner's normalized email
+     * @return {@code true} when another owner already uses that email
+     */
+    private boolean isEmailInUse(String email) {
+        String normalizedEmail = email.toLowerCase(Locale.ROOT);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> existing.getEmail() != null
+                && existing.getEmail().toLowerCase(Locale.ROOT).equals(normalizedEmail));
     }
 
     /**
