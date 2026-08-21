@@ -37,6 +37,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
     @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
     @Mapping(target = "selfLink", expression = "java(deriveSelfLink(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(deriveOwnerSegment(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -272,6 +273,25 @@ public interface OwnerMapper {
      */
     default String deriveSelfLink(Owner owner) {
         return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
+
+    /**
+     * Known metropolitan regions: an owner whose locality is one of these is 'METRO', any other
+     * locality (including "UNKNOWN") is 'REGIONAL'. Mirrors the pinned city-to-region table.
+     */
+    java.util.Set<String> METRO_REGIONS = java.util.Set.of("NSW", "VIC", "QLD");
+
+    /**
+     * Derive the owner's marketing segment, formatted {@code <TIER>_<AREA>}: one of
+     * {@code PREMIUM_METRO}, {@code PREMIUM_REGIONAL}, {@code STANDARD_METRO} or
+     * {@code STANDARD_REGIONAL}. TIER is {@code PREMIUM} when the owner's membershipLevel is 3 or
+     * more, otherwise {@code STANDARD}. AREA is {@code METRO} when the owner's locality is a known
+     * region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
+     */
+    default OwnerDto.OwnerSegmentEnum deriveOwnerSegment(Owner owner) {
+        String tier = membershipLevel(membershipPoints(owner)) >= 3 ? "PREMIUM" : "STANDARD";
+        String area = METRO_REGIONS.contains(deriveLocality(owner)) ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
