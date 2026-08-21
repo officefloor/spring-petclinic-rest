@@ -37,6 +37,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(deriveAgeBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(deriveTelephoneDisplay(owner))")
     @Mapping(target = "salutation", expression = "java(deriveSalutation(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(deriveFiscalYear(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
@@ -230,6 +231,23 @@ public interface OwnerMapper {
             return lastName;
         }
         return title + " " + lastName;
+    }
+
+    /**
+     * Derive the owner's fiscal year from its business-day-adjusted {@code registrationDate},
+     * formatted {@code 'FY<YY>'} where YY is the last two digits of the fiscal year. The fiscal
+     * year starts on 1 July and is labelled by the calendar year in which it ends, so a
+     * registrationDate on or after 1 July belongs to the fiscal year ending the following calendar
+     * year. Returns null when the owner or its registrationDate is absent.
+     */
+    default String deriveFiscalYear(Owner owner) {
+        if (owner == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        int fiscalYear = registrationDate.getMonthValue() >= java.time.Month.JULY.getValue()
+            ? registrationDate.getYear() + 1 : registrationDate.getYear();
+        return String.format("FY%02d", fiscalYear % 100);
     }
 
     default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {

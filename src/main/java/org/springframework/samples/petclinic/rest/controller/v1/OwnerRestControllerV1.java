@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
+import java.time.Month;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -485,10 +485,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Builds the {@code membershipNumber} for a newly created owner, formatted
      * {@code '<customerCode>-M<YY>'} where {@code YY} is the last two digits of the
-     * {@code registrationDate} year (e.g. {@code 'SMI-0007-M26'}).
+     * fiscal year of the {@code registrationDate} (e.g. {@code 'SMI-0007-M27'}). The year
+     * segment therefore matches the owner's {@code fiscalYear}.
      */
     private static String membershipNumberFor(String customerCode, LocalDate registrationDate) {
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, fiscalYearOf(registrationDate) % 100);
+    }
+
+    /**
+     * The fiscal year, as a four-digit year, of a business-day-adjusted date. The fiscal year
+     * starts on 1 July and is labelled by the calendar year in which it ends: a date on or after
+     * 1 July belongs to the fiscal year ending the following calendar year, while an earlier date
+     * belongs to the fiscal year ending in its own year.
+     */
+    private static int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
     }
 
     /**
@@ -601,11 +612,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The tenure, in days, that an owner must exceed before its tenure contributes membership
-     * points. Tenure is measured from the owner's {@code registrationDate}, so a newly created owner
-     * (whose tenure is zero) never satisfies this and thus never earns the tenure points on create.
+     * The tenure, in elapsed fiscal years, that an owner must exceed before its tenure contributes
+     * membership points. Tenure is measured from the owner's {@code registrationDate}, so a newly
+     * created owner (whose tenure is zero) never satisfies this and thus never earns the tenure
+     * points on create.
      */
-    private static final int TENURE_POINTS_THRESHOLD_DAYS = 365;
+    private static final int TENURE_POINTS_THRESHOLD_FISCAL_YEARS = 1;
 
     /**
      * The household size (number of members) at or above which an owner earns the household points.
@@ -616,8 +628,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * Computes the {@code membershipPoints} for an owner. Points start at 0, gain 2 when an email is
      * present, gain 1 when the owner's {@code namesakeCount} is 0, gain 2 when the owner's household
      * has {@value #HOUSEHOLD_POINTS_THRESHOLD} or more members, and gain 3 when the owner's tenure
-     * (days elapsed since its {@code registrationDate}) exceeds {@value #TENURE_POINTS_THRESHOLD_DAYS}
-     * days. Because a newly created owner has zero tenure, the tenure points never apply on create.
+     * (elapsed fiscal years since its {@code registrationDate}) exceeds
+     * {@value #TENURE_POINTS_THRESHOLD_FISCAL_YEARS}. Because a newly created owner has zero tenure,
+     * the tenure points never apply on create.
      * Evaluated after the owner's email, namesakeCount, householdMemberCount and registrationDate
      * have been set.
      */
@@ -633,7 +646,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             && owner.getHouseholdMemberCount() >= HOUSEHOLD_POINTS_THRESHOLD) {
             points += 2;
         }
-        if (tenureInDays(owner) > TENURE_POINTS_THRESHOLD_DAYS) {
+        if (tenureInFiscalYears(owner) > TENURE_POINTS_THRESHOLD_FISCAL_YEARS) {
             points += 3;
         }
         return points;
@@ -657,16 +670,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The owner's tenure in whole days: the number of days elapsed from its {@code registrationDate}
-     * up to the current server date. An owner with no registration date, or one dated in the future,
-     * has a tenure of zero.
+     * The owner's tenure in whole elapsed fiscal years: the number of 1 July fiscal-year boundaries
+     * crossed between its {@code registrationDate} and the current server date. An owner with no
+     * registration date, or one dated in the future, has a tenure of zero.
      */
-    private static long tenureInDays(Owner owner) {
+    private static long tenureInFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return Math.max(0, ChronoUnit.DAYS.between(registrationDate, LocalDate.now()));
+        return Math.max(0, fiscalYearOf(LocalDate.now()) - fiscalYearOf(registrationDate));
     }
 
     /**
