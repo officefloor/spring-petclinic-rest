@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index bde4bad0..eebc03aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "possible_duplicate")
+     private Boolean possibleDuplicate;
+ 
+@@ -222,6 +225,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Boolean getPossibleDuplicate() {
+         return this.possibleDuplicate;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCapacityWarning.java
+new file mode 100644
+index 00000000..e61ef7cf
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCapacityWarning.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Sets the owner's {@code capacityWarning}: true when the owner's city already contains between 40
++ * and 49 owners (inclusive), signalling that the city is approaching the hard capacity limit of 50
++ * enforced by {@link EnsureCityCapacity}. Existing owners are counted by city, compared
++ * case-insensitively with collapsed whitespace, mirroring the capacity rule so the warning boundary
++ * lines up exactly with the rejection. Runs before {@code save}, so the new owner is not yet counted.
++ */
++public class AssignCapacityWarning {
++
++    private static final int WARNING_THRESHOLD = 40;
++
++    private static final int CITY_CAPACITY = 50;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = normalize(owner.getCity());
++        int count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        owner.setCapacityWarning(count >= WARNING_THRESHOLD && count < CITY_CAPACITY);
++    }
++
++    /** Case-insensitive with collapsed whitespace: trim, fold internal whitespace runs to a
++     *  single space, and lower-case. */
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index af7a1e30..1c4fe551 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   membership_level INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 06c2ad2d..89ffe560 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  capacity_warning BOOLEAN,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   membership_level INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 3e0e1f29..df339af4 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_size INTEGER,
++  capacity_warning BIT,
+   possible_duplicate BIT,
+   possible_duplicate_of INTEGER,
+   membership_level INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 48a5a75d..3f300d42 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       household_size INTEGER,
++                                      capacity_warning BOOLEAN,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       membership_level INTEGER,
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index feafd4d9..78975c03 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -71,6 +71,11 @@ assignBulkSignupWarning:
+ assignPossibleDuplicate:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignPossibleDuplicate
+   govern: [ transaction ]
++  next: assignCapacityWarning
++
++assignCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignCapacityWarning
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 242b3092..ee00520d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2204,6 +2204,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already held between 40 and 49 owners at the moment this owner was created, signalling that the city is approaching the hard capacity limit of 50; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when this owner has been soft-deleted via DELETE /api/owners/{id}; the record is retained and still returned by GET. A newly created owner is false. Deleted owners are ignored by the create endpoint's duplicate/identity checks.
