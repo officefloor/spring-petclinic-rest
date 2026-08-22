@@ -18,8 +18,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * <p>A declared household member ({@code sharesHousehold} true) is never flagged: it shares an
  * existing member's lastName and postcode by design, so it is a known household member rather than
  * a suspected duplicate. (A same lastName + postcode owner that did <em>not</em> declare the
- * household is already rejected as a household duplicate by {@link EnsureUniqueIdentity} and never
- * reaches this step.)
+ * household is rejected as a household duplicate by {@link EnsureUniqueIdentity} unless it carries a
+ * distinct email; such an email-distinguished owner does reach this step and, having a different
+ * telephone, is flagged as a possible duplicate of the existing member.)
  *
  * <p>Only owners with a postcode participate: a match requires both postcodes to be present and
  * equal. When several existing owners match, the earliest (lowest id) is reported. Runs before

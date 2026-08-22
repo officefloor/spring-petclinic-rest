@@ -19,6 +19,16 @@ public final class MembershipLevels {
      * tenure points on creation.
      */
     public static int points(Owner owner) {
+        return points(owner, owner.getHouseholdSize() == null ? 0 : owner.getHouseholdSize());
+    }
+
+    /**
+     * The membership points as {@link #points(Owner)}, but with the household-of-3 bonus decided
+     * by the supplied {@code householdSize} instead of the owner's own stored size. Used to value
+     * an existing member as part of the household the new owner is joining, whose current size the
+     * whole household now shares.
+     */
+    public static int points(Owner owner, int householdSize) {
         int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
             points += 2;
@@ -26,7 +36,7 @@ public final class MembershipLevels {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             points += 1;
         }
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+        if (householdSize >= 3) {
             points += 2;
         }
         if (tenureFiscalYears(owner) >= 1) {
@@ -40,7 +50,18 @@ public final class MembershipLevels {
      * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
      */
     public static int of(Owner owner) {
-        int points = points(owner);
+        return level(points(owner));
+    }
+
+    /**
+     * The membership level for {@code owner} evaluated at the supplied {@code householdSize}
+     * (see {@link #points(Owner, int)}).
+     */
+    public static int of(Owner owner, int householdSize) {
+        return level(points(owner, householdSize));
+    }
+
+    private static int level(int points) {
         if (points <= 1) {
             return 1;
         }

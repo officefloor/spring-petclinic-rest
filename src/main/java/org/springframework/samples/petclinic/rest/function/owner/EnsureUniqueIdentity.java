@@ -18,8 +18,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityEx
  * <li><b>Household duplicate</b> — the new owner's computed {@code householdId} (keyed on
  * lastName + postcode; see {@link AssignHousehold}) already identifies an existing owner, i.e. a
  * second owner sharing lastName and postcode. This is blocked <em>unless</em> the request opts in
- * with {@code sharesHousehold}, in which case the new owner is created as a declared household
- * member.</li>
+ * with {@code sharesHousehold} (created as a declared household member) or the new owner carries a
+ * distinct email — an email that no colliding household member shares — which identifies it as a
+ * separate person joining the household rather than a re-registration.</li>
  * </ul>
  *
  * <p>Runs after {@link AssignHousehold} so the new owner's {@code householdId} is set before it is
@@ -40,9 +41,20 @@ public class EnsureUniqueIdentity {
                 throw new DuplicateIdentityException(identityKey);
             }
             if (!sharesHousehold && householdId != null
-                    && householdId.equals(existing.getHouseholdId())) {
+                    && householdId.equals(existing.getHouseholdId())
+                    && !distinctEmail(owner, existing)) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }
+    }
+
+    /** Whether the new owner carries a non-blank email that the colliding household member does not
+     *  share (compared case-insensitively) — a personal identifier marking it a separate person. */
+    private static boolean distinctEmail(Owner owner, Owner existing) {
+        String email = owner.getEmail();
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return !email.equalsIgnoreCase(existing.getEmail());
     }
 }
