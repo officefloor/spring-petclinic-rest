@@ -21,6 +21,10 @@ public final class Localities {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
             "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    /** Region -> IANA timezone name; anything not listed derives a null timezone. */
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     private Localities() {
     }
 
@@ -54,6 +58,15 @@ public final class Localities {
             return fromCode;
         }
         return region(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * The owner's IANA timezone name, derived from its {@link #region(Owner) locality}
+     * via the fixed region-to-timezone table. Returns null when the region has no known
+     * timezone (e.g. "UNKNOWN").
+     */
+    public static String timezone(Owner owner) {
+        return REGION_TIMEZONE.get(region(owner));
     }
 
     /** The REGION prefix of a {@code <REGION>-<HASH8>} customerCode, or null when absent. */
