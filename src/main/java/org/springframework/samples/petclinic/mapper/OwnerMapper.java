@@ -22,6 +22,8 @@ public interface OwnerMapper {
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "telephoneDisplay",
+            expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplays.of(owner.getTelephone()))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.luhn(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber",
