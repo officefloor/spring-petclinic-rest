@@ -4,12 +4,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
 
+import org.springframework.samples.petclinic.mapper.Localities;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Derives an owner's {@code identityKey}, the single value all duplicate detection is now
  * expressed through: the lower-case hex SHA-256 of
- * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+ * {@code V2 + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. The
+ * fixed version-2 tag mixed in front makes every key differ from its version-1 value while
+ * leaving the equality-based duplicate detection unchanged.
  *
  * <p>The components are taken from the owner as already canonicalised earlier in the create
  * pipeline: the telephone in E.164 form (see {@link TelephoneE164}), the email lower-cased, and the
@@ -30,7 +33,7 @@ public final class OwnerIdentity {
         String email = (owner.getEmail() == null || owner.getEmail().isBlank())
                 ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
         String soundex = Soundex.of(owner.getLastName());
-        return sha256hex(telephone + "|" + email + "|" + soundex);
+        return sha256hex(Localities.IDENTITY_VERSION_TAG + "|" + telephone + "|" + email + "|" + soundex);
     }
 
     private static String sha256hex(String value) {

@@ -13,6 +13,14 @@ import org.springframework.samples.petclinic.model.Owner;
  */
 public final class Localities {
 
+    /**
+     * The fixed identity version tag mixed into the region code used <em>inside</em> the
+     * version-2 identifiers (memberId, householdId, identityKey). It never appears in the
+     * user-facing {@code locality}, {@code timezone} or the owner segment's derived region,
+     * which stay the plain region code (e.g. "NSW").
+     */
+    public static final String IDENTITY_VERSION_TAG = "V2";
+
     /** City -> canonical region; anything not listed derives locality "UNKNOWN". */
     private static final Map<String, String> CITY_REGION = Map.of(
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
@@ -47,16 +55,23 @@ public final class Localities {
     }
 
     /**
-     * The owner's locality, taken from the REGION component of its
-     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}) — so the locality is the same
-     * identity the memberId is built from. Falls back to the shared
-     * {@link #region(String, String)} derivation for owners without a memberId.
+     * The region code embedded <em>inside</em> the version-2 identifiers: the plain
+     * {@link #region(String, String) region code} with the fixed {@link #IDENTITY_VERSION_TAG}
+     * mixed in (e.g. "V2NSW"). Because the tag is included, no identifier value produced under
+     * version 1 (which used the bare region code) can be produced again. This tagged code is an
+     * identity building block only — the user-facing {@code locality} keeps the plain region.
+     */
+    public static String identityRegion(String city, String postcode) {
+        return IDENTITY_VERSION_TAG + region(city, postcode);
+    }
+
+    /**
+     * The owner's locality — the plain region code derived from its city and postcode via the
+     * shared {@link #region(String, String)} derivation (postcode-range first, city fallback).
+     * This is deliberately the untagged region: the version-2 identity tag lives only inside the
+     * identifiers, never in the user-facing locality.
      */
     public static String region(Owner owner) {
-        String fromCode = regionOfCode(owner.getMemberId());
-        if (fromCode != null) {
-            return fromCode;
-        }
         return region(owner.getCity(), owner.getPostcode());
     }
 
@@ -67,22 +82,6 @@ public final class Localities {
      */
     public static String timezone(Owner owner) {
         return REGION_TIMEZONE.get(region(owner));
-    }
-
-    /**
-     * The REGION prefix of a {@code <REGION><FY><HASH8><CHK>} memberId — the leading run
-     * of letters before the two-digit fiscal year. Returns null when the memberId is
-     * absent or has no leading letters.
-     */
-    private static String regionOfCode(String memberId) {
-        if (memberId == null) {
-            return null;
-        }
-        int i = 0;
-        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
-            i++;
-        }
-        return i == 0 ? null : memberId.substring(0, i);
     }
 
     /** The region whose postcode range contains the given postcode, or null if none. */

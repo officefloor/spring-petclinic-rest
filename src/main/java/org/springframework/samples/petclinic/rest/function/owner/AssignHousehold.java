@@ -5,15 +5,16 @@ import java.security.MessageDigest;
 import java.util.Locale;
 
 import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.mapper.Localities;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's stable, shared {@code householdId}, derived deterministically from the
  * household's identity — its {@code lastName} (compared case-insensitively with collapsed
  * whitespace) and {@code postcode}. The value is the first 12 hex characters of
- * SHA-256 over {@code normalizedLastName + '|' + postcode}, so every owner with the same
- * lastName and postcode computes the same identifier automatically — no lookup or backfill of
- * other owners is needed.
+ * SHA-256 over {@code V2 + '|' + normalizedLastName + '|' + postcode} (the fixed version-2
+ * tag mixed in), so every owner with the same lastName and postcode computes the same
+ * identifier automatically — no lookup or backfill of other owners is needed.
  *
  * <p>The identifier is computed for every create with a postcode, independent of
  * {@code sharesHousehold}: sharing a household is now an intrinsic consequence of the
@@ -35,10 +36,11 @@ public class AssignHousehold {
     }
 
     /** Stable 12-hex-char identifier for a household: the first 12 hex characters of SHA-256 over
-     *  the normalized lastName and postcode, so every member of the same household computes the
-     *  same value. */
+     *  the fixed version-2 tag, the normalized lastName and the postcode, so every member of the
+     *  same household computes the same value. The {@code V2} tag makes every household id differ
+     *  from its version-1 value, while same lastName + postcode still share it. */
     private static String householdId(String lastName, String postcode) {
-        return sha256hex(lastName + "|" + postcode).substring(0, 12);
+        return sha256hex(Localities.IDENTITY_VERSION_TAG + "|" + lastName + "|" + postcode).substring(0, 12);
     }
 
     private static String sha256hex(String value) {

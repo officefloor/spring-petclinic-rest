@@ -26,8 +26,10 @@ public interface OwnerMapper {
             expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay",
             expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplays.of(owner.getTelephone()))")
-    @Mapping(target = "memberId",
-            expression = "java(owner.getMemberId())")
+    @Mapping(target = "apiVersion",
+            expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity",
+            expression = "java(org.springframework.samples.petclinic.mapper.OwnerIdentities.of(owner))")
     @Mapping(target = "fiscalYear",
             expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.model.FiscalYears.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints",
@@ -40,8 +42,6 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.mapper.Localities.timezone(owner))")
     @Mapping(target = "contactPreference",
             expression = "java((owner.getEmail() == null || owner.getEmail().isBlank()) ? org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.PHONE : org.springframework.samples.petclinic.rest.dto.OwnerDto.ContactPreferenceEnum.EMAIL)")
-    @Mapping(target = "identityKey",
-            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.of(owner))")
     @Mapping(target = "ownerSegment",
