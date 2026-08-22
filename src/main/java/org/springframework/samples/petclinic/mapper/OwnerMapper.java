@@ -28,8 +28,10 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.mapper.TelephoneDisplays.of(owner.getTelephone()))")
     @Mapping(target = "checkDigit",
             expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.luhn(owner.getCustomerCode()))")
+    @Mapping(target = "fiscalYear",
+            expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.model.FiscalYears.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipNumber",
-            expression = "java((owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+            expression = "java((owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.model.FiscalYears.startYear(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints",
             expression = "java(org.springframework.samples.petclinic.model.MembershipLevels.points(owner))")
     @Mapping(target = "membershipLevel",
