@@ -4,8 +4,9 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric membership level. Kept as a plain static helper so the
- * single rule is shared by the response mapper and the create audit line.
+ * Derives an owner's membership points and the numeric membership level those points map
+ * to. Kept as a plain static helper so the single rule is shared by the response mapper
+ * and the create audit line.
  */
 public final class MembershipLevels {
 
@@ -13,22 +14,44 @@ public final class MembershipLevels {
     }
 
     /**
-     * The membership level from 1 to 4: start at 1, add 1 when an email is present, add 1
-     * when namesakeCount is 0, add 1 when tenure exceeds 365 days, capped at 4. A newly
-     * created owner has zero tenure, so it can never reach level 4 on creation.
+     * The membership points: start at 0, add 2 when an email is present, add 1 when
+     * namesakeCount is 0, add 2 for a household of 3 or more, add 3 for tenure over 365
+     * days. A newly created owner has zero tenure, so it cannot earn the tenure points on
+     * creation.
      */
-    public static int of(Owner owner) {
-        int level = 1;
+    public static int points(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
+            points += 2;
         }
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
-            level++;
+            points += 1;
+        }
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
         }
         if (tenureDays(owner) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(level, 4);
+        return points;
+    }
+
+    /**
+     * The membership level from 1 to 4, mapped from {@link #points(Owner)}: 1 for 0-1
+     * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
+     */
+    public static int of(Owner owner) {
+        int points = points(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     /**
