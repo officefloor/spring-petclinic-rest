@@ -1,0 +1,111 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b29284eb..249a77a1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,8 @@ public interface OwnerMapper {
+             expression = "java(org.springframework.samples.petclinic.mapper.CheckDigits.luhn(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber",
+             expression = "java((owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "membershipPoints",
++            expression = "java(org.springframework.samples.petclinic.model.MembershipLevels.points(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(org.springframework.samples.petclinic.model.MembershipLevels.of(owner))")
+     @Mapping(target = "locality",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevels.java
+index bf24e262..dd3da8f7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipLevels.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevels.java
+@@ -4,8 +4,9 @@ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
+ 
+ /**
+- * Derives an owner's numeric membership level. Kept as a plain static helper so the
+- * single rule is shared by the response mapper and the create audit line.
++ * Derives an owner's membership points and the numeric membership level those points map
++ * to. Kept as a plain static helper so the single rule is shared by the response mapper
++ * and the create audit line.
+  */
+ public final class MembershipLevels {
+ 
+@@ -13,22 +14,44 @@ public final class MembershipLevels {
+     }
+ 
+     /**
+-     * The membership level from 1 to 4: start at 1, add 1 when an email is present, add 1
+-     * when namesakeCount is 0, add 1 when tenure exceeds 365 days, capped at 4. A newly
+-     * created owner has zero tenure, so it can never reach level 4 on creation.
++     * The membership points: start at 0, add 2 when an email is present, add 1 when
++     * namesakeCount is 0, add 2 for a household of 3 or more, add 3 for tenure over 365
++     * days. A newly created owner has zero tenure, so it cannot earn the tenure points on
++     * creation.
+      */
+-    public static int of(Owner owner) {
+-        int level = 1;
++    public static int points(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
+         }
+         if (tenureDays(owner) > 365) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The membership level from 1 to 4, mapped from {@link #points(Owner)}: 1 for 0-1
++     * points, 2 for 2-3, 3 for 4-5, 4 for 6 or more.
++     */
++    public static int of(Owner owner) {
++        int points = points(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
+         }
+-        return Math.min(level, 4);
++        return 4;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c67f2c1f..ccce7673 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2142,13 +2142,21 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "The owner's membership points: start at 0, add 2 when an email is present, add 1 when namesakeCount is 0, add 2 for a household of 3 or more, add 3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "A numeric level from 1 to 3 assigned at creation: start at 1, add 1 when an email is present, add 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              description: "A numeric level from 1 to 4 mapped from membershipPoints: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, 4 for 6 or more."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
++              maximum: 4
+               example: 2
+               readOnly: true
+             bulkSignupWarning:
