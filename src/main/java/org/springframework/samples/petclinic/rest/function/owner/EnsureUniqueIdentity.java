@@ -33,6 +33,9 @@ public class EnsureUniqueIdentity {
         String householdId = owner.getHouseholdId();
         boolean sharesHousehold = Boolean.TRUE.equals(request.getSharesHousehold());
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner no longer blocks a create
+            }
             if (identityKey.equals(OwnerIdentity.of(existing))) {
                 throw new DuplicateIdentityException(identityKey);
             }
