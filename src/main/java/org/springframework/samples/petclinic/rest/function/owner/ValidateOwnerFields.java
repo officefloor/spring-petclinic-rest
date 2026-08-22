@@ -23,9 +23,13 @@ import org.springframework.web.bind.annotation.RequestBody;
  * address is a 400, an otherwise-valid address whose domain is on the disposable-domain
  * blocklist is a 400, otherwise it is normalized to lower-case and republished so it is
  * stored and returned lower-cased.
- * The {@code address} is normalized (see {@link AddressNormalizer}) and republished so it
- * is stored and returned in canonical form; an address that is blank after normalization
- * is a required-field 400.
+ * The address may be supplied in a structured form ({@code addressLine1} plus an optional
+ * {@code addressLine2}) or as the flat {@code address}; the structured form is preferred when a
+ * non-blank {@code addressLine1} is present. Whichever fields are supplied are normalized (see
+ * {@link AddressNormalizer}) and republished, and the stored/returned {@code address} is the
+ * composed value (normalized {@code addressLine1}, plus a space and the normalized
+ * {@code addressLine2} when present) falling back to the normalized flat {@code address}. An owner
+ * that supplies an address in neither form is a required-field 400.
  * The optional {@code registrationDate} is validated only when present: a date later than
  * the server's current date is a 400.
  * Runs first and republishes the body as a variable for {@link BuildOwner}.
@@ -57,13 +61,7 @@ public class ValidateOwnerFields {
         if (isBlank(request.getLastName())) {
             errors.add("lastName");
         }
-        String address = AddressNormalizer.normalize(request.getAddress());
-        if (address.isEmpty()) {
-            errors.add("address");
-        }
-        else {
-            request.setAddress(address);
-        }
+        applyAddress(request, errors);
         if (isBlank(request.getCity())) {
             errors.add("city");
         }
@@ -112,6 +110,38 @@ public class ValidateOwnerFields {
         validated.set(request);
     }
 
+    /**
+     * Normalizes whichever address fields are supplied and republishes them, preferring the
+     * structured form. A non-blank {@code addressLine1} (with an optional {@code addressLine2})
+     * wins over the flat {@code address}; either form satisfies the address requirement. The
+     * stored/returned {@code address} is the composed value: the normalized {@code addressLine1},
+     * plus a single space and the normalized {@code addressLine2} when present, falling back to the
+     * normalized flat {@code address}. An owner supplying neither is a required-field 400.
+     */
+    private static void applyAddress(OwnerFieldsDto request, List<String> errors) {
+        String line1 = AddressNormalizer.normalize(request.getAddressLine1());
+        String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+        String flat = AddressNormalizer.normalize(request.getAddress());
+        if (!line1.isEmpty()) {
+            request.setAddressLine1(line1);
+            String composed = line1;
+            if (!line2.isEmpty()) {
+                request.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            }
+            else {
+                request.setAddressLine2(null);
+            }
+            request.setAddress(composed);
+        }
+        else if (!flat.isEmpty()) {
+            request.setAddress(flat);
+        }
+        else {
+            errors.add("address");
+        }
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -120,6 +150,9 @@ public class ValidateOwnerFields {
      *  city has no known region (accepts any 4-digit postcode) or the postcode falls within the
      *  region's inclusive range. */
     private static boolean inRegionRange(String city, String postcode) {
+        if (isBlank(city)) {
+            return true; // no city yet: no region constraint (the missing city is flagged separately)
+        }
         int[] range = REGION_POSTCODES.get(Localities.region(city));
         if (range == null) {
             return true;
