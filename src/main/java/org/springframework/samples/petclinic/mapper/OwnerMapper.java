@@ -46,6 +46,8 @@ public interface OwnerMapper {
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(org.springframework.samples.petclinic.mapper.AgeBands.of(owner))")
+    @Mapping(target = "ownerSegment",
+            expression = "java(org.springframework.samples.petclinic.mapper.OwnerSegments.of(owner))")
     @Mapping(target = "selfLink",
             expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
