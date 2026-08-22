@@ -47,13 +47,13 @@ public final class Localities {
     }
 
     /**
-     * The owner's locality, taken from the region component of its region-and-hash
-     * {@code customerCode} ({@code <REGION>-<HASH8>}) — so the locality is the same
-     * identity the customerCode is built from. Falls back to the shared
-     * {@link #region(String, String)} derivation for owners without a customerCode.
+     * The owner's locality, taken from the REGION component of its
+     * {@code memberId} ({@code <REGION><FY><HASH8><CHK>}) — so the locality is the same
+     * identity the memberId is built from. Falls back to the shared
+     * {@link #region(String, String)} derivation for owners without a memberId.
      */
     public static String region(Owner owner) {
-        String fromCode = regionOfCode(owner.getCustomerCode());
+        String fromCode = regionOfCode(owner.getMemberId());
         if (fromCode != null) {
             return fromCode;
         }
@@ -69,13 +69,20 @@ public final class Localities {
         return REGION_TIMEZONE.get(region(owner));
     }
 
-    /** The REGION prefix of a {@code <REGION>-<HASH8>} customerCode, or null when absent. */
-    private static String regionOfCode(String customerCode) {
-        if (customerCode == null) {
+    /**
+     * The REGION prefix of a {@code <REGION><FY><HASH8><CHK>} memberId — the leading run
+     * of letters before the two-digit fiscal year. Returns null when the memberId is
+     * absent or has no leading letters.
+     */
+    private static String regionOfCode(String memberId) {
+        if (memberId == null) {
             return null;
         }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? customerCode : customerCode.substring(0, dash);
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? null : memberId.substring(0, i);
     }
 
     /** The region whose postcode range contains the given postcode, or null if none. */

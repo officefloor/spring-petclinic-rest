@@ -2,9 +2,9 @@ package org.springframework.samples.petclinic.mapper;
 
 /**
  * Computes the Luhn check digit over the digits contained in a string. Non-digit
- * characters are ignored, so it applies directly to a formatted customerCode.
- * Kept as a plain static helper (not a mapper method) so MapStruct does not treat
- * it as an implicit mapping method.
+ * characters are ignored, so it applies directly to the '<REGION><FY><HASH8>' prefix
+ * of a memberId. Kept as a plain static helper (not a mapper method) so MapStruct does
+ * not treat it as an implicit mapping method.
  */
 public final class CheckDigits {
 
@@ -13,7 +13,7 @@ public final class CheckDigits {
 
     /**
      * The Luhn check digit (0-9) over the digits contained in {@code s}. Returns null
-     * when {@code s} is null so the field is omitted for owners without a customerCode.
+     * when {@code s} is null.
      */
     public static Integer luhn(String s) {
         if (s == null) {
