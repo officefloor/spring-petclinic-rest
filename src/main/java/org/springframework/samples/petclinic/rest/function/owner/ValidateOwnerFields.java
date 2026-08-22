@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
@@ -19,7 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  * normalized value so it is stored and returned as {@code telephone}; a telephone that
  * cannot form a valid E.164 number is a 400 too.
  * The optional {@code email} is validated only when present: a syntactically invalid
- * address is a 400, otherwise it is normalized to lower-case and republished so it is
+ * address is a 400, an otherwise-valid address whose domain is on the disposable-domain
+ * blocklist is a 400, otherwise it is normalized to lower-case and republished so it is
  * stored and returned lower-cased.
  * The {@code address} is normalized (see {@link AddressNormalizer}) and republished so it
  * is stored and returned in canonical form; an address that is blank after normalization
@@ -32,6 +34,11 @@ public class ValidateOwnerFields {
 
     /** Syntactic email check: one '@', non-empty local part, and a dotted domain. */
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /** Disposable email domains that are rejected: a syntactically valid address whose domain
+     *  (lower-cased) is listed here is a 400. */
+    private static final Set<String> DISPOSABLE_DOMAINS =
+            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
     /** A well-formed postcode is exactly four digits. */
     private static final Pattern POSTCODE = Pattern.compile("^[0-9]{4}$");
@@ -71,6 +78,9 @@ public class ValidateOwnerFields {
         if (email != null && !email.isBlank()) {
             String normalized = email.trim().toLowerCase();
             if (!EMAIL.matcher(normalized).matches()) {
+                errors.add("email");
+            }
+            else if (DISPOSABLE_DOMAINS.contains(normalized.substring(normalized.indexOf('@') + 1))) {
                 errors.add("email");
             }
             else {
