@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.IdentityKeys;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -112,22 +113,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (CityCodes.count(owners, owner) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        String telephone = owner.getTelephone();
-        if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (EmailDuplicates.isDuplicate(owners, owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                && Households.isDuplicate(owners, owner)) {
+        owner.setHouseholdId(Households.householdId(owners,
+            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+        if (IdentityKeys.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
-        owner.setHouseholdId(Households.householdId(owners,
-            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
