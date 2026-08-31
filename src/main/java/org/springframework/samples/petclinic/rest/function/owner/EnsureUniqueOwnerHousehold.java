@@ -17,10 +17,11 @@ public class EnsureUniqueOwnerHousehold {
 
     public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateHouseholdException {
+        String household = household(owner);
+        owner.setHouseholdId(Integer.toHexString(household.hashCode()).toUpperCase());
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String household = household(owner);
         for (Owner existing : ownerRepository.findAll()) {
             if (!Objects.equals(existing.getId(), owner.getId())
                     && household.equals(household(existing))) {
