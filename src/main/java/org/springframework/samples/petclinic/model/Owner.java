@@ -68,6 +68,23 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
+    /** The owner's age band ('MINOR'/'ADULT'/'SENIOR') as of the registration date. */
+    @Transient
+    public String getAgeBand() {
+        return org.springframework.samples.petclinic.util.AgeBands.of(this.birthDate, this.registrationDate);
+    }
+
     @Column(name = "customer_code")
     private String customerCode;
 
