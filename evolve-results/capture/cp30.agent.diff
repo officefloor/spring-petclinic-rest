@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 913727d4e..9d0c10db3 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,7 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", source = "initials")
+     @Mapping(target = "membershipNumber", expression = "java((owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(1 + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0))")
+-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Localities.regionOf(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Localities.regionOf(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKeys.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Localities.java b/src/main/java/org/springframework/samples/petclinic/util/Localities.java
+index 8ae4dd0ef..44e077261 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Localities.java
+@@ -30,6 +30,10 @@ public abstract class Localities {
+     private static final Map<String, String> CITY_REGION =
+         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    /** Region keyed by the leading two digits of its postcode range (20xx, 30xx, 40xx). */
++    private static final Map<Integer, String> POSTCODE_REGION =
++        Map.of(20, "NSW", 30, "VIC", 40, "QLD");
++
+     /**
+      * @param city the owner's city, may be {@code null}
+      * @return the canonical region string, or {@code "UNKNOWN"} when the city is not in the table
+@@ -38,4 +42,24 @@ public abstract class Localities {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
+ 
++    /**
++     * Prefers the postcode: a 4-digit postcode in a known range (NSW 2000-2099, VIC 3000-3099,
++     * QLD 4000-4099) fixes the region. Otherwise falls back to the city-to-region table.
++     *
++     * @param city the owner's city, may be {@code null}
++     * @param postcode the owner's postcode, may be {@code null}
++     * @return the canonical region string, or {@code "UNKNOWN"} when neither resolves
++     */
++    public static String regionOf(String city, String postcode) {
++        String byPostcode = regionOfPostcode(postcode);
++        return byPostcode != null ? byPostcode : regionOf(city);
++    }
++
++    private static String regionOfPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        return POSTCODE_REGION.get(Integer.parseInt(postcode) / 100);
++    }
++
+ }
