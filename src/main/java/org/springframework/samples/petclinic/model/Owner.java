@@ -96,6 +96,17 @@ public class Owner extends Person {
         this.namesakeCount = namesakeCount;
     }
 
+    @Transient
+    private Boolean bulkSignupWarning;
+
+    public Boolean getBulkSignupWarning() {
+        return this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(Boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 

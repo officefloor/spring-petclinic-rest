@@ -116,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && Households.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
         owner.setHouseholdId(Households.householdId(owners,
