@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 630857c1a..36cbe5b72 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,17 @@ public class Owner extends Person {
+         this.customerCode = getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
+     }
+ 
++    @Transient
++    private String householdId;
++
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+index 0ee32948c..6c66899b8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+@@ -1,6 +1,8 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.nio.charset.StandardCharsets;
+ import java.util.Collection;
++import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+@@ -25,4 +27,17 @@ final class Households {
+         return existing.stream().anyMatch(o ->
+             normalize(o.getLastName()).equals(lastName) && normalize(o.getAddress()).equals(address));
+     }
++
++    /**
++     * The stable household id to assign to an owner, or {@code null} when it is not
++     * joining one. Derived from the normalized last name and address, so every owner
++     * that joins the same household is given the same identifier.
++     */
++    static String householdId(Collection<Owner> existing, boolean sharesHousehold, Owner candidate) {
++        if (!sharesHousehold || !isDuplicate(existing, candidate)) {
++            return null;
++        }
++        String key = normalize(candidate.getLastName()) + "\n" + normalize(candidate.getAddress());
++        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1456941ed..f72edd111 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -111,6 +111,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.assignCustomerCode(owners.size() + 1);
++        owner.setHouseholdId(Households.householdId(owners,
++            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 91cd53d62..2c8f7806c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2100,6 +2100,14 @@ components:
+               type: string
+               example: SMI-0007
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: >-
++                Stable identifier shared by owners that were created into the same
++                household (same last name and address) via 'sharesHousehold'.
++              type: string
++              example: 8d1f7c3e-2a4b-3c5d-9e6f-0a1b2c3d4e5f
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
