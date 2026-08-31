@@ -1,0 +1,37 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+index 6c66899b8..53f795c68 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+@@ -20,6 +20,15 @@ final class Households {
+         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
++    /** How many of the given owners belong to the candidate's household (share its last name
++     *  and address, compared case-insensitively with collapsed whitespace). */
++    static long memberCount(Collection<Owner> owners, Owner candidate) {
++        String lastName = normalize(candidate.getLastName());
++        String address = normalize(candidate.getAddress());
++        return owners.stream().filter(o ->
++            normalize(o.getLastName()).equals(lastName) && normalize(o.getAddress()).equals(address)).count();
++    }
++
+     /** True when an existing owner has the candidate's last name and address. */
+     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
+         String lastName = normalize(candidate.getLastName());
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5cbe6bc9e..5bf597d5a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -93,7 +93,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
++        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
++            ownerDto.setMembershipTier("GOLD");
++        }
++        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
