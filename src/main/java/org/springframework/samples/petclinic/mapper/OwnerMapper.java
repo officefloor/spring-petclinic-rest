@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.E164;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -30,10 +31,10 @@ public interface OwnerMapper {
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** Strip every non-digit so the stored telephone is the bare 10-digit value. */
+    /** Store the telephone in E.164 form (see {@link E164#toE164}). */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return E164.toE164(telephone);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
