@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.IdentityKeys;
+import org.springframework.samples.petclinic.util.Membership;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -96,9 +97,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdId(Households.householdId(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        if (Tenure.exceedsOneYear(owner) && Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
-            ownerDto.setMembershipLevel(4);
-        }
+        int points = Membership.points(owner, Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3, Tenure.exceedsOneYear(owner));
+        ownerDto.setMembershipPoints(points);
+        ownerDto.setMembershipLevel(Membership.level(points));
         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
