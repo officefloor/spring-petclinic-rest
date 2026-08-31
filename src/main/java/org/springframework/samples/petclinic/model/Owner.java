@@ -54,6 +54,22 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
+    }
+
+    /** Assign the customer code '<LAST3>-<NNNN>' for the given global owner sequence number. */
+    public void assignCustomerCode(int sequence) {
+        this.customerCode = getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
