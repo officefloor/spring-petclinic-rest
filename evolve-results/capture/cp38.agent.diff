@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DisposableDomains.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DisposableDomains.java
+new file mode 100644
+index 000000000..4d080af7f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DisposableDomains.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Rejects owners whose email domain is on a disposable-domain blocklist.
++ */
++final class DisposableDomains {
++
++    private static final Set<String> BLOCKED = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private DisposableDomains() {
++    }
++
++    /** Whether the owner's email domain is a blocked disposable domain. */
++    static boolean isBlocked(Owner owner) {
++        String email = owner.getEmail();
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        return BLOCKED.contains(email.substring(at + 1).toLowerCase());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e7af9573f..4526b807a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,6 +110,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (DisposableDomains.isBlocked(owner)) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         Collection<Owner> owners = this.clinicService.findAllOwners();
+         if (DailyRegistrations.countOn(owners, java.time.LocalDate.now()) >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
