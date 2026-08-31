@@ -31,6 +31,8 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final java.util.concurrent.atomic.AtomicLong OWNER_SEQ = new java.util.concurrent.atomic.AtomicLong();
+
     @PostPersist
     void onCreate(Owner owner) {
         String membershipNumber = (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null
@@ -39,6 +41,9 @@ public class OwnerAuditListener {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             Membership.level(Membership.points(owner, false, false)), membershipNumber);
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+            OWNER_SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
+            Membership.level(Membership.points(owner, false, false)));
     }
 
 }
