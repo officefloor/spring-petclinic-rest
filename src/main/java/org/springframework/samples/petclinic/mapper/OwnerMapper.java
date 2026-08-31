@@ -23,18 +23,21 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** 'GOLD' when the household has 3+ members; else 'SILVER' when namesakeCount is 0 and an
-     * email is present, otherwise 'BRONZE'. */
-    default String membershipTier(Owner owner) {
-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
-            return "GOLD";
+    /** Numeric level 1-3 assigned on creation: starts at 1, +1 when an email is present,
+     * +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure). */
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null) {
+            level++;
         }
-        boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
-        return silver ? "SILVER" : "BRONZE";
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate year; null when either input is absent. */
