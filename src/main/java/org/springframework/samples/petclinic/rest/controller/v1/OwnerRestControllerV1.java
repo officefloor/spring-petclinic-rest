@@ -100,6 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         int points = Membership.points(owner, Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3, Tenure.exceedsOneYear(owner));
         ownerDto.setMembershipPoints(points);
         ownerDto.setMembershipLevel(HouseholdLevels.capped(this.clinicService.findAllOwners(), owner, Membership.level(points)));
+        ownerDto.setCapacityWarning(CityCapacity.approaching(this.clinicService.findAllOwners(), owner));
         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
