@@ -1,0 +1,55 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2ebf8d713..ab08a1cc8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,18 +23,21 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+-    /** 'GOLD' when the household has 3+ members; else 'SILVER' when namesakeCount is 0 and an
+-     * email is present, otherwise 'BRONZE'. */
+-    default String membershipTier(Owner owner) {
+-        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+-            return "GOLD";
++    /** Numeric level 1-3 assigned on creation: starts at 1, +1 when an email is present,
++     * +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure). */
++    default Integer membershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null) {
++            level++;
+         }
+-        boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
+-        return silver ? "SILVER" : "BRONZE";
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate year; null when either input is absent. */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2ab6c5117..7adef5c8a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,10 +2103,12 @@ components:
+               description: Derived identifier formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
+               type: string
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "'GOLD' when the household has 3+ members; else 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'."
+-              type: string
++            membershipLevel:
++              title: Membership level
++              description: "Numeric level from 1 to 3 assigned on creation: starts at 1, +1 when an email is present, +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              type: integer
++              format: int32
++              minimum: 1
+               readOnly: true
+             locality:
+               title: Locality
