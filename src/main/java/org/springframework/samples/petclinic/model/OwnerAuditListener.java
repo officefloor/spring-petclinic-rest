@@ -35,14 +35,12 @@ public class OwnerAuditListener {
 
     @PostPersist
     void onCreate(Owner owner) {
-        String membershipNumber = (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null
-            : owner.getCustomerCode() + "-M"
-                + String.format("%02d", org.springframework.samples.petclinic.util.FiscalYears.yearOfCentury(owner.getRegistrationDate()));
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            Membership.level(Membership.points(owner, false, false)), membershipNumber);
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            OWNER_SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
+        String memberId = org.springframework.samples.petclinic.util.MemberIds.of(owner);
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), memberId, owner.getRegistrationDate(),
+            Membership.level(Membership.points(owner, false, false)));
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+            OWNER_SEQ.incrementAndGet(), owner.getId(), memberId,
             Membership.level(Membership.points(owner, false, false)));
     }
 
