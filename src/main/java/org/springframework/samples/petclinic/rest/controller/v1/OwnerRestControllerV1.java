@@ -102,6 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
+        if (CityCodes.count(owners, owner) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         String telephone = owner.getTelephone();
         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
