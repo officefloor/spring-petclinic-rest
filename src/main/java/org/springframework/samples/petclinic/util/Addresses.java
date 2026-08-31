@@ -52,4 +52,24 @@ public abstract class Addresses {
         return sb.toString();
     }
 
+    /**
+     * Composes the canonical address, preferring the structured fields. When
+     * {@code addressLine1} is non-blank the result is its normalized form, with a
+     * single space and the normalized {@code addressLine2} appended when that is
+     * present; otherwise the normalized flat {@code address} is returned.
+     *
+     * @param addressLine1 the structured primary line, may be {@code null}
+     * @param addressLine2 the structured secondary line, may be {@code null}
+     * @param address the flat address, may be {@code null}
+     * @return the composed, normalized address
+     */
+    public static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (line1 == null || line1.isEmpty()) {
+            return normalize(address);
+        }
+        String line2 = normalize(addressLine2);
+        return (line2 == null || line2.isEmpty()) ? line1 : line1 + " " + line2;
+    }
+
 }

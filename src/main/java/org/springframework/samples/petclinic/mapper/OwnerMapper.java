@@ -39,7 +39,9 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.util.Addresses.compose(ownerDto.getAddressLine1(), ownerDto.getAddressLine2(), ownerDto.getAddress()))")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /** Store the telephone in E.164 form (see {@link E164#toE164}). */
