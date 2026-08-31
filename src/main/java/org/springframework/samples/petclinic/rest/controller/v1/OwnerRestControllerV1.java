@@ -95,7 +95,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
-            ownerDto.setMembershipTier("GOLD");
+            ownerDto.setMembershipLevel(4);
         }
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
