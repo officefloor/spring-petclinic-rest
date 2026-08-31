@@ -24,6 +24,7 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'. */
