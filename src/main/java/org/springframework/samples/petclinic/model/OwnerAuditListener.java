@@ -31,11 +31,14 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     private static final java.util.concurrent.atomic.AtomicLong OWNER_SEQ = new java.util.concurrent.atomic.AtomicLong();
 
     @PostPersist
     void onCreate(Owner owner) {
         String memberId = org.springframework.samples.petclinic.util.MemberIds.of(owner);
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), memberId);
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), memberId, owner.getRegistrationDate(),
             Membership.level(Membership.points(owner, false, false)));
