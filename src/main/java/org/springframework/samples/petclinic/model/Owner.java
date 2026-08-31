@@ -65,9 +65,10 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
-    /** Assign the customer code '<LAST3>-<NNNN>' for the given global owner sequence number. */
+    /** Assign the customer code '<CITY3>-<LAST3>-<NNNN>' for the given per-city sequence number. */
     public void assignCustomerCode(int sequence) {
-        this.customerCode = getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
+        this.customerCode = getCity().substring(0, 3).toUpperCase() + "-"
+            + getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
     }
 
     @Transient

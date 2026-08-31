@@ -111,7 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(Namesakes.count(owners, owner));
-        owner.assignCustomerCode(owners.size() + 1);
+        owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
         owner.setHouseholdId(Households.householdId(owners,
             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
         this.clinicService.saveOwner(owner);
