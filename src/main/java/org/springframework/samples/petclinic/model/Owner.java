@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -52,6 +53,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "registration_date")
+    private LocalDate registrationDate;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -62,6 +66,22 @@ public class Owner extends Person {
     /** Store the email lower-cased so it is persisted and returned normalised. */
     public void setEmail(String email) {
         this.email = (email == null) ? null : email.toLowerCase();
+    }
+
+    public LocalDate getRegistrationDate() {
+        return this.registrationDate;
+    }
+
+    public void setRegistrationDate(LocalDate registrationDate) {
+        this.registrationDate = registrationDate;
+    }
+
+    /** Default a missing registration date to the server's current date on create. */
+    @PrePersist
+    protected void ensureRegistrationDate() {
+        if (this.registrationDate == null) {
+            this.registrationDate = LocalDate.now();
+        }
     }
 
     public String getAddress() {
