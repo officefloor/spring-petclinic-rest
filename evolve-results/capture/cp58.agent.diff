@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index ac091f3b4..cd89d8750 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
+         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
++        ownerDto.setRiskFlag(RiskFlags.isRisky(this.clinicService.findAllOwners(), owner));
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlags.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlags.java
+new file mode 100644
+index 000000000..07c64ee40
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlags.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives the composite {@code riskFlag}: an owner is risky when any single
++ * signal fires — a possible (soft) duplicate, a disposable-adjacent email
++ * domain, or a city already over its soft capacity.
++ */
++final class RiskFlags {
++
++    private RiskFlags() {
++    }
++
++    /** True when the owner trips any one of the three risk signals. */
++    static boolean isRisky(Collection<Owner> owners, Owner owner) {
++        return PossibleDuplicates.matchId(owners, owner) != null
++            || DisposableDomains.isBlocked(owner)
++            || CityCapacity.approaching(owners, owner);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 63290415c..3583644cd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2312,6 +2312,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any of these hold: the owner is a possible duplicate,
++                the email domain is disposable-adjacent, or the city is over its
++                soft capacity; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
