@@ -30,12 +30,36 @@ public abstract class Localities {
     private static final Map<String, String> CITY_REGION =
         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
+    /** Region keyed by the leading two digits of its postcode range (20xx, 30xx, 40xx). */
+    private static final Map<Integer, String> POSTCODE_REGION =
+        Map.of(20, "NSW", 30, "VIC", 40, "QLD");
+
     /**
      * @param city the owner's city, may be {@code null}
      * @return the canonical region string, or {@code "UNKNOWN"} when the city is not in the table
      */
     public static String regionOf(String city) {
         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+    }
+
+    /**
+     * Prefers the postcode: a 4-digit postcode in a known range (NSW 2000-2099, VIC 3000-3099,
+     * QLD 4000-4099) fixes the region. Otherwise falls back to the city-to-region table.
+     *
+     * @param city the owner's city, may be {@code null}
+     * @param postcode the owner's postcode, may be {@code null}
+     * @return the canonical region string, or {@code "UNKNOWN"} when neither resolves
+     */
+    public static String regionOf(String city, String postcode) {
+        String byPostcode = regionOfPostcode(postcode);
+        return byPostcode != null ? byPostcode : regionOf(city);
+    }
+
+    private static String regionOfPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        return POSTCODE_REGION.get(Integer.parseInt(postcode) / 100);
     }
 
 }
