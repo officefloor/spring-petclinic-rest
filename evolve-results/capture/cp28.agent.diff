@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index def18a4b7..913727d4e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(1 + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Localities.regionOf(owner.getCity()))")
+     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKeys.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 77d3c2085..ef31e8ebf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.IdentityKeys;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -112,22 +113,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (CityCodes.count(owners, owner) >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        String telephone = owner.getTelephone();
+-        if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (EmailDuplicates.isDuplicate(owners, owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
+-                && Households.isDuplicate(owners, owner)) {
++        owner.setHouseholdId(Households.householdId(owners,
++            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
++        if (IdentityKeys.isDuplicate(owners, owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
+         owner.setNamesakeCount(Namesakes.count(owners, owner));
+         owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
+-        owner.setHouseholdId(Households.householdId(owners,
+-            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java
+new file mode 100644
+index 000000000..d3d891e01
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code identityKey} and uses it as the single source of truth for
++ * duplicate detection: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
++ *
++ * <p>Two owners are duplicates only when their WHOLE identityKey matches; because the
++ * telephone is part of the key, members of the same household with different telephones
++ * carry different keys and are both allowed.
++ */
++public final class IdentityKeys {
++
++    private IdentityKeys() {
++    }
++
++    /** The owner's derived identity key. The telephone is already stored normalised
++     *  (E.164); a missing email or household id contributes an empty segment. */
++    public static String of(Owner owner) {
++        String email = owner.getEmail() == null ? "" : owner.getEmail();
++        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
++        return owner.getTelephone() + "|" + email + "|" + householdId;
++    }
++
++    /** Whether an existing owner shares the candidate's whole identity key. */
++    public static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
++        String key = of(candidate);
++        return existing.stream().anyMatch(o -> key.equals(of(o)));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5265a038d..d7fb71b83 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2160,6 +2160,16 @@ components:
+               type: string
+               example: PHONE
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: >-
++                The owner's derived duplicate-detection key, formatted as
++                'normalizedTelephone|email|householdId' (the email and
++                householdId segments are empty when absent). Two owners are
++                duplicates only when their whole identityKey matches.
++              type: string
++              example: '+61412345678||'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
