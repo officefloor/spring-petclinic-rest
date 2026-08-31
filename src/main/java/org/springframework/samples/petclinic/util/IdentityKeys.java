@@ -25,7 +25,7 @@ public final class IdentityKeys {
      *  (E.164); a missing email contributes an empty segment. */
     public static String of(Owner owner) {
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase();
-        return sha256hex(owner.getTelephone() + "|" + email + "|" + Soundex.of(owner.getLastName()));
+        return sha256hex("V2|" + owner.getTelephone() + "|" + email + "|" + Soundex.of(owner.getLastName()));
     }
 
     /** Whether an existing owner shares the candidate's whole identity key. */

@@ -38,13 +38,14 @@ public class OwnerAuditListener {
     @PostPersist
     void onCreate(Owner owner) {
         String memberId = org.springframework.samples.petclinic.util.MemberIds.of(owner);
+        int membershipLevel = Membership.level(Membership.points(owner, false, false));
+        String ownerSegment = org.springframework.samples.petclinic.util.Segments.of(membershipLevel,
+            org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()));
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), memberId);
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
-            owner.getId(), memberId, owner.getRegistrationDate(),
-            Membership.level(Membership.points(owner, false, false)));
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            OWNER_SEQ.incrementAndGet(), owner.getId(), memberId,
-            Membership.level(Membership.points(owner, false, false)));
+            owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
+        AUDIT.info("{\"schemaVersion\":2,\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+            OWNER_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel, ownerSegment);
     }
 
 }

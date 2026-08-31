@@ -25,7 +25,8 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java((owner.getTitle() == null || owner.getTitle().isBlank()) ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "initials", source = "initials")
-    @Mapping(target = "memberId", expression = "java(org.springframework.samples.petclinic.util.MemberIds.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(Integer.valueOf(2))")
+    @Mapping(target = "identity", expression = "java(toOwnerIdentity(owner))")
     @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.util.FiscalYears.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.Membership.points(owner, false, false))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner, false, false)))")
@@ -34,8 +35,18 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.util.Timezones.of(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode())))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplay.format(owner.getTelephone()))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKeys.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The owner's version-2 identity block: the v2 memberId, identityKey and the household id
+     *  already derived onto the owner. Grouped so the identifiers travel together in the response. */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toOwnerIdentity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(org.springframework.samples.petclinic.util.MemberIds.of(owner));
+        identity.setIdentityKey(org.springframework.samples.petclinic.util.IdentityKeys.of(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

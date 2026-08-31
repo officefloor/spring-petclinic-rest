@@ -21,7 +21,7 @@ public final class MemberIds {
             return null;
         }
         int dash = code.indexOf('-');
-        String region = dash < 0 ? code : code.substring(0, dash);
+        String region = (dash < 0 ? code : code.substring(0, dash)) + "V2";
         String hash = dash < 0 ? "" : code.substring(dash + 1);
         String stem = region + String.format("%02d", FiscalYears.yearOfCentury(owner.getRegistrationDate())) + hash;
         return stem + Luhn.checkDigit(stem);

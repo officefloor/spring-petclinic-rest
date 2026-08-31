@@ -29,7 +29,7 @@ final class Households {
      */
     static String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        return sha256hex(normalize(owner.getLastName()) + "|" + postcode).substring(0, 12);
+        return sha256hex("V2|" + normalize(owner.getLastName()) + "|" + postcode).substring(0, 12);
     }
 
     /** How many of the given owners belong to the candidate's household (share its household id). */
