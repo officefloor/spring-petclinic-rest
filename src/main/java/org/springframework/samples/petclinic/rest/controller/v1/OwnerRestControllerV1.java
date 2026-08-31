@@ -104,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
+        ownerDto.setRiskFlag(RiskFlags.isRisky(this.clinicService.findAllOwners(), owner));
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
