@@ -81,6 +81,17 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
+    @Transient
+    private Integer namesakeCount;
+
+    public Integer getNamesakeCount() {
+        return this.namesakeCount;
+    }
+
+    public void setNamesakeCount(Integer namesakeCount) {
+        this.namesakeCount = namesakeCount;
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
