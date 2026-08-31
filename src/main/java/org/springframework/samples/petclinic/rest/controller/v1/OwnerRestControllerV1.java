@@ -125,9 +125,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (IdentityKeys.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && Households.isDuplicate(owners, owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.setCustomerCode(UniqueCustomerCodes.deduplicate(owners, org.springframework.samples.petclinic.util.CustomerCodes.of(owner)));
