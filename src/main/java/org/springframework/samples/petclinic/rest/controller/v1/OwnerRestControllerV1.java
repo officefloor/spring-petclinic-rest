@@ -111,6 +111,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.assignCustomerCode(owners.size() + 1);
+        owner.setHouseholdId(Households.householdId(owners,
+            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

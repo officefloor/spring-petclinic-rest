@@ -70,6 +70,17 @@ public class Owner extends Person {
         this.customerCode = getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
     }
 
+    @Transient
+    private String householdId;
+
+    public String getHouseholdId() {
+        return this.householdId;
+    }
+
+    public void setHouseholdId(String householdId) {
+        this.householdId = householdId;
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
