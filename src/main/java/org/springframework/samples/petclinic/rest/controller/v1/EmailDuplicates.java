@@ -21,6 +21,9 @@ final class EmailDuplicates {
     /** Whether an existing owner already uses the candidate's email. */
     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
         String email = normalize(candidate.getEmail());
+        if (email.isEmpty()) {
+            return false;
+        }
         return existing.stream().anyMatch(o -> normalize(o.getEmail()).equals(email));
     }
 }
