@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 393fda659..4a806c1b0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ import java.util.List;
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
++    @Mapping(target = "salutation", expression = "java((owner.getTitle() == null || owner.getTitle().isBlank()) ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
+     @Mapping(target = "initials", source = "initials")
+     @Mapping(target = "membershipNumber", expression = "java((owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.Membership.points(owner, false, false))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Person.java b/src/main/java/org/springframework/samples/petclinic/model/Person.java
+index 34008f72c..992229c0f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Person.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Person.java
+@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.MappedSuperclass;
++import jakarta.persistence.Transient;
+ 
+ import jakarta.validation.constraints.NotEmpty;
+ 
+@@ -36,6 +37,17 @@ public class Person extends BaseEntity {
+     @NotEmpty
+     protected String lastName;
+ 
++    @Transient
++    protected String title;
++
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     public String getFirstName() {
+         return this.firstName;
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 97f5fd1bd..73252224c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2010,6 +2010,14 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: >-
++            The owner's honorific title (e.g. MR, MRS, MS, DR). Optional; when
++            present it prefixes the derived 'salutation'.
++          type: string
++          maxLength: 10
++          example: DR
+         address:
+           title: Address
+           description: >-
+@@ -2126,6 +2134,14 @@ components:
+               type: string
+               example: Franklin, George
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: >-
++                The owner's salutation, formatted as '<title> <lastName>', or
++                just '<lastName>' when no title is set.
++              type: string
++              example: DR Franklin
++              readOnly: true
+             initials:
+               title: Initials
+               description: The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot.
