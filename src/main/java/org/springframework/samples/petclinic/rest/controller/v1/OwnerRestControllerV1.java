@@ -110,6 +110,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (DisposableDomains.isBlocked(owner)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         Collection<Owner> owners = this.clinicService.findAllOwners();
         if (DailyRegistrations.countOn(owners, java.time.LocalDate.now()) >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
