@@ -41,7 +41,7 @@ final class Households {
     /** True when an existing owner already belongs to the candidate's household. */
     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
         String id = householdId(candidate);
-        return existing.stream().anyMatch(o -> id.equals(householdId(o)));
+        return existing.stream().filter(o -> !o.isDeleted()).anyMatch(o -> id.equals(householdId(o)));
     }
 
     /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code s}. */

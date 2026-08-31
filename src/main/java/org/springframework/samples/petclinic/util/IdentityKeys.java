@@ -28,6 +28,6 @@ public final class IdentityKeys {
     /** Whether an existing owner shares the candidate's whole identity key. */
     public static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
         String key = of(candidate);
-        return existing.stream().anyMatch(o -> key.equals(of(o)));
+        return existing.stream().filter(o -> !o.isDeleted()).anyMatch(o -> key.equals(of(o)));
     }
 }

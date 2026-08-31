@@ -57,6 +57,18 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    /** Soft-delete flag: a deleted owner is retained but excluded from duplicate checks. */
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     public String getPostcode() {
         return this.postcode;
     }
