@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.Addresses;
 import org.springframework.samples.petclinic.util.E164;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -29,12 +30,19 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /** Store the telephone in E.164 form (see {@link E164#toE164}). */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
         return E164.toE164(telephone);
+    }
+
+    /** Store the address in normalized form (see {@link Addresses#normalize}). */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        return Addresses.normalize(address);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
