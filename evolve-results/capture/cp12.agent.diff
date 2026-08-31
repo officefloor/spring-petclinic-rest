@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 011524c07..5ea787d64 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
+ import org.mapstruct.Named;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.Addresses;
+ import org.springframework.samples.petclinic.util.E164;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -29,6 +30,7 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
++    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /** Store the telephone in E.164 form (see {@link E164#toE164}). */
+@@ -37,6 +39,12 @@ public interface OwnerMapper {
+         return E164.toE164(telephone);
+     }
+ 
++    /** Store the address in normalized form (see {@link Addresses#normalize}). */
++    @Named("normalizeAddress")
++    default String normalizeAddress(String address) {
++        return Addresses.normalize(address);
++    }
++
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Addresses.java b/src/main/java/org/springframework/samples/petclinic/util/Addresses.java
+new file mode 100644
+index 000000000..54ba070e0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Addresses.java
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Normalises a postal address to a canonical form for storage and comparison.
++ *
++ * <p>Whitespace is trimmed and collapsed, the value is upper-cased, and common
++ * street-type abbreviations are expanded as whole words ({@code ST -> STREET},
++ * {@code RD -> ROAD}, {@code AVE -> AVENUE}). A value that is blank (only
++ * whitespace) normalises to the empty string.
++ */
++public abstract class Addresses {
++
++    private static final Map<String, String> ABBREVIATIONS =
++        Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    /**
++     * @param raw the raw address input, may be {@code null}
++     * @return the normalised address, or {@code null} when {@code raw} is {@code null}
++     */
++    public static String normalize(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        StringBuilder sb = new StringBuilder();
++        for (String token : raw.trim().toUpperCase().split("\\s+")) {
++            if (token.isEmpty()) {
++                continue;
++            }
++            if (sb.length() > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(token, token));
++        }
++        return sb.toString();
++    }
++
++}
