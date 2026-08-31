@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -163,6 +164,23 @@ public class ExceptionControllerAdvice {
                 .toList());
             return ResponseEntity.status(status).body(detail);
         }
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    /**
+     * Handles {@link ValidationException} raised while validating a request (including the
+     * {@link jakarta.validation.ConstraintViolationException} subtype) by rejecting it with a
+     * 400 Bad Request carrying an RFC7807 problem detail.
+     *
+     * @param e The {@link ValidationException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
+     */
+    @ExceptionHandler(ValidationException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleValidationException(ValidationException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
         return ResponseEntity.status(status).body(detail);
     }
 
