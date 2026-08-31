@@ -93,7 +93,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
+        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
+            ownerDto.setMembershipTier("GOLD");
+        }
+        return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

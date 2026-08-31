@@ -20,6 +20,15 @@ final class Households {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
+    /** How many of the given owners belong to the candidate's household (share its last name
+     *  and address, compared case-insensitively with collapsed whitespace). */
+    static long memberCount(Collection<Owner> owners, Owner candidate) {
+        String lastName = normalize(candidate.getLastName());
+        String address = normalize(candidate.getAddress());
+        return owners.stream().filter(o ->
+            normalize(o.getLastName()).equals(lastName) && normalize(o.getAddress()).equals(address)).count();
+    }
+
     /** True when an existing owner has the candidate's last name and address. */
     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
         String lastName = normalize(candidate.getLastName());
