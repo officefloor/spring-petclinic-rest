@@ -116,6 +116,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owners.stream().anyMatch(o -> telephone.equals(o.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (EmailDuplicates.isDuplicate(owners, owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
                 && Households.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
