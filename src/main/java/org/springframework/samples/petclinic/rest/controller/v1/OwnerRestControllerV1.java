@@ -98,6 +98,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
             ownerDto.setMembershipLevel(4);
         }
+        Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
+        ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+        ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
     }
 
