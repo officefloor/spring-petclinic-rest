@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 36cbe5b72..ef1c53737 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -81,6 +81,17 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
++    @Transient
++    private Integer namesakeCount;
++
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Namesakes.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Namesakes.java
+new file mode 100644
+index 000000000..020e25584
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Namesakes.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Counts owners that are namesakes, i.e. carry the same first name and last name
++ * compared case-insensitively.
++ */
++final class Namesakes {
++
++    private Namesakes() {
++    }
++
++    /** Lower-case a value for comparison, treating null as empty. */
++    private static String normalize(String value) {
++        return value == null ? "" : value.toLowerCase();
++    }
++
++    /** Count existing owners sharing the candidate's first and last name. */
++    static int count(Collection<Owner> existing, Owner candidate) {
++        String firstName = normalize(candidate.getFirstName());
++        String lastName = normalize(candidate.getLastName());
++        return (int) existing.stream().filter(o ->
++            normalize(o.getFirstName()).equals(firstName) && normalize(o.getLastName()).equals(lastName)).count();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f72edd111..5b2b5b7c7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+                 && Households.isDuplicate(owners, owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        owner.setNamesakeCount(Namesakes.count(owners, owner));
+         owner.assignCustomerCode(owners.size() + 1);
+         owner.setHouseholdId(Households.householdId(owners,
+             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2c8f7806c..a28f88999 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,6 +2108,17 @@ components:
+               type: string
+               example: 8d1f7c3e-2a4b-3c5d-9e6f-0a1b2c3d4e5f
+               readOnly: true
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of existing owners that, at the time this owner was
++                created, already shared its first name and last name
++                (compared case-insensitively).
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
