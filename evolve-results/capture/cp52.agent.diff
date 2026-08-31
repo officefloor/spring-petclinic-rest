@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 12e96d148..c2ef2ba64 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -125,9 +125,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (IdentityKeys.isDuplicate(owners, owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && Households.isDuplicate(owners, owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
+         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
+         owner.setNamesakeCount(Namesakes.count(owners, owner));
+         owner.setCustomerCode(UniqueCustomerCodes.deduplicate(owners, org.springframework.samples.petclinic.util.CustomerCodes.of(owner)));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+index de845d2e5..8d208549d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+@@ -3,32 +3,30 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.IdentityKeys;
++import org.springframework.samples.petclinic.util.Soundex;
+ 
+ /**
+- * Detects a "soft" duplicate: an owner that is not a hard duplicate but shares an
+- * existing owner's last name (compared case-insensitively) and postcode while carrying
+- * a different telephone. The different telephone excludes the owner from matching itself.
++ * Detects a "soft" duplicate: an owner whose whole {@code identityKey} differs from an
++ * existing owner's, yet shares that owner's {@code soundex(lastName)} and postcode. The
++ * differing identity key excludes an owner from matching itself.
+  */
+ final class PossibleDuplicates {
+ 
+     private PossibleDuplicates() {
+     }
+ 
+-    /** Lower-case a value for comparison, treating null as empty. */
+-    private static String normalize(String value) {
+-        return value == null ? "" : value.toLowerCase();
+-    }
+-
+     /** The id of the earliest existing owner softly matching the candidate, or null when none. */
+     static Integer matchId(Collection<Owner> existing, Owner candidate) {
+         if (candidate.getPostcode() == null) {
+             return null;
+         }
+-        String lastName = normalize(candidate.getLastName());
++        String soundex = Soundex.of(candidate.getLastName());
++        String key = IdentityKeys.of(candidate);
+         return existing.stream()
+-            .filter(o -> normalize(o.getLastName()).equals(lastName)
++            .filter(o -> soundex.equals(Soundex.of(o.getLastName()))
+                 && candidate.getPostcode().equals(o.getPostcode())
+-                && !candidate.getTelephone().equals(o.getTelephone()))
++                && !key.equals(IdentityKeys.of(o)))
+             .map(Owner::getId)
+             .min(Integer::compareTo)
+             .orElse(null);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java
+index 104ab5194..b67dd6540 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKeys.java
+@@ -1,16 +1,20 @@
+ package org.springframework.samples.petclinic.util;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Derives an owner's {@code identityKey} and uses it as the single source of truth for
+- * duplicate detection: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}.
++ * duplicate detection: the SHA-256 hex of
++ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+  *
+  * <p>Two owners are duplicates only when their WHOLE identityKey matches; because the
+- * telephone is part of the key, members of the same household with different telephones
+- * carry different keys and are both allowed.
++ * telephone is part of the key, owners who share a last name and postcode but carry
++ * different telephones have different keys and are both allowed (a soft match, not a 409).
+  */
+ public final class IdentityKeys {
+ 
+@@ -18,11 +22,10 @@ public final class IdentityKeys {
+     }
+ 
+     /** The owner's derived identity key. The telephone is already stored normalised
+-     *  (E.164); a missing email or household id contributes an empty segment. */
++     *  (E.164); a missing email contributes an empty segment. */
+     public static String of(Owner owner) {
+-        String email = owner.getEmail() == null ? "" : owner.getEmail();
+-        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+-        return owner.getTelephone() + "|" + email + "|" + householdId;
++        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase();
++        return sha256hex(owner.getTelephone() + "|" + email + "|" + Soundex.of(owner.getLastName()));
+     }
+ 
+     /** Whether an existing owner shares the candidate's whole identity key. */
+@@ -30,4 +33,19 @@ public final class IdentityKeys {
+         String key = of(candidate);
+         return existing.stream().filter(o -> !o.isDeleted()).anyMatch(o -> key.equals(of(o)));
+     }
++
++    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code s}. */
++    private static String sha256hex(String s) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..6141448fa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,48 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * American Soundex phonetic coding of a surname: the first letter followed by three
++ * digits, zero-padded and truncated to length four (e.g. {@code Robert -> R163}).
++ * A null or letter-free value codes to the empty string.
++ */
++public final class Soundex {
++
++    /** Per-letter code for A..Z; '0' marks a letter that is not coded. */
++    private static final String MAP = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    /** The four-character Soundex code of {@code value}, or "" when it has no letters. */
++    public static String of(String value) {
++        if (value == null) {
++            return "";
++        }
++        StringBuilder letters = new StringBuilder();
++        for (int i = 0; i < value.length(); i++) {
++            char c = Character.toUpperCase(value.charAt(i));
++            if (c >= 'A' && c <= 'Z') {
++                letters.append(c);
++            }
++        }
++        if (letters.length() == 0) {
++            return "";
++        }
++        StringBuilder out = new StringBuilder().append(letters.charAt(0));
++        char prev = MAP.charAt(letters.charAt(0) - 'A');
++        for (int i = 1; i < letters.length() && out.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char code = MAP.charAt(c - 'A');
++            if (code != '0' && code != prev) {
++                out.append(code);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = code;
++            }
++        }
++        while (out.length() < 4) {
++            out.append('0');
++        }
++        return out.toString();
++    }
++}
