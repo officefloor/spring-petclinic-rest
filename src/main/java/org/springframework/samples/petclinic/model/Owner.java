@@ -21,6 +21,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
+import org.springframework.samples.petclinic.util.BusinessDays;
+
 import java.time.LocalDate;
 import java.util.*;
 
@@ -113,12 +115,12 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
-    /** Default a missing registration date to the server's current date on create. */
+    /** Default a missing registration date to the server's current date, then roll the
+     *  effective date forward to a business day (a weekend becomes the next Monday). */
     @PrePersist
     protected void ensureRegistrationDate() {
-        if (this.registrationDate == null) {
-            this.registrationDate = LocalDate.now();
-        }
+        LocalDate effective = (this.registrationDate == null) ? LocalDate.now() : this.registrationDate;
+        this.registrationDate = BusinessDays.rollForward(effective);
     }
 
     public String getAddress() {
