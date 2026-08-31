@@ -1,0 +1,57 @@
+package org.springframework.samples.petclinic.rest;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ContentCachingResponseWrapper;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * Idempotent-create support. When a POST carries an {@code Idempotency-Key} header whose value
+ * has already produced a successful response, replay that original response (as 200 OK) instead
+ * of re-running the handler and creating a duplicate.
+ */
+@Component
+public class IdempotentCreateFilter extends OncePerRequestFilter {
+
+    private final Map<String, Replay> seen = new ConcurrentHashMap<>();
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
+        String key = request.getHeader("Idempotency-Key");
+        if (key == null || !"POST".equalsIgnoreCase(request.getMethod())) {
+            chain.doFilter(request, response);
+            return;
+        }
+        Replay original = seen.get(key);
+        if (original != null) {
+            original.writeTo(response);
+            return;
+        }
+        ContentCachingResponseWrapper buffered = new ContentCachingResponseWrapper(response);
+        chain.doFilter(request, buffered);
+        if (buffered.getStatus() >= 200 && buffered.getStatus() < 300) {
+            seen.put(key, new Replay(buffered.getContentType(), buffered.getContentAsByteArray()));
+        }
+        buffered.copyBodyToResponse();
+    }
+
+    /** A captured successful response, replayed with 200 OK on a repeated key. */
+    private record Replay(String contentType, byte[] body) {
+        void writeTo(HttpServletResponse response) throws IOException {
+            response.setStatus(HttpServletResponse.SC_OK);
+            if (contentType != null) {
+                response.setContentType(contentType);
+            }
+            response.getOutputStream().write(body);
+        }
+    }
+}
