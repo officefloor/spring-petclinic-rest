@@ -96,7 +96,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setHouseholdId(Households.householdId(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
-        if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
+        if (Tenure.exceedsOneYear(owner) && Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
             ownerDto.setMembershipLevel(4);
         }
         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
