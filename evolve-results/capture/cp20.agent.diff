@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cd042e14a..2112df98d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -21,6 +21,8 @@ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import org.springframework.samples.petclinic.util.BusinessDays;
++
+ import java.time.LocalDate;
+ import java.util.*;
+ 
+@@ -113,12 +115,12 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
+-    /** Default a missing registration date to the server's current date on create. */
++    /** Default a missing registration date to the server's current date, then roll the
++     *  effective date forward to a business day (a weekend becomes the next Monday). */
+     @PrePersist
+     protected void ensureRegistrationDate() {
+-        if (this.registrationDate == null) {
+-            this.registrationDate = LocalDate.now();
+-        }
++        LocalDate effective = (this.registrationDate == null) ? LocalDate.now() : this.registrationDate;
++        this.registrationDate = BusinessDays.rollForward(effective);
+     }
+ 
+     public String getAddress() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrations.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrations.java
+index 2547dd26b..cf5b438b9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrations.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrations.java
+@@ -4,6 +4,7 @@ import java.time.LocalDate;
+ import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.BusinessDays;
+ 
+ /**
+  * Counts owners registered on a given day, compared by registrationDate.
+@@ -14,8 +15,9 @@ final class DailyRegistrations {
+     private DailyRegistrations() {
+     }
+ 
+-    /** Count existing owners whose registrationDate is the given day. */
++    /** Count existing owners registered on the given day's business day (weekends roll forward). */
+     static int countOn(Collection<Owner> existing, LocalDate day) {
+-        return (int) existing.stream().filter(o -> day.equals(o.getRegistrationDate())).count();
++        LocalDate businessDay = BusinessDays.rollForward(day);
++        return (int) existing.stream().filter(o -> businessDay.equals(o.getRegistrationDate())).count();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+new file mode 100644
+index 000000000..e96b4ff5c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Business-day helper: a weekend date rolls forward to the following Monday;
++ * weekday dates are returned unchanged.
++ */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Roll a Saturday/Sunday forward to the next Monday; a weekday is returned unchanged. */
++    public static LocalDate rollForward(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
