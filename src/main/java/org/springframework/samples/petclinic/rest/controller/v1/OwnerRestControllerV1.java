@@ -120,7 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
-        owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
+        owner.setCustomerCode(org.springframework.samples.petclinic.util.CustomerCodes.of(owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
