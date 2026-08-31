@@ -38,10 +38,13 @@ final class Households {
         return owners.stream().filter(o -> id.equals(householdId(o))).count();
     }
 
-    /** True when an existing owner already belongs to the candidate's household. */
+    /** True when an existing owner shares the candidate's last name AND address, i.e. the
+     *  same household id and the same (normalized) address line. */
     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
         String id = householdId(candidate);
-        return existing.stream().filter(o -> !o.isDeleted()).anyMatch(o -> id.equals(householdId(o)));
+        String address = normalize(candidate.getAddressLine1());
+        return existing.stream().filter(o -> !o.isDeleted())
+            .anyMatch(o -> id.equals(householdId(o)) && address.equals(normalize(o.getAddressLine1())));
     }
 
     /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code s}. */
