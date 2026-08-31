@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 90d005313..011524c07 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -6,6 +6,7 @@ import org.mapstruct.Mapping;
+ import org.mapstruct.Named;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.util.E164;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -30,10 +31,10 @@ public interface OwnerMapper {
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    /** Strip every non-digit so the stored telephone is the bare 10-digit value. */
++    /** Store the telephone in E.164 form (see {@link E164#toE164}). */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        return E164.toE164(telephone);
+     }
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index da13cf33e..e090749bf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be in E.164 format")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/E164.java b/src/main/java/org/springframework/samples/petclinic/util/E164.java
+new file mode 100644
+index 000000000..c791e94f0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/E164.java
+@@ -0,0 +1,48 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Normalises a telephone number to E.164 form ({@code '+'} country code and national digits).
++ *
++ * <p>A leading {@code '+'} is treated as an explicit country code and kept verbatim; otherwise the
++ * Australian country code {@code '+61'} is assumed and a single leading {@code '0'} is dropped from
++ * the national digits. Spaces, dashes and brackets are stripped. The result must carry 8 to 15
++ * digits after the {@code '+'}, else the input cannot form a valid E.164 number.
++ */
++public abstract class E164 {
++
++    /**
++     * @param raw the raw telephone input, may be {@code null}
++     * @return the E.164 string, or {@code null} when {@code raw} is {@code null}
++     * @throws IllegalArgumentException when {@code raw} cannot form a valid E.164 number
++     */
++    public static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        boolean explicitCountryCode = raw.trim().startsWith("+");
++        String digits = raw.replaceAll("\\D", "");
++        String national = explicitCountryCode ? digits
++            : "61" + (digits.startsWith("0") ? digits.substring(1) : digits);
++        if (national.length() < 8 || national.length() > 15) {
++            throw new IllegalArgumentException("Telephone cannot form a valid E.164 number: " + raw);
++        }
++        return "+" + national;
++    }
++
++}
