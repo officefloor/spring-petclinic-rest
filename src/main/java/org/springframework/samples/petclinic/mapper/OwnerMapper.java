@@ -27,8 +27,12 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** 'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'. */
+    /** 'GOLD' when the household has 3+ members; else 'SILVER' when namesakeCount is 0 and an
+     * email is present, otherwise 'BRONZE'. */
     default String membershipTier(Owner owner) {
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            return "GOLD";
+        }
         boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
         return silver ? "SILVER" : "BRONZE";
     }
