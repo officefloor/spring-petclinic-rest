@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacity.java
+new file mode 100644
+index 000000000..e9d2dc713
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacity.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives the per-city capacity warning: a city is "approaching capacity" when it
++ * already holds 40 to 49 owners, just short of the hard limit of 50.
++ */
++final class CityCapacity {
++
++    private CityCapacity() {
++    }
++
++    /** True when {@code owner}'s city holds 40-49 owners (below the hard limit of 50). */
++    static boolean approaching(Collection<Owner> owners, Owner owner) {
++        int count = CityCodes.count(owners, owner);
++        return count >= 40 && count < 50;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c2ef2ba64..ac091f3b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -100,6 +100,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         int points = Membership.points(owner, Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3, Tenure.exceedsOneYear(owner));
+         ownerDto.setMembershipPoints(points);
+         ownerDto.setMembershipLevel(HouseholdLevels.capped(this.clinicService.findAllOwners(), owner, Membership.level(points)));
++        ownerDto.setCapacityWarning(CityCapacity.approaching(this.clinicService.findAllOwners(), owner));
+         Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
+         ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
+         ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e5640a823..dd8048cc6 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2238,6 +2238,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds 40 to 49 owners,
++                approaching the hard capacity limit of 50, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: >-
