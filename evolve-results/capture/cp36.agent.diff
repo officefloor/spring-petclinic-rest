@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+index 53f795c68..d9d070742 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+@@ -1,14 +1,16 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Collection;
+-import java.util.UUID;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Detects owners that share a household, i.e. carry the same last name and the
+- * same address compared case-insensitively with collapsed whitespace.
++ * Derives an owner's deterministic {@code householdId} and detects household membership.
++ * Owners that carry the same normalized last name and postcode belong to the same
++ * household, so they automatically share the same id.
+  */
+ final class Households {
+ 
+@@ -20,33 +22,40 @@ final class Households {
+         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
+-    /** How many of the given owners belong to the candidate's household (share its last name
+-     *  and address, compared case-insensitively with collapsed whitespace). */
++    /**
++     * The stable household id for an owner: the first 12 hex characters of SHA-256 over
++     * {@code (normalizedLastName + '|' + postcode)}. Owners with the same last name and
++     * postcode share it automatically.
++     */
++    static String householdId(Owner owner) {
++        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
++        return sha256hex(normalize(owner.getLastName()) + "|" + postcode).substring(0, 12);
++    }
++
++    /** How many of the given owners belong to the candidate's household (share its household id). */
+     static long memberCount(Collection<Owner> owners, Owner candidate) {
+-        String lastName = normalize(candidate.getLastName());
+-        String address = normalize(candidate.getAddress());
+-        return owners.stream().filter(o ->
+-            normalize(o.getLastName()).equals(lastName) && normalize(o.getAddress()).equals(address)).count();
++        String id = householdId(candidate);
++        return owners.stream().filter(o -> id.equals(householdId(o))).count();
+     }
+ 
+-    /** True when an existing owner has the candidate's last name and address. */
++    /** True when an existing owner already belongs to the candidate's household. */
+     static boolean isDuplicate(Collection<Owner> existing, Owner candidate) {
+-        String lastName = normalize(candidate.getLastName());
+-        String address = normalize(candidate.getAddress());
+-        return existing.stream().anyMatch(o ->
+-            normalize(o.getLastName()).equals(lastName) && normalize(o.getAddress()).equals(address));
++        String id = householdId(candidate);
++        return existing.stream().anyMatch(o -> id.equals(householdId(o)));
+     }
+ 
+-    /**
+-     * The stable household id to assign to an owner, or {@code null} when it is not
+-     * joining one. Derived from the normalized last name and address, so every owner
+-     * that joins the same household is given the same identifier.
+-     */
+-    static String householdId(Collection<Owner> existing, boolean sharesHousehold, Owner candidate) {
+-        if (!sharesHousehold || !isDuplicate(existing, candidate)) {
+-            return null;
++    /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code s}. */
++    private static String sha256hex(String s) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
+         }
+-        String key = normalize(candidate.getLastName()) + "\n" + normalize(candidate.getAddress());
+-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 643f7a89f..e7af9573f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -94,6 +94,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
++        owner.setHouseholdId(Households.householdId(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
+             ownerDto.setMembershipLevel(4);
+@@ -116,11 +117,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (CityCodes.count(owners, owner) >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+-        owner.setHouseholdId(Households.householdId(owners,
+-            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
++        owner.setHouseholdId(Households.householdId(owner));
+         if (IdentityKeys.isDuplicate(owners, owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && Households.isDuplicate(owners, owner)) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
+         owner.setNamesakeCount(Namesakes.count(owners, owner));
+         owner.setCustomerCode(org.springframework.samples.petclinic.util.CustomerCodes.of(owner));
