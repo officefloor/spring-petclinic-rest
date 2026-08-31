@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailFilter.java b/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailFilter.java
+new file mode 100644
+index 000000000..125739a1c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailFilter.java
+@@ -0,0 +1,50 @@
++package org.springframework.samples.petclinic.rest;
++
++import java.io.IOException;
++import java.nio.charset.StandardCharsets;
++import java.util.Set;
++
++import org.springframework.core.Ordered;
++import org.springframework.core.annotation.Order;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++import org.springframework.web.util.ContentCachingResponseWrapper;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++
++/**
++ * Ensures every rejection response (400, 409, 429) carries an RFC7807
++ * {@code application/problem+json} body. Handlers that already write a problem detail are
++ * left untouched; a bodyless rejection (e.g. a controller returning only a status) is given
++ * a minimal problem detail so the contract holds uniformly.
++ */
++@Component
++@Order(Ordered.LOWEST_PRECEDENCE)
++public class ProblemDetailFilter extends OncePerRequestFilter {
++
++    private static final Set<Integer> REJECTIONS = Set.of(400, 409, 429);
++
++    @Override
++    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
++                                    FilterChain chain) throws ServletException, IOException {
++        ContentCachingResponseWrapper buffered = new ContentCachingResponseWrapper(response);
++        chain.doFilter(request, buffered);
++        if (REJECTIONS.contains(buffered.getStatus()) && buffered.getContentSize() == 0) {
++            writeProblem(buffered, HttpStatus.valueOf(buffered.getStatus()));
++        }
++        buffered.copyBodyToResponse();
++    }
++
++    /** Write a minimal RFC7807 problem detail ('type', 'title', 'status', 'detail') for the status. */
++    private void writeProblem(ContentCachingResponseWrapper response, HttpStatus status) throws IOException {
++        response.setContentType("application/problem+json");
++        String reason = status.getReasonPhrase();
++        byte[] body = ("{\"type\":\"about:blank\",\"title\":\"" + reason + "\",\"status\":" + status.value()
++            + ",\"detail\":\"" + reason + "\"}").getBytes(StandardCharsets.UTF_8);
++        response.getOutputStream().write(body);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index d23ab4821..6598b04dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -22,6 +22,7 @@ import java.util.List;
+ import java.util.Objects;
+ 
+ import jakarta.servlet.http.HttpServletRequest;
++import jakarta.validation.ValidationException;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -166,4 +167,21 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link ValidationException} raised while validating a request (including the
++     * {@link jakarta.validation.ConstraintViolationException} subtype) by rejecting it with a
++     * 400 Bad Request carrying an RFC7807 problem detail.
++     *
++     * @param e The {@link ValidationException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} containing the error information and a 400 Bad Request status.
++     */
++    @ExceptionHandler(ValidationException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleValidationException(ValidationException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_INVALID_REQUEST);
++        return ResponseEntity.status(status).body(detail);
++    }
++
+ }
