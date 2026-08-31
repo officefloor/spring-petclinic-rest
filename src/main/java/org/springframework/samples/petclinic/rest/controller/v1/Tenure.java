@@ -1,23 +1,23 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.FiscalYears;
 
 /**
- * Membership tenure rules. An owner's tenure is the number of days elapsed since their
- * registration date; level 4 requires tenure of more than 365 days, so a newly created
- * owner (zero tenure) can never exceed level 3.
+ * Membership tenure rules. An owner's tenure is the number of fiscal years elapsed since
+ * their registration date (the fiscal year starts on 1 July); level 4 requires a tenure of
+ * more than one fiscal year, so a newly created owner (zero tenure) can never exceed level 3.
  */
 final class Tenure {
 
     private Tenure() {
     }
 
-    /** True when the owner has been registered for more than 365 days. */
+    /** True when more than one fiscal year has elapsed since the owner registered. */
     static boolean exceedsOneYear(Owner owner) {
         LocalDate registered = owner.getRegistrationDate();
-        return registered != null && ChronoUnit.DAYS.between(registered, LocalDate.now()) > 365;
+        return registered != null && FiscalYears.elapsed(registered, LocalDate.now()) > 1;
     }
 }
