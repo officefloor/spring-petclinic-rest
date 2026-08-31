@@ -13,11 +13,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class BuildOwner {
 
-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper,
+            Out<Owner> built, Out<OwnerFieldsDto> requestOut) {
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
         built.set(owner);
+        requestOut.set(request);
     }
 }
