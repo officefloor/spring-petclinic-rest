@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index ef1c53737..cd042e14a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,9 +65,10 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
+-    /** Assign the customer code '<LAST3>-<NNNN>' for the given global owner sequence number. */
++    /** Assign the customer code '<CITY3>-<LAST3>-<NNNN>' for the given per-city sequence number. */
+     public void assignCustomerCode(int sequence) {
+-        this.customerCode = getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
++        this.customerCode = getCity().substring(0, 3).toUpperCase() + "-"
++            + getLastName().substring(0, 3).toUpperCase() + String.format("-%04d", sequence);
+     }
+ 
+     @Transient
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCodes.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCodes.java
+new file mode 100644
+index 000000000..5393c8133
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCodes.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Counts owners already registered in a candidate's city, compared case-insensitively.
++ * Used to derive the per-city sequence in the customerCode.
++ */
++final class CityCodes {
++
++    private CityCodes() {
++    }
++
++    /** Lower-case a value for comparison, treating null as empty. */
++    private static String normalize(String value) {
++        return value == null ? "" : value.toLowerCase();
++    }
++
++    /** Count existing owners sharing the candidate's city. */
++    static int count(Collection<Owner> existing, Owner candidate) {
++        String city = normalize(candidate.getCity());
++        return (int) existing.stream().filter(o -> normalize(o.getCity()).equals(city)).count();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5b2b5b7c7..2f66977dc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -111,7 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setNamesakeCount(Namesakes.count(owners, owner));
+-        owner.assignCustomerCode(owners.size() + 1);
++        owner.assignCustomerCode(CityCodes.count(owners, owner) + 1);
+         owner.setHouseholdId(Households.householdId(owners,
+             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+         this.clinicService.saveOwner(owner);
