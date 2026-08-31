@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic.model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.samples.petclinic.util.Membership;
+
 import jakarta.persistence.PostPersist;
 
 /**
@@ -31,8 +33,11 @@ public class OwnerAuditListener {
 
     @PostPersist
     void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        String membershipNumber = (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) ? null
+            : owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            Membership.level(Membership.points(owner, false, false)), membershipNumber);
     }
 
 }
