@@ -94,6 +94,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        owner.setHouseholdId(Households.householdId(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
             ownerDto.setMembershipLevel(4);
@@ -116,9 +117,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (CityCodes.count(owners, owner) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setHouseholdId(Households.householdId(owners,
-            Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), owner));
+        owner.setHouseholdId(Households.householdId(owner));
         if (IdentityKeys.isDuplicate(owners, owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
+        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()) && Households.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setBulkSignupWarning(DailyRegistrations.countOn(owners, java.time.LocalDate.now()) > 80);
