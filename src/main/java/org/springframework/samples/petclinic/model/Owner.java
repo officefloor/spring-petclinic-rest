@@ -36,6 +36,7 @@ import java.util.*;
  */
 @Entity
 @Table(name = "owners")
+@EntityListeners(OwnerAuditListener.class)
 public class Owner extends Person {
     @Column(name = "address")
     @NotEmpty
