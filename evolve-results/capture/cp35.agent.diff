@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 773ad53f1..643f7a89f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -98,6 +98,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (Households.memberCount(this.clinicService.findAllOwners(), owner) >= 3) {
+             ownerDto.setMembershipLevel(4);
+         }
++        Integer possibleDuplicateOf = PossibleDuplicates.matchId(this.clinicService.findAllOwners(), owner);
++        ownerDto.setPossibleDuplicate(possibleDuplicateOf != null);
++        ownerDto.setPossibleDuplicateOf(possibleDuplicateOf);
+         return new ResponseEntity<>(ownerDto, HttpStatus.OK);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+new file mode 100644
+index 000000000..de845d2e5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Detects a "soft" duplicate: an owner that is not a hard duplicate but shares an
++ * existing owner's last name (compared case-insensitively) and postcode while carrying
++ * a different telephone. The different telephone excludes the owner from matching itself.
++ */
++final class PossibleDuplicates {
++
++    private PossibleDuplicates() {
++    }
++
++    /** Lower-case a value for comparison, treating null as empty. */
++    private static String normalize(String value) {
++        return value == null ? "" : value.toLowerCase();
++    }
++
++    /** The id of the earliest existing owner softly matching the candidate, or null when none. */
++    static Integer matchId(Collection<Owner> existing, Owner candidate) {
++        if (candidate.getPostcode() == null) {
++            return null;
++        }
++        String lastName = normalize(candidate.getLastName());
++        return existing.stream()
++            .filter(o -> normalize(o.getLastName()).equals(lastName)
++                && candidate.getPostcode().equals(o.getPostcode())
++                && !candidate.getTelephone().equals(o.getTelephone()))
++            .map(Owner::getId)
++            .min(Integer::compareTo)
++            .orElse(null);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bc45a2d51..d0421a8de 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2210,6 +2210,26 @@ components:
+               type: string
+               example: '+61412345678||'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when this owner is not a hard duplicate but shares another
++                owner's last name and postcode while carrying a different
++                telephone, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the owner this one softly matches (same last name and
++                postcode, different telephone), or absent when there is none.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              nullable: true
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
