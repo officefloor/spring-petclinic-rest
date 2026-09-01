@@ -14,7 +14,7 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
-        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
+        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
         dto.setLocality(Locality.of(owner));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         response.send(dto);
