@@ -11,6 +11,9 @@ public final class Locality {
     private static final Map<String, int[]> REGION_POSTCODES = Map.of(
         "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
+    private static final Map<String, String> REGION_TIMEZONE = Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
     private Locality() {
     }
 
@@ -32,5 +35,10 @@ public final class Locality {
             }
         }
         return of(city);
+    }
+
+    /** The IANA timezone for a region (NSW/VIC/QLD), or null when the region is not in the table. */
+    public static String timezone(String region) {
+        return REGION_TIMEZONE.get(region);
     }
 }

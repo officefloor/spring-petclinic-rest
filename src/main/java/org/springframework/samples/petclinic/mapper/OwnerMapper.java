@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
+    @Mapping(target = "timezone", expression = "java(Locality.timezone(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Points: 0 base, +2 email present, +1 namesakeCount 0, +2 household of 3 or more,
