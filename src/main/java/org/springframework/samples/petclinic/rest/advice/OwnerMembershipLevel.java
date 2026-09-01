@@ -22,20 +22,31 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's {@code membershipLevel}. Base factors (a present email and a zero
- * namesakeCount) lift a member from level 1 up to level 3; reaching level 4 additionally
- * requires tenure of more than 365 days measured from the registrationDate. A brand-new
- * owner has zero tenure, so it never exceeds level 3. Kept as a small standalone unit so
- * the response mapper can expose the value without growing.
+ * Derives an owner's {@code membershipPoints} and the {@code membershipLevel} mapped from
+ * them. Points start at 0 and add 2 for a present email, 1 for a zero namesakeCount, 2 for
+ * a household of 3 or more and 3 for tenure over 365 days from the registrationDate. The
+ * level is 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more. Kept as a small
+ * standalone unit so the response mapper can expose both values without growing.
  */
 public final class OwnerMembershipLevel {
 
     private OwnerMembershipLevel() {
     }
 
+    public static int points(Owner owner) {
+        return (hasEmail(owner) ? 2 : 0)
+            + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)
+            + (largeHousehold(owner) ? 2 : 0)
+            + (tenuredOver365(owner) ? 3 : 0);
+    }
+
     public static int of(Owner owner) {
-        int base = 1 + (hasEmail(owner) ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0);
-        return Math.min(3, base) + (tenuredOver365(owner) ? 1 : 0);
+        int p = points(owner);
+        return p <= 1 ? 1 : p <= 3 ? 2 : p <= 5 ? 3 : 4;
+    }
+
+    private static boolean largeHousehold(Owner owner) {
+        return owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3;
     }
 
     private static boolean hasEmail(Owner owner) {
