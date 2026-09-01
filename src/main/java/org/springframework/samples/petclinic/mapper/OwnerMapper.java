@@ -26,6 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() == null ? null : owner.getCustomerCode().split(\"-\")[0])")
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
