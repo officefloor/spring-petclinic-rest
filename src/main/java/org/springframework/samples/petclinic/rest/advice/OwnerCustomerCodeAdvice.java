@@ -40,6 +40,12 @@ public class OwnerCustomerCodeAdvice {
     /** Postcode band (4-digit / 100) -> region code. */
     private static final Map<Integer, String> REGION = Map.of(20, "NSW", 30, "VIC", 40, "QLD");
 
+    private final OwnerCustomerCodeDeduplicator deduplicator;
+
+    public OwnerCustomerCodeAdvice(OwnerCustomerCodeDeduplicator deduplicator) {
+        this.deduplicator = deduplicator;
+    }
+
     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
     public void assignCustomerCode(Owner owner) {
         if (owner.isNew() && owner.getCustomerCode() == null) {
@@ -49,7 +55,7 @@ public class OwnerCustomerCodeAdvice {
                 byte[] d = MessageDigest.getInstance("SHA-256")
                     .digest((owner.getTelephone() + owner.getLastName()).getBytes(StandardCharsets.UTF_8));
                 String hash8 = String.format("%02X%02X%02X%02X", d[0], d[1], d[2], d[3]);
-                owner.setCustomerCode(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8);
+                owner.setCustomerCode(deduplicator.unique(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8));
             }
             catch (NoSuchAlgorithmException e) {
                 throw new IllegalStateException(e);
