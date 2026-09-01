@@ -117,9 +117,9 @@ public class Owner extends Person {
         return this.customerCode;
     }
 
-    /** Assign this owner's customerCode as '<REGION>-<HASH8>' (see {@link CustomerCode}). */
-    public void assignCustomerCode(int existingCityCount) {
-        this.customerCode = CustomerCode.of(this);
+    /** Assign this owner's customerCode, de-duplicated against {@code existing} (see {@link CustomerCodes}). */
+    public void assignCustomerCode(Collection<Owner> existing) {
+        this.customerCode = CustomerCodes.uniqueFor(this, existing);
     }
 
     public Integer getNamesakeCount() {

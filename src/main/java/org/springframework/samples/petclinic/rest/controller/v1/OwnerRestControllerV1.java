@@ -118,7 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setHouseholdMemberCount(Households.size(owners, owner));
-        owner.assignCustomerCode(CityCodes.countInCity(owners, owner));
+        owner.assignCustomerCode(owners);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.setBulkSignupWarning(BulkSignups.exceededDailyLimit(owners, owner));
         owner.setPossibleDuplicateOf(
