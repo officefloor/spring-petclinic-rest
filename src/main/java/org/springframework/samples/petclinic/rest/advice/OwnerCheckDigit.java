@@ -16,21 +16,13 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Derives an owner's {@code checkDigit}: the single Luhn check digit (0-9) computed over the digits
- * of its customerCode. Kept as a small standalone unit so the response mapper can expose the value
- * without growing.
+ * Computes the single Luhn check digit (0-9) over the digits contained in a string. Kept as a small
+ * standalone unit so the memberId derivation can reuse it without growing.
  */
 public final class OwnerCheckDigit {
 
     private OwnerCheckDigit() {
-    }
-
-    public static Integer of(Owner owner) {
-        String code = owner.getCustomerCode();
-        return code == null ? null : luhn(code);
     }
 
     static int luhn(String s) {

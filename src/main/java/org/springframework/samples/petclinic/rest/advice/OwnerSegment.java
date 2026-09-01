@@ -35,11 +35,8 @@ public final class OwnerSegment {
     private static final Set<String> METRO = Set.of("NSW", "VIC", "QLD");
 
     public static String of(Owner owner) {
-        String code = owner.getCustomerCode();
-        int dash = code == null ? -1 : code.indexOf('-');
-        String locality = dash < 0 ? "UNKNOWN" : code.substring(0, dash);
         String tier = OwnerMembershipLevel.of(owner) >= 3 ? "PREMIUM" : "STANDARD";
-        String area = METRO.contains(locality) ? "METRO" : "REGIONAL";
+        String area = METRO.contains(OwnerMemberId.region(owner)) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
 }

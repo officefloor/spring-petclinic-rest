@@ -16,29 +16,20 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Map;
-
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
 
 /**
- * Assigns a customerCode '<REGION>-<HASH8>' to each newly-created owner just before it is saved:
- * REGION is the region code derived from the postcode (its 4-digit range, else "UNKNOWN") and HASH8
- * is the first 8 upper-case hex characters of SHA-256 over (normalizedTelephone + lastName). Kept as
- * its own small aspect so this rule stays a self-contained unit rather than growing the controller
- * or service.
+ * Assigns the unified {@code memberId} '<REGION><FY><HASH8><CHK>' to each newly-created owner just
+ * before it is saved, delegating the derivation to {@link OwnerMemberId} and the collision handling
+ * to the deduplicator. Kept as its own small aspect so this rule stays a self-contained unit rather
+ * than growing the controller or service.
  */
 @Aspect
 @Component
 public class OwnerCustomerCodeAdvice {
-
-    /** Postcode band (4-digit / 100) -> region code. */
-    private static final Map<Integer, String> REGION = Map.of(20, "NSW", 30, "VIC", 40, "QLD");
 
     private final OwnerCustomerCodeDeduplicator deduplicator;
 
@@ -49,17 +40,7 @@ public class OwnerCustomerCodeAdvice {
     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
     public void assignCustomerCode(Owner owner) {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            String pc = owner.getPostcode();
-            int band = pc != null && pc.matches("[0-9]{4}") ? Integer.parseInt(pc) / 100 : -1;
-            try {
-                byte[] d = MessageDigest.getInstance("SHA-256")
-                    .digest((owner.getTelephone() + owner.getLastName()).getBytes(StandardCharsets.UTF_8));
-                String hash8 = String.format("%02X%02X%02X%02X", d[0], d[1], d[2], d[3]);
-                owner.setCustomerCode(deduplicator.unique(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8));
-            }
-            catch (NoSuchAlgorithmException e) {
-                throw new IllegalStateException(e);
-            }
+            owner.setCustomerCode(deduplicator.unique(OwnerMemberId.base(owner)));
         }
     }
 }

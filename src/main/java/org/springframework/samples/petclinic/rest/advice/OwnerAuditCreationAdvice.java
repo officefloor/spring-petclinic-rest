@@ -26,8 +26,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Emits an audit trail entry on the dedicated {@code AUDIT} logger whenever a new owner is
- * successfully created, carrying the assigned id, customerCode, registrationDate,
- * membershipLevel and membershipNumber. Kept as
+ * successfully created, carrying the assigned id, memberId, registrationDate and
+ * membershipLevel. Kept as
  * its own small aspect so this rule stays a self-contained unit rather than growing the
  * controller or service.
  */
@@ -42,11 +42,9 @@ public class OwnerAuditCreationAdvice {
         boolean created = owner.isNew();
         Object result = joinPoint.proceed();
         if (created) {
-            String membershipNumber = owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null
-                : owner.getCustomerCode() + "-M" + String.format("%02d", OwnerFiscalYear.yearOf(owner.getRegistrationDate()) % 100);
-            AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                OwnerMembershipLevel.of(owner), membershipNumber);
+                OwnerMembershipLevel.of(owner));
         }
         return result;
     }
