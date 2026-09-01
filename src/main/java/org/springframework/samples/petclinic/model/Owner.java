@@ -109,6 +109,17 @@ public class Owner extends Person {
         this.title = title;
     }
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
     @Column(name = "customer_code")
     private String customerCode;
 

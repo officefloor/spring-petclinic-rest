@@ -66,6 +66,7 @@ public class OwnerUniqueIdentityAdvice extends RequestBodyAdviceAdapter {
         OwnerFieldsDto dto = (OwnerFieldsDto) body;
         String contact = OwnerIdentityKey.telephone(dto.getTelephone()) + '|' + OwnerIdentityKey.email(dto.getEmail());
         boolean duplicate = clinicService.findAllOwners().stream()
+            .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
             .map(o -> OwnerIdentityKey.telephone(o.getTelephone()) + '|' + OwnerIdentityKey.email(o.getEmail()))
             .anyMatch(contact::equals);
         if (duplicate) {

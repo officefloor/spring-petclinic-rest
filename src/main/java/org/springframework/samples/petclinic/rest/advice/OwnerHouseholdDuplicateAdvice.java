@@ -62,6 +62,7 @@ public class OwnerHouseholdDuplicateAdvice extends RequestBodyAdviceAdapter {
         if (!Boolean.TRUE.equals(dto.getSharesHousehold())) {
             String household = OwnerIdentityKey.householdId(dto.getLastName(), dto.getPostcode());
             boolean exists = clinicService.findAllOwners().stream()
+                .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
                 .anyMatch(o -> household.equals(OwnerIdentityKey.householdId(o.getLastName(), o.getPostcode())));
             if (exists) {
                 throw new DuplicateHouseholdException();
