@@ -8,17 +8,22 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's {@code customerCode} as {@code <REGION>-<HASH8>}: the region code derived from
- * the postcode (see {@link OwnerLocality#forPostcode}) and the first eight upper-case hex characters
- * of SHA-256 over the normalized telephone (set by {@link BuildOwner}) concatenated with the last
- * name. The code is a pure function of the owner's identity, so it carries no sequence number.
+ * Assigns the owner's {@code memberId} as {@code <REGION><FY><HASH8><CHK>}: the region code derived
+ * from the postcode (see {@link OwnerLocality#forPostcode}), the two-digit fiscal year of the
+ * registration date (see {@link FiscalYear#twoDigit}), the first eight upper-case hex characters of
+ * SHA-256 over the normalized telephone (set by {@link BuildOwner}) concatenated with the last name,
+ * and a single Luhn check digit over the digits of {@code <REGION><FY><HASH8>} (see
+ * {@link CustomerCodeCheckDigit}). The id is a pure function of the owner's identity, so it carries no
+ * sequence number.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
         String region = OwnerLocality.forPostcode(owner.getPostcode(), owner.getCity());
+        String fy = FiscalYear.twoDigit(owner.getRegistrationDate());
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + fy + hash8;
+        owner.setCustomerCode(base + CustomerCodeCheckDigit.of(base));
     }
 
     /** First eight upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
