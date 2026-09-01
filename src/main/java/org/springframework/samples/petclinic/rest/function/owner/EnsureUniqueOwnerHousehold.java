@@ -1,35 +1,16 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Objects;
-
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
-import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
  * On create, assigns the owner's deterministic {@link HouseholdId} (derived from last name and
- * postcode) and rejects the owner when an existing owner already shares that household. Setting
- * {@code sharesHousehold=true} only bypasses this rejection, declaring the owner a household
- * member; the id is assigned either way.
+ * postcode). Owners sharing a household are permitted to join it; a joiner's membership level is
+ * capped against the existing members rather than the create being rejected.
  */
 public class EnsureUniqueOwnerHousehold {
 
-    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository)
-            throws DuplicateHouseholdException {
-        String householdId = HouseholdId.of(owner);
-        owner.setHouseholdId(householdId);
-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return;
-        }
-        for (Owner existing : ownerRepository.findAll()) {
-            if (!existing.isDeleted()
-                    && !Objects.equals(existing.getId(), owner.getId())
-                    && householdId.equals(existing.getHouseholdId())) {
-                throw new DuplicateHouseholdException(
-                        "Another owner already shares this last name and postcode");
-            }
-        }
+    public void service(@Val Owner owner) {
+        owner.setHouseholdId(HouseholdId.of(owner));
     }
 }
