@@ -15,6 +15,7 @@ public class BuildOwner {
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
             Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
         Owner owner = ownerMapper.toOwner(request);
+        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
         owner.setTelephone(toE164(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
