@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index db8bb26e4..ac2151bfa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -25,9 +25,8 @@ public class BuildOwner {
+             throw new MissingOwnerFieldsException(missing);
+         }
+         Owner owner = ownerMapper.toOwner(request);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
++        LocalDate effective = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
++        owner.setRegistrationDate(BusinessDay.nextBusinessDay(effective));
+         built.set(owner);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+new file mode 100644
+index 000000000..6e769cf41
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/** Rolls a weekend date forward to the following Monday; business days are returned unchanged. */
++final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    static LocalDate nextBusinessDay(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java
+index 94f7b7617..2c727f302 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectOwnerDailyLimit.java
+@@ -17,10 +17,10 @@ public class RejectOwnerDailyLimit {
+     private static final int LIMIT = 100;
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyOwnerLimitException {
+-        LocalDate today = LocalDate.now();
++        LocalDate day = owner.getRegistrationDate();
+         int count = 0;
+         for (Owner other : ownerRepository.findAll()) {
+-            if (other != owner && today.equals(other.getRegistrationDate()) && ++count >= LIMIT) {
++            if (other != owner && day.equals(other.getRegistrationDate()) && ++count >= LIMIT) {
+                 throw new DailyOwnerLimitException(LIMIT);
+             }
+         }
