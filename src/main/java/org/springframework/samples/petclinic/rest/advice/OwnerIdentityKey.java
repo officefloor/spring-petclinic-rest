@@ -26,8 +26,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Derives an owner's {@code identityKey}, the single value all duplicate detection is based on:
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Kept as a small
- * standalone unit so the request advice and the response mapper derive the key identically.
+ * the SHA-256 hex of {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}.
+ * Kept as a small standalone unit so the request advice and the response mapper derive the key
+ * identically.
  */
 public final class OwnerIdentityKey {
 
@@ -43,7 +44,7 @@ public final class OwnerIdentityKey {
     }
 
     static String of(String telephone, String email, String lastName, String postcode) {
-        return telephone(telephone) + '|' + email(email) + '|' + householdId(lastName, postcode);
+        return sha256Hex(telephone(telephone) + '|' + email(email) + '|' + OwnerSoundex.soundex(lastName));
     }
 
     static String telephone(String telephone) {

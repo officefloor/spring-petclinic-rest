@@ -64,11 +64,11 @@ public class OwnerUniqueIdentityAdvice extends RequestBodyAdviceAdapter {
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         OwnerFieldsDto dto = (OwnerFieldsDto) body;
-        String contact = OwnerIdentityKey.telephone(dto.getTelephone()) + '|' + OwnerIdentityKey.email(dto.getEmail());
+        String key = OwnerIdentityKey.of(dto);
         boolean duplicate = clinicService.findAllOwners().stream()
             .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
-            .map(o -> OwnerIdentityKey.telephone(o.getTelephone()) + '|' + OwnerIdentityKey.email(o.getEmail()))
-            .anyMatch(contact::equals);
+            .map(OwnerIdentityKey::of)
+            .anyMatch(key::equals);
         if (duplicate) {
             throw new DuplicateIdentityException();
         }
