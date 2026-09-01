@@ -1,0 +1,172 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 8d03a9723..eb844d339 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,28 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line1")
++    private String addressLine1;
++
++    @Column(name = "address_line2")
++    private String addressLine2;
++
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerAddressNormalizationAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerAddressNormalizationAdvice.java
+index a12fe1292..8e505aa8f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerAddressNormalizationAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerAddressNormalizationAdvice.java
+@@ -54,7 +54,19 @@ public class OwnerAddressNormalizationAdvice extends RequestBodyAdviceAdapter {
+     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+         OwnerFieldsDto owner = (OwnerFieldsDto) body;
+-        owner.setAddress(normalize(owner.getAddress()));
++        String line1 = owner.getAddressLine1();
++        if (line1 != null && !line1.isBlank()) {
++            String normalizedLine1 = normalize(line1);
++            owner.setAddressLine1(normalizedLine1);
++            String line2 = owner.getAddressLine2();
++            boolean hasLine2 = line2 != null && !line2.isBlank();
++            String normalizedLine2 = hasLine2 ? normalize(line2) : null;
++            owner.setAddressLine2(normalizedLine2);
++            owner.setAddress(hasLine2 ? normalizedLine1 + " " + normalizedLine2 : normalizedLine1);
++        }
++        else {
++            owner.setAddress(normalize(owner.getAddress()));
++        }
+         return body;
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
+index 14fbc3e74..782c967db 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
+@@ -64,18 +64,24 @@ public class OwnerFieldsValidationAdvice extends RequestBodyAdviceAdapter {
+         List<String> missing = new ArrayList<>();
+         addIfBlank(missing, "firstName", owner.getFirstName());
+         addIfBlank(missing, "lastName", owner.getLastName());
+-        addIfBlank(missing, "address", owner.getAddress());
++        if (isBlank(owner.getAddressLine1()) && isBlank(owner.getAddress())) {
++            missing.add("address");
++        }
+         addIfBlank(missing, "city", owner.getCity());
+         addIfBlank(missing, "telephone", owner.getTelephone());
+         return missing;
+     }
+ 
+     private void addIfBlank(List<String> missing, String field, String value) {
+-        if (value == null || value.isBlank()) {
++        if (isBlank(value)) {
+             missing.add(field);
+         }
+     }
+ 
++    private boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
++
+     @ExceptionHandler(MissingOwnerFieldsException.class)
+     @ResponseBody
+     public ResponseEntity<Map<String, List<String>>> handleMissingOwnerFields(MissingOwnerFieldsException e) {
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b02f5ea2..fa9897590 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 33dc32cbf..eaa2b65a8 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,9 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_size INTEGER,
+   postcode VARCHAR(4),
+-  birth_date DATE
++  birth_date DATE,
++  address_line1 VARCHAR(255),
++  address_line2 VARCHAR(255)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a146937e8..020e983e5 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,23 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. When structured fields are supplied it is the composed 'addressLine1 addressLine2' (addressLine2 appended after a single space when present); otherwise the flat input is accepted for backward compatibility.
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the owner's structured postal address. Preferred over the flat 'address' when present.
++          type: string
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the owner's structured postal address.
++          type: string
++          maxLength: 255
++          example: 'Apartment 4B'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2063,7 +2075,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
