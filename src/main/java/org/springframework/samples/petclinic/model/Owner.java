@@ -63,6 +63,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
+    @Column(name = "bulk_signup_warning")
+    private Boolean bulkSignupWarning;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -75,6 +78,15 @@ public class Owner extends Person {
 
     public java.time.LocalDate getRegistrationDate() {
         return this.registrationDate;
+    }
+
+    /** True when more than 80 owners were already created on this owner's registration date. */
+    public Boolean getBulkSignupWarning() {
+        return this.bulkSignupWarning != null && this.bulkSignupWarning;
+    }
+
+    public void setBulkSignupWarning(boolean bulkSignupWarning) {
+        this.bulkSignupWarning = bulkSignupWarning;
     }
 
     public void setRegistrationDate(java.time.LocalDate registrationDate) {

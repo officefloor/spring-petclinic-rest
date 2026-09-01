@@ -121,6 +121,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .forEach(this.clinicService::saveOwner);
         owner.assignCustomerCode(CityCodes.countInCity(owners, owner));
         owner.setNamesakeCount(Namesakes.count(owners, owner));
+        owner.setBulkSignupWarning(BulkSignups.exceededDailyLimit(owners, owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
