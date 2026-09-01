@@ -59,6 +59,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "customer_code")
     private String customerCode;
 
@@ -116,6 +119,19 @@ public class Owner extends Person {
 
     public void setBirthDate(java.time.LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /** Salutation composed from the optional title and last name (see {@link Salutations}). */
+    public String getSalutation() {
+        return Salutations.compose(this.title, this.lastName);
     }
 
     public String getCustomerCode() {
