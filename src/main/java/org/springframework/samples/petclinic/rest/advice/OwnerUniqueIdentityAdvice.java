@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.rest.advice;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
-import java.util.Locale;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
@@ -36,17 +35,20 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
 
 /**
- * Rejects creating an owner whose lower-cased email is already used by another owner,
- * answering 409. An absent email is accepted. Kept as its own advice so this rule stays a
- * small, self-contained unit rather than growing the controller or another handler.
+ * Rejects creating an owner whose derived {@code identityKey} exactly matches an existing
+ * owner's, answering 409. The key is
+ * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} and is the single
+ * source of duplicate detection: telephone, email and household all contribute to it, so only
+ * a whole-key match is a duplicate (household members with different telephones differ and are
+ * both allowed). Kept as its own small advice so the rule stays a self-contained unit.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class OwnerUniqueEmailAdvice extends RequestBodyAdviceAdapter {
+public class OwnerUniqueIdentityAdvice extends RequestBodyAdviceAdapter {
 
     private final ClinicService clinicService;
 
-    public OwnerUniqueEmailAdvice(ClinicService clinicService) {
+    public OwnerUniqueIdentityAdvice(ClinicService clinicService) {
         this.clinicService = clinicService;
     }
 
@@ -61,35 +63,28 @@ public class OwnerUniqueEmailAdvice extends RequestBodyAdviceAdapter {
     @Override
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
-        String email = lowerCased(((OwnerFieldsDto) body).getEmail());
-        if (email != null && isTaken(email)) {
-            throw new DuplicateEmailException();
+        OwnerFieldsDto dto = (OwnerFieldsDto) body;
+        String contact = OwnerIdentityKey.telephone(dto.getTelephone()) + '|' + OwnerIdentityKey.email(dto.getEmail());
+        boolean duplicate = clinicService.findAllOwners().stream()
+            .map(o -> OwnerIdentityKey.telephone(o.getTelephone()) + '|' + OwnerIdentityKey.email(o.getEmail()))
+            .anyMatch(contact::equals);
+        if (duplicate) {
+            throw new DuplicateIdentityException();
         }
         return body;
     }
 
-    private boolean isTaken(String email) {
-        return clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .map(this::lowerCased)
-            .anyMatch(email::equals);
-    }
-
-    private String lowerCased(String email) {
-        return (email == null || email.isBlank()) ? null : email.strip().toLowerCase(Locale.ROOT);
-    }
-
-    @ExceptionHandler(DuplicateEmailException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<String> handleDuplicateEmail(DuplicateEmailException e) {
+    public ResponseEntity<String> handleDuplicateIdentity(DuplicateIdentityException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
     }
 
-    /** Signals an email already used by another owner. */
-    static class DuplicateEmailException extends RuntimeException {
+    /** Signals an owner whose whole identityKey is already used by another owner. */
+    static class DuplicateIdentityException extends RuntimeException {
 
-        DuplicateEmailException() {
-            super("email already in use");
+        DuplicateIdentityException() {
+            super("owner with the same identity already exists");
         }
     }
 }
