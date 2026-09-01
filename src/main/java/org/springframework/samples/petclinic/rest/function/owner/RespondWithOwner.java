@@ -13,6 +13,7 @@ public class RespondWithOwner {
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
+        dto.setContactPreference(ContactPreference.of(owner));
         response.send(dto);
     }
 }
