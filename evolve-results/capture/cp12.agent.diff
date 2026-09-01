@@ -1,0 +1,51 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 000000000..35d855ab1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * Canonical form of a postal address, applied whenever an owner is created: trim and collapse
++ * whitespace, upper-case, and expand common abbreviations (ST-&gt;STREET, RD-&gt;ROAD, AVE-&gt;AVENUE).
++ * Blank input (or input that is blank once trimmed) normalizes to {@code ""}. Used both to store the
++ * address and for every address comparison (household duplicate detection and the shared household id).
++ */
++public final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS =
++            Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    public static String normalize(String raw) {
++        String collapsed = (raw == null ? "" : raw).trim().replaceAll("\\s+", " ").toUpperCase();
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (String token : collapsed.split(" ")) {
++            if (sb.length() > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(token, token));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 20667a97f..134f3a35a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -15,6 +15,7 @@ public class BuildOwner {
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+             Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
+         Owner owner = ownerMapper.toOwner(request);
++        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+         owner.setTelephone(toE164(owner.getTelephone()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(java.time.LocalDate.now());
