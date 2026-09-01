@@ -73,7 +73,7 @@ public class Owner extends Person {
     }
 
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        this.telephone = (telephone == null) ? null : telephone.replaceAll("\\D", "");
     }
 
     protected Set<Pet> getPetsInternal() {
