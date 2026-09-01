@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 898c6b3a8..14f1c633e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,7 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier", expression = "java(java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "membershipLevel", expression = "java(java.lang.Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index ef2acb08e..75c204b47 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -4,26 +4,11 @@ import net.officefloor.plugin.variable.Val;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+-            ObjectResponse<OwnerDto> response) {
+-        OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        String householdId = owner.getHouseholdId();
+-        if (householdId != null) {
+-            int members = 0;
+-            for (Owner existing : ownerRepository.findAll()) {
+-                if (householdId.equals(existing.getHouseholdId())) {
+-                    members++;
+-                }
+-            }
+-            if (members >= 3) {
+-                dto.setMembershipTier("GOLD");
+-            }
+-        }
+-        response.send(dto);
++    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
++        response.send(ownerMapper.toOwnerDto(owner));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3da97472b..65d43501a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2109,11 +2109,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "The owner's membership tier: 'SILVER' when they have no namesakes and an email address, otherwise 'BRONZE'."
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: "The owner's membership level from 1 to 3, assigned on creation: start at 1, add 1 when an email is present, add 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             initials:
+               title: Initials
