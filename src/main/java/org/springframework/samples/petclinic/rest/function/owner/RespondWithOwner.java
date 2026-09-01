@@ -12,6 +12,7 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+        dto.setSelfLink("/api/owners/" + owner.getId());
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
