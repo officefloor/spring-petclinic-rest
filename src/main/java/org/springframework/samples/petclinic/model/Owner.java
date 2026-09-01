@@ -53,6 +53,9 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "household_id")
+    private String householdId;
+
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
@@ -86,6 +89,14 @@ public class Owner extends Person {
     public void assignCustomerCode(int existingOwnerCount) {
         String prefix = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
         this.customerCode = String.format("%s-%04d", prefix, existingOwnerCount + 1);
+    }
+
+    public String getHouseholdId() {
+        return this.householdId;
+    }
+
+    public void setHouseholdId(String householdId) {
+        this.householdId = householdId;
     }
 
     public String getEmail() {
