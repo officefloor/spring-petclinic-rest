@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1a24986ba..8d965dba6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerTelephoneNormalizationAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerTelephoneNormalizationAdvice.java
+index f893b72aa..8a6defe31 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerTelephoneNormalizationAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerTelephoneNormalizationAdvice.java
+@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.ResponseBody;
+ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+ 
+ /**
+- * Normalizes an owner's telephone before the request reaches the controller: every
+- * non-digit character is stripped, and the result must be exactly ten digits or the
+- * request is rejected with a 400. Kept as its own advice so this rule stays a small,
+- * self-contained unit rather than growing the controller or another handler.
++ * Normalizes an owner's telephone to E.164 before the request reaches the controller: a
++ * leading '+' keeps its country code, otherwise country code '+61' is assumed and a single
++ * leading '0' dropped; spaces, dashes and brackets are stripped and 8 to 15 digits must
++ * remain after the '+' or the request is rejected with a 400. Kept as its own advice so
++ * this rule stays a small, self-contained unit rather than growing the controller or another
++ * handler.
+  */
+ @ControllerAdvice
+ @Order(Ordered.HIGHEST_PRECEDENCE)
+@@ -51,16 +53,24 @@ public class OwnerTelephoneNormalizationAdvice extends RequestBodyAdviceAdapter
+     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+         OwnerFieldsDto owner = (OwnerFieldsDto) body;
+-        owner.setTelephone(normalize(owner.getTelephone()));
++        owner.setTelephone(toE164(owner.getTelephone()));
+         return body;
+     }
+ 
+-    private String normalize(String telephone) {
+-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++    /** Converts a telephone to its E.164 string, or throws when no valid form exists. */
++    static String toE164(String telephone) {
++        String trimmed = telephone == null ? "" : telephone.trim();
++        String digits = trimmed.replaceAll("\\D", "");
++        if (!trimmed.startsWith("+")) {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            digits = "61" + digits;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
+             throw new InvalidTelephoneException();
+         }
+-        return digits;
++        return "+" + digits;
+     }
+ 
+     @ExceptionHandler(InvalidTelephoneException.class)
+@@ -69,11 +79,11 @@ public class OwnerTelephoneNormalizationAdvice extends RequestBodyAdviceAdapter
+         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+     }
+ 
+-    /** Signals a telephone that is not exactly ten digits once non-digits are stripped. */
++    /** Signals a telephone that cannot form a valid E.164 number. */
+     static class InvalidTelephoneException extends RuntimeException {
+ 
+         InvalidTelephoneException() {
+-            super("telephone must be exactly 10 digits");
++            super("telephone must form a valid E.164 number");
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java
+index a0eaed420..52e0c34b9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java
+@@ -35,9 +35,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
+ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+ 
+ /**
+- * Rejects creating an owner whose normalized telephone (digits only) is already used by
+- * another owner, answering 409. Kept as its own advice so this rule stays a small,
+- * self-contained unit rather than growing the controller or another handler.
++ * Rejects creating an owner whose E.164 telephone is already used by another owner,
++ * answering 409. Kept as its own advice so this rule stays a small, self-contained unit
++ * rather than growing the controller or another handler.
+  */
+ @ControllerAdvice
+ @Order(Ordered.HIGHEST_PRECEDENCE)
+@@ -60,20 +60,16 @@ public class OwnerUniqueTelephoneAdvice extends RequestBodyAdviceAdapter {
+     @Override
+     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+-        String telephone = digits(((OwnerFieldsDto) body).getTelephone());
++        String telephone = OwnerTelephoneNormalizationAdvice.toE164(((OwnerFieldsDto) body).getTelephone());
+         boolean duplicate = clinicService.findAllOwners().stream()
+             .map(Owner::getTelephone)
+-            .anyMatch(existing -> telephone.equals(digits(existing)));
++            .anyMatch(telephone::equals);
+         if (duplicate) {
+             throw new DuplicateTelephoneException();
+         }
+         return body;
+     }
+ 
+-    private String digits(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+-    }
+-
+     @ExceptionHandler(DuplicateTelephoneException.class)
+     @ResponseBody
+     public ResponseEntity<String> handleDuplicateTelephone(DuplicateTelephoneException e) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d7e84508f..0305d6f4a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2029,8 +2029,8 @@ components:
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: '^[0-9]*$'
+-          example: '6085551023'
++          pattern: '^\+[0-9]{8,15}$'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Stored and returned lower-cased.
