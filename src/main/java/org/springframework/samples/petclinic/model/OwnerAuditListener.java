@@ -15,8 +15,13 @@ public class OwnerAuditListener {
 
     @PostPersist
     public void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevels.levelOf(owner));
+            MembershipLevels.levelOf(owner), membershipNumber(owner));
+    }
+
+    private static String membershipNumber(Owner owner) {
+        return owner.getCustomerCode() + "-M"
+            + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
     }
 }
