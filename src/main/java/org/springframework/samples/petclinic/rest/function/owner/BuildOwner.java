@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,7 +24,11 @@ public class BuildOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        built.set(owner);
     }
 
     private static void require(String field, String value, List<String> missing) {
