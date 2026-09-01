@@ -10,7 +10,7 @@ public final class MembershipLevels {
     private MembershipLevels() {
     }
 
-    /** Membership level (1 to 3) for {@code owner}. */
+    /** Membership level (1 to 4) for {@code owner}; level 4 requires tenure over 365 days. */
     public static int levelOf(Owner owner) {
         int level = 1;
         if (owner.getEmail() != null) {
@@ -19,6 +19,12 @@ public final class MembershipLevels {
         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        java.time.LocalDate registered = owner.getRegistrationDate();
+        if (registered != null
+                && java.time.temporal.ChronoUnit.DAYS.between(registered, java.time.LocalDate.now()) > 365) {
+            level++;
+        }
+        return level;
     }
 }
