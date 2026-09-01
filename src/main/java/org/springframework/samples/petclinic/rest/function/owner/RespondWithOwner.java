@@ -17,6 +17,7 @@ public class RespondWithOwner {
         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
         dto.setLocality(Locality.of(owner));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
+        dto.setContactPreference(ContactPreference.of(owner));
         response.send(dto);
     }
 }
