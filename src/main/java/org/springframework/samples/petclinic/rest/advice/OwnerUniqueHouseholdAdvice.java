@@ -1,0 +1,124 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.advice;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.util.Locale;
+
+import org.springframework.core.MethodParameter;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpInputMessage;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.util.StreamUtils;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * Rejects creating an owner whose lastName and address already belong to another owner
+ * (compared case-insensitively with collapsed whitespace), answering 409 — unless the
+ * request opts in with {@code sharesHousehold=true}. The opt-in flag is not a stored
+ * owner field, so the raw body is read here before deserialization. Kept as its own
+ * advice so the rule stays a small, self-contained unit.
+ */
+@ControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class OwnerUniqueHouseholdAdvice extends RequestBodyAdviceAdapter {
+
+    private final ClinicService clinicService;
+
+    private final ObjectMapper objectMapper;
+
+    public OwnerUniqueHouseholdAdvice(ClinicService clinicService, ObjectMapper objectMapper) {
+        this.clinicService = clinicService;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public boolean supports(MethodParameter methodParameter, Type targetType,
+                            Class<? extends HttpMessageConverter<?>> converterType) {
+        Method method = methodParameter.getMethod();
+        return OwnerFieldsDto.class.equals(targetType)
+            && method != null && "addOwner".equals(method.getName());
+    }
+
+    @Override
+    public HttpInputMessage beforeBodyRead(HttpInputMessage inputMessage, MethodParameter parameter,
+                                           Type targetType, Class<? extends HttpMessageConverter<?>> converterType)
+            throws java.io.IOException {
+        byte[] body = StreamUtils.copyToByteArray(inputMessage.getBody());
+        JsonNode json = objectMapper.readTree(body);
+        if (!json.path("sharesHousehold").asBoolean(false) && isDuplicateHousehold(json)) {
+            throw new DuplicateHouseholdException();
+        }
+        return buffered(body, inputMessage.getHeaders());
+    }
+
+    private boolean isDuplicateHousehold(JsonNode json) {
+        String lastName = normalize(json.path("lastName").asString());
+        String address = normalize(json.path("address").asString());
+        return clinicService.findAllOwners().stream()
+            .anyMatch(o -> lastName.equals(normalize(o.getLastName()))
+                && address.equals(normalize(o.getAddress())));
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static HttpInputMessage buffered(byte[] body, HttpHeaders headers) {
+        return new HttpInputMessage() {
+            @Override
+            public InputStream getBody() {
+                return new ByteArrayInputStream(body);
+            }
+
+            @Override
+            public HttpHeaders getHeaders() {
+                return headers;
+            }
+        };
+    }
+
+    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ResponseBody
+    public ResponseEntity<String> handleDuplicateHousehold(DuplicateHouseholdException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+    }
+
+    /** Signals a lastName + address pair already used by another owner. */
+    static class DuplicateHouseholdException extends RuntimeException {
+
+        DuplicateHouseholdException() {
+            super("owner with the same last name and address already exists");
+        }
+    }
+}
