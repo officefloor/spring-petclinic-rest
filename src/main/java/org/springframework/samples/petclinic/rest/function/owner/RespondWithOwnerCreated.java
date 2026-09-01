@@ -17,7 +17,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
-        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
+        dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
