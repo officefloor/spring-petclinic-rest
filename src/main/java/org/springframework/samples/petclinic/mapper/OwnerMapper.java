@@ -26,13 +26,12 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
-    @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : Fiscal.label(owner.getRegistrationDate()))")
-    @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
-    @Mapping(target = "timezone", expression = "java(Locality.timezone(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
-    @Mapping(target = "ownerSegment", expression = "java(OwnerSegment.of(membershipLevel(owner), owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
+    @Mapping(target = "fiscalYear", expression = "java(MemberId.fiscalYear(owner.getMemberId()))")
+    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity(), owner.getPostcode()))")
+    @Mapping(target = "timezone", expression = "java(Locality.timezone(Locality.of(owner.getCity(), owner.getPostcode())))")
+    @Mapping(target = "ownerSegment", expression = "java(OwnerSegment.of(membershipLevel(owner), MemberId.region(owner.getMemberId())))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Points: 0 base, +2 email present, +1 namesakeCount 0, +2 household of 3 or more,
@@ -64,14 +63,6 @@ public interface OwnerMapper {
         LocalDate registrationDate = owner.getRegistrationDate();
         return registrationDate != null
             && Fiscal.startYear(registrationDate) < Fiscal.startYear(LocalDate.now());
-    }
-
-    /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate fiscal year; null when either input is absent. */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return owner.getCustomerCode() + "-M" + String.format("%02d", Fiscal.startYear(owner.getRegistrationDate()) % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);

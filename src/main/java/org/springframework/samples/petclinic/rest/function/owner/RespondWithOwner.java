@@ -19,35 +19,9 @@ public class RespondWithOwner {
         dto.setContactPreference(ContactPreference.of(owner));
         dto.setIdentityKey(IdentityKey.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
-        dto.setCheckDigit(luhn(owner.getCustomerCode()));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(dto);
-    }
-
-    /** Luhn check digit (0-9) over the digits contained in {@code code}; null when absent. */
-    private static Integer luhn(String code) {
-        if (code == null) {
-            return null;
-        }
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
     }
 }

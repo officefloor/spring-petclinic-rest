@@ -12,7 +12,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Emits an audit line to the dedicated {@code AUDIT} logger once a create has succeeded.
  * Runs after {@code SaveOwner} so the persisted owner's id is available alongside the
- * assigned customerCode and the (business-day adjusted) registrationDate.
+ * assigned memberId and the (business-day adjusted) registrationDate.
  */
 public class AuditOwnerCreated {
 
@@ -21,22 +21,21 @@ public class AuditOwnerCreated {
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
     public void service(@Val Owner owner, OwnerMapper mapper) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                mapper.membershipLevel(owner), mapper.membershipNumber(owner));
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                mapper.membershipLevel(owner));
         AUDIT.info(new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
-                owner.getCustomerCode(), mapper.membershipLevel(owner)).toJson());
+                owner.getMemberId(), mapper.membershipLevel(owner)).toJson());
     }
 
     /**
-     * Immutable structured audit event. {@code identifier} is the owner's current primary
-     * identifier — the customerCode today, whatever unifies it (the memberId) later — so the
-     * event follows the primary identifier without this record changing shape.
+     * Immutable structured audit event. {@code identifier} is the owner's primary identifier,
+     * the unified memberId.
      */
     private record OwnerCreatedEvent(int seq, Integer ownerId, String identifier, Integer membershipLevel) {
         String toJson() {
             return String.format(
-                    "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":%s,\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+                    "{\"seq\":%d,\"ownerId\":%d,\"memberId\":%s,\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
                     seq, ownerId, quote(identifier), membershipLevel);
         }
 
