@@ -5,9 +5,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.dto.IdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.rest.function.owner.IdentityKey;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -32,7 +34,18 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone", expression = "java(Locality.timezone(Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "ownerSegment", expression = "java(OwnerSegment.of(membershipLevel(owner), MemberId.region(owner.getMemberId())))")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The version-2 identity object: the owner's derived identifiers grouped together. */
+    default IdentityDto toIdentity(Owner owner) {
+        IdentityDto identity = new IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(IdentityKey.of(owner));
+        return identity;
+    }
 
     /** Points: 0 base, +2 email present, +1 namesakeCount 0, +2 household of 3 or more,
      * +3 tenure over 365 days. */

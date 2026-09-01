@@ -18,7 +18,6 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
-        dto.setIdentityKey(IdentityKey.of(owner));
         // A declared household member is not a suspected duplicate.
         Integer possibleDuplicateOf = Boolean.TRUE.equals(request.getSharesHousehold()) ? null
                 : PossibleDuplicate.of(owner, ownerRepository);

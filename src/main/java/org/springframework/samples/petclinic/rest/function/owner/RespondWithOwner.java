@@ -17,7 +17,6 @@ public class RespondWithOwner {
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setCapacityWarning(CapacityWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
-        dto.setIdentityKey(IdentityKey.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);

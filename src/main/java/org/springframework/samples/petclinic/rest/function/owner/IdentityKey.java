@@ -13,13 +13,13 @@ import org.springframework.samples.petclinic.model.Owner;
  * duplicates only when their whole identity keys are equal, so members of the same household
  * with different telephones (or unlike-sounding names) get distinct keys.
  */
-final class IdentityKey {
+public final class IdentityKey {
 
     private IdentityKey() {
     }
 
-    static String of(Owner owner) {
-        String raw = digits(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()).toLowerCase()
+    public static String of(Owner owner) {
+        String raw = "V2|" + digits(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()).toLowerCase()
                 + '|' + Soundex.of(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

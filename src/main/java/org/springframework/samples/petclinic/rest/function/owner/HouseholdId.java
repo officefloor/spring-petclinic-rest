@@ -24,7 +24,7 @@ final class HouseholdId {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + '|' + postcode).getBytes(StandardCharsets.UTF_8));
+                    .digest(("V2|" + lastName + '|' + postcode).getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest).substring(0, 12).toUpperCase();
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException(ex);

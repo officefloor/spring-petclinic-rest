@@ -20,7 +20,7 @@ public final class MemberId {
 
     /** The member id (without any collision suffix) for {@code owner}; requires a registration date. */
     public static String of(Owner owner) {
-        String region = Locality.of(null, owner.getPostcode());
+        String region = "V2" + Locality.of(null, owner.getPostcode());
         String fy = String.format("%02d", Fiscal.startYear(owner.getRegistrationDate()) % 100);
         String hash8 = sha256Hex(orEmpty(owner.getTelephone()) + orEmpty(owner.getLastName()))
                 .substring(0, 8).toUpperCase();
@@ -34,7 +34,8 @@ public final class MemberId {
             return null;
         }
         String core = core(memberId);
-        return core.substring(0, core.length() - 11);
+        String region = core.substring(0, core.length() - 11);
+        return region.startsWith("V2") ? region.substring(2) : region;
     }
 
     /** The 'FY&lt;YY&gt;' fiscal-year label carried in {@code memberId}; null when absent. */
