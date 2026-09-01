@@ -12,7 +12,7 @@ public class BuildOwner {
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
             Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
         Owner owner = ownerMapper.toOwner(request);
-        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+        StructuredAddress.apply(owner);
         owner.setTelephone(toE164(owner.getTelephone()));
         java.time.LocalDate effective = owner.getRegistrationDate() == null
                 ? java.time.LocalDate.now() : owner.getRegistrationDate();
