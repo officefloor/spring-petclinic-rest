@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.model;
 /**
  * Derives an owner's membership points and the level mapped from them. Points:
  * +2 for a present email, +1 when namesakeCount is 0, +2 for a household of 3 or
- * more and +3 for tenure over 365 days. Level maps points 0-1 to 1, 2-3 to 2,
+ * more and +3 for tenure over one elapsed fiscal year. Level maps points 0-1 to 1, 2-3 to 2,
  * 4-5 to 3 and 6 or more to 4.
  */
 public final class MembershipLevels {
@@ -24,8 +24,7 @@ public final class MembershipLevels {
             points += 2;
         }
         java.time.LocalDate registered = owner.getRegistrationDate();
-        if (registered != null
-                && java.time.temporal.ChronoUnit.DAYS.between(registered, java.time.LocalDate.now()) > 365) {
+        if (registered != null && FiscalYear.elapsedSince(registered) > 1) {
             points += 3;
         }
         return points;
