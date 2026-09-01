@@ -17,10 +17,10 @@ public class RejectOwnerDailyLimit {
     private static final int LIMIT = 100;
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate day = owner.getRegistrationDate();
         int count = 0;
         for (Owner other : ownerRepository.findAll()) {
-            if (other != owner && today.equals(other.getRegistrationDate()) && ++count >= LIMIT) {
+            if (other != owner && day.equals(other.getRegistrationDate()) && ++count >= LIMIT) {
                 throw new DailyOwnerLimitException(LIMIT);
             }
         }

@@ -25,9 +25,8 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(missing);
         }
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate effective = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+        owner.setRegistrationDate(BusinessDay.nextBusinessDay(effective));
         built.set(owner);
     }
 
