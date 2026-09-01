@@ -12,13 +12,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 @Validated
 public class BuildOwner {
 
-    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
-            throws InvalidTelephoneException {
+    public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+            Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
         Owner owner = ownerMapper.toOwner(request);
         owner.setTelephone(toE164(owner.getTelephone()));
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(java.time.LocalDate.now());
         }
+        sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
         built.set(owner);
     }
 
