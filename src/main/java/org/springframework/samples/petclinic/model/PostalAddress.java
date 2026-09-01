@@ -30,6 +30,18 @@ final class PostalAddress {
     private PostalAddress() {
     }
 
+    /**
+     * The effective address: the composed structured lines when {@code line1} is
+     * present (a single space joining a present {@code line2}), otherwise {@code flat}.
+     * Both lines are expected to be already {@link #normalize(String) normalized}.
+     */
+    static String compose(String line1, String line2, String flat) {
+        if (line1 == null || line1.isBlank()) {
+            return flat;
+        }
+        return (line2 == null || line2.isBlank()) ? line1 : line1 + " " + line2;
+    }
+
     /** Returns {@code null} for a {@code null} input. */
     static String normalize(String raw) {
         if (raw == null) {

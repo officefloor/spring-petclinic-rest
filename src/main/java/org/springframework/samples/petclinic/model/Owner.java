@@ -36,8 +36,13 @@ import java.util.*;
 @EntityListeners(OwnerAuditListener.class)
 public class Owner extends Person {
     @Column(name = "address")
-    @NotEmpty
     private String address;
+
+    @Transient
+    private String addressLine1;
+
+    @Transient
+    private String addressLine2;
 
     @Column(name = "city")
     @NotEmpty
@@ -177,11 +182,27 @@ public class Owner extends Person {
     }
 
     public String getAddress() {
-        return this.address;
+        return PostalAddress.compose(this.addressLine1, this.addressLine2, this.address);
     }
 
     public void setAddress(String address) {
         this.address = PostalAddress.normalize(address);
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = PostalAddress.normalize(addressLine1);
+    }
+
+    public String getAddressLine2() {
+        return this.addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = PostalAddress.normalize(addressLine2);
     }
 
     public String getCity() {
