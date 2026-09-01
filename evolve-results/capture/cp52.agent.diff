@@ -1,0 +1,181 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java
+index 707818dbb..0325048d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java
+@@ -26,8 +26,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Derives an owner's {@code identityKey}, the single value all duplicate detection is based on:
+- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Kept as a small
+- * standalone unit so the request advice and the response mapper derive the key identically.
++ * the SHA-256 hex of {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}.
++ * Kept as a small standalone unit so the request advice and the response mapper derive the key
++ * identically.
+  */
+ public final class OwnerIdentityKey {
+ 
+@@ -43,7 +44,7 @@ public final class OwnerIdentityKey {
+     }
+ 
+     static String of(String telephone, String email, String lastName, String postcode) {
+-        return telephone(telephone) + '|' + email(email) + '|' + householdId(lastName, postcode);
++        return sha256Hex(telephone(telephone) + '|' + email(email) + '|' + OwnerSoundex.soundex(lastName));
+     }
+ 
+     static String telephone(String telephone) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPossibleDuplicateAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPossibleDuplicateAdvice.java
+index dd4ad6373..ffb4e76c6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPossibleDuplicateAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPossibleDuplicateAdvice.java
+@@ -16,25 +16,35 @@
+ 
+ package org.springframework.samples.petclinic.rest.advice;
+ 
++import java.util.Comparator;
++import java.util.Objects;
++
+ import org.springframework.core.MethodParameter;
+ import org.springframework.http.MediaType;
+ import org.springframework.http.converter.HttpMessageConverter;
+ import org.springframework.http.server.ServerHttpRequest;
+ import org.springframework.http.server.ServerHttpResponse;
++import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+ 
+ /**
+- * Records whether a returned owner is a suspected duplicate. Now that the household is keyed on
+- * (lastName, postcode), a second owner in an existing household is either rejected with 409 or,
+- * with {@code sharesHousehold}, created as a declared member — and a declared member is not a
+- * suspected duplicate. No other owner can share a household, so no created owner is ever flagged.
+- * Kept as its own small advice so this rule stays a self-contained unit.
++ * Flags a returned owner as a suspected duplicate (soft match) of an earlier owner. Now that the
++ * identity key includes the telephone, two owners with the same {@code soundex(lastName)} and
++ * postcode but different telephones share no identity key and are both created; the later one is a
++ * soft match of the earlier. Kept as its own small advice so this rule stays a self-contained unit.
+  */
+ @ControllerAdvice
+ public class OwnerPossibleDuplicateAdvice implements ResponseBodyAdvice<Object> {
+ 
++    private final ClinicService clinicService;
++
++    public OwnerPossibleDuplicateAdvice(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
+     @Override
+     public boolean supports(MethodParameter returnType,
+                             Class<? extends HttpMessageConverter<?>> converterType) {
+@@ -46,9 +56,24 @@ public class OwnerPossibleDuplicateAdvice implements ResponseBodyAdvice<Object>
+                                   Class<? extends HttpMessageConverter<?>> selectedConverterType,
+                                   ServerHttpRequest request, ServerHttpResponse response) {
+         if (body instanceof OwnerDto owner) {
+-            owner.setPossibleDuplicate(false);
+-            owner.setPossibleDuplicateOf(null);
++            Owner match = softMatch(owner);
++            owner.setPossibleDuplicate(match != null);
++            owner.setPossibleDuplicateOf(match == null ? null : match.getId());
+         }
+         return body;
+     }
++
++    /** The earliest non-deleted owner with the same soundex(lastName) and postcode but a
++     *  different identity key, or {@code null} when none exists. */
++    private Owner softMatch(OwnerDto owner) {
++        String soundex = OwnerSoundex.soundex(owner.getLastName());
++        return clinicService.findAllOwners().stream()
++            .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
++            .filter(o -> owner.getId() != null && o.getId() < owner.getId())
++            .filter(o -> Objects.equals(o.getPostcode(), owner.getPostcode()))
++            .filter(o -> soundex.equals(OwnerSoundex.soundex(o.getLastName())))
++            .filter(o -> !OwnerIdentityKey.of(o).equals(owner.getIdentityKey()))
++            .min(Comparator.comparing(Owner::getId))
++            .orElse(null);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerSoundex.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerSoundex.java
+new file mode 100644
+index 000000000..23ce0b8b7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerSoundex.java
+@@ -0,0 +1,59 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.Locale;
++
++/**
++ * Computes the standard 4-character Soundex code of a name (first letter followed by three
++ * digits). Used by the owner identity key and the soft-match rule to group phonetically similar
++ * last names. Kept as its own small, self-contained unit.
++ */
++final class OwnerSoundex {
++
++    /** Soundex digit for each letter A-Z ('0' means the letter is dropped). */
++    private static final String CODES = "01230120022455012623010202";
++
++    private OwnerSoundex() {
++    }
++
++    static String soundex(String name) {
++        String letters = (name == null) ? "" : name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "0000";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char previous = codeOf(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char digit = codeOf(letters.charAt(i));
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            if (letters.charAt(i) != 'H' && letters.charAt(i) != 'W') {
++                previous = digit;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static char codeOf(char letter) {
++        return CODES.charAt(letter - 'A');
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+index bf366dfe1..913b917e4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+@@ -64,11 +64,11 @@ public class OwnerUniqueIdentityAdvice extends RequestBodyAdviceAdapter {
+     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+         OwnerFieldsDto dto = (OwnerFieldsDto) body;
+-        String contact = OwnerIdentityKey.telephone(dto.getTelephone()) + '|' + OwnerIdentityKey.email(dto.getEmail());
++        String key = OwnerIdentityKey.of(dto);
+         boolean duplicate = clinicService.findAllOwners().stream()
+             .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
+-            .map(o -> OwnerIdentityKey.telephone(o.getTelephone()) + '|' + OwnerIdentityKey.email(o.getEmail()))
+-            .anyMatch(contact::equals);
++            .map(OwnerIdentityKey::of)
++            .anyMatch(key::equals);
+         if (duplicate) {
+             throw new DuplicateIdentityException();
+         }
