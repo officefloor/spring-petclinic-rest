@@ -103,6 +103,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
         if (owners.stream()
+            .filter(o -> java.time.LocalDate.now().equals(o.getRegistrationDate())).count() >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
+        if (owners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
