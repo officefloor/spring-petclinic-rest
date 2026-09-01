@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 224af26cf..2386ee864 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,6 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembershipLevel.of(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerLocality.region(owner))")
++    @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTimezone.of(owner))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java
+new file mode 100644
+index 000000000..ac76c5109
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTimezone.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Region-to-timezone lookup for owner identity. {@link #of} reads the owner's
++ * locality/region (see {@link OwnerLocality#region}) and maps it to an IANA timezone via the
++ * fixed table NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane; any other
++ * region has no mapping and yields {@code null}.
++ */
++public final class OwnerTimezone {
++
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
++    private OwnerTimezone() {
++    }
++
++    /** IANA timezone for the owner's region, or {@code null} when the region has no mapping. */
++    public static String of(Owner owner) {
++        return REGION_TIMEZONE.get(OwnerLocality.region(owner));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ba48741ba..ca8975607 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2179,6 +2179,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: "The owner's IANA timezone derived from their region (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane); absent for any other region."
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: "'EMAIL' when the owner has an email address, otherwise 'PHONE'."
