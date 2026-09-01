@@ -36,8 +36,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
 
 /**
- * Rejects creating an owner once 100 or more owners have already been created today (by
- * registrationDate), answering 429. Kept as its own advice so this rule stays a small,
+ * Rejects creating an owner once 100 or more owners already share the request's effective
+ * registration business day (by registrationDate), answering 429. Kept as its own advice so
+ * this rule stays a small,
  * self-contained unit rather than growing the controller or another handler.
  */
 @ControllerAdvice
@@ -63,10 +64,10 @@ public class OwnerDailyCreationLimitAdvice extends RequestBodyAdviceAdapter {
     @Override
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
-        LocalDate today = LocalDate.now();
+        LocalDate businessDay = RegistrationBusinessDay.effective(((OwnerFieldsDto) body).getRegistrationDate());
         long count = clinicService.findAllOwners().stream()
             .map(Owner::getRegistrationDate)
-            .filter(today::equals)
+            .filter(businessDay::equals)
             .count();
         if (count >= DAILY_LIMIT) {
             throw new DailyLimitReachedException();

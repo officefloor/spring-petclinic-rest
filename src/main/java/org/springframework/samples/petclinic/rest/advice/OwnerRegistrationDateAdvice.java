@@ -17,7 +17,6 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 import java.lang.reflect.Type;
-import java.time.LocalDate;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
@@ -29,10 +28,11 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
 
 /**
- * Defaults an owner's registration date before the request reaches the controller: when no
- * registration date is supplied it is set to the server's current date; a supplied date is
- * left untouched. Kept as its own advice so this rule stays a small, self-contained unit
- * rather than growing the controller or another handler.
+ * Resolves an owner's registration date to a business day before the request reaches the
+ * controller: a missing date defaults to the server's current date, and a supplied or
+ * defaulted weekend date rolls forward to the following Monday. Kept as its own advice so
+ * this rule stays a small, self-contained unit rather than growing the controller or another
+ * handler.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -48,9 +48,7 @@ public class OwnerRegistrationDateAdvice extends RequestBodyAdviceAdapter {
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         OwnerFieldsDto owner = (OwnerFieldsDto) body;
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(RegistrationBusinessDay.effective(owner.getRegistrationDate()));
         return body;
     }
 }
