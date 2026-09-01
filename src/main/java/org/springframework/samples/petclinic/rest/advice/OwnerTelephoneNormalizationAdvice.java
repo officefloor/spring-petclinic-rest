@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 import java.lang.reflect.Type;
+import java.util.Map;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
@@ -54,7 +55,26 @@ public class OwnerTelephoneNormalizationAdvice extends RequestBodyAdviceAdapter 
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         OwnerFieldsDto owner = (OwnerFieldsDto) body;
         owner.setTelephone(toE164(owner.getTelephone()));
+        checkNationalLength(owner.getTelephone());
         return body;
+    }
+
+    /** National-number digit count required per E.164 country code. */
+    private static final Map<String, Integer> NATIONAL_DIGITS = Map.of("61", 9, "1", 10);
+
+    /**
+     * Rejects a telephone whose national-number length is wrong for its country code:
+     * '+61' requires 9 national digits and '+1' requires 10. Country codes not listed
+     * here keep only the generic E.164 length rule applied in {@link #toE164}.
+     */
+    private static void checkNationalLength(String e164) {
+        String digits = e164.substring(1);
+        for (Map.Entry<String, Integer> country : NATIONAL_DIGITS.entrySet()) {
+            String code = country.getKey();
+            if (digits.startsWith(code) && digits.length() - code.length() != country.getValue()) {
+                throw new InvalidTelephoneException();
+            }
+        }
     }
 
     /** Converts a telephone to its E.164 string, or throws when no valid form exists. */
