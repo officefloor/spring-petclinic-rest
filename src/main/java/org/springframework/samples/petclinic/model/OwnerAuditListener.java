@@ -15,7 +15,8 @@ public class OwnerAuditListener {
 
     @PostPersist
     public void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            MembershipLevels.levelOf(owner));
     }
 }
