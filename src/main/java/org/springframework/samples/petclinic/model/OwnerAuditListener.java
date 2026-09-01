@@ -13,11 +13,14 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     @PostPersist
     public void onCreate(Owner owner) {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevels.levelOf(owner));
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getCustomerCode());
         OwnerCreatedEvent.emit(owner);
     }
 }
