@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1a24986ba..5d612bf46 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+new file mode 100644
+index 000000000..a37b727b6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/E164Telephone.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Converts a raw telephone into E.164 form: keeps a leading '+' and country code when present,
++ * otherwise assumes country code '+61' and drops a single leading '0' from the national digits.
++ * Spaces, dashes and brackets are stripped. Returns {@code null} when the result would not have
++ * 8 to 15 digits after the '+'.
++ */
++final class E164Telephone {
++
++    private E164Telephone() {
++    }
++
++    static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        boolean international = raw.trim().startsWith("+");
++        String digits = raw.replaceAll("\\D", "");
++        if (!international) {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            digits = "61" + digits;
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
++            return null;
++        }
++        return "+" + digits;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index eb98b8513..0f2afa3ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -7,17 +7,17 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
+ 
+ /**
+- * Strips every non-digit from the built owner's telephone, then requires exactly 10 digits.
+- * The normalized value is stored in place, so later steps save and return it as {@code telephone}.
+- * A telephone that is not exactly 10 digits is rejected 400 via {@link MissingOwnerFieldsException}.
++ * Rewrites the built owner's telephone into E.164 form (see {@link E164Telephone}) in place, so
++ * later steps save and return it as {@code telephone}. A number that cannot form valid E.164 is
++ * rejected 400 via {@link MissingOwnerFieldsException}.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val Owner owner) throws MissingOwnerFieldsException {
+-        String digits = owner.getTelephone().replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        String e164 = E164Telephone.toE164(owner.getTelephone());
++        if (e164 == null) {
+             throw new MissingOwnerFieldsException(List.of("telephone"));
+         }
+-        owner.setTelephone(digits);
++        owner.setTelephone(e164);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerTelephone.java
+index 9487ba92a..278197a18 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerTelephone.java
+@@ -6,9 +6,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException;
+ 
+ /**
+- * Rejects 409 when the built owner's normalized telephone is already used by any other owner.
+- * Runs after {@link NormalizeOwnerTelephone}, so the telephone compared here is already digits-only;
+- * existing owners' telephones are normalized the same way before comparing.
++ * Rejects 409 when the built owner's telephone is already used by any other owner.
++ * Runs after {@link NormalizeOwnerTelephone}, so the telephone compared here is already E.164;
++ * existing owners' telephones are converted to E.164 the same way before comparing.
+  */
+ public class RejectDuplicateOwnerTelephone {
+ 
+@@ -16,13 +16,9 @@ public class RejectDuplicateOwnerTelephone {
+             throws DuplicateOwnerTelephoneException {
+         String telephone = owner.getTelephone();
+         for (Owner other : ownerRepository.findAll()) {
+-            if (other != owner && telephone.equals(normalize(other.getTelephone()))) {
++            if (other != owner && telephone.equals(E164Telephone.toE164(other.getTelephone()))) {
+                 throw new DuplicateOwnerTelephoneException(telephone);
+             }
+         }
+     }
+-
+-    private static String normalize(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+-    }
+ }
