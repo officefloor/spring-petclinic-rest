@@ -15,6 +15,7 @@ public class RespondWithOwner {
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
+        dto.setLocality(Locality.of(owner));
         response.send(dto);
     }
 }
