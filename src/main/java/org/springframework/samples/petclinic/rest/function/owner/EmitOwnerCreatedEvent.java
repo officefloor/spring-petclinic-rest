@@ -10,10 +10,11 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits an immutable, structured {@code OWNER_CREATED} event on the {@code AUDIT} logger, alongside the
- * human-readable line from {@link AuditOwnerCreated}. Each event carries a monotonically increasing
- * {@code seq} across creates, the owner id, its membership level and the owner's current primary
- * identifier, the memberId (resolved by {@link #primaryIdentifier(Owner)}). Runs after Save so the id
- * is present.
+ * human-readable line from {@link AuditOwnerCreated}. The event is at {@code schemaVersion} 2 and
+ * carries a monotonically increasing {@code seq} across creates, the owner id, its membership level,
+ * its {@link OwnerSegment marketing segment} recomputed from the version-2 identity, and the owner's
+ * current primary identifier, the memberId (resolved by {@link #primaryIdentifier(Owner)}). Runs after
+ * Save so the id is present.
  */
 public class EmitOwnerCreatedEvent {
 
@@ -22,8 +23,10 @@ public class EmitOwnerCreatedEvent {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner) {
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-                SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), OwnerMembershipLevel.of(owner));
+        AUDIT.info(
+                "{\"schemaVersion\":2,\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), OwnerMembershipLevel.of(owner),
+                OwnerSegment.of(owner));
     }
 
     /** The owner's primary identifier — the memberId. */

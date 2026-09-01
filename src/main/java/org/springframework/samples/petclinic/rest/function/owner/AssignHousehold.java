@@ -16,7 +16,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignHousehold {
 
     public void service(@Val Owner owner) {
-        String key = normalize(owner.getLastName()) + "|" + orEmpty(owner.getPostcode());
+        String key = normalize(owner.getLastName()) + "|" + orEmpty(owner.getPostcode()) + "|V2";
         owner.setHouseholdId(hash12(key));
     }
 

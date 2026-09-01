@@ -20,7 +20,7 @@ public final class OwnerIdentity {
 
     public static String key(Owner owner) {
         return sha256Hex(orEmpty(owner.getTelephone()) + "|" + orEmpty(owner.getEmail()) + "|"
-                + Soundex.encode(owner.getLastName()));
+                + Soundex.encode(owner.getLastName()) + "|V2");
     }
 
     /** Full lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
