@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 6b08b246a..a5cebdb2e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "householdId", expression = "java(java.util.UUID.nameUUIDFromBytes((owner.getLastName() + \"|\" + owner.getAddress()).trim().replaceAll(\"\\\\s+\", \" \").toLowerCase(java.util.Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString())")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.of(owner))")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerCheckDigit.of(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(java.util.Map.of(20, \"NSW\", 30, \"VIC\", 40, \"QLD\").getOrDefault(owner.getPostcode() != null && owner.getPostcode().matches(\"[0-9]{4}\") ? Integer.parseInt(owner.getPostcode()) / 100 : -1, java.util.Map.of(\"Sydney\", \"NSW\", \"Melbourne\", \"VIC\", \"Brisbane\", \"QLD\").getOrDefault(owner.getCity(), \"UNKNOWN\")))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigit.java
+new file mode 100644
+index 000000000..33901b3ba
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigit.java
+@@ -0,0 +1,53 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code checkDigit}: the single Luhn check digit (0-9) computed over the digits
++ * of its customerCode. Kept as a small standalone unit so the response mapper can expose the value
++ * without growing.
++ */
++public final class OwnerCheckDigit {
++
++    private OwnerCheckDigit() {
++    }
++
++    public static Integer of(Owner owner) {
++        String code = owner.getCustomerCode();
++        return code == null ? null : luhn(code);
++    }
++
++    static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl && (d *= 2) > 9) {
++                d -= 9;
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 19b755b07..da8dad33c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2088,6 +2088,15 @@ components:
+               type: string
+               example: "SMI-0007"
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registrationDate year.
