@@ -112,7 +112,7 @@ public class Owner extends Person {
     }
 
     public void setAddress(String address) {
-        this.address = address;
+        this.address = PostalAddress.normalize(address);
     }
 
     public String getCity() {
