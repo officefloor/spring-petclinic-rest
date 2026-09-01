@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -28,7 +27,7 @@ public final class OwnerMembershipLevel {
         if (1 + owner.getPets().size() >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -49,8 +48,8 @@ public final class OwnerMembershipLevel {
         return 4;
     }
 
-    private static long tenureDays(Owner owner) {
+    private static int tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
-        return registrationDate == null ? 0 : ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return registrationDate == null ? 0 : FiscalYear.of(LocalDate.now()) - FiscalYear.of(registrationDate);
     }
 }

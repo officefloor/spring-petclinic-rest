@@ -19,7 +19,8 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + org.springframework.samples.petclinic.rest.function.owner.FiscalYear.twoDigit(owner.getRegistrationDate()))")
+    @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembershipLevel.of(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerLocality.region(owner))")
