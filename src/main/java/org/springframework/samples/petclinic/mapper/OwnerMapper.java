@@ -20,6 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "householdId", expression = "java(java.util.UUID.nameUUIDFromBytes((owner.getLastName() + \"|\" + owner.getAddress()).trim().replaceAll(\"\\\\s+\", \" \").toLowerCase(java.util.Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
