@@ -20,6 +20,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class, imports = {MembershipLevels.class, FiscalYear.class})
 public interface OwnerMapper {
 
+    @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", FiscalYear.startYearOf(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "fiscalYear", expression = "java(FiscalYear.labelOf(owner.getRegistrationDate()))")
