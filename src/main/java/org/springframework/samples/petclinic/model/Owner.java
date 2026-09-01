@@ -85,13 +85,15 @@ public class Owner extends Person {
     }
 
     /**
-     * Assign this owner's customerCode as '<LAST3>-<NNNN>', where LAST3 is the
-     * upper-cased first three letters of the last name and NNNN is a 4-digit,
-     * zero-padded sequence one greater than the current number of owners.
+     * Assign this owner's customerCode as '<CITY3>-<LAST3>-<NNNN>', where CITY3 and
+     * LAST3 are the upper-cased first three letters of the city and last name and
+     * NNNN is a 4-digit, zero-padded sequence one greater than the number of owners
+     * already in this owner's city.
      */
-    public void assignCustomerCode(int existingOwnerCount) {
-        String prefix = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
-        this.customerCode = String.format("%s-%04d", prefix, existingOwnerCount + 1);
+    public void assignCustomerCode(int existingCityCount) {
+        String city3 = this.city.substring(0, Math.min(3, this.city.length())).toUpperCase(Locale.ROOT);
+        String last3 = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
+        this.customerCode = String.format("%s-%s-%04d", city3, last3, existingCityCount + 1);
     }
 
     public Integer getNamesakeCount() {
