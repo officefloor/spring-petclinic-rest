@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerLocality.region(owner))")
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerTimezone.of(owner))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand.of(owner))")
