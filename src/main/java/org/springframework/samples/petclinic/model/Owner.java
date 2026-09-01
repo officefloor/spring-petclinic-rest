@@ -57,8 +57,19 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
+    @Transient
+    private Boolean sharesHousehold;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public Boolean getSharesHousehold() {
+        return this.sharesHousehold;
+    }
+
+    public void setSharesHousehold(Boolean sharesHousehold) {
+        this.sharesHousehold = sharesHousehold;
+    }
 
     public String getCustomerCode() {
         return this.customerCode;
