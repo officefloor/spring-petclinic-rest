@@ -102,8 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
+        owner.setRegistrationDate(BusinessDays.effective(owner));
         if (owners.stream()
-            .filter(o -> java.time.LocalDate.now().equals(o.getRegistrationDate())).count() >= 100) {
+            .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         if (owners.stream()
