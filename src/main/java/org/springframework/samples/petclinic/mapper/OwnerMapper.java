@@ -34,6 +34,7 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
     @Mapping(target = "identityKey", expression = "java(IdentityKeys.of(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(OwnerSegments.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
