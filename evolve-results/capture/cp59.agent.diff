@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index d23ab4821..3f22cb35a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -36,6 +36,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Global Exception handler for REST controllers.
+@@ -122,6 +123,23 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    /**
++     * Handles {@link ResponseStatusException} raised by controllers to reject a request (e.g. 409
++     * Conflict, 429 Too Many Requests), rendering it as an RFC 7807 {@code application/problem+json}
++     * body while preserving the exception's HTTP status.
++     *
++     * @param e The {@link ResponseStatusException} to be handled
++     * @param request {@link HttpServletRequest} object referring to the current request.
++     * @return A {@link ResponseEntity} carrying the problem detail and the exception's status
++     */
++    @ExceptionHandler(ResponseStatusException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getReason());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     /**
+      * Handles exception thrown by Bean Validation on controller methods parameters
+      *
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 49fbb8e20..9e7be9bfd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ import org.springframework.web.util.UriComponentsBuilder;
+ 
+ import jakarta.transaction.Transactional;
+@@ -112,13 +113,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setRegistrationDate(BusinessDays.effective(owner));
+         if (owners.stream()
+             .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
+-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
++                "Daily owner-registration limit reached for this date");
+         }
+         if (Identities.isDuplicate(owners, owner)) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "An owner with the same identity already exists");
+         }
+         if (CityCodes.countInCity(owners, owner) >= 50) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                "The owner capacity for this city has been reached");
+         }
+         owner.setHouseholdMemberCount(Households.size(owners, owner));
+         owner.setMembershipLevelCap(Households.ceilingLevel(owners, owner));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+index 439169a2b..c3df454f0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/PostcodeValidator.java
+@@ -27,7 +27,8 @@ public class PostcodeValidator implements ConstraintValidator<PostcodeValidation
+         if (postcode == null || !postcode.matches("\\d{4}")) {
+             return true;
+         }
+-        int[] range = CITY_RANGE.get(owner.getCity());
++        String city = owner.getCity();
++        int[] range = city == null ? null : CITY_RANGE.get(city);
+         if (range == null) {
+             return true;
+         }
