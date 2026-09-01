@@ -24,7 +24,7 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
-    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
+    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity(), owner.getPostcode()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Numeric level 1-3 assigned on creation: starts at 1, +1 when an email is present,
