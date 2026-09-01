@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+new file mode 100644
+index 000000000..0a59da80b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Households.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Household-identity rule for owners: two owners share a household when they have
++ * the same last name and the same address, compared case-insensitively with
++ * collapsed whitespace.
++ */
++final class Households {
++
++    private Households() {
++    }
++
++    /**
++     * Whether {@code candidate} duplicates the household of an existing owner and so
++     * should be rejected. A {@code sharesHousehold} flag of {@code true} opts out.
++     */
++    static boolean isDuplicate(Collection<Owner> existing, Owner candidate, Boolean sharesHousehold) {
++        if (Boolean.TRUE.equals(sharesHousehold)) {
++            return false;
++        }
++        return existing.stream().anyMatch(other -> sameHousehold(other, candidate));
++    }
++
++    private static boolean sameHousehold(Owner a, Owner b) {
++        return normalize(a.getLastName()).equals(normalize(b.getLastName()))
++            && normalize(a.getAddress()).equals(normalize(b.getAddress()));
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 606ef40ce..cf956668c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -106,6 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
++            return new ResponseEntity<>(HttpStatus.CONFLICT);
++        }
+         owner.assignCustomerCode(owners.size());
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5c2ce0d95..f1edc4009 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2046,6 +2046,11 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: When true, allow creating this owner even though another owner has the same last name and address.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
