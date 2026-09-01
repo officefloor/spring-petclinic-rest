@@ -69,6 +69,9 @@ public class Owner extends Person {
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
+    @Column(name = "birth_date")
+    private java.time.LocalDate birthDate;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -97,6 +100,14 @@ public class Owner extends Person {
 
     public void setRegistrationDate(java.time.LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public java.time.LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(java.time.LocalDate birthDate) {
+        this.birthDate = birthDate;
     }
 
     public String getCustomerCode() {
