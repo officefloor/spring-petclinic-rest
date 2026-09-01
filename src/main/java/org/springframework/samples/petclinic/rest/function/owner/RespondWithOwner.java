@@ -22,6 +22,7 @@ public class RespondWithOwner {
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
+        dto.setRiskFlag(RiskFlag.isActive(owner, ownerRepository));
         response.send(dto);
     }
 }
