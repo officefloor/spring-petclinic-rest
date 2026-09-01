@@ -106,6 +106,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.assignCustomerCode(owners.size());
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
