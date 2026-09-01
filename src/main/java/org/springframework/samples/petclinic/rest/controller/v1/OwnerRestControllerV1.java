@@ -99,6 +99,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = IdempotencyKeys.current();
+        Owner replayed = IdempotencyKeys.seen(idempotencyKey);
+        if (replayed != null) {
+            return new ResponseEntity<>(ownerMapper.toOwnerDto(replayed), HttpStatus.OK);
+        }
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setHouseholdId(Households.idFor(owner));
@@ -125,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setPossibleDuplicateOf(
             PossibleDuplicates.matchId(owners, owner, ownerFieldsDto.getSharesHousehold()));
         this.clinicService.saveOwner(owner);
+        IdempotencyKeys.remember(idempotencyKey, owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
