@@ -1,0 +1,177 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e0420e4d6..2301c0abb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -36,9 +36,14 @@ import java.util.*;
+ @EntityListeners(OwnerAuditListener.class)
+ public class Owner extends Person {
+     @Column(name = "address")
+-    @NotEmpty
+     private String address;
+ 
++    @Transient
++    private String addressLine1;
++
++    @Transient
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -177,13 +182,29 @@ public class Owner extends Person {
+     }
+ 
+     public String getAddress() {
+-        return this.address;
++        return PostalAddress.compose(this.addressLine1, this.addressLine2, this.address);
+     }
+ 
+     public void setAddress(String address) {
+         this.address = PostalAddress.normalize(address);
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = PostalAddress.normalize(addressLine1);
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = PostalAddress.normalize(addressLine2);
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/PostalAddress.java b/src/main/java/org/springframework/samples/petclinic/model/PostalAddress.java
+index a41ae9031..bd2d9ec4c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/PostalAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/PostalAddress.java
+@@ -30,6 +30,18 @@ final class PostalAddress {
+     private PostalAddress() {
+     }
+ 
++    /**
++     * The effective address: the composed structured lines when {@code line1} is
++     * present (a single space joining a present {@code line2}), otherwise {@code flat}.
++     * Both lines are expected to be already {@link #normalize(String) normalized}.
++     */
++    static String compose(String line1, String line2, String flat) {
++        if (line1 == null || line1.isBlank()) {
++            return flat;
++        }
++        return (line2 == null || line2.isBlank()) ? line1 : line1 + " " + line2;
++    }
++
+     /** Returns {@code null} for a {@code null} input. */
+     static String normalize(String raw) {
+         if (raw == null) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressRequired.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressRequired.java
+new file mode 100644
+index 000000000..c5c64b87c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/AddressRequired.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.lang.annotation.Documented;
++import java.lang.annotation.ElementType;
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++import java.lang.annotation.Target;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++import jakarta.validation.Payload;
++
++/**
++ * Class-level rule that an owner supplies an address in either form: a non-blank
++ * structured {@code addressLine1}, or the flat backward-compatible {@code address}.
++ */
++@Target({ ElementType.TYPE })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = AddressRequired.Validator.class)
++@Documented
++public @interface AddressRequired {
++
++    String message() default "An address is required (addressLine1 or address)";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++
++    class Validator implements ConstraintValidator<AddressRequired, OwnerFieldsDto> {
++
++        @Override
++        public boolean isValid(OwnerFieldsDto owner, ConstraintValidatorContext context) {
++            return present(owner.getAddressLine1()) || present(owner.getAddress());
++        }
++
++        private static boolean present(String value) {
++            return value != null && !value.isBlank();
++        }
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 56008709b..11ba9aeac 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -1991,7 +1991,7 @@ components:
+     OwnerFields:
+       title: Owner fields
+       description: Editable fields of a pet owner.
+-      x-class-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.PostcodeValidation"
++      x-class-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.PostcodeValidation @org.springframework.samples.petclinic.rest.validation.AddressRequired"
+       type: object
+       properties:
+         firstName:
+@@ -2012,12 +2012,31 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. Accepted for backward
++            compatibility; when the structured addressLine1 is supplied it is the
++            composed, normalized address returned in responses.
++          type: string
++          minLength: 1
++          maxLength: 255
++          pattern: '^.*\S.*$'
++          example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the owner's structured postal address.
+           type: string
+           minLength: 1
+           maxLength: 255
+           pattern: '^.*\S.*$'
+           example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: An optional second line of the owner's structured postal address.
++          type: string
++          minLength: 1
++          maxLength: 255
++          pattern: '^.*\S.*$'
++          example: 'Apartment 4B'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2077,7 +2096,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
