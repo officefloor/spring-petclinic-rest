@@ -20,7 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "householdId", expression = "java(java.util.UUID.nameUUIDFromBytes((owner.getLastName() + \"|\" + owner.getAddress()).trim().replaceAll(\"\\\\s+\", \" \").toLowerCase(java.util.Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString())")
+    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.householdId(owner.getLastName(), owner.getPostcode()))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.of(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerCheckDigit.of(owner))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")

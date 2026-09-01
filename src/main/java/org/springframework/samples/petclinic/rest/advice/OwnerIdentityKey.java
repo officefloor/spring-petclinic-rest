@@ -17,8 +17,9 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
-import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -34,15 +35,15 @@ public final class OwnerIdentityKey {
     }
 
     static String of(OwnerFieldsDto owner) {
-        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
+        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode());
     }
 
     public static String of(Owner owner) {
-        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
+        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getPostcode());
     }
 
-    static String of(String telephone, String email, String lastName, String address) {
-        return telephone(telephone) + '|' + email(email) + '|' + householdId(lastName, address);
+    static String of(String telephone, String email, String lastName, String postcode) {
+        return telephone(telephone) + '|' + email(email) + '|' + householdId(lastName, postcode);
     }
 
     static String telephone(String telephone) {
@@ -53,8 +54,28 @@ public final class OwnerIdentityKey {
         return (email == null || email.isBlank()) ? "" : email.strip().toLowerCase(Locale.ROOT);
     }
 
-    static String householdId(String lastName, String address) {
-        String normalized = (lastName + "|" + address).trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-        return UUID.nameUUIDFromBytes(normalized.getBytes(StandardCharsets.UTF_8)).toString();
+    /**
+     * Stable household identifier: the first 12 hex characters of SHA-256 over
+     * {@code normalizedLastName + '|' + postcode}, so owners with the same last name and postcode
+     * share it automatically.
+     */
+    public static String householdId(String lastName, String postcode) {
+        String normalized = lastName.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT)
+            + '|' + (postcode == null ? "" : postcode.trim());
+        return sha256Hex(normalized).substring(0, 12);
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

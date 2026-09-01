@@ -16,10 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-import java.util.UUID;
-
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.samples.petclinic.model.Owner;
@@ -29,9 +25,9 @@ import org.springframework.stereotype.Component;
 /**
  * Records, on each newly-created owner just before it is saved, how many owners will share its
  * household once this one is stored — the existing members plus this owner. Household membership is
- * the same key the mapper derives {@code householdId} from (normalized lastName + address), so a
- * size of 3+ is exactly what the mapper turns into the GOLD membership tier. Kept as its own small
- * aspect so this rule stays a self-contained unit.
+ * the computed {@code householdId} the mapper also uses (normalized lastName + postcode), so a size
+ * of 3+ is exactly what the mapper turns into the GOLD membership tier. Kept as its own small aspect
+ * so this rule stays a self-contained unit.
  */
 @Aspect
 @Component
@@ -55,8 +51,6 @@ public class OwnerHouseholdSizeAdvice {
     }
 
     private static String householdKey(Owner owner) {
-        String normalized = (owner.getLastName() + "|" + owner.getAddress())
-            .trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-        return UUID.nameUUIDFromBytes(normalized.getBytes(StandardCharsets.UTF_8)).toString();
+        return OwnerIdentityKey.householdId(owner.getLastName(), owner.getPostcode());
     }
 }
