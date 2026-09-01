@@ -2,15 +2,20 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Business-day rule for owner registration dates: the effective registration
  * date defaults to the server's current date when absent and, when it lands on
- * a weekend, rolls forward to the following Monday.
+ * a weekend or a listed public holiday, rolls forward to the next business day.
  */
 final class BusinessDays {
+
+    private static final Set<LocalDate> HOLIDAYS = Set.of(
+        LocalDate.parse("2026-01-01"), LocalDate.parse("2026-01-26"), LocalDate.parse("2026-04-25"),
+        LocalDate.parse("2026-12-25"), LocalDate.parse("2026-12-28"));
 
     private BusinessDays() {
     }
@@ -18,7 +23,8 @@ final class BusinessDays {
     /** The owner's effective registration date, defaulted and rolled onto a business day. */
     static LocalDate effective(Owner owner) {
         LocalDate date = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
-        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY
+                || HOLIDAYS.contains(date)) {
             date = date.plusDays(1);
         }
         return date;
