@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
     @Mapping(target = "identityKey", expression = "java(IdentityKeys.of(owner))")
     @Mapping(target = "ownerSegment", expression = "java(OwnerSegments.of(owner))")
+    @Mapping(target = "riskFlag", expression = "java(RiskFlags.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
