@@ -16,6 +16,9 @@ public class EnsureUniqueIdentity {
     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DuplicateTelephoneException {
         String identityKey = OwnerIdentity.key(owner);
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (identityKey.equals(OwnerIdentity.key(existing))) {
                 throw new DuplicateTelephoneException(owner.getTelephone());
             }
