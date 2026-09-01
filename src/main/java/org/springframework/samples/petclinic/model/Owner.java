@@ -39,6 +39,9 @@ public class Owner extends Person {
     @NotEmpty
     private String address;
 
+    @Column(name = "address_line_1")
+    private String addressLine1;
+
     @Column(name = "city")
     @NotEmpty
     private String city;
@@ -81,6 +84,14 @@ public class Owner extends Person {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = addressLine1;
     }
 
     public String getCity() {
