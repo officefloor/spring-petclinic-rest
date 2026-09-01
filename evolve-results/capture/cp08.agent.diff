@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index dca8d5178..d66f0049c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +44,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index dc663e124..24b43bc85 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -15,14 +15,29 @@ public class BuildOwner {
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
+             throws InvalidTelephoneException {
+         Owner owner = ownerMapper.toOwner(request);
+-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
+-        if (telephone.length() != 10) {
+-            throw new InvalidTelephoneException(owner.getTelephone());
+-        }
+-        owner.setTelephone(telephone);
++        owner.setTelephone(toE164(owner.getTelephone()));
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(java.time.LocalDate.now());
+         }
+         built.set(owner);
+     }
++
++    /**
++     * Normalizes a telephone to E.164: strip spaces, dashes and brackets; keep a leading '+' with its
++     * country code, otherwise assume '+61' and drop a single leading '0' from the national digits.
++     * Requires 8 to 15 digits after the '+'.
++     */
++    private static String toE164(String raw) throws InvalidTelephoneException {
++        String cleaned = (raw == null ? "" : raw).replaceAll("[\\s\\-()\\[\\]]", "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        } else {
++            digits = "61" + (cleaned.startsWith("0") ? cleaned.substring(1) : cleaned);
++        }
++        if (!digits.matches("\\d{8,15}")) {
++            throw new InvalidTelephoneException(raw);
++        }
++        return "+" + digits;
++    }
+ }
