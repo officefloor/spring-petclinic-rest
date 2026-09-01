@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipPoints", expression = "java(MembershipLevels.pointsOf(owner))")
     @Mapping(target = "membershipLevel", expression = "java(MembershipLevels.levelOf(owner))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() == null ? null : owner.getCustomerCode().split(\"-\")[0])")
+    @Mapping(target = "timezone", expression = "java(owner.getCustomerCode() == null ? null : TimeZones.zoneOf(owner.getCustomerCode().split(\"-\")[0]))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
