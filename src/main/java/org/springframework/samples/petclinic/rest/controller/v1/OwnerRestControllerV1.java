@@ -101,6 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        owner.setHouseholdId(Households.idFor(owner));
         Collection<Owner> owners = this.clinicService.findAllOwners();
         owner.setRegistrationDate(BusinessDays.effective(owner));
         if (owners.stream()
@@ -110,15 +111,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (Identities.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         if (CityCodes.countInCity(owners, owner) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        Households.joinHousehold(owners, owner, ownerFieldsDto.getSharesHousehold())
-            .forEach(this.clinicService::saveOwner);
+        owner.setHouseholdMemberCount(Households.size(owners, owner));
         owner.assignCustomerCode(CityCodes.countInCity(owners, owner));
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.setBulkSignupWarning(BulkSignups.exceededDailyLimit(owners, owner));
-        owner.setPossibleDuplicateOf(PossibleDuplicates.matchId(owners, owner));
+        owner.setPossibleDuplicateOf(
+            PossibleDuplicates.matchId(owners, owner, ownerFieldsDto.getSharesHousehold()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()

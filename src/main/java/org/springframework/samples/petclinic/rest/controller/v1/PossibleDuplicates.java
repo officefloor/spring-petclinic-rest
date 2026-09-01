@@ -14,8 +14,15 @@ final class PossibleDuplicates {
     private PossibleDuplicates() {
     }
 
-    /** The id of an existing owner {@code candidate} softly matches, or {@code null} if none. */
-    static Integer matchId(Collection<Owner> existing, Owner candidate) {
+    /**
+     * The id of an existing owner {@code candidate} softly matches, or {@code null} if none.
+     * A candidate that declares itself a household member ({@code sharesHousehold} true) is
+     * never a suspected duplicate.
+     */
+    static Integer matchId(Collection<Owner> existing, Owner candidate, Boolean sharesHousehold) {
+        if (Boolean.TRUE.equals(sharesHousehold)) {
+            return null;
+        }
         return existing.stream()
             .filter(other -> softMatch(other, candidate))
             .map(Owner::getId)

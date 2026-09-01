@@ -1,17 +1,17 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
-import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Household-identity rule for owners: two owners share a household when they have
- * the same last name and the same address, compared case-insensitively with
- * collapsed whitespace.
+ * Household-identity rule for owners: two owners share a household when they have the
+ * same last name and postcode. The householdId is derived deterministically from that
+ * pair, so housemates share it automatically without any explicit link step.
  */
 final class Households {
 
@@ -19,47 +19,56 @@ final class Households {
     }
 
     /**
-     * Whether {@code candidate} duplicates the household of an existing owner and so
-     * should be rejected. A {@code sharesHousehold} flag of {@code true} opts out.
+     * The deterministic household identifier: the first 12 hex characters of
+     * SHA-256 over {@code normalizedLastName + '|' + postcode}.
+     */
+    static String idFor(Owner owner) {
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        return sha256Hex12(normalize(owner.getLastName()) + "|" + postcode);
+    }
+
+    /**
+     * Whether {@code candidate} lands in an existing owner's household and so should be
+     * rejected as a duplicate. A {@code sharesHousehold} flag of {@code true} opts out,
+     * declaring the candidate a member of that household instead.
      */
     static boolean isDuplicate(Collection<Owner> existing, Owner candidate, Boolean sharesHousehold) {
         if (Boolean.TRUE.equals(sharesHousehold)) {
             return false;
         }
+        return hasHousemate(existing, candidate);
+    }
+
+    /** Household size for {@code candidate}: its existing housemates plus itself. */
+    static int size(Collection<Owner> existing, Owner candidate) {
+        long housemates = existing.stream().filter(other -> sameHousehold(other, candidate)).count();
+        return (int) housemates + 1;
+    }
+
+    /** Whether an existing owner already belongs to {@code candidate}'s household. */
+    static boolean hasHousemate(Collection<Owner> existing, Owner candidate) {
         return existing.stream().anyMatch(other -> sameHousehold(other, candidate));
     }
 
-    /**
-     * When {@code candidate} opts to share a household, stamp it and every existing
-     * housemate with the same stable {@code householdId} and return the housemates so
-     * the caller can persist them. Returns an empty list when nothing is shared.
-     */
-    static List<Owner> joinHousehold(Collection<Owner> existing, Owner candidate, Boolean sharesHousehold) {
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            return List.of();
-        }
-        List<Owner> housemates = existing.stream().filter(other -> sameHousehold(other, candidate)).toList();
-        if (!housemates.isEmpty()) {
-            String householdId = householdId(candidate);
-            candidate.setHouseholdId(householdId);
-            candidate.setHouseholdMemberCount(housemates.size() + 1);
-            housemates.forEach(mate -> mate.setHouseholdId(householdId));
-        }
-        return housemates;
-    }
-
-    /** A stable identifier derived from the normalized household key, shared by all its members. */
-    private static String householdId(Owner owner) {
-        String key = normalize(owner.getLastName()) + "|" + normalize(owner.getAddress());
-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
-    }
-
     private static boolean sameHousehold(Owner a, Owner b) {
-        return normalize(a.getLastName()).equals(normalize(b.getLastName()))
-            && normalize(a.getAddress()).equals(normalize(b.getAddress()));
+        return a.getHouseholdId() != null && a.getHouseholdId().equals(b.getHouseholdId());
     }
 
     private static String normalize(String value) {
         return value == null ? "" : value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private static String sha256Hex12(String key) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(24);
+            for (int i = 0; i < 6; i++) {
+                hex.append(String.format("%02x", digest[i]));
+            }
+            return hex.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
