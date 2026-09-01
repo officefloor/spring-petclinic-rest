@@ -16,37 +16,44 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Map;
+
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.stereotype.Component;
 
 /**
- * Assigns a customerCode '<CITY3>-<LAST3>-<NNNN>' to each newly-created owner just before it is
- * saved: CITY3 and LAST3 are the upper-cased first three letters of the city and last name, and
- * NNNN is a per-city 4-digit sequence equal to one more than the owners already in that city. Kept
- * as its own small aspect so this rule stays a self-contained unit rather than growing the controller
+ * Assigns a customerCode '<REGION>-<HASH8>' to each newly-created owner just before it is saved:
+ * REGION is the region code derived from the postcode (its 4-digit range, else "UNKNOWN") and HASH8
+ * is the first 8 upper-case hex characters of SHA-256 over (normalizedTelephone + lastName). Kept as
+ * its own small aspect so this rule stays a self-contained unit rather than growing the controller
  * or service.
  */
 @Aspect
 @Component
 public class OwnerCustomerCodeAdvice {
 
-    private final OwnerRepository ownerRepository;
-
-    public OwnerCustomerCodeAdvice(OwnerRepository ownerRepository) {
-        this.ownerRepository = ownerRepository;
-    }
+    /** Postcode band (4-digit / 100) -> region code. */
+    private static final Map<Integer, String> REGION = Map.of(20, "NSW", 30, "VIC", 40, "QLD");
 
     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
     public void assignCustomerCode(Owner owner) {
         if (owner.isNew() && owner.getCustomerCode() == null) {
-            String city3 = (owner.getCity() + "XXX").substring(0, 3).toUpperCase();
-            String last3 = (owner.getLastName() + "XXX").substring(0, 3).toUpperCase();
-            long inCity = ownerRepository.findAll().stream()
-                .filter(o -> owner.getCity().equalsIgnoreCase(o.getCity())).count();
-            owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, inCity + 1));
+            String pc = owner.getPostcode();
+            int band = pc != null && pc.matches("[0-9]{4}") ? Integer.parseInt(pc) / 100 : -1;
+            try {
+                byte[] d = MessageDigest.getInstance("SHA-256")
+                    .digest((owner.getTelephone() + owner.getLastName()).getBytes(StandardCharsets.UTF_8));
+                String hash8 = String.format("%02X%02X%02X%02X", d[0], d[1], d[2], d[3]);
+                owner.setCustomerCode(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8);
+            }
+            catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
         }
     }
 }

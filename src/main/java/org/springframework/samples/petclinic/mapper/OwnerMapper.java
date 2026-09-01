@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerCheckDigit.of(owner))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
-    @Mapping(target = "locality", expression = "java(java.util.Map.of(20, \"NSW\", 30, \"VIC\", 40, \"QLD\").getOrDefault(owner.getPostcode() != null && owner.getPostcode().matches(\"[0-9]{4}\") ? Integer.parseInt(owner.getPostcode()) / 100 : -1, java.util.Map.of(\"Sydney\", \"NSW\", \"Melbourne\", \"VIC\", \"Brisbane\", \"QLD\").getOrDefault(owner.getCity(), \"UNKNOWN\")))")
+    @Mapping(target = "locality", expression = "java(owner.getCustomerCode() == null || owner.getCustomerCode().indexOf('-') < 0 ? \"UNKNOWN\" : owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     OwnerDto toOwnerDto(Owner owner);
 
