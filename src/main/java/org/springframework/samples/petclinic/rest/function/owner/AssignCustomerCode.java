@@ -1,26 +1,38 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Assigns the owner's {@code customerCode} as {@code <CITY3>-<LAST3>-<NNNN>}: the upper-cased first
- * three letters of the city and last name, and a per-city 4-digit sequence one more than the owners
- * already in that city. Runs before the owner is saved, so the sequence excludes the owner being
- * created.
+ * Assigns the owner's {@code customerCode} as {@code <REGION>-<HASH8>}: the region code derived from
+ * the postcode (see {@link OwnerLocality#forPostcode}) and the first eight upper-case hex characters
+ * of SHA-256 over the normalized telephone (set by {@link BuildOwner}) concatenated with the last
+ * name. The code is a pure function of the owner's identity, so it carries no sequence number.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String city3 = three(owner.getCity());
-        String last3 = three(owner.getLastName());
-        long inCity = ownerRepository.findAll().stream()
-            .filter(o -> owner.getCity().equalsIgnoreCase(o.getCity())).count();
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, inCity + 1));
+    public void service(@Val Owner owner) {
+        String region = OwnerLocality.forPostcode(owner.getPostcode(), owner.getCity());
+        String hash8 = hash8(owner.getTelephone() + owner.getLastName());
+        owner.setCustomerCode(region + "-" + hash8);
     }
 
-    private static String three(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    /** First eight upper-case hex characters of SHA-256 over the UTF-8 bytes of {@code value}. */
+    private static String hash8(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 }
