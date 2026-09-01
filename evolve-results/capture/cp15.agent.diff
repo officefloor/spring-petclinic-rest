@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+new file mode 100644
+index 000000000..d4c9d616e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipTier.java
+@@ -0,0 +1,18 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's membership tier: {@code SILVER} for an owner with an email and no namesakes
++ * ({@code namesakeCount} of 0), otherwise {@code BRONZE}.
++ */
++public final class MembershipTier {
++
++    private MembershipTier() {
++    }
++
++    public static String of(Owner owner, int namesakeCount) {
++        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
++        return namesakeCount == 0 && hasEmail ? "SILVER" : "BRONZE";
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index d4e9c50ad..63b4b0587 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -12,7 +12,9 @@ public class RespondWithOwner {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setNamesakeCount(NamesakeCount.of(owner, ownerRepository));
++        int namesakeCount = NamesakeCount.of(owner, ownerRepository);
++        dto.setNamesakeCount(namesakeCount);
++        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index db9b43e2c..c08c4a769 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -15,7 +15,9 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setNamesakeCount(NamesakeCount.of(owner, ownerRepository));
++        int namesakeCount = NamesakeCount.of(owner, ownerRepository);
++        dto.setNamesakeCount(namesakeCount);
++        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 60b217340..4b919bcd8 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2107,6 +2107,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: The owner's membership tier - 'SILVER' for an owner with an email and no namesakes (namesakeCount of 0), otherwise 'BRONZE'.
++              type: string
++              example: 'SILVER'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
