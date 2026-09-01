@@ -18,6 +18,9 @@ public class RespondWithOwnerCreated {
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
         dto.setIdentityKey(IdentityKey.of(owner));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

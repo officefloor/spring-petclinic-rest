@@ -16,6 +16,9 @@ public class RespondWithOwner {
         dto.setContactPreference(ContactPreference.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
         dto.setCheckDigit(luhn(owner.getCustomerCode()));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(dto);
     }
 
