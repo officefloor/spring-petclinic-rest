@@ -15,7 +15,9 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setNamesakeCount(NamesakeCount.of(owner, ownerRepository));
+        int namesakeCount = NamesakeCount.of(owner, ownerRepository);
+        dto.setNamesakeCount(namesakeCount);
+        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

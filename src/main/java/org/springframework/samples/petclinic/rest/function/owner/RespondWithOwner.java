@@ -12,7 +12,9 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setNamesakeCount(NamesakeCount.of(owner, ownerRepository));
+        int namesakeCount = NamesakeCount.of(owner, ownerRepository);
+        dto.setNamesakeCount(namesakeCount);
+        dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
         response.send(dto);
     }
 }
