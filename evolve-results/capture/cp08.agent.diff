@@ -1,0 +1,100 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 86193d6f9..fabe87a40 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +44,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Telephone must be a valid E.164 number")
+     private String telephone;
+ 
+     @Column(name = "email")
+@@ -102,7 +100,7 @@ public class Owner extends Person {
+     }
+ 
+     public void setTelephone(String telephone) {
+-        this.telephone = (telephone == null) ? null : telephone.replaceAll("\\D", "");
++        this.telephone = TelephoneNumber.toE164(telephone);
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/TelephoneNumber.java b/src/main/java/org/springframework/samples/petclinic/model/TelephoneNumber.java
+new file mode 100644
+index 000000000..75bea2152
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/TelephoneNumber.java
+@@ -0,0 +1,46 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Normalises a raw telephone string to E.164 form.
++ */
++final class TelephoneNumber {
++
++    private TelephoneNumber() {
++    }
++
++    /**
++     * Convert a raw telephone number to E.164: keep a leading {@code '+'} and country
++     * code when present; otherwise assume country code {@code '+61'} and drop a single
++     * leading {@code '0'} from the national digits. Spaces, dashes and brackets are
++     * stripped. Returns {@code null} for a {@code null} input.
++     */
++    static String toE164(String raw) {
++        if (raw == null) {
++            return null;
++        }
++        boolean international = raw.trim().startsWith("+");
++        String digits = raw.replaceAll("\\D", "");
++        if (international) {
++            return "+" + digits;
++        }
++        if (digits.startsWith("0")) {
++            digits = digits.substring(1);
++        }
++        return "+61" + digits;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c4bb07183..b8c73babd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2030,9 +2030,9 @@ components:
+           description: The telephone number of the pet owner.
+           type: string
+           minLength: 1
+-          maxLength: 20
+-          pattern: '^\D*(\d\D*){10}$'
+-          example: '6085551023'
++          maxLength: 25
++          pattern: '^[ ()\-./]*(?:\+(?:[ ()\-./]*[0-9]){8,15}|(?:[ ()\-./]*[0-9]){8,13})[ ()\-./]*$'
++          example: '0412 345 678'
+         email:
+           title: Email
+           description: The email address of the pet owner.
