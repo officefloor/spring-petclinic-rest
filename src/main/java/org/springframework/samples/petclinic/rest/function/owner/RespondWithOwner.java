@@ -15,6 +15,7 @@ public class RespondWithOwner {
         dto.setMembershipLevel(HouseholdMembershipCap.apply(owner, dto.getMembershipLevel(), ownerRepository, ownerMapper));
         dto.setSelfLink("/api/owners/" + owner.getId());
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
+        dto.setCapacityWarning(CapacityWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
         dto.setIdentityKey(IdentityKey.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
