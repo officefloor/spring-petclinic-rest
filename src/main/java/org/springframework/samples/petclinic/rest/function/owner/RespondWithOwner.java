@@ -16,6 +16,7 @@ public class RespondWithOwner {
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipTier(MembershipTier.of(owner, namesakeCount));
         dto.setLocality(Locality.of(owner));
+        dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         response.send(dto);
     }
 }
