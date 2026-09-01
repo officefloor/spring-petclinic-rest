@@ -27,7 +27,8 @@ public class PostcodeValidator implements ConstraintValidator<PostcodeValidation
         if (postcode == null || !postcode.matches("\\d{4}")) {
             return true;
         }
-        int[] range = CITY_RANGE.get(owner.getCity());
+        String city = owner.getCity();
+        int[] range = city == null ? null : CITY_RANGE.get(city);
         if (range == null) {
             return true;
         }

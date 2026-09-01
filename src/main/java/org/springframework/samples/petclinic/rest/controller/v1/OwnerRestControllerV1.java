@@ -40,6 +40,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -112,13 +113,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setRegistrationDate(BusinessDays.effective(owner));
         if (owners.stream()
             .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                "Daily owner-registration limit reached for this date");
         }
         if (Identities.isDuplicate(owners, owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "An owner with the same identity already exists");
         }
         if (CityCodes.countInCity(owners, owner) >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "The owner capacity for this city has been reached");
         }
         owner.setHouseholdMemberCount(Households.size(owners, owner));
         owner.setMembershipLevelCap(Households.ceilingLevel(owners, owner));
