@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1c7f401ff..569365ad4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials",
+         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
++    @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplay.java b/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplay.java
+new file mode 100644
+index 000000000..83048f1c6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/TelephoneDisplay.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.mapper;
++
++/** Formats a stored E.164 telephone for humans: the country code, a space, then the
++ * national digits grouped in threes (e.g. "+61412345678" -> "+61 412 345 678"). */
++public final class TelephoneDisplay {
++
++    private TelephoneDisplay() {
++    }
++
++    public static String of(String e164) {
++        if (e164 == null || !e164.startsWith("+")) {
++            return e164;
++        }
++        String digits = e164.substring(1);
++        int ccLen = Math.min(e164.startsWith("+1") ? 1 : 2, digits.length());
++        StringBuilder out = new StringBuilder("+").append(digits, 0, ccLen);
++        for (int i = ccLen; i < digits.length(); i += 3) {
++            out.append(' ').append(digits, i, Math.min(i + 3, digits.length()));
++        }
++        return out.toString();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b6152dd9a..88dc4636a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2092,6 +2092,11 @@ components:
+               description: The upper-cased first letters of firstName and lastName, dot-separated with a trailing dot.
+               type: string
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: The stored E.164 telephone formatted for humans - country code, a space, then the national digits grouped in threes.
++              type: string
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: Assigned identifier formatted '<LAST3>-<NNNN>' from the upper-cased first three letters of lastName and a global 4-digit sequence.
