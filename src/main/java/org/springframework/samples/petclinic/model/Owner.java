@@ -103,16 +103,9 @@ public class Owner extends Person {
         return this.customerCode;
     }
 
-    /**
-     * Assign this owner's customerCode as '<CITY3>-<LAST3>-<NNNN>', where CITY3 and
-     * LAST3 are the upper-cased first three letters of the city and last name and
-     * NNNN is a 4-digit, zero-padded sequence one greater than the number of owners
-     * already in this owner's city.
-     */
+    /** Assign this owner's customerCode as '<REGION>-<HASH8>' (see {@link CustomerCode}). */
     public void assignCustomerCode(int existingCityCount) {
-        String city3 = this.city.substring(0, Math.min(3, this.city.length())).toUpperCase(Locale.ROOT);
-        String last3 = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
-        this.customerCode = String.format("%s-%s-%04d", city3, last3, existingCityCount + 1);
+        this.customerCode = CustomerCode.of(this);
     }
 
     public Integer getNamesakeCount() {
