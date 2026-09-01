@@ -75,6 +75,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -141,6 +144,20 @@ public class Owner extends Person {
 
     public void setHouseholdId(String householdId) {
         this.householdId = householdId;
+    }
+
+    /** The id of an existing owner this one softly matches, or null. */
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /** True when this owner softly matches an existing owner (see possibleDuplicateOf). */
+    public boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     public String getPostcode() {

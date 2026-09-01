@@ -50,7 +50,8 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   bulk_signup_warning BOOLEAN,
   household_member_count INTEGER,
-  postcode   VARCHAR(4)
+  postcode   VARCHAR(4),
+  possible_duplicate_of INTEGER
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
