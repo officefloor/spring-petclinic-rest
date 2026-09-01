@@ -1,0 +1,225 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+index 000babbc4..e0edb331d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+@@ -16,7 +16,7 @@ public final class Locality {
+ 
+     /** The canonical region for {@code city}, or "UNKNOWN" when it is not in the table. */
+     public static String of(String city) {
+-        return CITY_REGION.getOrDefault(city, "UNKNOWN");
++        return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
+ 
+     /** Region by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 31ee7534e..b2780a607 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private LocalDate registrationDate;
+ 
++    @Column(name = "birth_date", columnDefinition = "DATE")
++    private LocalDate birthDate;
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+@@ -120,6 +123,14 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java
+new file mode 100644
+index 000000000..24ec9b001
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.Period;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Response value derived from the owner's birthDate measured against the registrationDate:
++ * 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+). Null when no birthDate is set.
++ */
++final class AgeBand {
++
++    private AgeBand() {
++    }
++
++    static String of(Owner owner) {
++        if (owner.getBirthDate() == null) {
++            return null;
++        }
++        int years = Period.between(owner.getBirthDate(), owner.getRegistrationDate()).getYears();
++        if (years < 18) {
++            return "MINOR";
++        }
++        return years < 65 ? "ADULT" : "SENIOR";
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index e816a1df2..fd65b4797 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,6 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
+         dto.setContactPreference(ContactPreference.of(owner));
++        dto.setAgeBand(AgeBand.of(owner));
+         dto.setCheckDigit(luhn(owner.getCustomerCode()));
+         response.send(dto);
+     }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 0c15bab2a..a803adc63 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b02f5ea2..71c95cb54 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index c5dc7c899..d1c14b511 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/mysql/data.sql b/src/main/resources/db/mysql/data.sql
+index e9bfcd101..eb46f1022 100644
+--- a/src/main/resources/db/mysql/data.sql
++++ b/src/main/resources/db/mysql/data.sql
+@@ -22,16 +22,16 @@ INSERT IGNORE INTO types VALUES (4, 'snake');
+ INSERT IGNORE INTO types VALUES (5, 'bird');
+ INSERT IGNORE INTO types VALUES (6, 'hamster');
+ 
+-INSERT IGNORE INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT IGNORE INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT IGNORE INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT IGNORE INTO pets VALUES (1, 'Leo', '2000-09-07', 1, 1);
+ INSERT IGNORE INTO pets VALUES (2, 'Basil', '2002-08-06', 6, 2);
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 2994177d5..d5e245645 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+   registration_date DATE,
++  birth_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(20),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 0f7089afd..fcf8efbb8 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       telephone  TEXT,
+                                       email      TEXT,
+                                       registration_date DATE,
++                                      birth_date DATE,
+                                       customer_code TEXT,
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 478cf9ee9..a4787bee7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2050,6 +2050,12 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        birthDate:
++          title: Birth date
++          description: The pet owner's date of birth; when present the response reports an ageBand.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: When true, allow creating this owner even if another owner shares the same last name and address.
+@@ -2143,6 +2149,11 @@ components:
+               description: "The derived duplicate-detection key 'normalizedTelephone|email|householdId'; two owners are duplicates only when their whole keys match."
+               type: string
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: "Derived from birthDate against registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+); absent when no birthDate was supplied."
++              type: string
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
