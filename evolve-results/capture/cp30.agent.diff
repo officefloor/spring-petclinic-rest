@@ -1,0 +1,47 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+index e20e26885..000babbc4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Locality.java
+@@ -8,6 +8,9 @@ public final class Locality {
+     private static final Map<String, String> CITY_REGION =
+         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
+     private Locality() {
+     }
+ 
+@@ -15,4 +18,19 @@ public final class Locality {
+     public static String of(String city) {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
++
++    /** Region by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling
++     * back to the city table when the postcode is absent or in no known range. */
++    public static String of(String city, String postcode) {
++        if (postcode != null && postcode.matches("\\d{4}")) {
++            int value = Integer.parseInt(postcode);
++            for (Map.Entry<String, int[]> region : REGION_POSTCODES.entrySet()) {
++                int[] range = region.getValue();
++                if (value >= range[0] && value <= range[1]) {
++                    return region.getKey();
++                }
++            }
++        }
++        return of(city);
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ab08a1cc8..112081f17 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,7 @@ public interface OwnerMapper {
+         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+-    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity(), owner.getPostcode()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Numeric level 1-3 assigned on creation: starts at 1, +1 when an email is present,
