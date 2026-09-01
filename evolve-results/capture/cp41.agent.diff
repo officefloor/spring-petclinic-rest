@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeAdvice.java
+index 10dad1eb0..95c9cd23b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeAdvice.java
+@@ -40,6 +40,12 @@ public class OwnerCustomerCodeAdvice {
+     /** Postcode band (4-digit / 100) -> region code. */
+     private static final Map<Integer, String> REGION = Map.of(20, "NSW", 30, "VIC", 40, "QLD");
+ 
++    private final OwnerCustomerCodeDeduplicator deduplicator;
++
++    public OwnerCustomerCodeAdvice(OwnerCustomerCodeDeduplicator deduplicator) {
++        this.deduplicator = deduplicator;
++    }
++
+     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
+     public void assignCustomerCode(Owner owner) {
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+@@ -49,7 +55,7 @@ public class OwnerCustomerCodeAdvice {
+                 byte[] d = MessageDigest.getInstance("SHA-256")
+                     .digest((owner.getTelephone() + owner.getLastName()).getBytes(StandardCharsets.UTF_8));
+                 String hash8 = String.format("%02X%02X%02X%02X", d[0], d[1], d[2], d[3]);
+-                owner.setCustomerCode(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8);
++                owner.setCustomerCode(deduplicator.unique(REGION.getOrDefault(band, "UNKNOWN") + "-" + hash8));
+             }
+             catch (NoSuchAlgorithmException e) {
+                 throw new IllegalStateException(e);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeDeduplicator.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeDeduplicator.java
+new file mode 100644
+index 000000000..d3d15624a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCustomerCodeDeduplicator.java
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.stereotype.Component;
++
++/**
++ * Makes a freshly-computed customerCode unique: if it already belongs to another owner, appends
++ * '-<n>' with the smallest n >= 2 that is free. Kept as its own small unit so the collision rule
++ * stays self-contained rather than growing the aspect that computes the base code.
++ */
++@Component
++public class OwnerCustomerCodeDeduplicator {
++
++    private final OwnerRepository owners;
++
++    public OwnerCustomerCodeDeduplicator(OwnerRepository owners) {
++        this.owners = owners;
++    }
++
++    public String unique(String base) {
++        Set<String> used = new HashSet<>();
++        for (Owner o : owners.findAll()) {
++            used.add(o.getCustomerCode());
++        }
++        String code = base;
++        for (int n = 2; used.contains(code); n++) {
++            code = base + "-" + n;
++        }
++        return code;
++    }
++}
