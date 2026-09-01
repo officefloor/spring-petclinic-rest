@@ -6,9 +6,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerTelephoneException;
 
 /**
- * Rejects 409 when the built owner's normalized telephone is already used by any other owner.
- * Runs after {@link NormalizeOwnerTelephone}, so the telephone compared here is already digits-only;
- * existing owners' telephones are normalized the same way before comparing.
+ * Rejects 409 when the built owner's telephone is already used by any other owner.
+ * Runs after {@link NormalizeOwnerTelephone}, so the telephone compared here is already E.164;
+ * existing owners' telephones are converted to E.164 the same way before comparing.
  */
 public class RejectDuplicateOwnerTelephone {
 
@@ -16,13 +16,9 @@ public class RejectDuplicateOwnerTelephone {
             throws DuplicateOwnerTelephoneException {
         String telephone = owner.getTelephone();
         for (Owner other : ownerRepository.findAll()) {
-            if (other != owner && telephone.equals(normalize(other.getTelephone()))) {
+            if (other != owner && telephone.equals(E164Telephone.toE164(other.getTelephone()))) {
                 throw new DuplicateOwnerTelephoneException(telephone);
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
     }
 }
