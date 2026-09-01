@@ -50,6 +50,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
@@ -69,6 +72,20 @@ public class Owner extends Person {
 
     public void setRegistrationDate(java.time.LocalDate registrationDate) {
         this.registrationDate = registrationDate;
+    }
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    /**
+     * Assign this owner's customerCode as '<LAST3>-<NNNN>', where LAST3 is the
+     * upper-cased first three letters of the last name and NNNN is a 4-digit,
+     * zero-padded sequence one greater than the current number of owners.
+     */
+    public void assignCustomerCode(int existingOwnerCount) {
+        String prefix = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
+        this.customerCode = String.format("%s-%04d", prefix, existingOwnerCount + 1);
     }
 
     public String getEmail() {
