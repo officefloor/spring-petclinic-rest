@@ -52,7 +52,8 @@ CREATE TABLE owners (
   household_member_count INTEGER,
   postcode   VARCHAR(4),
   possible_duplicate_of INTEGER,
-  title      VARCHAR(10)
+  title      VARCHAR(10),
+  deleted    BOOLEAN
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

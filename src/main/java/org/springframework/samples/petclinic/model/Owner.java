@@ -86,6 +86,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private Boolean deleted;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -179,6 +182,15 @@ public class Owner extends Person {
     /** True when this owner softly matches an existing owner (see possibleDuplicateOf). */
     public boolean getPossibleDuplicate() {
         return this.possibleDuplicateOf != null;
+    }
+
+    /** True when this owner has been soft-deleted (see DELETE /api/owners/{id}). */
+    public boolean getDeleted() {
+        return this.deleted != null && this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public String getPostcode() {

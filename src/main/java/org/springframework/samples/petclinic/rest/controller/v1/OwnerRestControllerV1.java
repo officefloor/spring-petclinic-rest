@@ -102,7 +102,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setHouseholdId(Households.idFor(owner));
-        Collection<Owner> owners = this.clinicService.findAllOwners();
+        Collection<Owner> owners = this.clinicService.findAllOwners().stream()
+            .filter(o -> !o.getDeleted()).toList();
         owner.setRegistrationDate(BusinessDays.effective(owner));
         if (owners.stream()
             .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
@@ -154,7 +155,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
