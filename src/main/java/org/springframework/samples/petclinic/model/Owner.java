@@ -86,6 +86,9 @@ public class Owner extends Person {
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -113,6 +116,15 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    /** True when this owner's city already held 40-49 owners (approaching the 50 capacity limit) at create time. */
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning != null && this.capacityWarning;
+    }
+
+    public void setCapacityWarning(boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public void setRegistrationDate(java.time.LocalDate registrationDate) {
