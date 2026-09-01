@@ -1,13 +1,16 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.Objects;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Records a soft-match duplicate: an existing owner in the same household (same computed
- * {@code householdId}) but with a different telephone (so it is not a hard {@link EnsureUniqueIdentity}
- * conflict). Sets {@code possibleDuplicate} true and {@code possibleDuplicateOf} to that owner's id,
+ * Records a soft-match duplicate: an existing owner whose {@link Soundex} last name and postcode match
+ * but whose {@link OwnerIdentity#key(Owner) identityKey} differs (so it is not a hard
+ * {@link EnsureUniqueIdentity} conflict). Sets {@code possibleDuplicate} true and
+ * {@code possibleDuplicateOf} to that owner's id,
  * otherwise {@code possibleDuplicate} false. A declared household member ({@code sharesHousehold: true})
  * is never flagged. Runs before Save, so the flags persist and are read back on GET, and it sees only
  * the owners that existed before this create.
@@ -28,7 +31,8 @@ public class FlagPossibleDuplicate {
     }
 
     private static boolean softMatches(Owner owner, Owner existing) {
-        return owner.getHouseholdId().equals(existing.getHouseholdId())
-                && !owner.getTelephone().equals(existing.getTelephone());
+        return Soundex.encode(owner.getLastName()).equals(Soundex.encode(existing.getLastName()))
+                && Objects.equals(owner.getPostcode(), existing.getPostcode())
+                && !OwnerIdentity.key(owner).equals(OwnerIdentity.key(existing));
     }
 }
