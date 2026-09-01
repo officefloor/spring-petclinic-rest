@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,8 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** Numeric level 1-3 assigned on creation: starts at 1, +1 when an email is present,
-     * +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure). */
+    /** Numeric level 1-4: starts at 1, +1 when an email is present, +1 when namesakeCount is 0,
+     * +1 when tenured. Level 4 is reserved for tenure, so an owner without it is capped at 3. */
     default Integer membershipLevel(Owner owner) {
         int level = 1;
         if (owner.getEmail() != null) {
@@ -38,7 +39,14 @@ public interface OwnerMapper {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
-        return Math.min(level, 3);
+        return membershipTenured(owner) ? level + 1 : Math.min(level, 3);
+    }
+
+    /** Tenure exceeds 365 days when the registration date is more than a year in the past. */
+    default boolean membershipTenured(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        return registrationDate != null
+            && registrationDate.isBefore(LocalDate.now().minusDays(365));
     }
 
     /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate year; null when either input is absent. */
