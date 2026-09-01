@@ -117,13 +117,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (Identities.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (CityCodes.countInCity(owners, owner) >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setHouseholdMemberCount(Households.size(owners, owner));
+        owner.setMembershipLevelCap(Households.ceilingLevel(owners, owner));
         owner.assignCustomerCode(owners);
         owner.setNamesakeCount(Namesakes.count(owners, owner));
         owner.setBulkSignupWarning(BulkSignups.exceededDailyLimit(owners, owner));

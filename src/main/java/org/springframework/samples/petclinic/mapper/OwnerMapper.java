@@ -26,7 +26,7 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(FiscalYear.labelOf(owner.getRegistrationDate()))")
     @Mapping(target = "checkDigit", expression = "java(CheckDigits.luhnOf(owner.getCustomerCode()))")
     @Mapping(target = "membershipPoints", expression = "java(MembershipLevels.pointsOf(owner))")
-    @Mapping(target = "membershipLevel", expression = "java(MembershipLevels.levelOf(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevelCap() == null ? MembershipLevels.levelOf(owner) : Math.min(MembershipLevels.levelOf(owner), owner.getMembershipLevelCap()))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() == null ? null : owner.getCustomerCode().split(\"-\")[0])")
     @Mapping(target = "timezone", expression = "java(owner.getCustomerCode() == null ? null : TimeZones.zoneOf(owner.getCustomerCode().split(\"-\")[0]))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")

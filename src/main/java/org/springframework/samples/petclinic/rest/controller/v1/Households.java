@@ -5,7 +5,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Locale;
+import java.util.OptionalInt;
 
+import org.springframework.samples.petclinic.model.MembershipLevels;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -43,6 +45,26 @@ final class Households {
     static int size(Collection<Owner> existing, Owner candidate) {
         long housemates = existing.stream().filter(other -> sameHousehold(other, candidate)).count();
         return (int) housemates + 1;
+    }
+
+    /**
+     * The membershipLevel ceiling for {@code candidate}: one above the highest membershipLevel
+     * among its existing household members, or {@code null} when it has no household member yet
+     * (in which case no cap applies).
+     */
+    static Integer ceilingLevel(Collection<Owner> existing, Owner candidate) {
+        OptionalInt max = existing.stream()
+            .filter(other -> sameHousehold(other, candidate))
+            .mapToInt(Households::effectiveLevel)
+            .max();
+        return max.isPresent() ? max.getAsInt() + 1 : null;
+    }
+
+    /** An owner's membershipLevel after applying its own ceiling (see {@link #ceilingLevel}). */
+    private static int effectiveLevel(Owner owner) {
+        int level = MembershipLevels.levelOf(owner);
+        Integer cap = owner.getMembershipLevelCap();
+        return cap == null ? level : Math.min(level, cap);
     }
 
     /** Whether an existing owner already belongs to {@code candidate}'s household. */
