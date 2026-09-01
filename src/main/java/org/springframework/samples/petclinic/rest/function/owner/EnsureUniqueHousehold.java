@@ -6,10 +6,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Rejects a new owner whose last name and address already belong to another owner, comparing both
- * case-insensitively with collapsed whitespace. Skipped when the request opts in with
- * {@code sharesHousehold: true}. Runs after Build and before Save so the conflict is a 409, not a
- * persisted duplicate.
+ * Rejects a new owner whose deterministic {@code householdId} (derived from last name and postcode by
+ * {@link AssignHousehold}) already belongs to another owner. Skipped when the request opts in with
+ * {@code sharesHousehold: true}, in which case the owner is created as a declared household member.
+ * Runs after {@link AssignHousehold} and before Save, so the conflict is a 409, not a persisted
+ * duplicate.
  */
 public class EnsureUniqueHousehold {
 
@@ -18,17 +19,11 @@ public class EnsureUniqueHousehold {
         if (Boolean.TRUE.equals(sharesHousehold)) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String householdId = owner.getHouseholdId();
         for (Owner existing : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+            if (householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
             }
         }
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }
