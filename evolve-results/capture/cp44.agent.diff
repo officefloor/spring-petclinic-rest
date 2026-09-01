@@ -1,0 +1,255 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b2780a607..bb9408c00 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,9 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Column(name = "address_line_1")
++    private String addressLine1;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -83,6 +86,14 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressException.java
+new file mode 100644
+index 000000000..684a71863
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by {@code NormalizeOwnerAddress} when an owner supplies neither a structured
++ * {@code addressLine1} nor a flat {@code address}. Handled globally by
++ * {@link InvalidAddressExceptionHandler}, which responds 400.
++ */
++public class InvalidAddressException extends Exception {
++
++    public InvalidAddressException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressExceptionHandler.java
+new file mode 100644
+index 000000000..d7ccdf3c1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/InvalidAddressExceptionHandler.java
+@@ -0,0 +1,15 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class InvalidAddressExceptionHandler {
++
++    public void handle(@Parameter InvalidAddressException ex, ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+index f292e8e80..b461e4d5c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -4,23 +4,40 @@ import java.util.Map;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.InvalidAddressException;
+ 
+ /**
+- * On create, rewrites the address into a canonical form: whitespace is trimmed and
+- * collapsed to single spaces, letters are upper-cased, and common abbreviations are
+- * expanded (ST-&gt;STREET, RD-&gt;ROAD, AVE-&gt;AVENUE). Mutates the built {@link Owner} in
+- * place so later steps store, compare and return the normalized value. A blank input is
+- * already rejected as a required field before this step runs.
++ * On create, canonicalizes the owner's address. Structured {@code addressLine1}/{@code addressLine2}
++ * are preferred when a non-blank {@code addressLine1} is supplied; otherwise the flat {@code address}
++ * is used. Each supplied part is trimmed, whitespace-collapsed, upper-cased and has common
++ * abbreviations expanded (ST-&gt;STREET, RD-&gt;ROAD, AVE-&gt;AVENUE). The stored address is the normalized
++ * {@code addressLine1} with a single space and the normalized {@code addressLine2} appended when
++ * {@code addressLine2} is present. An owner with neither form of address is rejected with a 400.
+  */
+ public class NormalizeOwnerAddress {
+ 
+     private static final Map<String, String> ABBREVIATIONS = Map.of(
+             "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+ 
+-    public void service(@Val Owner owner) {
+-        String raw = owner.getAddress() == null ? "" : owner.getAddress();
++    public void service(@Val Owner owner, @Val OwnerFieldsDto request) throws InvalidAddressException {
++        String line1 = normalize(request.getAddressLine1());
++        if (!line1.isEmpty()) {
++            String line2 = normalize(request.getAddressLine2());
++            owner.setAddressLine1(line1);
++            owner.setAddress(line2.isEmpty() ? line1 : line1 + ' ' + line2);
++            return;
++        }
++        String flat = normalize(owner.getAddress());
++        if (flat.isEmpty()) {
++            throw new InvalidAddressException("An owner must have an address");
++        }
++        owner.setAddress(flat);
++    }
++
++    private static String normalize(String raw) {
+         StringBuilder normalized = new StringBuilder();
+-        for (String token : raw.trim().split("\\s+")) {
++        for (String token : (raw == null ? "" : raw).trim().split("\\s+")) {
+             if (token.isEmpty()) {
+                 continue;
+             }
+@@ -30,6 +47,6 @@ public class NormalizeOwnerAddress {
+             }
+             normalized.append(ABBREVIATIONS.getOrDefault(upper, upper));
+         }
+-        owner.setAddress(normalized.toString());
++        return normalized.toString();
+     }
+ }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index a803adc63..01996b7c3 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30) NOT NULL,
+   last_name VARCHAR(30) NOT NULL,
+   address VARCHAR(255) NOT NULL,
++  address_line_1 VARCHAR(255),
+   city VARCHAR(80) NOT NULL,
+   telephone VARCHAR(20) NOT NULL,
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 71c95cb54..de9d26df4 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', NULL, 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', NULL, 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', NULL, 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', NULL, 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', NULL, 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', NULL, 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', NULL, 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', NULL, 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', NULL, 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', NULL, 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index d1c14b511..4a50ec847 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE owners (
+   first_name VARCHAR(30),
+   last_name  VARCHAR_IGNORECASE(30),
+   address    VARCHAR(255),
++  address_line_1 VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index d5e245645..64146f155 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   first_name VARCHAR(30),
+   last_name VARCHAR(30),
+   address VARCHAR(255),
++  address_line_1 VARCHAR(255),
+   city VARCHAR(80),
+   telephone VARCHAR(20),
+   email VARCHAR(255),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index fcf8efbb8..c4c522f5a 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       first_name TEXT,
+                                       last_name  TEXT,
+                                       address    TEXT,
++                                      address_line_1 TEXT,
+                                       city       TEXT,
+                                       telephone  TEXT,
+                                       email      TEXT,
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidAddressException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidAddressException.yml
+new file mode 100644
+index 000000000..5c0f7e071
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.InvalidAddressException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.InvalidAddressExceptionHandler
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 63f2ba00d..353144183 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,12 +2011,24 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner; accepted for backward compatibility and used when no addressLine1 is supplied.
+           type: string
+           minLength: 1
+           maxLength: 255
+           pattern: '.*\S.*'
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The primary structured address line; preferred over 'address' when supplied.
++          type: string
++          maxLength: 255
++          example: '10 King St'
++        addressLine2:
++          title: Address line 2
++          description: An optional secondary address line, appended to the composed address when present.
++          type: string
++          maxLength: 255
++          example: 'Apartment 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2064,7 +2076,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
