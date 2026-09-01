@@ -1,0 +1,398 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e801182a2..5b7bd6a92 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "householdId", expression = "java(java.util.UUID.nameUUIDFromBytes((owner.getLastName() + \"|\" + owner.getAddress()).trim().replaceAll(\"\\\\s+\", \" \").toLowerCase(java.util.Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString())")
++    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.of(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(java.util.Map.of(\"Sydney\", \"NSW\", \"Melbourne\", \"VIC\", \"Brisbane\", \"QLD\").getOrDefault(owner.getCity(), \"UNKNOWN\"))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java
+new file mode 100644
+index 000000000..20fd5f3ba
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerIdentityKey.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.nio.charset.StandardCharsets;
++import java.util.Locale;
++import java.util.UUID;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++
++/**
++ * Derives an owner's {@code identityKey}, the single value all duplicate detection is based on:
++ * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Kept as a small
++ * standalone unit so the request advice and the response mapper derive the key identically.
++ */
++public final class OwnerIdentityKey {
++
++    private OwnerIdentityKey() {
++    }
++
++    static String of(OwnerFieldsDto owner) {
++        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
++    }
++
++    public static String of(Owner owner) {
++        return of(owner.getTelephone(), owner.getEmail(), owner.getLastName(), owner.getAddress());
++    }
++
++    static String of(String telephone, String email, String lastName, String address) {
++        return telephone(telephone) + '|' + email(email) + '|' + householdId(lastName, address);
++    }
++
++    static String telephone(String telephone) {
++        return OwnerTelephoneNormalizationAdvice.toE164(telephone);
++    }
++
++    static String email(String email) {
++        return (email == null || email.isBlank()) ? "" : email.strip().toLowerCase(Locale.ROOT);
++    }
++
++    static String householdId(String lastName, String address) {
++        String normalized = (lastName + "|" + address).trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++        return UUID.nameUUIDFromBytes(normalized.getBytes(StandardCharsets.UTF_8)).toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueEmailAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueEmailAdvice.java
+deleted file mode 100644
+index 0b5c7372a..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueEmailAdvice.java
++++ /dev/null
+@@ -1,95 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.advice;
+-
+-import java.lang.reflect.Method;
+-import java.lang.reflect.Type;
+-import java.util.Locale;
+-
+-import org.springframework.core.MethodParameter;
+-import org.springframework.core.Ordered;
+-import org.springframework.core.annotation.Order;
+-import org.springframework.http.HttpInputMessage;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.http.ResponseEntity;
+-import org.springframework.http.converter.HttpMessageConverter;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.service.ClinicService;
+-import org.springframework.web.bind.annotation.ControllerAdvice;
+-import org.springframework.web.bind.annotation.ExceptionHandler;
+-import org.springframework.web.bind.annotation.ResponseBody;
+-import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+-
+-/**
+- * Rejects creating an owner whose lower-cased email is already used by another owner,
+- * answering 409. An absent email is accepted. Kept as its own advice so this rule stays a
+- * small, self-contained unit rather than growing the controller or another handler.
+- */
+-@ControllerAdvice
+-@Order(Ordered.HIGHEST_PRECEDENCE)
+-public class OwnerUniqueEmailAdvice extends RequestBodyAdviceAdapter {
+-
+-    private final ClinicService clinicService;
+-
+-    public OwnerUniqueEmailAdvice(ClinicService clinicService) {
+-        this.clinicService = clinicService;
+-    }
+-
+-    @Override
+-    public boolean supports(MethodParameter methodParameter, Type targetType,
+-                            Class<? extends HttpMessageConverter<?>> converterType) {
+-        Method method = methodParameter.getMethod();
+-        return OwnerFieldsDto.class.equals(targetType)
+-            && method != null && "addOwner".equals(method.getName());
+-    }
+-
+-    @Override
+-    public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+-                                Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+-        String email = lowerCased(((OwnerFieldsDto) body).getEmail());
+-        if (email != null && isTaken(email)) {
+-            throw new DuplicateEmailException();
+-        }
+-        return body;
+-    }
+-
+-    private boolean isTaken(String email) {
+-        return clinicService.findAllOwners().stream()
+-            .map(Owner::getEmail)
+-            .map(this::lowerCased)
+-            .anyMatch(email::equals);
+-    }
+-
+-    private String lowerCased(String email) {
+-        return (email == null || email.isBlank()) ? null : email.strip().toLowerCase(Locale.ROOT);
+-    }
+-
+-    @ExceptionHandler(DuplicateEmailException.class)
+-    @ResponseBody
+-    public ResponseEntity<String> handleDuplicateEmail(DuplicateEmailException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+-    }
+-
+-    /** Signals an email already used by another owner. */
+-    static class DuplicateEmailException extends RuntimeException {
+-
+-        DuplicateEmailException() {
+-            super("email already in use");
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
+deleted file mode 100644
+index 927722996..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
++++ /dev/null
+@@ -1,124 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.springframework.samples.petclinic.rest.advice;
+-
+-import java.io.ByteArrayInputStream;
+-import java.io.InputStream;
+-import java.lang.reflect.Method;
+-import java.lang.reflect.Type;
+-import java.util.Locale;
+-
+-import org.springframework.core.MethodParameter;
+-import org.springframework.core.Ordered;
+-import org.springframework.core.annotation.Order;
+-import org.springframework.http.HttpHeaders;
+-import org.springframework.http.HttpInputMessage;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.http.ResponseEntity;
+-import org.springframework.http.converter.HttpMessageConverter;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.service.ClinicService;
+-import org.springframework.util.StreamUtils;
+-import org.springframework.web.bind.annotation.ControllerAdvice;
+-import org.springframework.web.bind.annotation.ExceptionHandler;
+-import org.springframework.web.bind.annotation.ResponseBody;
+-import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+-
+-import tools.jackson.databind.JsonNode;
+-import tools.jackson.databind.ObjectMapper;
+-
+-/**
+- * Rejects creating an owner whose lastName and address already belong to another owner
+- * (compared case-insensitively with collapsed whitespace), answering 409 — unless the
+- * request opts in with {@code sharesHousehold=true}. The opt-in flag is not a stored
+- * owner field, so the raw body is read here before deserialization. Kept as its own
+- * advice so the rule stays a small, self-contained unit.
+- */
+-@ControllerAdvice
+-@Order(Ordered.HIGHEST_PRECEDENCE)
+-public class OwnerUniqueHouseholdAdvice extends RequestBodyAdviceAdapter {
+-
+-    private final ClinicService clinicService;
+-
+-    private final ObjectMapper objectMapper;
+-
+-    public OwnerUniqueHouseholdAdvice(ClinicService clinicService, ObjectMapper objectMapper) {
+-        this.clinicService = clinicService;
+-        this.objectMapper = objectMapper;
+-    }
+-
+-    @Override
+-    public boolean supports(MethodParameter methodParameter, Type targetType,
+-                            Class<? extends HttpMessageConverter<?>> converterType) {
+-        Method method = methodParameter.getMethod();
+-        return OwnerFieldsDto.class.equals(targetType)
+-            && method != null && "addOwner".equals(method.getName());
+-    }
+-
+-    @Override
+-    public HttpInputMessage beforeBodyRead(HttpInputMessage inputMessage, MethodParameter parameter,
+-                                           Type targetType, Class<? extends HttpMessageConverter<?>> converterType)
+-            throws java.io.IOException {
+-        byte[] body = StreamUtils.copyToByteArray(inputMessage.getBody());
+-        JsonNode json = objectMapper.readTree(body);
+-        if (!json.path("sharesHousehold").asBoolean(false) && isDuplicateHousehold(json)) {
+-            throw new DuplicateHouseholdException();
+-        }
+-        return buffered(body, inputMessage.getHeaders());
+-    }
+-
+-    private boolean isDuplicateHousehold(JsonNode json) {
+-        String lastName = normalize(json.path("lastName").asString());
+-        String address = OwnerAddressNormalizationAdvice.normalize(json.path("address").asString());
+-        return clinicService.findAllOwners().stream()
+-            .anyMatch(o -> lastName.equals(normalize(o.getLastName()))
+-                && address.equals(OwnerAddressNormalizationAdvice.normalize(o.getAddress())));
+-    }
+-
+-    private static String normalize(String value) {
+-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+-    }
+-
+-    private static HttpInputMessage buffered(byte[] body, HttpHeaders headers) {
+-        return new HttpInputMessage() {
+-            @Override
+-            public InputStream getBody() {
+-                return new ByteArrayInputStream(body);
+-            }
+-
+-            @Override
+-            public HttpHeaders getHeaders() {
+-                return headers;
+-            }
+-        };
+-    }
+-
+-    @ExceptionHandler(DuplicateHouseholdException.class)
+-    @ResponseBody
+-    public ResponseEntity<String> handleDuplicateHousehold(DuplicateHouseholdException e) {
+-        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+-    }
+-
+-    /** Signals a lastName + address pair already used by another owner. */
+-    static class DuplicateHouseholdException extends RuntimeException {
+-
+-        DuplicateHouseholdException() {
+-            super("owner with the same last name and address already exists");
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+similarity index 64%
+rename from src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java
+rename to src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+index 52e0c34b9..efae2e70d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueTelephoneAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+@@ -35,17 +35,20 @@ import org.springframework.web.bind.annotation.ResponseBody;
+ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
+ 
+ /**
+- * Rejects creating an owner whose E.164 telephone is already used by another owner,
+- * answering 409. Kept as its own advice so this rule stays a small, self-contained unit
+- * rather than growing the controller or another handler.
++ * Rejects creating an owner whose derived {@code identityKey} exactly matches an existing
++ * owner's, answering 409. The key is
++ * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId} and is the single
++ * source of duplicate detection: telephone, email and household all contribute to it, so only
++ * a whole-key match is a duplicate (household members with different telephones differ and are
++ * both allowed). Kept as its own small advice so the rule stays a self-contained unit.
+  */
+ @ControllerAdvice
+ @Order(Ordered.HIGHEST_PRECEDENCE)
+-public class OwnerUniqueTelephoneAdvice extends RequestBodyAdviceAdapter {
++public class OwnerUniqueIdentityAdvice extends RequestBodyAdviceAdapter {
+ 
+     private final ClinicService clinicService;
+ 
+-    public OwnerUniqueTelephoneAdvice(ClinicService clinicService) {
++    public OwnerUniqueIdentityAdvice(ClinicService clinicService) {
+         this.clinicService = clinicService;
+     }
+ 
+@@ -60,27 +63,28 @@ public class OwnerUniqueTelephoneAdvice extends RequestBodyAdviceAdapter {
+     @Override
+     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+-        String telephone = OwnerTelephoneNormalizationAdvice.toE164(((OwnerFieldsDto) body).getTelephone());
++        OwnerFieldsDto dto = (OwnerFieldsDto) body;
++        String contact = OwnerIdentityKey.telephone(dto.getTelephone()) + '|' + OwnerIdentityKey.email(dto.getEmail());
+         boolean duplicate = clinicService.findAllOwners().stream()
+-            .map(Owner::getTelephone)
+-            .anyMatch(telephone::equals);
++            .map(o -> OwnerIdentityKey.telephone(o.getTelephone()) + '|' + OwnerIdentityKey.email(o.getEmail()))
++            .anyMatch(contact::equals);
+         if (duplicate) {
+-            throw new DuplicateTelephoneException();
++            throw new DuplicateIdentityException();
+         }
+         return body;
+     }
+ 
+-    @ExceptionHandler(DuplicateTelephoneException.class)
++    @ExceptionHandler(DuplicateIdentityException.class)
+     @ResponseBody
+-    public ResponseEntity<String> handleDuplicateTelephone(DuplicateTelephoneException e) {
++    public ResponseEntity<String> handleDuplicateIdentity(DuplicateIdentityException e) {
+         return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+     }
+ 
+-    /** Signals a telephone already used by another owner. */
+-    static class DuplicateTelephoneException extends RuntimeException {
++    /** Signals an owner whose whole identityKey is already used by another owner. */
++    static class DuplicateIdentityException extends RuntimeException {
+ 
+-        DuplicateTelephoneException() {
+-            super("telephone already in use");
++        DuplicateIdentityException() {
++            super("owner with the same identity already exists");
+         }
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b2e55b36a..1ea145c0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2094,6 +2094,12 @@ components:
+               type: string
+               example: "b1c2d3e4-f5a6-3b7c-8d9e-0a1b2c3d4e5f"
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: The derived duplicate-detection key, 'normalizedTelephone|email|householdId' (email omitted when absent).
++              type: string
++              example: "+61412345678||b1c2d3e4-f5a6-3b7c-8d9e-0a1b2c3d4e5f"
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners sharing this owner's first and last name (case-insensitive) at the time it was created.
