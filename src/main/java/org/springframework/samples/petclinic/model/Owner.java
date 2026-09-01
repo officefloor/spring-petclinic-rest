@@ -56,6 +56,9 @@ public class Owner extends Person {
     @Column(name = "household_id")
     private String householdId;
 
+    @Column(name = "namesake_count")
+    private Integer namesakeCount;
+
     @Column(name = "registration_date")
     private java.time.LocalDate registrationDate;
 
@@ -89,6 +92,14 @@ public class Owner extends Person {
     public void assignCustomerCode(int existingOwnerCount) {
         String prefix = this.lastName.substring(0, Math.min(3, this.lastName.length())).toUpperCase(Locale.ROOT);
         this.customerCode = String.format("%s-%04d", prefix, existingOwnerCount + 1);
+    }
+
+    public Integer getNamesakeCount() {
+        return this.namesakeCount;
+    }
+
+    public void setNamesakeCount(Integer namesakeCount) {
+        this.namesakeCount = namesakeCount;
     }
 
     public String getHouseholdId() {

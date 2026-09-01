@@ -112,6 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Households.joinHousehold(owners, owner, ownerFieldsDto.getSharesHousehold())
             .forEach(this.clinicService::saveOwner);
         owner.assignCustomerCode(owners.size());
+        owner.setNamesakeCount(Namesakes.count(owners, owner));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
