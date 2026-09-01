@@ -72,7 +72,7 @@ public class OwnerPossibleDuplicateAdvice implements ResponseBodyAdvice<Object> 
             .filter(o -> owner.getId() != null && o.getId() < owner.getId())
             .filter(o -> Objects.equals(o.getPostcode(), owner.getPostcode()))
             .filter(o -> soundex.equals(OwnerSoundex.soundex(o.getLastName())))
-            .filter(o -> !OwnerIdentityKey.of(o).equals(owner.getIdentityKey()))
+            .filter(o -> !OwnerIdentityKey.of(o).equals(owner.getIdentity().getIdentityKey()))
             .min(Comparator.comparing(Owner::getId))
             .orElse(null);
     }

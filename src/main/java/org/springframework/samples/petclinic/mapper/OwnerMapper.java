@@ -5,8 +5,10 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -20,9 +22,8 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.householdId(owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerIdentityKey.of(owner))")
-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerFiscalYear.label(owner))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerMembershipLevel.points(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerMembershipLevel.of(owner))")
@@ -35,6 +36,15 @@ public interface OwnerMapper {
     @Mapping(target = "salutation", expression = "java(org.springframework.samples.petclinic.rest.advice.OwnerSalutation.of(owner))")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Groups the owner's version-2 identifiers into the nested {@code identity} object. */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getCustomerCode());
+        identity.setHouseholdId(OwnerIdentityKey.householdId(owner.getLastName(), owner.getPostcode()));
+        identity.setIdentityKey(OwnerIdentityKey.of(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 

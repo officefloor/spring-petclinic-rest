@@ -48,24 +48,30 @@ public class OwnerCreatedEventAdvice {
         Object result = joinPoint.proceed();
         if (created) {
             AUDIT.info(new OwnerCreatedEvent(seq.incrementAndGet(), owner.getId(),
-                owner.getCustomerCode(), OwnerMembershipLevel.of(owner)).toJson());
+                owner.getCustomerCode(), OwnerMembershipLevel.of(owner), OwnerSegment.of(owner)).toJson());
         }
         return result;
     }
 }
 
 /**
- * Immutable structured owner-creation event. {@code identifier} is the owner's current primary
- * identifier (the customerCode now, the memberId later); {@link #toJson()} renders it under the
- * {@code customerCode} key the audit contract names.
+ * Immutable structured owner-creation event, schema version 2. {@code identifier} is the owner's
+ * current primary identifier (the version-2 memberId); {@code segment} is the owner segment recomputed
+ * from that version-2 identity. {@link #toJson()} renders the identifier under the {@code customerCode}
+ * key the audit contract names and carries the {@code schemaVersion} and {@code ownerSegment} fields.
  */
-record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, int membershipLevel) {
+record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, int membershipLevel, String segment) {
+
+    /** The audit event schema version; 2 since the version-2 owner identity release. */
+    static final int SCHEMA_VERSION = 2;
 
     String toJson() {
-        return "{\"seq\":" + seq
+        return "{\"schemaVersion\":" + SCHEMA_VERSION
+            + ",\"seq\":" + seq
             + ",\"ownerId\":" + ownerId
             + ",\"customerCode\":" + quote(identifier)
             + ",\"membershipLevel\":" + membershipLevel
+            + ",\"ownerSegment\":" + quote(segment)
             + ",\"event\":\"OWNER_CREATED\"}";
     }
 

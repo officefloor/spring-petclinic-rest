@@ -26,9 +26,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Derives an owner's {@code identityKey}, the single value all duplicate detection is based on:
- * the SHA-256 hex of {@code normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)}.
- * Kept as a small standalone unit so the request advice and the response mapper derive the key
- * identically.
+ * the SHA-256 hex of {@code 'V2|' + normalizedTelephone + '|' + (email or empty) + '|' + soundex(lastName)},
+ * where the leading 'V2' is the fixed identity-version tag. Kept as a small standalone unit so the
+ * request advice and the response mapper derive the key identically.
  */
 public final class OwnerIdentityKey {
 
@@ -44,7 +44,7 @@ public final class OwnerIdentityKey {
     }
 
     static String of(String telephone, String email, String lastName, String postcode) {
-        return sha256Hex(telephone(telephone) + '|' + email(email) + '|' + OwnerSoundex.soundex(lastName));
+        return sha256Hex("V2|" + telephone(telephone) + '|' + email(email) + '|' + OwnerSoundex.soundex(lastName));
     }
 
     static String telephone(String telephone) {
@@ -61,7 +61,7 @@ public final class OwnerIdentityKey {
      * share it automatically.
      */
     public static String householdId(String lastName, String postcode) {
-        String normalized = lastName.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT)
+        String normalized = "V2|" + lastName.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT)
             + '|' + (postcode == null ? "" : postcode.trim());
         return sha256Hex(normalized).substring(0, 12);
     }

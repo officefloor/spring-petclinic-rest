@@ -25,8 +25,9 @@ import java.util.Map;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's unified {@code memberId} '<REGION><FY><HASH8><CHK>': the region code (from the
- * postcode band, else "UNKNOWN"), the 2-digit fiscal year of the registration date, the first 8
+ * Derives an owner's unified {@code memberId} '<REGION>V2<FY><HASH8><CHK>': the region code (from the
+ * postcode band, else "UNKNOWN") carrying the fixed 'V2' identity-version tag, the 2-digit fiscal
+ * year of the registration date, the first 8
  * upper-hex characters of SHA-256 over (normalizedTelephone + lastName), and a single Luhn check
  * digit over the digits of the preceding segments. Kept as a small standalone unit so the assigning
  * aspect, the response mapper and the segment rule all derive the same identity.
@@ -52,7 +53,8 @@ public final class OwnerMemberId {
         if (registered == null) {
             return null;
         }
-        String body = region(owner) + String.format("%02d", OwnerFiscalYear.yearOf(registered) % 100) + hash8(owner);
+        String body = region(owner) + "V2" + String.format("%02d", OwnerFiscalYear.yearOf(registered) % 100)
+            + hash8(owner);
         return body + OwnerCheckDigit.luhn(body);
     }
 

@@ -66,7 +66,7 @@ public class OwnerMembershipCapAdvice implements ResponseBodyAdvice<Object> {
         return clinicService.findAllOwners().stream()
             .filter(other -> !Boolean.TRUE.equals(other.getDeleted()))
             .filter(other -> other.getId() != null && owner.getId() != null && other.getId() < owner.getId())
-            .filter(other -> owner.getHouseholdId()
+            .filter(other -> owner.getIdentity().getHouseholdId()
                 .equals(OwnerIdentityKey.householdId(other.getLastName(), other.getPostcode())))
             .mapToInt(other -> OwnerMembershipLevel.of(other) + 1)
             .max();
