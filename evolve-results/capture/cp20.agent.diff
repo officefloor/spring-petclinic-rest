@@ -1,0 +1,47 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/BusinessDays.java
+new file mode 100644
+index 000000000..950461800
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/BusinessDays.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Business-day rule for owner registration dates: the effective registration
++ * date defaults to the server's current date when absent and, when it lands on
++ * a weekend, rolls forward to the following Monday.
++ */
++final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** The owner's effective registration date, defaulted and rolled onto a business day. */
++    static LocalDate effective(Owner owner) {
++        LocalDate date = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c73ea1ea9..653873d86 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,8 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         Collection<Owner> owners = this.clinicService.findAllOwners();
++        owner.setRegistrationDate(BusinessDays.effective(owner));
+         if (owners.stream()
+-            .filter(o -> java.time.LocalDate.now().equals(o.getRegistrationDate())).count() >= 100) {
++            .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (owners.stream()
