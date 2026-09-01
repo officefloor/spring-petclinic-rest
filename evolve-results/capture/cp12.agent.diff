@@ -1,0 +1,59 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+new file mode 100644
+index 000000000..9998a465f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
++
++/**
++ * Rewrites the built owner's address into a canonical form in place, so later steps save, compare
++ * (household duplicate detection and the shared household id) and return it as {@code address}. The
++ * value is trimmed, its internal whitespace collapsed, upper-cased and common street-type
++ * abbreviations expanded (ST->STREET, RD->ROAD, AVE->AVENUE). An address that is blank after
++ * normalization is rejected 400 via {@link MissingOwnerFieldsException}.
++ */
++public class NormalizeOwnerAddress {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    public void service(@Val Owner owner) throws MissingOwnerFieldsException {
++        String address = owner.getAddress() == null ? "" : owner.getAddress().trim();
++        if (address.isEmpty()) {
++            throw new MissingOwnerFieldsException(List.of("address"));
++        }
++        StringBuilder normalized = new StringBuilder();
++        for (String token : address.split("\\s+")) {
++            String upper = token.toUpperCase(Locale.ROOT);
++            if (normalized.length() > 0) {
++                normalized.append(' ');
++            }
++            normalized.append(ABBREVIATIONS.getOrDefault(upper, upper));
++        }
++        owner.setAddress(normalized.toString());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 9ba1a0faf..5bc1e7120 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: normalizeAddress
++
++normalizeAddress:
++  class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
++  govern: [ transaction ]
+   next: normalizeTelephone
+ 
+ normalizeTelephone:
