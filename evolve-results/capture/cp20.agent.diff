@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 134f3a35a..0a37869ab 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -17,9 +17,9 @@ public class BuildOwner {
+         Owner owner = ownerMapper.toOwner(request);
+         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+         owner.setTelephone(toE164(owner.getTelephone()));
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(java.time.LocalDate.now());
+-        }
++        java.time.LocalDate effective = owner.getRegistrationDate() == null
++                ? java.time.LocalDate.now() : owner.getRegistrationDate();
++        owner.setRegistrationDate(BusinessDay.roll(effective));
+         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
+         built.set(owner);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+new file mode 100644
+index 000000000..3689bb6cd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BusinessDay.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Rolls a registration date forward onto a business day: a Saturday or Sunday becomes the next
++ * Monday, any weekday is left unchanged. Applied to the effective registration date (supplied or
++ * defaulted) so every value derived from it — the membership number's year, the daily create-limit
++ * bucket — sees the same adjusted day.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    public static LocalDate roll(LocalDate date) {
++        if (date.getDayOfWeek() == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+index 979e6ea0e..5237b6754 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+@@ -16,7 +16,7 @@ public class EnsureDailyLimit {
+     private static final int DAILY_LIMIT = 100;
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyLimitExceededException {
+-        LocalDate today = LocalDate.now();
++        LocalDate today = owner.getRegistrationDate();
+         int count = 0;
+         for (Owner existing : ownerRepository.findAll()) {
+             if (today.equals(existing.getRegistrationDate())) {
