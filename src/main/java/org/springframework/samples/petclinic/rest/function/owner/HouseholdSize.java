@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Counts the members of an owner's household: the owners sharing this owner's last name and address,
  * compared case-insensitively with collapsed whitespace (the same grouping
- * {@link RejectDuplicateOwnerHousehold} uses). The owner itself is included, so a freshly created
+ * {@link HouseholdId} groups them by). The owner itself is included, so a freshly created
  * owner counts towards its own household total.
  */
 public final class HouseholdSize {
