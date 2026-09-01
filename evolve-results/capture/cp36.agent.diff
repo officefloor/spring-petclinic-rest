@@ -1,0 +1,128 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
+index c3cee4bcc..308b9eb75 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueOwnerHousehold.java
+@@ -9,33 +9,26 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
+ 
+ /**
+- * On create, rejects the owner when another owner already shares its last name and address
+- * (compared case-insensitively with collapsed whitespace). Skipped when the request opts in
+- * via {@code sharesHousehold=true}.
++ * On create, assigns the owner's deterministic {@link HouseholdId} (derived from last name and
++ * postcode) and rejects the owner when an existing owner already shares that household. Setting
++ * {@code sharesHousehold=true} only bypasses this rejection, declaring the owner a household
++ * member; the id is assigned either way.
+  */
+ public class EnsureUniqueOwnerHousehold {
+ 
+     public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateHouseholdException {
+-        String household = household(owner);
+-        owner.setHouseholdId(Integer.toHexString(household.hashCode()).toUpperCase());
++        String householdId = HouseholdId.of(owner);
++        owner.setHouseholdId(householdId);
+         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+             return;
+         }
+         for (Owner existing : ownerRepository.findAll()) {
+             if (!Objects.equals(existing.getId(), owner.getId())
+-                    && household.equals(household(existing))) {
++                    && householdId.equals(existing.getHouseholdId())) {
+                 throw new DuplicateHouseholdException(
+-                        "Another owner already shares this last name and address");
++                        "Another owner already shares this last name and postcode");
+             }
+         }
+     }
+-
+-    private static String household(Owner owner) {
+-        return normalize(owner.getLastName()) + '\n' + normalize(owner.getAddress());
+-    }
+-
+-    private static String normalize(String value) {
+-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+new file mode 100644
+index 000000000..f32eff273
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -0,0 +1,33 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.HexFormat;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Deterministic household id for an owner: the first 12 upper-case hex characters of
++ * SHA-256 over {@code normalizedLastName + '|' + postcode}. Owners with the same last
++ * name (compared case-insensitively with collapsed whitespace) and postcode therefore
++ * share it automatically, without any stored link.
++ */
++final class HouseholdId {
++
++    private HouseholdId() {
++    }
++
++    static String of(Owner owner) {
++        String lastName = owner.getLastName() == null ? ""
++                : owner.getLastName().trim().replaceAll("\\s+", " ").toLowerCase();
++        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest((lastName + '|' + postcode).getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest).substring(0, 12).toUpperCase();
++        } catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index d1da02e03..183dc8c51 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -9,16 +9,19 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ public class RespondWithOwnerCreated {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+-            ObjectResponse<ResponseEntity<OwnerDto>> response) {
++    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerMapper ownerMapper,
++            OwnerRepository ownerRepository, ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
+         dto.setContactPreference(ContactPreference.of(owner));
+         dto.setIdentityKey(IdentityKey.of(owner));
+-        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
++        // A declared household member is not a suspected duplicate.
++        Integer possibleDuplicateOf = Boolean.TRUE.equals(request.getSharesHousehold()) ? null
++                : PossibleDuplicate.of(owner, ownerRepository);
+         dto.setPossibleDuplicate(possibleDuplicateOf != null);
+         dto.setPossibleDuplicateOf(possibleDuplicateOf);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 99d3749a8..732a33ac1 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -24,6 +24,11 @@ normalizeTelephone:
+ normalizeAddress:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeOwnerAddress
+   govern: [ transaction ]
++  next: ensureUniqueHousehold
++
++ensureUniqueHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureUniqueOwnerHousehold
++  govern: [ transaction ]
+   next: ensureUniqueIdentity
+ 
+ ensureUniqueIdentity:
