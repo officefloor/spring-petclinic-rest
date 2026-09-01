@@ -18,6 +18,7 @@ public class OwnerAuditListener {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevels.levelOf(owner), membershipNumber(owner));
+        OwnerCreatedEvent.emit(owner);
     }
 
     private static String membershipNumber(Owner owner) {
