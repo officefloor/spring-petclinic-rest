@@ -17,9 +17,9 @@ public class BuildOwner {
         Owner owner = ownerMapper.toOwner(request);
         owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
         owner.setTelephone(toE164(owner.getTelephone()));
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(java.time.LocalDate.now());
-        }
+        java.time.LocalDate effective = owner.getRegistrationDate() == null
+                ? java.time.LocalDate.now() : owner.getRegistrationDate();
+        owner.setRegistrationDate(BusinessDay.roll(effective));
         sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
         built.set(owner);
     }
