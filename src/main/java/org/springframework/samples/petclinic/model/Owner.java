@@ -78,8 +78,15 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public boolean isDeleted() { return this.deleted; }
+
+    public void setDeleted(boolean deleted) { this.deleted = deleted; }
 
     public String getTitle() {
         return this.title;

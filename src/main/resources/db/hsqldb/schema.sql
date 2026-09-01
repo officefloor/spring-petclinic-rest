@@ -51,7 +51,8 @@ CREATE TABLE owners (
   household_id VARCHAR(20),
   namesake_count INTEGER,
   household_size INTEGER,
-  title      VARCHAR(10)
+  title      VARCHAR(10),
+  deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

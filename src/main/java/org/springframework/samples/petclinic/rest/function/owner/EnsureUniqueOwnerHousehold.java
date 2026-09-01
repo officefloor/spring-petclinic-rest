@@ -24,7 +24,8 @@ public class EnsureUniqueOwnerHousehold {
             return;
         }
         for (Owner existing : ownerRepository.findAll()) {
-            if (!Objects.equals(existing.getId(), owner.getId())
+            if (!existing.isDeleted()
+                    && !Objects.equals(existing.getId(), owner.getId())
                     && householdId.equals(existing.getHouseholdId())) {
                 throw new DuplicateHouseholdException(
                         "Another owner already shares this last name and postcode");

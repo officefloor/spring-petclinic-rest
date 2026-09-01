@@ -19,7 +19,8 @@ public class EnsureUniqueOwnerIdentity {
             throws DuplicateIdentityException {
         String identityKey = IdentityKey.of(owner);
         for (Owner existing : ownerRepository.findAll()) {
-            if (!Objects.equals(existing.getId(), owner.getId())
+            if (!existing.isDeleted()
+                    && !Objects.equals(existing.getId(), owner.getId())
                     && identityKey.equals(IdentityKey.of(existing))) {
                 throw new DuplicateIdentityException("An owner with the same identity already exists");
             }

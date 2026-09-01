@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
 INSERT INTO types VALUES (5, 'bird');
 INSERT INTO types VALUES (6, 'hamster');
 
-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', NULL, 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', NULL, 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', NULL, 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', NULL, 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', NULL, 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', NULL, 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', NULL, 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', NULL, 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', NULL, 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', NULL, 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', NULL, 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', NULL, 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', NULL, 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', NULL, 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', NULL, 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', NULL, 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', NULL, 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', NULL, 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', NULL, 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', NULL, 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
 
 INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
 INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
