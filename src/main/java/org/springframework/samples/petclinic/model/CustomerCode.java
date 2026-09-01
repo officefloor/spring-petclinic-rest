@@ -17,9 +17,12 @@ public final class CustomerCode {
     private CustomerCode() {
     }
 
+    /** Identity-version tag mixed into the region code inside the memberId (see class doc). */
+    private static final String VERSION_TAG = "V2";
+
     /** The memberId for {@code owner} (before any collision suffix). */
     public static String of(Owner owner) {
-        String base = region(owner)
+        String base = VERSION_TAG + region(owner)
             + String.format("%02d", FiscalYear.startYearOf(owner.getRegistrationDate()) % 100)
             + hash8(owner);
         return base + luhn(base);

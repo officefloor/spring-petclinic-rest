@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * (capped) membershipLevel is 3 or more, otherwise 'STANDARD'. AREA is 'METRO' when
  * the locality is a known region (NSW, VIC or QLD), otherwise 'REGIONAL'.
  */
-final class OwnerSegments {
+public final class OwnerSegments {
 
     private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
 
@@ -19,7 +19,7 @@ final class OwnerSegments {
     }
 
     /** The '<TIER>_<AREA>' segment for {@code owner}. */
-    static String of(Owner owner) {
+    public static String of(Owner owner) {
         int level = MembershipLevels.levelOf(owner);
         Integer cap = owner.getMembershipLevelCap();
         if (cap != null && cap < level) {

@@ -26,7 +26,7 @@ final class Households {
      */
     static String idFor(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        return sha256Hex12(normalize(owner.getLastName()) + "|" + postcode);
+        return sha256Hex12("V2|" + normalize(owner.getLastName()) + "|" + postcode);
     }
 
     /**

@@ -24,7 +24,10 @@ public interface OwnerMapper {
 
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity.memberId", expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "identity.householdId", expression = "java(owner.getHouseholdId())")
+    @Mapping(target = "identity.identityKey", expression = "java(IdentityKeys.of(owner))")
     @Mapping(target = "fiscalYear", expression = "java(FiscalYear.labelOf(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(MembershipLevels.pointsOf(owner))")
     @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevelCap() == null ? MembershipLevels.levelOf(owner) : Math.min(MembershipLevels.levelOf(owner), owner.getMembershipLevelCap()))")
@@ -33,7 +36,6 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
-    @Mapping(target = "identityKey", expression = "java(IdentityKeys.of(owner))")
     @Mapping(target = "ownerSegment", expression = "java(OwnerSegments.of(owner))")
     @Mapping(target = "riskFlag", expression = "java(RiskFlags.of(owner))")
     OwnerDto toOwnerDto(Owner owner);

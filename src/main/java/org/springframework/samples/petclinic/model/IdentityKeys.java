@@ -21,7 +21,7 @@ public final class IdentityKeys {
     public static String of(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().strip();
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
-        return sha256Hex(telephone + "|" + email + "|" + soundex(owner.getLastName()));
+        return sha256Hex("V2|" + telephone + "|" + email + "|" + soundex(owner.getLastName()));
     }
 
     /** The American Soundex code of {@code name}, or {@code ""} when it has no letters. */
