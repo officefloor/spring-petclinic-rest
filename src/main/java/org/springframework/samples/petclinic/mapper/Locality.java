@@ -16,7 +16,7 @@ public final class Locality {
 
     /** The canonical region for {@code city}, or "UNKNOWN" when it is not in the table. */
     public static String of(String city) {
-        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+        return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     /** Region by postcode range first (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling

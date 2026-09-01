@@ -14,6 +14,7 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
+        dto.setAgeBand(AgeBand.of(owner));
         dto.setCheckDigit(luhn(owner.getCustomerCode()));
         response.send(dto);
     }
