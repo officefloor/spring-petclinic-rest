@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/CustomerCodes.java b/src/main/java/org/springframework/samples/petclinic/model/CustomerCodes.java
+new file mode 100644
+index 000000000..c6b4ac11f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/CustomerCodes.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.model;
++
++import java.util.Collection;
++import java.util.Objects;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++/**
++ * De-duplicates an owner's customerCode against the codes already in use: the base
++ * {@code <REGION>-<HASH8>} (see {@link CustomerCode}), suffixed with '-<n>' using the
++ * smallest {@code n} of 2 or more that makes it unique.
++ */
++public final class CustomerCodes {
++
++    private CustomerCodes() {
++    }
++
++    /** The unique customerCode for {@code owner} given the {@code existing} owners. */
++    public static String uniqueFor(Owner owner, Collection<Owner> existing) {
++        String base = CustomerCode.of(owner);
++        Set<String> taken = existing.stream()
++            .map(Owner::getCustomerCode)
++            .filter(Objects::nonNull)
++            .collect(Collectors.toSet());
++        String code = base;
++        for (int n = 2; taken.contains(code); n++) {
++            code = base + "-" + n;
++        }
++        return code;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0e414b0e8..e0420e4d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -117,9 +117,9 @@ public class Owner extends Person {
+         return this.customerCode;
+     }
+ 
+-    /** Assign this owner's customerCode as '<REGION>-<HASH8>' (see {@link CustomerCode}). */
+-    public void assignCustomerCode(int existingCityCount) {
+-        this.customerCode = CustomerCode.of(this);
++    /** Assign this owner's customerCode, de-duplicated against {@code existing} (see {@link CustomerCodes}). */
++    public void assignCustomerCode(Collection<Owner> existing) {
++        this.customerCode = CustomerCodes.uniqueFor(this, existing);
+     }
+ 
+     public Integer getNamesakeCount() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b142a57c3..eefd43294 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -118,7 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setHouseholdMemberCount(Households.size(owners, owner));
+-        owner.assignCustomerCode(CityCodes.countInCity(owners, owner));
++        owner.assignCustomerCode(owners);
+         owner.setNamesakeCount(Namesakes.count(owners, owner));
+         owner.setBulkSignupWarning(BulkSignups.exceededDailyLimit(owners, owner));
+         owner.setPossibleDuplicateOf(
