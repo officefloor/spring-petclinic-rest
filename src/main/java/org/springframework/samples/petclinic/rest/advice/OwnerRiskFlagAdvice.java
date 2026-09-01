@@ -1,0 +1,92 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.advice;
+
+import java.util.Locale;
+import java.util.Set;
+
+import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+
+/**
+ * Flags a returned owner as risky when any single signal holds: it is a possible duplicate,
+ * its email domain is disposable-adjacent (shares a label with a blocked disposable domain,
+ * e.g. a different TLD or a subdomain), or its city is over its soft capacity. The duplicate
+ * and capacity signals are delegated to their own advices so this rule adds nothing but the
+ * combination and stays a small, self-contained unit.
+ */
+@ControllerAdvice
+public class OwnerRiskFlagAdvice implements ResponseBodyAdvice<Object> {
+
+    private static final Set<String> DISPOSABLE_LABELS =
+        Set.of("mailinator", "tempmail", "guerrillamail");
+
+    private final OwnerPossibleDuplicateAdvice duplicateAdvice;
+
+    private final OwnerCapacityWarningAdvice capacityAdvice;
+
+    public OwnerRiskFlagAdvice(OwnerPossibleDuplicateAdvice duplicateAdvice,
+                               OwnerCapacityWarningAdvice capacityAdvice) {
+        this.duplicateAdvice = duplicateAdvice;
+        this.capacityAdvice = capacityAdvice;
+    }
+
+    @Override
+    public boolean supports(MethodParameter returnType,
+                            Class<? extends HttpMessageConverter<?>> converterType) {
+        return true;
+    }
+
+    @Override
+    public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType,
+                                  Class<? extends HttpMessageConverter<?>> selectedConverterType,
+                                  ServerHttpRequest request, ServerHttpResponse response) {
+        if (body instanceof OwnerDto owner) {
+            duplicateAdvice.beforeBodyWrite(body, returnType, selectedContentType,
+                selectedConverterType, request, response);
+            capacityAdvice.beforeBodyWrite(body, returnType, selectedContentType,
+                selectedConverterType, request, response);
+            owner.setRiskFlag(Boolean.TRUE.equals(owner.getPossibleDuplicate())
+                || Boolean.TRUE.equals(owner.getCapacityWarning())
+                || isDisposableAdjacent(owner.getEmail()));
+        }
+        return body;
+    }
+
+    private boolean isDisposableAdjacent(String email) {
+        if (email == null) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).strip().toLowerCase(Locale.ROOT);
+        for (String label : domain.split("\\.")) {
+            if (DISPOSABLE_LABELS.contains(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
