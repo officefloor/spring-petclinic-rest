@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
 
 /**
- * Normalizes an owner's telephone before the request reaches the controller: every
- * non-digit character is stripped, and the result must be exactly ten digits or the
- * request is rejected with a 400. Kept as its own advice so this rule stays a small,
- * self-contained unit rather than growing the controller or another handler.
+ * Normalizes an owner's telephone to E.164 before the request reaches the controller: a
+ * leading '+' keeps its country code, otherwise country code '+61' is assumed and a single
+ * leading '0' dropped; spaces, dashes and brackets are stripped and 8 to 15 digits must
+ * remain after the '+' or the request is rejected with a 400. Kept as its own advice so
+ * this rule stays a small, self-contained unit rather than growing the controller or another
+ * handler.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -51,16 +53,24 @@ public class OwnerTelephoneNormalizationAdvice extends RequestBodyAdviceAdapter 
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         OwnerFieldsDto owner = (OwnerFieldsDto) body;
-        owner.setTelephone(normalize(owner.getTelephone()));
+        owner.setTelephone(toE164(owner.getTelephone()));
         return body;
     }
 
-    private String normalize(String telephone) {
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+    /** Converts a telephone to its E.164 string, or throws when no valid form exists. */
+    static String toE164(String telephone) {
+        String trimmed = telephone == null ? "" : telephone.trim();
+        String digits = trimmed.replaceAll("\\D", "");
+        if (!trimmed.startsWith("+")) {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            digits = "61" + digits;
+        }
+        if (digits.length() < 8 || digits.length() > 15) {
             throw new InvalidTelephoneException();
         }
-        return digits;
+        return "+" + digits;
     }
 
     @ExceptionHandler(InvalidTelephoneException.class)
@@ -69,11 +79,11 @@ public class OwnerTelephoneNormalizationAdvice extends RequestBodyAdviceAdapter 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
     }
 
-    /** Signals a telephone that is not exactly ten digits once non-digits are stripped. */
+    /** Signals a telephone that cannot form a valid E.164 number. */
     static class InvalidTelephoneException extends RuntimeException {
 
         InvalidTelephoneException() {
-            super("telephone must be exactly 10 digits");
+            super("telephone must form a valid E.164 number");
         }
     }
 }

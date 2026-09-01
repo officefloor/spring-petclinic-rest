@@ -35,9 +35,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAdapter;
 
 /**
- * Rejects creating an owner whose normalized telephone (digits only) is already used by
- * another owner, answering 409. Kept as its own advice so this rule stays a small,
- * self-contained unit rather than growing the controller or another handler.
+ * Rejects creating an owner whose E.164 telephone is already used by another owner,
+ * answering 409. Kept as its own advice so this rule stays a small, self-contained unit
+ * rather than growing the controller or another handler.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -60,18 +60,14 @@ public class OwnerUniqueTelephoneAdvice extends RequestBodyAdviceAdapter {
     @Override
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
-        String telephone = digits(((OwnerFieldsDto) body).getTelephone());
+        String telephone = OwnerTelephoneNormalizationAdvice.toE164(((OwnerFieldsDto) body).getTelephone());
         boolean duplicate = clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
-            .anyMatch(existing -> telephone.equals(digits(existing)));
+            .anyMatch(telephone::equals);
         if (duplicate) {
             throw new DuplicateTelephoneException();
         }
         return body;
-    }
-
-    private String digits(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 
     @ExceptionHandler(DuplicateTelephoneException.class)
