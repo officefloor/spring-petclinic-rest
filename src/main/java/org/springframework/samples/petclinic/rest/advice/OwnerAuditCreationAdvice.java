@@ -43,7 +43,7 @@ public class OwnerAuditCreationAdvice {
         Object result = joinPoint.proceed();
         if (created) {
             String membershipNumber = owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null
-                : owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+                : owner.getCustomerCode() + "-M" + String.format("%02d", OwnerFiscalYear.yearOf(owner.getRegistrationDate()) % 100);
             AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
                 OwnerMembershipLevel.of(owner), membershipNumber);
