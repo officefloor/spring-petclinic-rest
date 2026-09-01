@@ -55,7 +55,8 @@ CREATE TABLE owners (
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
   title VARCHAR(10),
-  deleted BOOLEAN
+  deleted BOOLEAN,
+  membership_level INTEGER
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
