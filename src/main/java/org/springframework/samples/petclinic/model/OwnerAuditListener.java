@@ -7,7 +7,7 @@ import jakarta.persistence.PostPersist;
 
 /**
  * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever a new
- * {@link Owner} is created, capturing its id, customerCode and registrationDate.
+ * {@link Owner} is created, capturing its id, memberId and registrationDate.
  */
 public class OwnerAuditListener {
 
@@ -15,14 +15,9 @@ public class OwnerAuditListener {
 
     @PostPersist
     public void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            MembershipLevels.levelOf(owner), membershipNumber(owner));
+            MembershipLevels.levelOf(owner));
         OwnerCreatedEvent.emit(owner);
-    }
-
-    private static String membershipNumber(Owner owner) {
-        return owner.getCustomerCode() + "-M"
-            + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
     }
 }

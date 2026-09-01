@@ -8,12 +8,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Emits the immutable structured {@code OWNER_CREATED} event to the dedicated
  * {@code AUDIT} logger, one per created owner, as a JSON object
- * {@code {seq, ownerId, customerCode, membershipLevel, event}}. {@code seq} is a
+ * {@code {seq, ownerId, memberId, membershipLevel, event}}. {@code seq} is a
  * monotonically increasing integer across creates.
  *
- * <p>The event carries the owner's current primary identifier via
- * {@link #primaryId(Owner)} — the customerCode today; when the customerCode is
- * unified into the memberId, only that method changes and the event follows.
+ * <p>The event carries the owner's primary identifier — the memberId — via
+ * {@link #primaryId(Owner)}.
  */
 public final class OwnerCreatedEvent {
 
@@ -27,7 +26,7 @@ public final class OwnerCreatedEvent {
     /** Emit the structured create event for {@code owner}. */
     public static void emit(Owner owner) {
         AUDIT.info(
-            "{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+            "{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), primaryId(owner), MembershipLevels.levelOf(owner));
     }
 

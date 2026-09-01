@@ -18,18 +18,18 @@ import java.util.List;
  * Maps Owner & OwnerDto using Mapstruct
  */
 @Mapper(uses = PetMapper.class, imports = {MembershipLevels.class, FiscalYear.class,
+    org.springframework.samples.petclinic.model.CustomerCode.class,
     org.springframework.samples.petclinic.model.IdentityKeys.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", FiscalYear.startYearOf(owner.getRegistrationDate()) % 100))")
+    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
     @Mapping(target = "fiscalYear", expression = "java(FiscalYear.labelOf(owner.getRegistrationDate()))")
-    @Mapping(target = "checkDigit", expression = "java(CheckDigits.luhnOf(owner.getCustomerCode()))")
     @Mapping(target = "membershipPoints", expression = "java(MembershipLevels.pointsOf(owner))")
     @Mapping(target = "membershipLevel", expression = "java(owner.getMembershipLevelCap() == null ? MembershipLevels.levelOf(owner) : Math.min(MembershipLevels.levelOf(owner), owner.getMembershipLevelCap()))")
-    @Mapping(target = "locality", expression = "java(owner.getCustomerCode() == null ? null : owner.getCustomerCode().split(\"-\")[0])")
-    @Mapping(target = "timezone", expression = "java(owner.getCustomerCode() == null ? null : TimeZones.zoneOf(owner.getCustomerCode().split(\"-\")[0]))")
+    @Mapping(target = "locality", expression = "java(CustomerCode.region(owner))")
+    @Mapping(target = "timezone", expression = "java(TimeZones.zoneOf(CustomerCode.region(owner)))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")

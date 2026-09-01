@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.mapper;
 
 import java.util.Set;
 
+import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.MembershipLevels;
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -25,7 +26,7 @@ final class OwnerSegments {
             level = cap;
         }
         String tier = level >= 3 ? "PREMIUM" : "STANDARD";
-        String region = owner.getCustomerCode() == null ? null : owner.getCustomerCode().split("-")[0];
+        String region = CustomerCode.region(owner);
         String area = METRO_REGIONS.contains(region) ? "METRO" : "REGIONAL";
         return tier + "_" + area;
     }
