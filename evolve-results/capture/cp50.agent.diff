@@ -1,0 +1,151 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java
+new file mode 100644
+index 000000000..36b3c854f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckIdempotency.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.clazz.FlowInterface;
++import net.officefloor.plugin.section.clazz.Flow;
++import net.officefloor.plugin.variable.Out;
++import org.springframework.web.bind.annotation.RequestHeader;
++
++/**
++ * First step of the create pipeline: if the request carries an {@code Idempotency-Key} already
++ * seen, branch to respond with the originally created owner; otherwise publish the key for the
++ * recording step and continue the normal create.
++ */
++public class CheckIdempotency {
++
++    @FunctionalInterface
++    public interface Existing {
++        void send(Integer ownerId);
++    }
++
++    public void service(@RequestHeader(name = "Idempotency-Key", required = false) String key,
++            IdempotencyStore store, Out<String> idempotencyKey, @Flow("existing") Existing existing) {
++        if (key != null) {
++            Integer ownerId = store.find(key);
++            if (ownerId != null) {
++                existing.send(ownerId);
++                return;
++            }
++            idempotencyKey.set(key);
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java
+new file mode 100644
+index 000000000..0e6582e1f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdempotencyStore.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++import org.springframework.stereotype.Component;
++
++/**
++ * Remembers the owner id created for each {@code Idempotency-Key} seen on {@code POST /api/owners},
++ * so a repeated create with an already-seen key returns the original owner instead of a duplicate.
++ */
++@Component
++public class IdempotencyStore {
++
++    private final Map<String, Integer> keyToOwnerId = new ConcurrentHashMap<>();
++
++    public Integer find(String key) {
++        return this.keyToOwnerId.get(key);
++    }
++
++    public void record(String key, Integer ownerId) {
++        this.keyToOwnerId.putIfAbsent(key, ownerId);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java
+new file mode 100644
+index 000000000..169813e7c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RecordIdempotency.java
+@@ -0,0 +1,17 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * After a successful create, remember the owner id under the request's {@code Idempotency-Key}
++ * (if any), so a later repeat with the same key returns this owner instead of creating a duplicate.
++ */
++public class RecordIdempotency {
++
++    public void service(@Val String idempotencyKey, @Val Owner owner, IdempotencyStore store) {
++        if (idempotencyKey != null) {
++            store.record(idempotencyKey, owner.getId());
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+new file mode 100644
+index 000000000..ad4434923
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithExistingOwner.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.samples.petclinic.mapper.OwnerMapper;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Idempotent-replay responder: sends the originally created owner with 200, given its id from the
++ * {@code CheckIdempotency} branch.
++ */
++public class RespondWithExistingOwner {
++
++    public void service(@Parameter Integer ownerId, OwnerRepository ownerRepository,
++            OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
++        Owner owner = ownerRepository.findById(ownerId);
++        response.send(ownerMapper.toOwnerDto(owner));
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index eb7cd58ec..283133d74 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -1,6 +1,17 @@
+ composition:
+   authorize: "hasRole('OWNER_ADMIN')"
+ 
++checkIdempotency:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
++  govern: [ transaction ]
++  next: validateRegistrationDate
++  outputs:
++    existing: respondExisting
++
++respondExisting:
++  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithExistingOwner
++  govern: [ transaction ]
++
+ validateRegistrationDate:
+   class: org.springframework.samples.petclinic.rest.function.owner.ValidateRegistrationDate
+   govern: [ transaction ]
+@@ -74,6 +85,11 @@ flagPossibleDuplicate:
+ save:
+   class: org.springframework.samples.petclinic.rest.function.owner.SaveOwner
+   govern: [ transaction ]
++  next: recordIdempotency
++
++recordIdempotency:
++  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
++  govern: [ transaction ]
+   next: audit
+ 
+ audit:
