@@ -42,6 +42,7 @@ final class Households {
         if (!housemates.isEmpty()) {
             String householdId = householdId(candidate);
             candidate.setHouseholdId(householdId);
+            candidate.setHouseholdMemberCount(housemates.size() + 1);
             housemates.forEach(mate -> mate.setHouseholdId(householdId));
         }
         return housemates;
