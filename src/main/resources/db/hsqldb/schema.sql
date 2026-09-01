@@ -50,7 +50,8 @@ CREATE TABLE owners (
   postcode VARCHAR(4),
   birth_date DATE,
   address_line1 VARCHAR(255),
-  address_line2 VARCHAR(255)
+  address_line2 VARCHAR(255),
+  title VARCHAR(3)
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

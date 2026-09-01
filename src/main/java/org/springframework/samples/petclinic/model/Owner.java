@@ -98,6 +98,17 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
+    @Column(name = "title")
+    private String title;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
     @Column(name = "customer_code")
     private String customerCode;
 
