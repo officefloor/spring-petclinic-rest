@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 86c4e100d..6bfb38319 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(java.lang.Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+-    @Mapping(target = "locality", expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
++    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerLocality.region(owner))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java
+new file mode 100644
+index 000000000..f7d4f42b6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerLocality.java
+@@ -0,0 +1,46 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Single source of truth for an owner's derived {@code locality} (region code). Resolution prefers
++ * the postcode: a 4-digit postcode in a known range maps to its region (NSW 2000-2099, VIC
++ * 3000-3099, QLD 4000-4099). When the postcode is absent or in no known range, it falls back to the
++ * city-to-region table (Sydney/NSW, Melbourne/VIC, Brisbane/QLD). Anything unresolved is
++ * {@code "UNKNOWN"}. Preferring the postcode disambiguates cities that share a name.
++ */
++public final class OwnerLocality {
++
++    private static final Map<String, String> CITY_REGION = Map.of(
++            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    private OwnerLocality() {
++    }
++
++    public static String region(Owner owner) {
++        String byPostcode = byPostcode(owner.getPostcode());
++        if (byPostcode != null) {
++            return byPostcode;
++        }
++        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
++    }
++
++    private static String byPostcode(String postcode) {
++        if (postcode == null) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        if (value >= 2000 && value <= 2099) {
++            return "NSW";
++        }
++        if (value >= 3000 && value <= 3099) {
++            return "VIC";
++        }
++        if (value >= 4000 && value <= 4099) {
++            return "QLD";
++        }
++        return null;
++    }
++}
