@@ -84,10 +84,10 @@ public class OwnerUniqueHouseholdAdvice extends RequestBodyAdviceAdapter {
 
     private boolean isDuplicateHousehold(JsonNode json) {
         String lastName = normalize(json.path("lastName").asString());
-        String address = normalize(json.path("address").asString());
+        String address = OwnerAddressNormalizationAdvice.normalize(json.path("address").asString());
         return clinicService.findAllOwners().stream()
             .anyMatch(o -> lastName.equals(normalize(o.getLastName()))
-                && address.equals(normalize(o.getAddress())));
+                && address.equals(OwnerAddressNormalizationAdvice.normalize(o.getAddress())));
     }
 
     private static String normalize(String value) {
