@@ -107,14 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(o -> owner.getRegistrationDate().equals(o.getRegistrationDate())).count() >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (owners.stream()
-            .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (Emails.isDuplicate(owners, owner)) {
+        if (Identities.isDuplicate(owners, owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (CityCodes.countInCity(owners, owner) >= 50) {
