@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+index dbd5b5071..3bc0b13ae 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/Localities.java
+@@ -18,4 +18,40 @@ final class Localities {
+     static String regionOf(String city) {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
++
++    /**
++     * Canonical region preferring the postcode range (NSW 2000-2099, VIC 3000-3099,
++     * QLD 4000-4099); falls back to the city table when the postcode is absent or in
++     * no known range.
++     */
++    static String regionOf(String city, String postcode) {
++        String byPostcode = regionOfPostcode(postcode);
++        return byPostcode != null ? byPostcode : regionOf(city);
++    }
++
++    /** Region for a postcode's range, or {@code null} when absent or out of range. */
++    private static String regionOfPostcode(String postcode) {
++        Integer code = parse(postcode);
++        if (code == null) {
++            return null;
++        }
++        if (code >= 2000 && code <= 2099) {
++            return "NSW";
++        }
++        if (code >= 3000 && code <= 3099) {
++            return "VIC";
++        }
++        if (code >= 4000 && code <= 4099) {
++            return "QLD";
++        }
++        return null;
++    }
++
++    private static Integer parse(String postcode) {
++        try {
++            return postcode == null ? null : Integer.valueOf(postcode.trim());
++        } catch (NumberFormatException ex) {
++            return null;
++        }
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8a3b169bc..b139cbb23 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(MembershipLevels.levelOf(owner))")
+-    @Mapping(target = "locality", expression = "java(Localities.regionOf(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(Localities.regionOf(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
