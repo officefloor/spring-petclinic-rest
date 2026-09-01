@@ -20,6 +20,9 @@ public class BuildOwner {
             throw new InvalidTelephoneException(owner.getTelephone());
         }
         owner.setTelephone(telephone);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(java.time.LocalDate.now());
+        }
         built.set(owner);
     }
 }
