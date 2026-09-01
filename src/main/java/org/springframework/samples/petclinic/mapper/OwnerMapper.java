@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : Fiscal.label(owner.getRegistrationDate()))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "timezone", expression = "java(Locality.timezone(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
     OwnerDto toOwnerDto(Owner owner);
@@ -57,19 +58,19 @@ public interface OwnerMapper {
         return Math.min(membershipPoints(owner) / 2 + 1, 4);
     }
 
-    /** Tenure exceeds 365 days when the registration date is more than a year in the past. */
+    /** Tenured once at least one fiscal year has elapsed since the registration date. */
     default boolean membershipTenured(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
         return registrationDate != null
-            && registrationDate.isBefore(LocalDate.now().minusDays(365));
+            && Fiscal.startYear(registrationDate) < Fiscal.startYear(LocalDate.now());
     }
 
-    /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate year; null when either input is absent. */
+    /** '&lt;customerCode&gt;-M&lt;YY&gt;', YY = last two digits of the registrationDate fiscal year; null when either input is absent. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        return owner.getCustomerCode() + "-M" + String.format("%02d", Fiscal.startYear(owner.getRegistrationDate()) % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
