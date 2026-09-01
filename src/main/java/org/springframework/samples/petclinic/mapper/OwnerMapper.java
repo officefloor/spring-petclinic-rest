@@ -17,7 +17,8 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {MembershipLevels.class, FiscalYear.class})
+@Mapper(uses = PetMapper.class, imports = {MembershipLevels.class, FiscalYear.class,
+    org.springframework.samples.petclinic.model.IdentityKeys.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
@@ -32,6 +33,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     @Mapping(target = "ageBand", expression = "java(AgeBands.bandOf(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplays.format(owner.getTelephone()))")
+    @Mapping(target = "identityKey", expression = "java(IdentityKeys.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

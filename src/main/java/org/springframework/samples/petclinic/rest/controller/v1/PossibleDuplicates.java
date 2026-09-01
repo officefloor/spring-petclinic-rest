@@ -2,12 +2,13 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 
+import org.springframework.samples.petclinic.model.IdentityKeys;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Soft-match rule for owners: a candidate is a possible duplicate of an existing owner
- * when they share the same last name (case-insensitive) and postcode but have a
- * different telephone, so it is created rather than rejected as a hard duplicate.
+ * when their identityKeys differ but their last names share a soundex code and they have
+ * the same postcode, so it is created rather than rejected as a hard duplicate.
  */
 final class PossibleDuplicates {
 
@@ -31,8 +32,9 @@ final class PossibleDuplicates {
     }
 
     private static boolean softMatch(Owner a, Owner b) {
+        String soundex = IdentityKeys.soundex(b.getLastName());
         return b.getPostcode() != null && b.getPostcode().equals(a.getPostcode())
-            && a.getLastName() != null && a.getLastName().equalsIgnoreCase(b.getLastName())
-            && a.getTelephone() != null && !a.getTelephone().equals(b.getTelephone());
+            && !soundex.isEmpty() && soundex.equals(IdentityKeys.soundex(a.getLastName()))
+            && !IdentityKeys.of(a).equals(IdentityKeys.of(b));
     }
 }
