@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 46a66ae5d..0aa34e168 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : Fiscal.label(owner.getRegistrationDate()))")
+     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "timezone", expression = "java(Locality.timezone(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
++    @Mapping(target = "ownerSegment", expression = "java(OwnerSegment.of(membershipLevel(owner), owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode())))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Points: 0 base, +2 email present, +1 namesakeCount 0, +2 household of 3 or more,
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+new file mode 100644
+index 000000000..5fb099cd4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerSegment.java
+@@ -0,0 +1,19 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Set;
++
++/** Derives an owner's segment '<TIER>_<AREA>' from its membership level and locality. */
++public final class OwnerSegment {
++
++    private static final Set<String> METRO_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    /** PREMIUM at membershipLevel 3 or more (else STANDARD), METRO for a known region (else REGIONAL). */
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = METRO_REGIONS.contains(locality) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 920f203cf..218bc751c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2220,6 +2220,11 @@ components:
+               description: "Derived from birthDate against registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+); absent when no birthDate was supplied."
+               type: string
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "Segment formatted '<TIER>_<AREA>': TIER is PREMIUM at membershipLevel 3 or more else STANDARD; AREA is METRO when locality is a known region (NSW/VIC/QLD) else REGIONAL."
++              type: string
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when the owner has been soft-deleted; the record is retained but flagged. A newly created owner is false.
