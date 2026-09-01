@@ -26,6 +26,12 @@ public class NormalizeOwnerTelephone {
         if (count < 8 || count > 15) {
             throw new InvalidTelephoneException("Telephone cannot form a valid E.164 number");
         }
+        if (e164.startsWith("+61") && count - 2 != 9) {
+            throw new InvalidTelephoneException("Telephone needs 9 national digits for +61");
+        }
+        if (e164.startsWith("+1") && count - 1 != 10) {
+            throw new InvalidTelephoneException("Telephone needs 10 national digits for +1");
+        }
         owner.setTelephone(e164);
     }
 }
