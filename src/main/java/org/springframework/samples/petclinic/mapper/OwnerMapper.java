@@ -22,7 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "householdId", expression = "java(java.util.UUID.nameUUIDFromBytes((owner.getLastName() + \"|\" + owner.getAddress()).trim().replaceAll(\"\\\\s+\", \" \").toLowerCase(java.util.Locale.ROOT).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString())")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() == null || owner.getRegistrationDate() == null ? null : owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipTier", expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" : (Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null && !owner.getEmail().isBlank() ? \"SILVER\" : \"BRONZE\"))")
+    @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isBlank() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
     @Mapping(target = "locality", expression = "java(java.util.Map.of(\"Sydney\", \"NSW\", \"Melbourne\", \"VIC\", \"Brisbane\", \"QLD\").getOrDefault(owner.getCity(), \"UNKNOWN\"))")
     OwnerDto toOwnerDto(Owner owner);
 
