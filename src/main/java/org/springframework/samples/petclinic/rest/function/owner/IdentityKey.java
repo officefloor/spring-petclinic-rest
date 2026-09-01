@@ -1,11 +1,17 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * The single duplicate-detection key for an owner:
- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners
- * are duplicates only when their whole identity keys are equal.
+ * The single duplicate-detection key for an owner: the SHA-256 hex digest of
+ * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. Two owners are
+ * duplicates only when their whole identity keys are equal, so members of the same household
+ * with different telephones (or unlike-sounding names) get distinct keys.
  */
 final class IdentityKey {
 
@@ -13,7 +19,15 @@ final class IdentityKey {
     }
 
     static String of(Owner owner) {
-        return digits(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()) + '|' + orEmpty(owner.getHouseholdId());
+        String raw = digits(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()).toLowerCase()
+                + '|' + Soundex.of(owner.getLastName());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(raw.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private static String digits(String telephone) {

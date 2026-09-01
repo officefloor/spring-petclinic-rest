@@ -16,6 +16,7 @@ public class RespondWithOwner {
         dto.setSelfLink("/api/owners/" + owner.getId());
         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
+        dto.setIdentityKey(IdentityKey.of(owner));
         dto.setAgeBand(AgeBand.of(owner));
         dto.setCheckDigit(luhn(owner.getCustomerCode()));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
