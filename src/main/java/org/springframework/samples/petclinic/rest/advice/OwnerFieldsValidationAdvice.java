@@ -64,16 +64,22 @@ public class OwnerFieldsValidationAdvice extends RequestBodyAdviceAdapter {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", owner.getFirstName());
         addIfBlank(missing, "lastName", owner.getLastName());
-        addIfBlank(missing, "address", owner.getAddress());
+        if (isBlank(owner.getAddressLine1()) && isBlank(owner.getAddress())) {
+            missing.add("address");
+        }
         addIfBlank(missing, "city", owner.getCity());
         addIfBlank(missing, "telephone", owner.getTelephone());
         return missing;
     }
 
     private void addIfBlank(List<String> missing, String field, String value) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(field);
         }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @ExceptionHandler(MissingOwnerFieldsException.class)

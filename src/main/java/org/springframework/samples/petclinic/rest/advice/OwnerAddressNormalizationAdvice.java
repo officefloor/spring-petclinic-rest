@@ -54,7 +54,19 @@ public class OwnerAddressNormalizationAdvice extends RequestBodyAdviceAdapter {
     public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         OwnerFieldsDto owner = (OwnerFieldsDto) body;
-        owner.setAddress(normalize(owner.getAddress()));
+        String line1 = owner.getAddressLine1();
+        if (line1 != null && !line1.isBlank()) {
+            String normalizedLine1 = normalize(line1);
+            owner.setAddressLine1(normalizedLine1);
+            String line2 = owner.getAddressLine2();
+            boolean hasLine2 = line2 != null && !line2.isBlank();
+            String normalizedLine2 = hasLine2 ? normalize(line2) : null;
+            owner.setAddressLine2(normalizedLine2);
+            owner.setAddress(hasLine2 ? normalizedLine1 + " " + normalizedLine2 : normalizedLine1);
+        }
+        else {
+            owner.setAddress(normalize(owner.getAddress()));
+        }
         return body;
     }
 
