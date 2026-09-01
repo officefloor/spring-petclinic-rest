@@ -22,7 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipLevel", expression = "java(MembershipLevels.levelOf(owner))")
-    @Mapping(target = "locality", expression = "java(Localities.regionOf(owner.getCity()))")
+    @Mapping(target = "locality", expression = "java(Localities.regionOf(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreferences.preferenceOf(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
