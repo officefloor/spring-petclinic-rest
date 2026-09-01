@@ -25,21 +25,33 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null && owner.getCustomerCode().indexOf('-') > 0 ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getCity(), owner.getPostcode()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** Numeric level 1-4: starts at 1, +1 when an email is present, +1 when namesakeCount is 0,
-     * +1 when tenured. Level 4 is reserved for tenure, so an owner without it is capped at 3. */
-    default Integer membershipLevel(Owner owner) {
-        int level = 1;
+    /** Points: 0 base, +2 email present, +1 namesakeCount 0, +2 household of 3 or more,
+     * +3 tenure over 365 days. */
+    default Integer membershipPoints(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += 1;
         }
-        return membershipTenured(owner) ? level + 1 : Math.min(level, 3);
+        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
+            points += 2;
+        }
+        if (membershipTenured(owner)) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /** Level from points: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    default Integer membershipLevel(Owner owner) {
+        return Math.min(membershipPoints(owner) / 2 + 1, 4);
     }
 
     /** Tenure exceeds 365 days when the registration date is more than a year in the past. */
