@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cd2bbc01b..cf21f0dc8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,9 +57,20 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
++    @Transient
++    private Boolean sharesHousehold;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
++    public Boolean getSharesHousehold() {
++        return this.sharesHousehold;
++    }
++
++    public void setSharesHousehold(Boolean sharesHousehold) {
++        this.sharesHousehold = sharesHousehold;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdException.java
+new file mode 100644
+index 000000000..6ec3500a5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when a create-owner request has the same last name and address as an existing owner and
++ * does not opt in with {@code sharesHousehold}. Handled by
++ * {@link DuplicateOwnerHouseholdExceptionHandler}, which responds 409 Conflict.
++ */
++public class DuplicateOwnerHouseholdException extends Exception {
++
++    public DuplicateOwnerHouseholdException(String lastName, String address) {
++        super("Owner already exists at this household: " + lastName + ", " + address);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdExceptionHandler.java
+new file mode 100644
+index 000000000..b44307c98
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateOwnerHouseholdExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateOwnerHouseholdExceptionHandler {
++
++    public void handle(@Parameter DuplicateOwnerHouseholdException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.CONFLICT, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.CONFLICT).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java
+new file mode 100644
+index 000000000..553d6e409
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerHousehold.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException;
++
++/**
++ * Rejects 409 when another owner already has the same last name and address as the built owner,
++ * compared case-insensitively with collapsed whitespace. A request that opts in with
++ * {@code sharesHousehold: true} is allowed through, since the owners deliberately share a household.
++ */
++public class RejectDuplicateOwnerHousehold {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws DuplicateOwnerHouseholdException {
++        if (Boolean.TRUE.equals(owner.getSharesHousehold())) {
++            return;
++        }
++        String lastName = normalize(owner.getLastName());
++        String address = normalize(owner.getAddress());
++        for (Owner other : ownerRepository.findAll()) {
++            if (other != owner && lastName.equals(normalize(other.getLastName()))
++                    && address.equals(normalize(other.getAddress()))) {
++                throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
++            }
++        }
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException.yml
+new file mode 100644
+index 000000000..e88b89ee6
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index a5f663598..9ba1a0faf 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -19,6 +19,11 @@ normalizeEmail:
+ rejectDuplicateTelephone:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateOwnerTelephone
+   govern: [ transaction ]
++  next: rejectDuplicateHousehold
++
++rejectDuplicateHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateOwnerHousehold
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 27de083b3..cec6235bf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2043,6 +2043,11 @@ components:
+           type: string
+           format: date
+           example: '2026-09-02'
++        sharesHousehold:
++          title: Shares household
++          description: When true, allows creating this owner even though another owner has the same last name and address (they share a household).
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
