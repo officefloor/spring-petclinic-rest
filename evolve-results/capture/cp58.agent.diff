@@ -1,0 +1,76 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c347254de..599d72d73 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner))")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerAgeBand.of(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
++    @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerRiskFlag.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java
+new file mode 100644
+index 000000000..71ad9983b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRiskFlag.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code riskFlag}: true when any single risk signal holds — the owner is a
++ * {@link FlagPossibleDuplicate possible duplicate}, its city is over soft capacity
++ * ({@link EnsureCityCapacity capacityWarning}), or its email domain is disposable-adjacent. A domain is
++ * disposable-adjacent when its registrable base label matches a known disposable provider
++ * ({@code mailinator}, {@code tempmail}, {@code guerrillamail}) under any TLD or as a subdomain (e.g.
++ * {@code mailinator.net} or {@code inbox.mailinator.com}) — the exact disposable domains are already
++ * rejected at create by {@link RejectDisposableEmail}, so this catches the look-alikes that slip through.
++ */
++public final class OwnerRiskFlag {
++
++    private static final Set<String> DISPOSABLE_BASES = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private OwnerRiskFlag() {
++    }
++
++    /** True when any risk signal holds, otherwise false. */
++    public static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || Boolean.TRUE.equals(owner.getCapacityWarning())
++                || disposableAdjacent(owner.getEmail());
++    }
++
++    private static boolean disposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String[] labels = email.substring(at + 1).split("\\.");
++        return labels.length >= 2 && DISPOSABLE_BASES.contains(labels[labels.length - 2]);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b2d8db44d..ae4d3ba80 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2237,6 +2237,12 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: "True when any single risk signal holds: the owner is a possible duplicate, its email domain is disposable-adjacent (shares a known disposable provider's base label under any TLD or subdomain), or its city is over soft capacity (capacityWarning); otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: "True when the owner has been soft-deleted (the record is retained but excluded from duplicate/identity checks); false for a live owner."
