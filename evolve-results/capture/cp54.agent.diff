@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+new file mode 100644
+index 000000000..e6ea38fd1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Response flag: true when this owner's city already holds 40-49 owners (approaching the
++ * capacity limit of 50), otherwise false. Recomputed at response time from the same
++ * city accumulation the per-city capacity rule counts (case-insensitive, whitespace
++ * collapsed).
++ */
++final class CapacityWarning {
++
++    private static final int WARN_FROM = 40;
++    private static final int CAPACITY = 50;
++
++    private CapacityWarning() {
++    }
++
++    static boolean isActive(Owner owner, OwnerRepository ownerRepository) {
++        String city = normalize(owner.getCity());
++        long count = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (city.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        return count >= WARN_FROM && count < CAPACITY;
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 2c9c40e69..7e33ce70e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -15,6 +15,7 @@ public class RespondWithOwner {
+         dto.setMembershipLevel(HouseholdMembershipCap.apply(owner, dto.getMembershipLevel(), ownerRepository, ownerMapper));
+         dto.setSelfLink("/api/owners/" + owner.getId());
+         dto.setBulkSignupWarning(BulkSignupWarning.isActive(owner, ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.isActive(owner, ownerRepository));
+         dto.setContactPreference(ContactPreference.of(owner));
+         dto.setIdentityKey(IdentityKey.of(owner));
+         dto.setAgeBand(AgeBand.of(owner));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 83df67f92..920f203cf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2180,6 +2180,11 @@ components:
+               description: True when more than 80 owners were registered on this owner's registration date, otherwise false.
+               type: boolean
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already holds 40-49 owners (approaching the capacity limit of 50), otherwise false.
++              type: boolean
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: "'EMAIL' when the owner has an email address, otherwise 'PHONE'."
