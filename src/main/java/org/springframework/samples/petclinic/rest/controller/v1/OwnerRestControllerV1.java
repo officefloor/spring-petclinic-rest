@@ -109,6 +109,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (Households.isDuplicate(owners, owner, ownerFieldsDto.getSharesHousehold())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (CityCodes.countInCity(owners, owner) >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         Households.joinHousehold(owners, owner, ownerFieldsDto.getSharesHousehold())
             .forEach(this.clinicService::saveOwner);
         owner.assignCustomerCode(CityCodes.countInCity(owners, owner));
