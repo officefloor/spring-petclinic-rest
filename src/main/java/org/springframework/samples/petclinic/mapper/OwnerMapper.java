@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.service.OwnerContactPreferencePolicy.contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.OwnerIdentityPolicy.identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.service.OwnerAgeBandPolicy.ageBand(owner))")
+    @Mapping(target = "selfLink", expression = "java(org.springframework.samples.petclinic.service.OwnerSelfLinkPolicy.selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
