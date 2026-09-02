@@ -14,7 +14,7 @@ public class RequireDailyLimit {
     private static final int DAILY_LIMIT = 100;
 
     public void service(OwnerRepository ownerRepository) throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessDay.roll(LocalDate.now());
         long count = ownerRepository.findAll().stream()
                 .filter(owner -> today.equals(owner.getRegistrationDate()))
                 .count();
