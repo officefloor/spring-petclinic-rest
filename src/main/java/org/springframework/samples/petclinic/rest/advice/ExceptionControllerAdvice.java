@@ -32,6 +32,7 @@ import org.springframework.samples.petclinic.rest.controller.BindingErrorsRespon
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+import org.springframework.samples.petclinic.service.OwnerDisposableEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
@@ -206,6 +207,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(OwnerRegistrationDatePolicy.FutureRegistrationDateException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The registration date must not be later than the current date");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerDisposableEmailPolicy.DisposableEmailException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDisposableEmailException(OwnerDisposableEmailPolicy.DisposableEmailException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The email domain is on the disposable-domain blocklist");
         return ResponseEntity.status(status).body(detail);
     }
 

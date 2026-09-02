@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.service.OwnerAuditPolicy;
 import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+import org.springframework.samples.petclinic.service.OwnerDisposableEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
 import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
@@ -113,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService, owner);
         OwnerCityCapacityPolicy.rejectWhenCityAtCapacity(this.clinicService, owner);
         OwnerPostcodePolicy.rejectInvalidPostcode(owner);
+        OwnerDisposableEmailPolicy.rejectDisposableDomain(owner);
         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
