@@ -58,13 +58,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives 'locality' for the response via {@link LocalityResolver#resolve}: the region from the
-     * owner's postcode range, falling back to the city. Non-persistent, so it never affects storage
-     * or the request payload.
+     * Derives 'locality' for the response: the REGION segment of the owner's {@code customerCode}
+     * (the '<REGION>-<HASH8>' identity), falling back to {@link LocalityResolver#resolve} when no
+     * customerCode is present. Non-persistent, so it never affects storage or the request payload.
      */
     @AfterMapping
     default void deriveLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setLocality(LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
+        String code = owner.getCustomerCode();
+        int dash = code == null ? -1 : code.indexOf('-');
+        ownerDto.setLocality(dash > 0 ? code.substring(0, dash)
+            : LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
     }
 
     /**
