@@ -56,12 +56,23 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "namesake_count")
+    private Integer namesakeCount;
+
     public String getCustomerCode() {
         return this.customerCode;
     }
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public Integer getNamesakeCount() {
+        return this.namesakeCount;
+    }
+
+    public void setNamesakeCount(Integer namesakeCount) {
+        this.namesakeCount = namesakeCount;
     }
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
