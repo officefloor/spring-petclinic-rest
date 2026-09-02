@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
+import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephoneLengthPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.AccessDeniedException;
@@ -197,6 +198,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(OwnerIdentityPolicy.DuplicateIdentityException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "Another owner already has this identity key");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerRegistrationDatePolicy.FutureRegistrationDateException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleFutureRegistrationDateException(OwnerRegistrationDatePolicy.FutureRegistrationDateException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The registration date must not be later than the current date");
         return ResponseEntity.status(status).body(detail);
     }
 
