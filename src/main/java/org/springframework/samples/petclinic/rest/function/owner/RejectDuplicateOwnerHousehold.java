@@ -20,7 +20,8 @@ public class RejectDuplicateOwnerHousehold {
         }
         String householdId = HouseholdId.of(owner);
         for (Owner other : ownerRepository.findAll()) {
-            if (other != owner && householdId.equals(HouseholdId.of(other))) {
+            if (other != owner && !Boolean.TRUE.equals(other.getDeleted())
+                    && householdId.equals(HouseholdId.of(other))) {
                 throw new DuplicateOwnerIdentityException(householdId);
             }
         }

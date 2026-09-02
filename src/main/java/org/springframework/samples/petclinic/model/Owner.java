@@ -75,6 +75,17 @@ public class Owner extends Person {
     @Transient
     private Boolean sharesHousehold;
 
+    @Column(name = "deleted")
+    private Boolean deleted = Boolean.FALSE;
+
+    public Boolean getDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
