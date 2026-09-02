@@ -48,11 +48,28 @@ public class OwnerFieldsValidationAdvice implements Validator {
         rejectIfBlank(errors, "address", owner.getAddress());
         rejectIfBlank(errors, "city", owner.getCity());
         rejectIfBlank(errors, "telephone", owner.getTelephone());
+        normalizeTelephone(errors, owner);
     }
 
     private void rejectIfBlank(Errors errors, String field, String value) {
         if (value == null || value.isBlank()) {
             errors.rejectValue(field, "required", "must not be blank");
+        }
+    }
+
+    /**
+     * Strips every non-digit character from the telephone and requires exactly ten digits,
+     * storing the normalized value back on the payload so it is persisted and echoed as-is.
+     */
+    private void normalizeTelephone(Errors errors, OwnerFieldsDto owner) {
+        if (owner.getTelephone() == null) {
+            return;
+        }
+        String digits = owner.getTelephone().replaceAll("\\D", "");
+        if (digits.length() == 10) {
+            owner.setTelephone(digits);
+        } else {
+            errors.rejectValue("telephone", "telephone.invalid", "must contain exactly 10 digits");
         }
     }
 }
