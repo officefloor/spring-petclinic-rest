@@ -52,7 +52,9 @@ public class OwnerNamesakeCountAdvice {
                 && matches(owner.getLastName(), other.getLastName()))
             .count();
         owner.setNamesakeCount(namesakeCount);
-        MembershipPoints.assign(owner, namesakeCount, clinicService.findAllOwners());
+        java.util.Collection<Owner> allOwners = clinicService.findAllOwners();
+        MembershipPoints.assign(owner, namesakeCount, allOwners);
+        owner.setMembershipLevel(MembershipCeiling.cap(owner.getMembershipLevel(), owner, allOwners));
     }
 
     private static boolean matches(String a, String b) {
