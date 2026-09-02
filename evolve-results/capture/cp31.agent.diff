@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 47db016bd..2c2515fa9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,7 @@ import java.util.List;
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.service.OwnerCheckDigitPolicy.checkDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipPolicy.membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCheckDigitPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCheckDigitPolicy.java
+new file mode 100644
+index 000000000..bb74304e4
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCheckDigitPolicy.java
+@@ -0,0 +1,49 @@
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Business rule: an owner's {@code checkDigit} is a single Luhn check digit (0-9) computed
++ * over the digits contained in the owner's {@code customerCode}. Kept as a small,
++ * self-contained unit so the rule can be applied from the read flow without adding
++ * complexity to the mapper, controller, or service.
++ */
++public final class OwnerCheckDigitPolicy {
++
++    private OwnerCheckDigitPolicy() {
++    }
++
++    /**
++     * Derive the Luhn {@code checkDigit} for the given owner, or {@code null} when the
++     * customer code it is built from is not yet available.
++     *
++     * @param owner the owner whose check digit to derive
++     * @return the Luhn check digit, or {@code null} if it cannot be derived
++     */
++    public static Integer checkDigit(Owner owner) {
++        String customerCode = owner.getCustomerCode();
++        return customerCode == null ? null : luhn(customerCode);
++    }
++
++    /** Luhn check digit (0-9) over the digits contained in {@code s}. */
++    private static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d16a95fe9..976ceaedf 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2113,6 +2113,17 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits contained in the
++                owner's customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
