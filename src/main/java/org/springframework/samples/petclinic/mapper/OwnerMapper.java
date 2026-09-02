@@ -30,10 +30,10 @@ public interface OwnerMapper {
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** Strip every non-digit character so the stored telephone is the bare 10-digit value. */
+    /** Store the telephone in E.164 form (see {@link E164Telephone#toE164}). */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return E164Telephone.toE164(telephone);
     }
 
     /** Lower-case the email so it is stored and returned in canonical form. */
