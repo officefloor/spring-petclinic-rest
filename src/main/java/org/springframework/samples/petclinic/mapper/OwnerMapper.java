@@ -87,6 +87,17 @@ public interface OwnerMapper {
         ownerDto.setAgeBand(years < 18 ? "MINOR" : years < 65 ? "ADULT" : "SENIOR");
     }
 
+    /**
+     * Derives 'telephoneDisplay' for the response: the stored E.164 'telephone' formatted for
+     * humans by {@link org.springframework.samples.petclinic.util.TelephoneDisplay#format}. Raw
+     * 'telephone' is left untouched. Non-persistent, so it never affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveTelephoneDisplay(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setTelephoneDisplay(
+            org.springframework.samples.petclinic.util.TelephoneDisplay.format(owner.getTelephone()));
+    }
+
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
