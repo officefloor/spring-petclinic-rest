@@ -70,12 +70,28 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Column(name = "title")
+    private String title;
+
     public LocalDate getBirthDate() {
         return this.birthDate;
     }
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /** The owner's title and last name, or just the last name when no title is given. */
+    public String getSalutation() {
+        return (this.title == null || this.title.isBlank()) ? this.lastName : this.title + " " + this.lastName;
     }
 
     public String getCustomerCode() {
