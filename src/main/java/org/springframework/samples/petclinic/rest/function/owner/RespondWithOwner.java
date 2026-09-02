@@ -17,6 +17,7 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+        dto.setSelfLink("/api/owners/" + owner.getId());
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
         int membershipPoints = MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository));
