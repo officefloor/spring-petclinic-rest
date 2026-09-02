@@ -24,7 +24,7 @@ public class RejectDuplicateHousehold {
             return;
         }
         for (Owner owner : ownerRepository.findAll()) {
-            if (householdId.equals(owner.getHouseholdId())) {
+            if (!owner.isDeleted() && householdId.equals(owner.getHouseholdId())) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getPostcode());
             }
         }

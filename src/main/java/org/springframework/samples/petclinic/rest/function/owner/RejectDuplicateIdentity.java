@@ -17,7 +17,7 @@ public class RejectDuplicateIdentity {
             throws DuplicateIdentityException {
         String identityKey = IdentityKey.forRequest(request);
         for (Owner owner : ownerRepository.findAll()) {
-            if (identityKey.equals(IdentityKey.forOwner(owner))) {
+            if (!owner.isDeleted() && identityKey.equals(IdentityKey.forOwner(owner))) {
                 throw new DuplicateIdentityException(identityKey);
             }
         }
