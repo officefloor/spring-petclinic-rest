@@ -1,0 +1,39 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+index f0f773961..46c66d768 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+@@ -30,5 +30,18 @@ final class HouseholdTier {
+             dto.setMembershipPoints(points);
+             dto.setMembershipLevel(MembershipLevel.level(points));
+         }
++        // A new member's level may sit at most one above the current household maximum.
++        int bonus = members >= 3 ? 2 : 0;
++        int maxOther = -1;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (!householdId.equals(existing.getHouseholdId())
++                    || (existing.getId() != null && existing.getId().equals(owner.getId()))) {
++                continue;
++            }
++            maxOther = Math.max(maxOther, MembershipLevel.level(MembershipLevel.points(existing) + bonus));
++        }
++        if (maxOther >= 0 && dto.getMembershipLevel() > maxOther + 1) {
++            dto.setMembershipLevel(maxOther + 1);
++        }
+     }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 95fae490c..65aa85efd 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -36,11 +36,6 @@ rejectFutureDate:
+ rejectDuplicateIdentity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateIdentity
+   govern: [ transaction ]
+-  next: rejectDuplicateHousehold
+-
+-rejectDuplicateHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RejectDuplicateHousehold
+-  govern: [ transaction ]
+   next: rejectCityAtCapacity
+ 
+ rejectCityAtCapacity:
