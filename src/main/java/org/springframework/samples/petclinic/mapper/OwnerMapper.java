@@ -62,6 +62,20 @@ public interface OwnerMapper {
             : LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
     }
 
+    /** Fixed region-to-timezone table, as IANA names. */
+    java.util.Map<String, String> REGION_TIMEZONE = java.util.Map.of(
+        "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+
+    /**
+     * Derives 'timezone' for the response: the IANA name for the owner's region (the already-derived
+     * {@code locality}) from {@link #REGION_TIMEZONE}, left unset when the region has no entry.
+     * Non-persistent, so it never affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveTimezone(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setTimezone(REGION_TIMEZONE.get(ownerDto.getLocality()));
+    }
+
     /**
      * Derives 'contactPreference' for the response: 'EMAIL' when the owner has an email address,
      * otherwise 'PHONE'. Non-persistent, so it never affects storage or the request payload.
