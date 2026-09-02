@@ -63,6 +63,17 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "postcode")
+    private String postcode;
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
