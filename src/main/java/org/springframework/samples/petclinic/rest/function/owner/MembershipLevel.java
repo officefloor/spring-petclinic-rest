@@ -1,15 +1,12 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Scores an owner's membership. {@link #points(Owner)} sums the owner-only factors — +2 for an
- * email on file, +1 for no namesake, +3 for tenure over 365 days since {@code registrationDate}
- * (the household factor is added later, where the repository is available). {@link #level(int)}
- * buckets a point total into the 1-4 membership level.
+ * email on file, +1 for no namesake, +3 for a tenure of one or more elapsed fiscal years since
+ * {@code registrationDate} (the household factor is added later, where the repository is available).
+ * {@link #level(int)} buckets a point total into the 1-4 membership level.
  */
 public final class MembershipLevel {
 
@@ -24,7 +21,7 @@ public final class MembershipLevel {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             points += 1;
         }
-        if (tenureDays(owner) > 365) {
+        if (FiscalYear.tenure(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -41,10 +38,5 @@ public final class MembershipLevel {
             return 3;
         }
         return 4;
-    }
-
-    private static long tenureDays(Owner owner) {
-        LocalDate registration = owner.getRegistrationDate();
-        return registration == null ? 0 : ChronoUnit.DAYS.between(registration, LocalDate.now());
     }
 }
