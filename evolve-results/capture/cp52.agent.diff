@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+index e776aa032..ba4ef9ab0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+@@ -15,18 +15,63 @@
+  */
+ package org.springframework.samples.petclinic.model;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
+ /**
+- * The single derived duplicate-detection key for an owner: the normalized telephone, the email
+- * (or empty) and the household id, joined with '|'. Two owners are duplicates only when their whole
+- * key matches. The household id is not carried on the persisted owner, so it contributes empty here.
++ * The single derived duplicate-detection key for an owner: the lower-case SHA-256 hex digest over the
++ * normalized telephone, the lower-case email (or empty) and the {@link #soundex soundex} of the last
++ * name, joined with '|'. Two owners are duplicates only when this whole key matches.
+  */
+ public final class OwnerIdentity {
+ 
++    /** Soundex code for each letter A-Z (index c - 'A'); '0' means "not coded". */
++    private static final String SOUNDEX_CODES = "01230120022455012623010202";
++
+     private OwnerIdentity() {
+     }
+ 
+     public static String key(Owner owner) {
+         String email = owner.getEmail();
+-        return owner.getTelephone() + "|" + (email == null ? "" : email) + "|";
++        String source = owner.getTelephone() + "|" + (email == null ? "" : email.toLowerCase())
++            + "|" + soundex(owner.getLastName());
++        StringBuilder sb = new StringBuilder();
++        for (byte b : sha256(source)) {
++            sb.append(String.format("%02x", b));
++        }
++        return sb.toString();
++    }
++
++    /** The American Soundex code (a letter followed by three digits) for the given name, or empty. */
++    static String soundex(String name) {
++        String letters = name == null ? "" : name.toUpperCase().replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder sb = new StringBuilder().append(letters.charAt(0));
++        char prev = SOUNDEX_CODES.charAt(letters.charAt(0) - 'A');
++        for (int i = 1; i < letters.length() && sb.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char code = SOUNDEX_CODES.charAt(c - 'A');
++            if (code != '0' && code != prev) {
++                sb.append(code);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = code;
++            }
++        }
++        while (sb.length() < 4) {
++            sb.append('0');
++        }
++        return sb.toString();
++    }
++
++    private static byte[] sha256(String value) {
++        try {
++            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++        } catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ }
