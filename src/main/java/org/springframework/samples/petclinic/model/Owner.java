@@ -68,6 +68,18 @@ public class Owner extends Person {
         this.title = title;
     }
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    /** True once the owner has been soft-deleted; the row is retained and the flag set. */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     /** Salutation = title + ' ' + last name, or just the last name when no title was given. */
     public String getSalutation() {
         return (this.title == null || this.title.isBlank())
