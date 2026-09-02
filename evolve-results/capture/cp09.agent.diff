@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 5a7d24ae4..c811fb0b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -53,6 +53,17 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private java.time.LocalDate registrationDate;
+ 
++    @Column(name = "customer_code")
++    private String customerCode;
++
++    public String getCustomerCode() {
++        return this.customerCode;
++    }
++
++    public void setCustomerCode(String customerCode) {
++        this.customerCode = customerCode;
++    }
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+new file mode 100644
+index 000000000..7a1d91692
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -0,0 +1,15 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++public class AssignCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String lastName = owner.getLastName();
++        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
++        int sequence = ownerRepository.findAll().size() + 1;
++        owner.setCustomerCode(String.format("%s-%04d", last3, sequence));
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4a767727f..70fd8db41 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+-  registration_date DATE
++  registration_date DATE,
++  customer_code VARCHAR(20)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 1f7815188..5fe28ea11 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -21,6 +21,11 @@ unique:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: assignCode
++
++assignCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 4c9c9c548..4b25030e2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2084,6 +2084,12 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            customerCode:
++              title: Customer code
++              description: Server-assigned identifier formatted '<LAST3>-<NNNN>'.
++              type: string
++              example: 'SMI-0007'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
