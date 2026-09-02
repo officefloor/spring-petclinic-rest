@@ -56,4 +56,9 @@ public class Person extends BaseEntity {
         return this.lastName + ", " + this.firstName;
     }
 
+    public String getInitials() {
+        return Character.toUpperCase(this.firstName.charAt(0)) + "."
+            + Character.toUpperCase(this.lastName.charAt(0)) + ".";
+    }
+
 }
