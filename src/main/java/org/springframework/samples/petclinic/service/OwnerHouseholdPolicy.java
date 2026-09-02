@@ -33,6 +33,7 @@ public final class OwnerHouseholdPolicy {
     public static void rejectDuplicateHousehold(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
         String lastName = normalize(owner.getLastName());
         String address = normalize(owner.getAddress());
+        owner.setHouseholdId(householdId(lastName, address));
         for (Owner existing : clinicService.findAllOwners()) {
             if (!existing.getId().equals(owner.getId())
                 && lastName.equals(normalize(existing.getLastName()))
@@ -40,7 +41,6 @@ public final class OwnerHouseholdPolicy {
                 if (!Boolean.TRUE.equals(sharesHousehold)) {
                     throw new DuplicateHouseholdException();
                 }
-                owner.setHouseholdId(householdId(lastName, address));
                 return;
             }
         }

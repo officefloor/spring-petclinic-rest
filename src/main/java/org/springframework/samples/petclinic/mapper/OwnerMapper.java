@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class)
+@Mapper(uses = {PetMapper.class, OwnerHouseholdTierPostProcessor.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
