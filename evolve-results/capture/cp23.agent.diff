@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+new file mode 100644
+index 000000000..7fc30ca69
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Upgrades an owner's membership tier to {@code GOLD} when their household (owners sharing the same
++ * {@code householdId}) has three or more members. Applied after the base BRONZE/SILVER tier has been
++ * mapped, so GOLD takes precedence; owners without a household are left untouched.
++ */
++final class HouseholdTier {
++
++    private HouseholdTier() {
++    }
++
++    static void applyGold(Owner owner, OwnerRepository ownerRepository, OwnerDto dto) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return;
++        }
++        int members = 0;
++        for (Owner existing : ownerRepository.findAll()) {
++            if (householdId.equals(existing.getHouseholdId())) {
++                members++;
++            }
++        }
++        if (members >= 3) {
++            dto.setMembershipTier("GOLD");
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 8871a381d..986dcc044 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -12,6 +12,7 @@ public class RespondWithOwner {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        HouseholdTier.applyGold(owner, ownerRepository, dto);
+         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
+         response.send(dto);
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index cf0290047..6c4acd729 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -15,6 +15,7 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        HouseholdTier.applyGold(owner, ownerRepository, dto);
+         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
