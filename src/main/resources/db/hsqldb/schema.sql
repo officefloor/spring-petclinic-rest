@@ -49,7 +49,8 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   postcode VARCHAR(4),
   birth_date DATE,
-  possible_duplicate_of INTEGER
+  possible_duplicate_of INTEGER,
+  title      VARCHAR(10)
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 
