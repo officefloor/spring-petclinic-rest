@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index f0463d407..0e9f6badb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.BusinessDay;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.NotEmpty;
+@@ -74,7 +75,8 @@ public class Owner extends Person {
+ 
+     /** Set the registration date, defaulting to the server's current date when none is supplied. */
+     public void setRegistrationDate(LocalDate registrationDate) {
+-        this.registrationDate = registrationDate == null ? LocalDate.now() : registrationDate;
++        this.registrationDate = BusinessDay.onOrNextBusinessDay(
++            registrationDate == null ? LocalDate.now() : registrationDate);
+     }
+ 
+     public String getEmail() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
+index 43e68b9e0..15539d70b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
+@@ -21,6 +21,7 @@ import org.aspectj.lang.annotation.Aspect;
+ import org.aspectj.lang.annotation.Before;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.BusinessDay;
+ import org.springframework.stereotype.Component;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+@@ -42,7 +43,7 @@ public class OwnerDailyLimitAdvice {
+ 
+     @Before("execution(* org.springframework.samples.petclinic.rest.controller.v1.OwnerRestControllerV1.addOwner(..))")
+     public void rejectOverDailyLimit() {
+-        LocalDate today = LocalDate.now();
++        LocalDate today = BusinessDay.onOrNextBusinessDay(LocalDate.now());
+         long createdToday = clinicService.findAllOwners().stream()
+             .filter(existing -> today.equals(existing.getRegistrationDate()))
+             .count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+new file mode 100644
+index 000000000..8b7b30dae
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.temporal.TemporalAdjusters;
++
++/**
++ * Rolls a date onto a business day: a Saturday or Sunday is moved forward to the next Monday,
++ * any weekday is returned unchanged.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    public static LocalDate onOrNextBusinessDay(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
++            return date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
++        }
++        return date;
++    }
++}
