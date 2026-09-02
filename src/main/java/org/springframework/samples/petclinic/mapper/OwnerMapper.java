@@ -37,10 +37,27 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "address", expression = "java(composeAddress(ownerDto))")
+    @Mapping(target = "addressLine1", source = "addressLine1", qualifiedByName = "normalizeAddress")
+    @Mapping(target = "addressLine2", source = "addressLine2", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Compose the stored/returned address, preferring the structured fields: when a non-blank
+     * {@code addressLine1} is supplied it is the normalized line 1 with the normalized
+     * {@code addressLine2} appended after a single space (when present); otherwise fall back to
+     * the normalized flat {@code address} for backward compatibility.
+     */
+    default String composeAddress(OwnerFieldsDto ownerDto) {
+        String line1 = normalizeAddress(ownerDto.getAddressLine1());
+        if (line1 == null || line1.isBlank()) {
+            return normalizeAddress(ownerDto.getAddress());
+        }
+        String line2 = normalizeAddress(ownerDto.getAddressLine2());
+        return (line2 == null || line2.isBlank()) ? line1 : line1 + " " + line2;
+    }
 
     /**
      * Canonicalise the address on create: trim, collapse whitespace runs, upper-case, and expand
