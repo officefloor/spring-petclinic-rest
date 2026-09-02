@@ -61,6 +61,16 @@ public interface OwnerMapper {
         ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
     }
 
+    /**
+     * Derives 'contactPreference' for the response: 'EMAIL' when the owner has an email address,
+     * otherwise 'PHONE'. Non-persistent, so it never affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveContactPreference(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        String email = owner.getEmail();
+        ownerDto.setContactPreference(email == null || email.isBlank() ? "PHONE" : "EMAIL");
+    }
+
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
