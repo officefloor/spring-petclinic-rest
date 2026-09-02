@@ -1,0 +1,144 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f18c19213..44f6913c9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,9 +20,10 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner))")
+-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
+-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
++    @Mapping(target = "apiVersion", expression = "java(2)")
++    @Mapping(target = "identity.householdId", expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner))")
++    @Mapping(target = "identity.identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
++    @Mapping(target = "identity.memberId", expression = "java(owner.getCustomerCode())")
+     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner))")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+index c1cf9cced..677c231f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignOwnerCustomerCode.java
+@@ -18,7 +18,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ public class AssignOwnerCustomerCode {
+ 
+     public void service(@Val Owner owner) {
+-        owner.setCustomerCode(Locality.of(owner) + FiscalYear.yy(owner) + hash8(owner));
++        owner.setCustomerCode("V2" + Locality.of(owner) + FiscalYear.yy(owner) + hash8(owner));
+         owner.setCustomerCode(owner.getCustomerCode() + CheckDigit.of(owner));
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+index 5069098e1..f9ab4757f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -21,7 +21,7 @@ public final class HouseholdId {
+ 
+     public static String of(Owner owner) {
+         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+-        String key = normalize(owner.getLastName()) + '|' + postcode;
++        String key = "V2|" + normalize(owner.getLastName()) + '|' + postcode;
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder id = new StringBuilder(12);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index 98731d1b3..ffd86e7b2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -21,7 +21,7 @@ public final class IdentityKey {
+     }
+ 
+     public static String of(Owner owner) {
+-        return sha256Hex(telephone(owner) + '|' + email(owner) + '|' + Soundex.of(owner.getLastName()));
++        return sha256Hex("V2|" + telephone(owner) + '|' + email(owner) + '|' + Soundex.of(owner.getLastName()));
+     }
+ 
+     static String telephone(Owner owner) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
+index 6fe095346..c3d48806a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
+@@ -23,12 +23,14 @@ public class SaveOwner {
+         int membershipLevel = MembershipLevel.of(
+             MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
+         String memberId = owner.getCustomerCode();
++        String ownerSegment = OwnerSegment.of(membershipLevel, Locality.of(owner));
+         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+             owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
+-        // Immutable structured event. Carries the owner's unified primary identifier as memberId.
++        // Immutable structured event (schema v2). Carries the owner's unified primary identifier as memberId
++        // and the owner segment recomputed from the version-2 identity (its region stays the plain code).
+         String event = String.format(
+-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+-            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel);
++            "{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"ownerSegment\":\"%s\",\"event\":\"OWNER_CREATED\"}",
++            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel, ownerSegment);
+         AUDIT.info("{}", event);
+         NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), memberId);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 50fc912f7..1a8af3095 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2121,30 +2121,43 @@ components:
+               type: string
+               example: 'DR Franklin'
+               readOnly: true
+-            memberId:
+-              title: Member ID
+-              description: Unified member identifier formatted '<REGION><FY><HASH8><CHK>' - the region code, the 2-digit fiscal year, the 8 upper-case hex characters of SHA-256 over the normalized telephone followed by the last name, and a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>', e.g. 'NSW271A2B3C4D5'.
+-              type: string
+-              example: 'NSW271A2B3C4D5'
++            apiVersion:
++              title: API version
++              description: The version of the owner identity contract. Always 2.
++              type: integer
++              format: int32
++              example: 2
++              readOnly: true
++            identity:
++              title: Identity
++              description: The owner's version-2 identifiers (memberId, identityKey, householdId), each derived with a version-2 algorithm that mixes in a fixed 'V2' tag so no value produced under version 1 recurs.
++              type: object
+               readOnly: true
++              properties:
++                memberId:
++                  title: Member ID
++                  description: Unified member identifier formatted '<REGION><FY><HASH8><CHK>' - the version-2 region code (the plain region prefixed with the 'V2' tag), the 2-digit fiscal year, the 8 upper-case hex characters of SHA-256 over the normalized telephone followed by the last name, and a single Luhn check digit computed over the digits of '<REGION><FY><HASH8>', e.g. 'V2NSW271A2B3C4D5'.
++                  type: string
++                  example: 'V2NSW271A2B3C4D5'
++                  readOnly: true
++                householdId:
++                  title: Household ID
++                  description: Stable identifier shared by all owners at the same last name and address (a household), derived with the version-2 algorithm.
++                  type: string
++                  example: 'A1B2C3D4E5F6'
++                  readOnly: true
++                identityKey:
++                  title: Identity key
++                  description: Derived duplicate-detection key over the normalized telephone, email and Soundex of the last name, derived with the version-2 algorithm; two owners are duplicates only when their whole keys are equal.
++                  type: string
++                  example: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
++                  readOnly: true
+             fiscalYear:
+               title: Fiscal year
+               description: The fiscal year of the business-day-adjusted registration date, formatted 'FY<YY>'. The fiscal year starts on 1 July and is numbered by its ending calendar year, e.g. 'FY27' for 1 July 2026 - 30 June 2027.
+               type: string
+               example: 'FY27'
+               readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: Stable identifier shared by all owners at the same last name and address (a household).
+-              type: string
+-              example: 'A1B2C3D4E5F6A7B8'
+-              readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: Derived duplicate-detection key, 'normalizedTelephone|email|householdId' (email empty when absent); two owners are duplicates only when their whole keys are equal.
+-              type: string
+-              example: '+61412345678|jo@example.test|A1B2C3D4E5F6A7B8'
+-              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: The number of existing owners sharing this owner's first and last name (case-insensitive), counted just before this owner was created.
