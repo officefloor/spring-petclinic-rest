@@ -15,6 +15,7 @@ public class RespondWithOwner {
         HouseholdTier.applyGold(owner, ownerRepository, dto);
         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
         dto.setCapacityWarning(CityCapacity.approaching(owner, ownerRepository));
+        dto.setRiskFlag(RiskFlag.of(owner, Boolean.TRUE.equals(dto.getPossibleDuplicate()), dto.getCapacityWarning()));
         response.send(dto);
     }
 }
