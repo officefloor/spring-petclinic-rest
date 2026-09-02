@@ -25,6 +25,7 @@ public class RespondWithOwner {
         dto.setMembershipLevel(HouseholdLevelCeiling.cap(owner, MembershipLevel.of(membershipPoints), ownerRepository));
         dto.setLocality(Locality.of(owner));
         dto.setTimezone(REGION_TIMEZONE.get(dto.getLocality()));
+        dto.setOwnerSegment(OwnerSegment.of(dto.getMembershipLevel(), dto.getLocality()));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         dto.setCapacityWarning(CapacityWarning.of(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
