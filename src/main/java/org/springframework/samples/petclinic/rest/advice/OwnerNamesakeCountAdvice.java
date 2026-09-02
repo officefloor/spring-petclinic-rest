@@ -55,6 +55,7 @@ public class OwnerNamesakeCountAdvice {
         java.util.Collection<Owner> allOwners = clinicService.findAllOwners();
         MembershipPoints.assign(owner, namesakeCount, allOwners);
         owner.setMembershipLevel(MembershipCeiling.cap(owner.getMembershipLevel(), owner, allOwners));
+        owner.setOwnerSegment(OwnerSegment.of(owner));
     }
 
     private static boolean matches(String a, String b) {
