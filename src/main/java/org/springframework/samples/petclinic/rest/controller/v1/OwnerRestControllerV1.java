@@ -101,8 +101,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String last3 = owner.getLastName().substring(0, Math.min(3, owner.getLastName().length())).toUpperCase();
-        owner.setCustomerCode(String.format("%s-%04d", last3, this.clinicService.findAllOwners().size() + 1));
+        owner.setCustomerCode(CustomerCode.of(owner, this.clinicService.findAllOwners()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
