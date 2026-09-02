@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 3b784e66e..4db2bb582 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -46,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 format")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/E164Telephone.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/E164Telephone.java
+new file mode 100644
+index 000000000..6a14cb104
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/E164Telephone.java
+@@ -0,0 +1,36 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++/**
++ * Converts a raw telephone into E.164 form. A leading '+' and country code are kept as given;
++ * otherwise country code '+61' is assumed and a single leading '0' is dropped from the national
++ * digits. Spaces, dashes and brackets are stripped, and the result must carry 8 to 15 digits after
++ * the '+'. Returns {@code null} when no valid E.164 number can be formed.
++ */
++final class E164Telephone {
++
++    private E164Telephone() {
++    }
++
++    static String toE164(String raw) {
++        String cleaned = raw.replaceAll("[ ()\\-]", "");
++        String digits = cleaned.startsWith("+") ? cleaned.substring(1)
++            : "61" + (cleaned.startsWith("0") ? cleaned.substring(1) : cleaned);
++        return digits.matches("\\d{8,15}") ? "+" + digits : null;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
+index 54fef3a39..6de7380f2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidationAdvice.java
+@@ -58,18 +58,18 @@ public class OwnerFieldsValidationAdvice implements Validator {
+     }
+ 
+     /**
+-     * Strips every non-digit character from the telephone and requires exactly ten digits,
+-     * storing the normalized value back on the payload so it is persisted and echoed as-is.
++     * Normalizes the telephone to E.164 form, storing it back on the payload so it is persisted
++     * and echoed as-is; rejects the field when no valid E.164 number can be formed.
+      */
+     private void normalizeTelephone(Errors errors, OwnerFieldsDto owner) {
+         if (owner.getTelephone() == null) {
+             return;
+         }
+-        String digits = owner.getTelephone().replaceAll("\\D", "");
+-        if (digits.length() == 10) {
+-            owner.setTelephone(digits);
++        String e164 = E164Telephone.toE164(owner.getTelephone());
++        if (e164 != null) {
++            owner.setTelephone(e164);
+         } else {
+-            errors.rejectValue("telephone", "telephone.invalid", "must contain exactly 10 digits");
++            errors.rejectValue("telephone", "telephone.invalid", "must be a valid E.164 telephone");
+         }
+     }
+ }
