@@ -24,28 +24,16 @@ public final class OwnerHouseholdPolicy {
     }
 
     /**
-     * Assign the owner's deterministic {@code householdId} and reject it when another existing owner
-     * is in the same (last name, postcode) household, unless the request opted in to sharing.
+     * Assign the owner's deterministic {@code householdId} so owners with the same (last name,
+     * postcode) share it. Shared households are permitted &mdash; a new member simply joins, and
+     * their membership level is capped by {@link OwnerMembershipCeilingPolicy}.
      *
-     * @param clinicService   source of the existing owners
+     * @param clinicService   source of the existing owners (unused; kept for call-site stability)
      * @param owner           the owner being created
-     * @param sharesHousehold whether the request opted in to a shared household
-     * @throws DuplicateHouseholdException if the household already exists and sharing was not opted in
+     * @param sharesHousehold whether the request opted in to a shared household (no longer required)
      */
     public static void rejectDuplicateHousehold(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
-        String lastName = normalize(owner.getLastName());
-        String postcode = orEmpty(owner.getPostcode());
-        owner.setHouseholdId(householdId(lastName, postcode));
-        for (Owner existing : clinicService.findAllOwners()) {
-            if (!existing.getId().equals(owner.getId())
-                && lastName.equals(normalize(existing.getLastName()))
-                && postcode.equals(orEmpty(existing.getPostcode()))) {
-                if (!Boolean.TRUE.equals(sharesHousehold)) {
-                    throw new DuplicateHouseholdException();
-                }
-                return;
-            }
-        }
+        owner.setHouseholdId(householdId(normalize(owner.getLastName()), orEmpty(owner.getPostcode())));
     }
 
     private static String normalize(String value) {
