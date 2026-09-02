@@ -1,0 +1,81 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 823aef76e..3e5f8eb04 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,7 +26,8 @@ public interface OwnerMapper {
+     /** Stable identifier for the household an owner belongs to: same last name and address (normalized
+      *  as in the duplicate-household guard) yield the same id, so household-sharing owners match. */
+     default String householdId(Owner owner) {
+-        String key = normalizeHousehold(owner.getLastName()) + "|" + normalizeHousehold(owner.getAddress());
++        String key = normalizeHousehold(owner.getLastName()) + "|"
++                + org.springframework.samples.petclinic.rest.function.owner.AddressNormalizer.normalize(owner.getAddress());
+         return String.format("H-%08X", key.hashCode());
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+new file mode 100644
+index 000000000..57f9635fe
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Map;
++
++/**
++ * Canonical form of an owner address, applied on create and used for every address comparison
++ * (household duplicate detection and the shared household id). Whitespace is trimmed and collapsed,
++ * the text is upper-cased and common street-type abbreviations are expanded (ST->STREET, RD->ROAD,
++ * AVE->AVENUE). A null or all-whitespace address normalizes to {@code ""}.
++ */
++public final class AddressNormalizer {
++
++    private static final Map<String, String> ABBREVIATIONS =
++            Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private AddressNormalizer() {
++    }
++
++    public static String normalize(String address) {
++        if (address == null || address.isBlank()) {
++            return "";
++        }
++        StringBuilder sb = new StringBuilder();
++        for (String word : address.trim().toUpperCase().split("\\s+")) {
++            if (sb.length() > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(word, word));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+index 54c635711..64792047a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireOwnerFields.java
+@@ -16,6 +16,7 @@ public class RequireOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException {
++        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         require("firstName", request.getFirstName(), missing);
+         require("lastName", request.getLastName(), missing);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+index 0b0145082..fa23251ba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+@@ -19,10 +19,10 @@ public class RequireUniqueHousehold {
+             return;
+         }
+         String lastName = normalize(request.getLastName());
+-        String address = normalize(request.getAddress());
++        String address = AddressNormalizer.normalize(request.getAddress());
+         for (Owner owner : ownerRepository.findAll()) {
+             if (lastName.equals(normalize(owner.getLastName()))
+-                    && address.equals(normalize(owner.getAddress()))) {
++                    && address.equals(AddressNormalizer.normalize(owner.getAddress()))) {
+                 throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+             }
+         }
