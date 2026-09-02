@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.service;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.samples.petclinic.model.Owner;
@@ -34,14 +35,20 @@ public final class OwnerRegistrationDatePolicy {
         }
     }
 
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 26), LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25), LocalDate.of(2026, 12, 28));
+
     private static LocalDate rollToBusinessDay(LocalDate date) {
-        if (date.getDayOfWeek() == DayOfWeek.SATURDAY) {
-            return date.plusDays(2);
-        }
-        if (date.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            return date.plusDays(1);
+        while (!isBusinessDay(date)) {
+            date = date.plusDays(1);
         }
         return date;
+    }
+
+    private static boolean isBusinessDay(LocalDate date) {
+        DayOfWeek day = date.getDayOfWeek();
+        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !PUBLIC_HOLIDAYS.contains(date);
     }
 
     /** Thrown when a supplied registration date is later than the server's current date. */
