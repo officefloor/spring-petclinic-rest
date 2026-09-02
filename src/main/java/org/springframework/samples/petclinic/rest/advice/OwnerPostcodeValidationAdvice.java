@@ -54,7 +54,8 @@ public class OwnerPostcodeValidationAdvice implements Validator {
     public void validate(Object target, Errors errors) {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
         String postcode = owner.getPostcode();
-        int[] range = CITY_RANGE.get(owner.getCity());
+        String city = owner.getCity();
+        int[] range = city == null ? null : CITY_RANGE.get(city);
         if (postcode == null || range == null || !postcode.matches("[0-9]{4}")) {
             return;
         }

@@ -17,22 +17,27 @@ package org.springframework.samples.petclinic.rest.advice;
 
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Maps a {@link ResponseStatusException} to its carried HTTP status. Declared with the highest
- * precedence so it is consulted before the catch-all {@link ExceptionControllerAdvice}, which would
- * otherwise report it as a 500.
+ * Maps a {@link ResponseStatusException} to its carried HTTP status, rendering the body as an
+ * RFC7807 {@code application/problem+json} document. Declared with the highest precedence so it is
+ * consulted before the catch-all {@link ExceptionControllerAdvice}, which would otherwise report it
+ * as a 500.
  */
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class ResponseStatusExceptionAdvice {
 
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Void> handleResponseStatusException(ResponseStatusException e) {
-        return ResponseEntity.status(e.getStatusCode()).build();
+    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(e.getStatusCode());
+        problemDetail.setTitle(e.getClass().getSimpleName());
+        problemDetail.setDetail(e.getReason());
+        return ResponseEntity.status(e.getStatusCode()).body(problemDetail);
     }
 }
