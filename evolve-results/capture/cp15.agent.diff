@@ -1,0 +1,65 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 831edafa4..3aa7bfc37 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipPolicy.membershipNumber(owner))")
++    @Mapping(target = "membershipTier", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipTierPolicy.membershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipTierPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipTierPolicy.java
+new file mode 100644
+index 000000000..6a1c69056
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipTierPolicy.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Business rule: an owner's {@code membershipTier} is {@code SILVER} when it has no namesakes
++ * (namesakeCount is 0) and an email is present, and {@code BRONZE} otherwise. Kept as a small,
++ * self-contained unit so the rule can be applied from the read flow without adding complexity to
++ * the mapper, controller, or service.
++ */
++public final class OwnerMembershipTierPolicy {
++
++    private OwnerMembershipTierPolicy() {
++    }
++
++    /**
++     * Derive the {@code membershipTier} for the given owner.
++     *
++     * @param owner the owner whose membership tier to derive
++     * @return {@code "SILVER"} when the owner has no namesakes and an email, otherwise {@code "BRONZE"}
++     */
++    public static String membershipTier(Owner owner) {
++        Integer namesakeCount = owner.getNamesakeCount();
++        boolean silver = namesakeCount != null && namesakeCount == 0
++            && owner.getEmail() != null && !owner.getEmail().isEmpty();
++        return silver ? "SILVER" : "BRONZE";
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 83b27484f..8e8a556ba 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2130,6 +2130,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipTier:
++              title: Membership tier
++              description: >-
++                The owner's membership tier, 'SILVER' when the owner has no namesakes
++                (namesakeCount is 0) and an email is present, otherwise 'BRONZE'.
++              type: string
++              example: 'SILVER'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
