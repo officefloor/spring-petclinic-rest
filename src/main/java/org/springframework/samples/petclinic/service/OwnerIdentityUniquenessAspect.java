@@ -47,6 +47,7 @@ public class OwnerIdentityUniquenessAspect {
         }
         String identityKey = OwnerIdentity.key(owner);
         boolean taken = ownerRepository.findAll().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> identityKey.equals(OwnerIdentity.key(existing)));
         if (taken) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Another owner already has this identity");

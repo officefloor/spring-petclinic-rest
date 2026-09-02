@@ -73,6 +73,17 @@ public class Owner extends Person {
     @Column(name = "title")
     private String title;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     public LocalDate getBirthDate() {
         return this.birthDate;
     }

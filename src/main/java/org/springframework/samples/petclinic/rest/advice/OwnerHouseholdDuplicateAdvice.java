@@ -47,6 +47,7 @@ public class OwnerHouseholdDuplicateAdvice {
             return;
         }
         boolean taken = clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> household.equals(Household.id(existing.getLastName(), existing.getPostcode())));
         if (taken) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Another owner is already in this household");
