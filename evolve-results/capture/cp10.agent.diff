@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index 274d02e21..5bfd7bb55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
++import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.BindingResult;
+@@ -146,6 +147,14 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    @ExceptionHandler(OwnerHouseholdPolicy.DuplicateHouseholdException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(OwnerHouseholdPolicy.DuplicateHouseholdException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.CONFLICT;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "Another owner already shares this last name and address");
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     @ExceptionHandler(MethodArgumentNotValidException.class)
+     @ResponseBody
+     public ResponseEntity<ProblemDetail> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 6128e547e..cf767a132 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
++import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -103,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
+         OwnerTelephonePolicy.rejectDuplicateTelephone(this.clinicService, owner);
+         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java
+new file mode 100644
+index 000000000..3ded06b03
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java
+@@ -0,0 +1,52 @@
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/**
++ * Business rule: two owners must not share a household by accident. On creation an owner is
++ * rejected when another owner already has the same last name and address, compared
++ * case-insensitively after collapsing runs of whitespace. The caller may opt in to sharing a
++ * household ({@code sharesHousehold == true}), which skips the check. Kept as a small,
++ * self-contained unit so the rule can be enforced from the create flow without adding
++ * complexity to the controller or service.
++ */
++public final class OwnerHouseholdPolicy {
++
++    private OwnerHouseholdPolicy() {
++    }
++
++    /**
++     * Reject the given owner if another existing owner has the same last name and address,
++     * unless the request explicitly opted in to sharing a household.
++     *
++     * @param clinicService   source of the existing owners
++     * @param owner           the owner being created
++     * @param sharesHousehold whether the request opted in to a shared household
++     * @throws DuplicateHouseholdException if the household already exists and sharing was not opted in
++     */
++    public static void rejectDuplicateHousehold(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
++        if (Boolean.TRUE.equals(sharesHousehold)) {
++            return;
++        }
++        String lastName = normalize(owner.getLastName());
++        String address = normalize(owner.getAddress());
++        for (Owner existing : clinicService.findAllOwners()) {
++            if (!existing.getId().equals(owner.getId())
++                && lastName.equals(normalize(existing.getLastName()))
++                && address.equals(normalize(existing.getAddress()))) {
++                throw new DuplicateHouseholdException();
++            }
++        }
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++
++    /** Thrown when another owner already shares the same last name and address. */
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public static class DuplicateHouseholdException extends RuntimeException {
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8ea95d389..661295a60 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2053,6 +2053,14 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: >-
++            When true on create, allow this owner even though another owner has
++            the same last name and address because they knowingly share a
++            household. Not persisted.
++          type: boolean
++          example: true
+       required:
+         - firstName
+         - lastName
