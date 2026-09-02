@@ -1,0 +1,233 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 53726497b..475614e3c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
+ import java.util.Collection;
+@@ -31,32 +32,19 @@ public interface OwnerMapper {
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /**
+-     * Derives the household identifier for the response: the deterministic {@link Household#id} over
+-     * the owner's last name and postcode, so members of one household always report the same id.
+-     * Non-persistent, so it never affects storage or the request payload.
+-     */
+-    @AfterMapping
+-    default void deriveHouseholdId(Owner owner, @MappingTarget OwnerDto ownerDto) {
+-        ownerDto.setHouseholdId(Household.id(owner.getLastName(), owner.getPostcode()));
+-    }
+-
+-    /**
+-     * Derives 'identityKey' for the response: the single duplicate-detection key from
+-     * {@link OwnerIdentity#key(Owner)}. Non-persistent, so it never affects storage or the request payload.
+-     */
+-    @AfterMapping
+-    default void deriveIdentityKey(Owner owner, @MappingTarget OwnerDto ownerDto) {
+-        ownerDto.setIdentityKey(OwnerIdentity.key(owner));
+-    }
+-
+-    /**
+-     * Derives 'memberId' for the response: the stored unified member id (the same
+-     * '<REGION><FY><HASH8><CHK>' value assigned at creation). Non-persistent here, so it never
+-     * affects storage or the request payload.
++     * Derives the version-2 'identity' block and the top-level 'apiVersion' for the response. The
++     * block groups the memberId (the stored '<REGION><FY><HASH8><CHK>' assigned at creation), the
++     * version-2 {@link OwnerIdentity#key(Owner) identityKey} and the version-2
++     * {@link Household#id household id}. Non-persistent, so it never affects storage or the request.
+      */
+     @AfterMapping
+-    default void deriveMemberId(Owner owner, @MappingTarget OwnerDto ownerDto) {
+-        ownerDto.setMemberId(owner.getCustomerCode());
++    default void deriveIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        OwnerIdentityDto identity = new OwnerIdentityDto();
++        identity.setMemberId(owner.getCustomerCode());
++        identity.setIdentityKey(OwnerIdentity.key(owner));
++        identity.setHouseholdId(Household.id(owner.getLastName(), owner.getPostcode()));
++        ownerDto.setIdentity(identity);
++        ownerDto.setApiVersion(2);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Household.java b/src/main/java/org/springframework/samples/petclinic/model/Household.java
+index a21ae6e26..90298580b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Household.java
+@@ -34,7 +34,7 @@ public final class Household {
+         if (lastName == null || postcode == null) {
+             return null;
+         }
+-        String key = lastName.strip().replaceAll("\\s+", " ").toLowerCase() + '|' + postcode;
++        String key = "V2|" + lastName.strip().replaceAll("\\s+", " ").toLowerCase() + '|' + postcode;
+         StringBuilder sb = new StringBuilder();
+         for (byte b : sha256(key)) {
+             sb.append(String.format("%02X", b));
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+index ba4ef9ab0..5360549f9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+@@ -34,7 +34,7 @@ public final class OwnerIdentity {
+ 
+     public static String key(Owner owner) {
+         String email = owner.getEmail();
+-        String source = owner.getTelephone() + "|" + (email == null ? "" : email.toLowerCase())
++        String source = "V2|" + owner.getTelephone() + "|" + (email == null ? "" : email.toLowerCase())
+             + "|" + soundex(owner.getLastName());
+         StringBuilder sb = new StringBuilder();
+         for (byte b : sha256(source)) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreateAuditAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreateAuditAdvice.java
+index 3780fe8dd..2beae20a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreateAuditAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreateAuditAdvice.java
+@@ -43,6 +43,7 @@ public class OwnerCreateAuditAdvice {
+             return;
+         }
+         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+-            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
++            owner.getId(), owner.getIdentity() == null ? null : owner.getIdentity().getMemberId(),
++            owner.getRegistrationDate(), owner.getMembershipLevel());
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreatedEventAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreatedEventAdvice.java
+index 4b065af76..13160cbed 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreatedEventAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCreatedEventAdvice.java
+@@ -45,17 +45,23 @@ public class OwnerCreatedEventAdvice {
+         + "OwnerRestControllerV1.addOwner(..))", returning = "response")
+     public void publishCreated(ResponseEntity<?> response) {
+         if (response != null && response.getBody() instanceof OwnerDto owner) {
++            String memberId = owner.getIdentity() == null ? null : owner.getIdentity().getMemberId();
+             AUDIT.info(new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
+-                owner.getMemberId(), owner.getMembershipLevel()).toJson());
++                memberId, owner.getMembershipLevel(), OwnerSegment.of(owner)).toJson());
+         }
+     }
+ 
+-    /** The immutable audit event; {@code identifier} is the owner's current primary identifier. */
+-    private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel) {
++    /**
++     * The immutable schema-version-2 audit event; {@code identifier} is the owner's current primary
++     * identifier and {@code segment} the version-2 owner segment recomputed from the response.
++     */
++    private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel,
++            String segment) {
+ 
+         String toJson() {
+-            return String.format("{\"seq\":%d,\"ownerId\":%s,\"memberId\":%s,\"membershipLevel\":%s,"
+-                + "\"event\":\"OWNER_CREATED\"}", seq, ownerId, quote(identifier), membershipLevel);
++            return String.format("{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%s,\"memberId\":%s,"
++                + "\"membershipLevel\":%s,\"ownerSegment\":%s,\"event\":\"OWNER_CREATED\"}",
++                seq, ownerId, quote(identifier), membershipLevel, quote(segment));
+         }
+ 
+         private static String quote(String value) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerWelcomeNotifyAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerWelcomeNotifyAdvice.java
+index 32ba2aa9d..0e651ef30 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerWelcomeNotifyAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerWelcomeNotifyAdvice.java
+@@ -37,7 +37,8 @@ public class OwnerWelcomeNotifyAdvice {
+         + "OwnerRestControllerV1.addOwner(..))", returning = "response")
+     public void enqueueWelcome(ResponseEntity<?> response) {
+         if (response != null && response.getBody() instanceof OwnerDto owner) {
+-            NOTIFY.info("WELCOME owner={} memberId={}", owner.getId(), owner.getMemberId());
++            NOTIFY.info("WELCOME owner={} memberId={}", owner.getId(),
++                owner.getIdentity() == null ? null : owner.getIdentity().getMemberId());
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCode.java
+index e349927f8..1a3b608a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCode.java
+@@ -59,7 +59,8 @@ final class CustomerCode {
+                 case 40 -> "QLD";
+                 default -> null;
+             };
+-        return byPostcode != null ? byPostcode : CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
++        String plain = byPostcode != null ? byPostcode : CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
++        return "V2" + plain;
+     }
+ 
+     private static String hash8(String value) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5f56bd51b..753888eac 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2128,30 +2128,25 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
+-            memberId:
+-              title: Member ID
+-              description: "The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>': the region code, the 2-digit fiscal year of the registration date, the first 8 upper-case hex of SHA-256 over the normalized telephone concatenated with the last name, and a single Luhn check digit over the digits of '<REGION><FY><HASH8>'."
+-              type: string
+-              example: 'NSW27ABCD12340'
++            apiVersion:
++              title: API version
++              description: The version of the owner identity contract carried by this response. Always 2.
++              type: integer
++              format: int32
++              example: 2
++              readOnly: true
++            identity:
++              title: Identity
++              description: The owner's version-2 identity block, grouping the derived memberId, identityKey and householdId.
+               readOnly: true
++              allOf:
++                - $ref: '#/components/schemas/OwnerIdentity'
+             fiscalYear:
+               title: Fiscal year
+               description: The fiscal year of the registration date, formatted 'FY<YY>'. The fiscal year starts on 1 July and is named by the calendar year in which it ends.
+               type: string
+               example: 'FY26'
+               readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: Stable identifier shared by owners in the same household (same last name and address).
+-              type: string
+-              example: '2f8a1c9e-3b4d-3c2a-9e1f-7a6b5c4d3e2f'
+-              readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: "Derived duplicate-detection key: normalized telephone, email (or empty) and household id joined with '|'. Two owners are duplicates only when their whole identity key matches."
+-              type: string
+-              example: '+61412345678||'
+-              readOnly: true
+             locality:
+               title: Locality
+               description: The canonical region derived from the owner's city (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not in the table.
+@@ -2259,6 +2254,29 @@ components:
+               readOnly: true
+           required:
+             - pets
++    OwnerIdentity:
++      title: Owner identity
++      description: The version-2 identity block for an owner, grouping the derived identifiers.
++      type: object
++      properties:
++        memberId:
++          title: Member ID
++          description: "The owner's unified member id, formatted '<REGION><FY><HASH8><CHK>': the version-2 region code, the 2-digit fiscal year of the registration date, the first 8 upper-case hex of SHA-256 over the normalized telephone concatenated with the last name, and a single Luhn check digit over the digits of '<REGION><FY><HASH8>'."
++          type: string
++          example: 'V2NSW27ABCD12340'
++          readOnly: true
++        identityKey:
++          title: Identity key
++          description: "Derived version-2 duplicate-detection key over the normalized telephone, email (or empty) and the soundex of the last name."
++          type: string
++          example: '2f8a1c9e3b4d3c2a9e1f7a6b5c4d3e2f'
++          readOnly: true
++        householdId:
++          title: Household ID
++          description: Stable version-2 identifier shared by owners in the same household (same last name and postcode).
++          type: string
++          example: '2F8A1C9E3B4D'
++          readOnly: true
+     OwnerPage:
+       title: Owner page
+       description: A page of pet owners.
