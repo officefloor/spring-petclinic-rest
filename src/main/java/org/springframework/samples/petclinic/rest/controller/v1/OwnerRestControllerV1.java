@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
+import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -107,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService);
+        OwnerRegistrationDatePolicy.assignBusinessDayRegistrationDate(owner);
+        OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService, owner);
         OwnerCityCapacityPolicy.rejectWhenCityAtCapacity(this.clinicService, owner);
         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
         OwnerTelephonePolicy.rejectDuplicateTelephone(this.clinicService, owner);

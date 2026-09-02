@@ -23,13 +23,14 @@ public final class OwnerDailyLimitPolicy {
      * registration date.
      *
      * @param clinicService source of the existing owners
+     * @param owner the owner being created, whose (business-day) registration date is the target day
      * @throws DailyLimitReachedException if today's create limit has already been reached
      */
-    public static void rejectWhenDailyLimitReached(ClinicService clinicService) {
-        LocalDate today = LocalDate.now();
+    public static void rejectWhenDailyLimitReached(ClinicService clinicService, Owner owner) {
+        LocalDate day = owner.getRegistrationDate();
         int count = 0;
         for (Owner existing : clinicService.findAllOwners()) {
-            if (today.equals(existing.getRegistrationDate())) {
+            if (day.equals(existing.getRegistrationDate())) {
                 count++;
             }
         }
