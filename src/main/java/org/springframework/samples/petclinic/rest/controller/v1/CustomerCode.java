@@ -5,6 +5,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -24,7 +27,19 @@ final class CustomerCode {
     }
 
     static String of(Owner owner, Collection<Owner> existing) {
-        return region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName());
+        String base = region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName());
+        return dedupe(base, existing);
+    }
+
+    /** Appends {@code '-<n>'} (smallest {@code n >= 2}) when {@code base} collides with an existing code. */
+    private static String dedupe(String base, Collection<Owner> existing) {
+        Set<String> taken = existing.stream().map(Owner::getCustomerCode)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        String candidate = base;
+        for (int n = 2; taken.contains(candidate); n++) {
+            candidate = base + "-" + n;
+        }
+        return candidate;
     }
 
     private static String region(Owner owner) {
