@@ -1,0 +1,182 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3be2f1ace..efa82c2d8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -52,16 +52,12 @@ public interface OwnerMapper {
+         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+     }
+ 
+-    /** Stable identifier for the household an owner belongs to: same last name and address (normalized
+-     *  as in the duplicate-household guard) yield the same id, so household-sharing owners match. */
++    /** Stable identifier for the household an owner belongs to: the first 12 hex characters of SHA-256
++     *  over (normalizedLastName + '|' + postcode), so owners with the same last name and postcode
++     *  share it. */
+     default String householdId(Owner owner) {
+-        String key = normalizeHousehold(owner.getLastName()) + "|"
+-                + org.springframework.samples.petclinic.rest.function.owner.AddressNormalizer.normalize(owner.getAddress());
+-        return String.format("H-%08X", key.hashCode());
+-    }
+-
+-    private static String normalizeHousehold(String value) {
+-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++        return org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(
++                owner.getLastName(), owner.getPostcode());
+     }
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHousehold.java
+index c17066a43..fae253fce 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CountHousehold.java
+@@ -5,23 +5,17 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+- * Records how many owners belong to this owner's household (same last name and
+- * address, normalized as in the duplicate-household guard) after this create, i.e.
+- * the existing members plus the new owner. Drives the 'GOLD' membership tier.
++ * Records how many owners belong to this owner's household (same computed {@code householdId} —
++ * last name and postcode, see {@link HouseholdId}) after this create, i.e. the existing members
++ * plus the new owner. Drives the 'GOLD' membership tier.
+  */
+ public class CountHousehold {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        String lastName = normalize(owner.getLastName());
+-        String address = AddressNormalizer.normalize(owner.getAddress());
++        String household = HouseholdId.of(owner.getLastName(), owner.getPostcode());
+         long existing = ownerRepository.findAll().stream()
+-                .filter(other -> lastName.equals(normalize(other.getLastName()))
+-                        && address.equals(AddressNormalizer.normalize(other.getAddress())))
++                .filter(other -> household.equals(HouseholdId.of(other.getLastName(), other.getPostcode())))
+                 .count();
+         owner.setHouseholdCount((int) existing + 1);
+     }
+-
+-    private static String normalize(String value) {
+-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+index 6d1c5f477..6dd4e7fb8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -3,16 +3,22 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Soft-match flag: a create that has already cleared the hard duplicate guards but still shares an
+  * existing owner's last name and postcode (compared case-insensitively with collapsed whitespace)
+  * while carrying a different telephone is recorded as a possible duplicate. Sets
+  * {@code possibleDuplicate} true and {@code possibleDuplicateOf} to that owner's id, otherwise false.
++ * A declared household member ({@code sharesHousehold} true) is never a suspected duplicate.
+  */
+ public class FlagPossibleDuplicate {
+ 
+-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
++        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
++            owner.setPossibleDuplicate(false);
++            return;
++        }
+         String lastName = normalize(owner.getLastName());
+         String postcode = normalize(owner.getPostcode());
+         for (Owner other : ownerRepository.findAll()) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+new file mode 100644
+index 000000000..aaf0ef267
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdId.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.HexFormat;
++
++/**
++ * Deterministic household identifier: the first 12 hex characters of SHA-256 over
++ * {@code normalizedLastName + '|' + postcode}. Owners with the same last name and postcode share it,
++ * so it keys household duplicate detection and the household-size count.
++ */
++public final class HouseholdId {
++
++    private HouseholdId() {
++    }
++
++    public static String of(String lastName, String postcode) {
++        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest).substring(0, 12);
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+index fa23251ba..985d4d5c2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+@@ -7,28 +7,24 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerHouseholdException;
+ 
+ /**
+- * Rejects a create request that shares another owner's household: same last name and address,
+- * compared case-insensitively with collapsed whitespace. A request with {@code sharesHousehold}
+- * true opts out of the check. A match rejects 409.
++ * Rejects a create request that shares another owner's household, i.e. has the same computed
++ * {@code householdId} (last name and postcode, see {@link HouseholdId}). A request with
++ * {@code sharesHousehold} true opts out and is created as a declared household member. Requests
++ * without a postcode are not grouped into a household. A match rejects 409.
+  */
+ public class RequireUniqueHousehold {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateOwnerHouseholdException {
+-        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
++        if (Boolean.TRUE.equals(request.getSharesHousehold())
++                || request.getPostcode() == null || request.getPostcode().isBlank()) {
+             return;
+         }
+-        String lastName = normalize(request.getLastName());
+-        String address = AddressNormalizer.normalize(request.getAddress());
++        String household = HouseholdId.of(request.getLastName(), request.getPostcode());
+         for (Owner owner : ownerRepository.findAll()) {
+-            if (lastName.equals(normalize(owner.getLastName()))
+-                    && address.equals(AddressNormalizer.normalize(owner.getAddress()))) {
++            if (household.equals(HouseholdId.of(owner.getLastName(), owner.getPostcode()))) {
+                 throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+             }
+         }
+     }
+-
+-    private static String normalize(String value) {
+-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+-    }
+ }
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 2ee960bc6..afac50402 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -28,6 +28,11 @@ email:
+ uniqueIdentity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueIdentity
+   govern: [ transaction ]
++  next: uniqueHousehold
++
++uniqueHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueHousehold
++  govern: [ transaction ]
+   next: capacity
+ 
+ capacity:
