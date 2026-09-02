@@ -16,8 +16,7 @@ public class SaveOwner {
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         int membershipLevel = MembershipLevel.of(
             MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
-        String membershipNumber = owner.getCustomerCode() + "-M"
-            + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        String membershipNumber = owner.getCustomerCode() + "-M" + FiscalYear.yy(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel, membershipNumber);
     }
