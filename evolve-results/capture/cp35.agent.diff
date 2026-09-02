@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+new file mode 100644
+index 000000000..ae6f7314b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Finds the existing owner this owner is a possible (soft) duplicate of: another owner sharing this
++ * owner's last name (case-insensitive) and postcode but with a different telephone. A shared last
++ * name and postcode with a matching telephone would be a hard duplicate (rejected at create, see
++ * {@link RejectDuplicateOwnerIdentity}), so a differing telephone is exactly the soft-match case.
++ * Owners without a postcode never soft-match. Returns the matching owner's id (the lowest when
++ * several match), or {@code null} when there is no possible duplicate.
++ */
++public final class PossibleDuplicate {
++
++    private PossibleDuplicate() {
++    }
++
++    public static Integer of(Owner owner, OwnerRepository repository) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return null;
++        }
++        Integer match = null;
++        for (Owner other : repository.findAll()) {
++            if (!Objects.equals(other.getId(), owner.getId()) && postcode.equals(other.getPostcode())
++                    && equalsIgnoreCase(owner.getLastName(), other.getLastName())
++                    && !Objects.equals(owner.getTelephone(), other.getTelephone())
++                    && (match == null || other.getId() < match)) {
++                match = other.getId();
++            }
++        }
++        return match;
++    }
++
++    private static boolean equalsIgnoreCase(String a, String b) {
++        return a == null ? b == null : a.equalsIgnoreCase(b);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index e49326ba3..755f51e16 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -18,6 +18,9 @@ public class RespondWithOwner {
+         dto.setLocality(Locality.of(owner));
+         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
+         dto.setContactPreference(ContactPreference.of(owner));
++        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
++        dto.setPossibleDuplicate(possibleDuplicateOf != null);
++        dto.setPossibleDuplicateOf(possibleDuplicateOf);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 978399bb5..c482410bd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -19,6 +19,9 @@ public class RespondWithOwnerCreated {
+         dto.setNamesakeCount(namesakeCount);
+         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
+         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
++        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
++        dto.setPossibleDuplicate(possibleDuplicateOf != null);
++        dto.setPossibleDuplicateOf(possibleDuplicateOf);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7fd9053ce..fce510366 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2155,6 +2155,19 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when another owner shares this owner's last name and postcode but has a different telephone (a soft match that is not a hard duplicate), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this owner is a possible duplicate of; absent when possibleDuplicate is false.
++              type: integer
++              format: int32
++              example: 7
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The preferred way to contact this owner - 'EMAIL' when an email is present, otherwise 'PHONE'.
