@@ -1,0 +1,57 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipLevelPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipLevelPolicy.java
+index 40e6a9856..d10daa1df 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipLevelPolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerMembershipLevelPolicy.java
+@@ -1,18 +1,24 @@
+ package org.springframework.samples.petclinic.service;
+ 
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Business rule: on creation an owner is assigned a numeric {@code membershipLevel} from 1 to 3.
++ * Business rule: on creation an owner is assigned a numeric {@code membershipLevel} from 1 to 4.
+  * It starts at 1, gains 1 when an email is present, gains 1 when {@code namesakeCount} is 0, and is
+- * capped at 3 (level 4 is reserved for tenure). Kept as a small, self-contained unit so the rule can
+- * be applied from the read and audit flows without adding complexity to the mapper, controller, or
+- * service.
++ * capped at 3 for the pre-tenure factors; level 4 is reserved for tenure of more than 365 days, so a
++ * newly created owner (zero tenure) never exceeds level 3. Kept as a small, self-contained unit so
++ * the rule can be applied from the read and audit flows without adding complexity to the mapper,
++ * controller, or service.
+  */
+ public final class OwnerMembershipLevelPolicy {
+ 
+     private static final int MAX_LEVEL = 3;
+ 
++    private static final long TENURE_DAYS = 365;
++
+     private OwnerMembershipLevelPolicy() {
+     }
+ 
+@@ -20,7 +26,7 @@ public final class OwnerMembershipLevelPolicy {
+      * Derive the {@code membershipLevel} for the given owner.
+      *
+      * @param owner the owner whose membership level to derive
+-     * @return the level, from 1 to 3
++     * @return the level, from 1 to 4
+      */
+     public static int membershipLevel(Owner owner) {
+         int level = 1;
+@@ -32,6 +38,13 @@ public final class OwnerMembershipLevelPolicy {
+         if (namesakeCount != null && namesakeCount == 0) {
+             level++;
+         }
+-        return Math.min(level, MAX_LEVEL);
++        level = Math.min(level, MAX_LEVEL);
++        return level == MAX_LEVEL && exceedsTenure(owner.getRegistrationDate()) ? level + 1 : level;
++    }
++
++    /** True when tenure (days since registration) is more than the level-4 threshold. */
++    private static boolean exceedsTenure(LocalDate registrationDate) {
++        return registrationDate != null
++            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+     }
+ }
