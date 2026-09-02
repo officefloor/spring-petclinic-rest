@@ -10,12 +10,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.util.CheckDigit;
+import org.springframework.samples.petclinic.util.FiscalYear;
 
 /**
- * Builds an owner's {@code customerCode} in the format {@code '<REGION>-<HASH8>'}: the region code
- * derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, then the fixed city
- * fallback, else {@code UNKNOWN}) and the first eight upper-case hex characters of SHA-256 over the
- * normalized telephone concatenated with the last name. No sequence numbers are used.
+ * Builds an owner's {@code memberId} in the format {@code '<REGION><FY><HASH8><CHK>'}: the region
+ * code derived from the postcode (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, then the fixed city
+ * fallback, else {@code UNKNOWN}), the two-digit fiscal year of the registration date, the first
+ * eight upper-case hex characters of SHA-256 over the normalized telephone concatenated with the
+ * last name, and a single Luhn check digit over the digits of {@code '<REGION><FY><HASH8>'}.
  */
 final class CustomerCode {
 
@@ -27,8 +30,13 @@ final class CustomerCode {
     }
 
     static String of(Owner owner, Collection<Owner> existing) {
-        String base = region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName());
-        return dedupe(base, existing);
+        String core = region(owner) + fiscalYear(owner) + hash8(owner.getTelephone() + owner.getLastName());
+        return dedupe(core + CheckDigit.luhn(core), existing);
+    }
+
+    /** The two-digit fiscal year of the owner's registration date. */
+    private static String fiscalYear(Owner owner) {
+        return String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
     }
 
     /** Appends {@code '-<n>'} (smallest {@code n >= 2}) when {@code base} collides with an existing code. */

@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
 /**
  * Emits the create audit line once the derived membership fields have been populated on the
  * response. Highest precedence makes this after-returning advice run last, so it observes the
- * membershipLevel and membershipNumber set by the other owner-response advices.
+ * membershipLevel and memberId set by the other owner-response advices.
  */
 @Aspect
 @Component
@@ -42,8 +42,7 @@ public class OwnerCreateAuditAdvice {
         if (!(response != null && response.getBody() instanceof OwnerDto owner)) {
             return;
         }
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
     }
 }

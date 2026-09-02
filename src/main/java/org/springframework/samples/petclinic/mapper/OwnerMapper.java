@@ -50,16 +50,23 @@ public interface OwnerMapper {
     }
 
     /**
-     * Derives 'locality' for the response: the REGION segment of the owner's {@code customerCode}
-     * (the '<REGION>-<HASH8>' identity), falling back to {@link LocalityResolver#resolve} when no
-     * customerCode is present. Non-persistent, so it never affects storage or the request payload.
+     * Derives 'memberId' for the response: the stored unified member id (the same
+     * '<REGION><FY><HASH8><CHK>' value assigned at creation). Non-persistent here, so it never
+     * affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveMemberId(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setMemberId(owner.getCustomerCode());
+    }
+
+    /**
+     * Derives 'locality' for the response: the owner's region from {@link LocalityResolver#resolve}
+     * (postcode first, then the fixed city table) - the same REGION segment carried by the memberId.
+     * Non-persistent, so it never affects storage or the request payload.
      */
     @AfterMapping
     default void deriveLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        String code = owner.getCustomerCode();
-        int dash = code == null ? -1 : code.indexOf('-');
-        ownerDto.setLocality(dash > 0 ? code.substring(0, dash)
-            : LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
+        ownerDto.setLocality(LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
     }
 
     /** Fixed region-to-timezone table, as IANA names. */

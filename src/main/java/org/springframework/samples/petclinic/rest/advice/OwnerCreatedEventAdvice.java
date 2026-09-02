@@ -46,7 +46,7 @@ public class OwnerCreatedEventAdvice {
     public void publishCreated(ResponseEntity<?> response) {
         if (response != null && response.getBody() instanceof OwnerDto owner) {
             AUDIT.info(new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                owner.getCustomerCode(), owner.getMembershipLevel()).toJson());
+                owner.getMemberId(), owner.getMembershipLevel()).toJson());
         }
     }
 
@@ -54,7 +54,7 @@ public class OwnerCreatedEventAdvice {
     private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel) {
 
         String toJson() {
-            return String.format("{\"seq\":%d,\"ownerId\":%s,\"customerCode\":%s,\"membershipLevel\":%s,"
+            return String.format("{\"seq\":%d,\"ownerId\":%s,\"memberId\":%s,\"membershipLevel\":%s,"
                 + "\"event\":\"OWNER_CREATED\"}", seq, ownerId, quote(identifier), membershipLevel);
         }
 
