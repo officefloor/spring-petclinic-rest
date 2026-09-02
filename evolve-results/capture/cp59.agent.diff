@@ -1,0 +1,51 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeValidationAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeValidationAdvice.java
+index bdf9a598b..ff92b5d77 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeValidationAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeValidationAdvice.java
+@@ -54,7 +54,8 @@ public class OwnerPostcodeValidationAdvice implements Validator {
+     public void validate(Object target, Errors errors) {
+         OwnerFieldsDto owner = (OwnerFieldsDto) target;
+         String postcode = owner.getPostcode();
+-        int[] range = CITY_RANGE.get(owner.getCity());
++        String city = owner.getCity();
++        int[] range = city == null ? null : CITY_RANGE.get(city);
+         if (postcode == null || range == null || !postcode.matches("[0-9]{4}")) {
+             return;
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ResponseStatusExceptionAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ResponseStatusExceptionAdvice.java
+index abee9e102..ed8df70fe 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ResponseStatusExceptionAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ResponseStatusExceptionAdvice.java
+@@ -17,22 +17,27 @@ package org.springframework.samples.petclinic.rest.advice;
+ 
+ import org.springframework.core.Ordered;
+ import org.springframework.core.annotation.Order;
++import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.RestControllerAdvice;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * Maps a {@link ResponseStatusException} to its carried HTTP status. Declared with the highest
+- * precedence so it is consulted before the catch-all {@link ExceptionControllerAdvice}, which would
+- * otherwise report it as a 500.
++ * Maps a {@link ResponseStatusException} to its carried HTTP status, rendering the body as an
++ * RFC7807 {@code application/problem+json} document. Declared with the highest precedence so it is
++ * consulted before the catch-all {@link ExceptionControllerAdvice}, which would otherwise report it
++ * as a 500.
+  */
+ @Order(Ordered.HIGHEST_PRECEDENCE)
+ @RestControllerAdvice
+ public class ResponseStatusExceptionAdvice {
+ 
+     @ExceptionHandler(ResponseStatusException.class)
+-    public ResponseEntity<Void> handleResponseStatusException(ResponseStatusException e) {
+-        return ResponseEntity.status(e.getStatusCode()).build();
++    public ResponseEntity<ProblemDetail> handleResponseStatusException(ResponseStatusException e) {
++        ProblemDetail problemDetail = ProblemDetail.forStatus(e.getStatusCode());
++        problemDetail.setTitle(e.getClass().getSimpleName());
++        problemDetail.setDetail(e.getReason());
++        return ResponseEntity.status(e.getStatusCode()).body(problemDetail);
+     }
+ }
