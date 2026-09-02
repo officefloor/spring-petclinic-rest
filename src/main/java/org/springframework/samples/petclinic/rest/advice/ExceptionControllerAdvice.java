@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
+import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.AccessDeniedException;
@@ -153,6 +154,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleCityAtCapacityException(OwnerCityCapacityPolicy.CityAtCapacityException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The owner's city already contains the maximum number of owners");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerDailyLimitPolicy.DailyLimitReachedException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDailyLimitReachedException(OwnerDailyLimitPolicy.DailyLimitReachedException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The maximum number of owners for today has already been reached");
         return ResponseEntity.status(status).body(detail);
     }
 
