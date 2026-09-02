@@ -53,7 +53,7 @@ public class OwnerNamesakeCountAdvice {
             .count();
         owner.setNamesakeCount(namesakeCount);
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        owner.setMembershipTier(namesakeCount == 0 && hasEmail ? "SILVER" : "BRONZE");
+        owner.setMembershipLevel(Math.min(3, 1 + (hasEmail ? 1 : 0) + (namesakeCount == 0 ? 1 : 0)));
     }
 
     private static boolean matches(String a, String b) {
