@@ -1,0 +1,85 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index d7e6cc42a..733db4fba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+ import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
++import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
+ import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -107,7 +108,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+-        OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService);
++        OwnerRegistrationDatePolicy.assignBusinessDayRegistrationDate(owner);
++        OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService, owner);
+         OwnerCityCapacityPolicy.rejectWhenCityAtCapacity(this.clinicService, owner);
+         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
+         OwnerTelephonePolicy.rejectDuplicateTelephone(this.clinicService, owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java
+index 26a2b3012..0fa6c82ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java
+@@ -23,13 +23,14 @@ public final class OwnerDailyLimitPolicy {
+      * registration date.
+      *
+      * @param clinicService source of the existing owners
++     * @param owner the owner being created, whose (business-day) registration date is the target day
+      * @throws DailyLimitReachedException if today's create limit has already been reached
+      */
+-    public static void rejectWhenDailyLimitReached(ClinicService clinicService) {
+-        LocalDate today = LocalDate.now();
++    public static void rejectWhenDailyLimitReached(ClinicService clinicService, Owner owner) {
++        LocalDate day = owner.getRegistrationDate();
+         int count = 0;
+         for (Owner existing : clinicService.findAllOwners()) {
+-            if (today.equals(existing.getRegistrationDate())) {
++            if (day.equals(existing.getRegistrationDate())) {
+                 count++;
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerRegistrationDatePolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerRegistrationDatePolicy.java
+new file mode 100644
+index 000000000..6ed5b29c5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerRegistrationDatePolicy.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.service;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Business rule: an owner's effective registration date must fall on a business day. The effective
++ * date is the one supplied on the request, or the server's current date when none was supplied; a
++ * Saturday or Sunday rolls forward to the following Monday. Kept as a small, self-contained unit so
++ * the rule can be applied from the create flow before any value derived from the registration date
++ * (membership number, per-day create limit) is computed.
++ */
++public final class OwnerRegistrationDatePolicy {
++
++    private OwnerRegistrationDatePolicy() {
++    }
++
++    /** Set the owner's registrationDate to its effective business-day value. */
++    public static void assignBusinessDayRegistrationDate(Owner owner) {
++        LocalDate effective = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        owner.setRegistrationDate(rollToBusinessDay(effective));
++    }
++
++    private static LocalDate rollToBusinessDay(LocalDate date) {
++        if (date.getDayOfWeek() == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
