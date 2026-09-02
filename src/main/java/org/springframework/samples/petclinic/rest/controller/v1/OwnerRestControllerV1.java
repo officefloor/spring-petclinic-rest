@@ -38,7 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerAuditPolicy;
 import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
-import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+import org.springframework.samples.petclinic.service.OwnerMemberIdPolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerDisposableEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
@@ -119,7 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
         OwnerIdentityPolicy.rejectDuplicateIdentity(this.clinicService, owner);
         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
-        OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
+        OwnerMemberIdPolicy.assignMemberId(this.clinicService, owner);
         this.clinicService.saveOwner(owner);
         OwnerAuditPolicy.auditCreate(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);

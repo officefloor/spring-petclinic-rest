@@ -44,7 +44,7 @@ CREATE TABLE owners (
   telephone  VARCHAR(20),
   email      VARCHAR(255),
   registration_date DATE,
-  customer_code VARCHAR(20),
+  member_id VARCHAR(30),
   household_id VARCHAR(40),
   namesake_count INTEGER,
   postcode VARCHAR(4),
