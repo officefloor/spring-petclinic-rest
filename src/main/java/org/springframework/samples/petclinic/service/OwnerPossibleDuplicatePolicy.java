@@ -23,32 +23,20 @@ public final class OwnerPossibleDuplicatePolicy {
      * @param owner         the owner being created
      */
     public static void assignPossibleDuplicate(ClinicService clinicService, Owner owner) {
-        String postcode = orEmpty(owner.getPostcode());
+        String postcode = OwnerFieldNormalizer.orEmpty(owner.getPostcode());
         if (postcode.isEmpty()) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String telephone = normalizeTelephone(owner.getTelephone());
+        String lastName = OwnerFieldNormalizer.name(owner.getLastName());
+        String telephone = OwnerFieldNormalizer.telephone(owner.getTelephone());
         for (Owner existing : clinicService.findAllOwners()) {
             if (!existing.getId().equals(owner.getId())
-                && lastName.equals(normalize(existing.getLastName()))
-                && postcode.equals(orEmpty(existing.getPostcode()))
-                && !telephone.equals(normalizeTelephone(existing.getTelephone()))) {
+                && lastName.equals(OwnerFieldNormalizer.name(existing.getLastName()))
+                && postcode.equals(OwnerFieldNormalizer.orEmpty(existing.getPostcode()))
+                && !telephone.equals(OwnerFieldNormalizer.telephone(existing.getTelephone()))) {
                 owner.setPossibleDuplicateOf(existing.getId());
                 return;
             }
         }
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    private static String normalizeTelephone(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
-    }
-
-    private static String orEmpty(String value) {
-        return value == null ? "" : value;
     }
 }

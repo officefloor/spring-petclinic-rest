@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -66,20 +63,10 @@ public final class OwnerCustomerCodePolicy {
     /** First eight upper-case hex characters of SHA-256(normalizedTelephone + lastName). */
     private static String hash8(Owner owner) {
         String input = orEmpty(owner.getTelephone()) + orEmpty(owner.getLastName());
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        return Sha256Hex.upper(input, 4);
     }
 
     private static String orEmpty(String value) {
-        return value == null ? "" : value;
+        return OwnerFieldNormalizer.orEmpty(value);
     }
 }

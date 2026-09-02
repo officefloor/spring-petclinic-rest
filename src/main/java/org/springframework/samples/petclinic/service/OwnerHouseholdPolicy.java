@@ -1,9 +1,5 @@
 package org.springframework.samples.petclinic.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -33,31 +29,13 @@ public final class OwnerHouseholdPolicy {
      * @param sharesHousehold whether the request opted in to a shared household (no longer required)
      */
     public static void rejectDuplicateHousehold(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
-        owner.setHouseholdId(householdId(normalize(owner.getLastName()), orEmpty(owner.getPostcode())));
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
-    }
-
-    private static String orEmpty(String value) {
-        return value == null ? "" : value;
+        owner.setHouseholdId(householdId(
+            OwnerFieldNormalizer.name(owner.getLastName()), OwnerFieldNormalizer.orEmpty(owner.getPostcode())));
     }
 
     /** Derive a stable identifier shared by every owner in the same (last name, postcode) household. */
     private static String householdId(String lastName, String postcode) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        return Sha256Hex.lower(lastName + "|" + postcode, 6);
     }
 
     /** Thrown when another owner already shares the same last name and postcode. */
