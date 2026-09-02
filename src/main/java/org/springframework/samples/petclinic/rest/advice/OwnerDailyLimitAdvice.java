@@ -21,6 +21,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.http.HttpStatus;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.BusinessDay;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -42,7 +43,7 @@ public class OwnerDailyLimitAdvice {
 
     @Before("execution(* org.springframework.samples.petclinic.rest.controller.v1.OwnerRestControllerV1.addOwner(..))")
     public void rejectOverDailyLimit() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessDay.onOrNextBusinessDay(LocalDate.now());
         long createdToday = clinicService.findAllOwners().stream()
             .filter(existing -> today.equals(existing.getRegistrationDate()))
             .count();

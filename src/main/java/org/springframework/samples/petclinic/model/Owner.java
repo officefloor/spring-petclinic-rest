@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.BusinessDay;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
@@ -74,7 +75,8 @@ public class Owner extends Person {
 
     /** Set the registration date, defaulting to the server's current date when none is supplied. */
     public void setRegistrationDate(LocalDate registrationDate) {
-        this.registrationDate = registrationDate == null ? LocalDate.now() : registrationDate;
+        this.registrationDate = BusinessDay.onOrNextBusinessDay(
+            registrationDate == null ? LocalDate.now() : registrationDate);
     }
 
     public String getEmail() {
