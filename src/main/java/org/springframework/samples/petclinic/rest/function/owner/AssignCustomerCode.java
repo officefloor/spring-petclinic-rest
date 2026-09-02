@@ -8,10 +8,12 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's {@code customerCode} as {@code <REGION>-<HASH8>}, dropping the old per-city
- * sequence. REGION is the region code derived from the postcode (2xxx→NSW, 3xxx→VIC, 4xxx→QLD, then
- * by city, else UNKNOWN); HASH8 is the first 8 upper-case hex characters of SHA-256 over the
- * normalized (E.164) telephone concatenated with the last name.
+ * Assigns the owner's unified {@code memberId} (stored in {@code customerCode}) as
+ * {@code <REGION><FY><HASH8><CHK>}. REGION is the region code derived from the postcode (2xxx→NSW,
+ * 3xxx→VIC, 4xxx→QLD, then by city, else UNKNOWN); FY is the 2-digit fiscal year of the registration
+ * date; HASH8 is the first 8 upper-case hex characters of SHA-256 over the normalized (E.164)
+ * telephone concatenated with the last name; CHK is a single Luhn check digit over the preceding
+ * digits.
  */
 public class AssignCustomerCode {
 
@@ -52,6 +54,7 @@ public class AssignCustomerCode {
         for (int i = 0; i < 4; i++) {
             hash8.append(String.format("%02X", digest[i]));
         }
-        owner.setCustomerCode(region + "-" + hash8);
+        String core = region + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100) + hash8;
+        owner.setCustomerCode(core + CheckDigit.of(core));
     }
 }
