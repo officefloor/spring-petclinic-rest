@@ -17,7 +17,9 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
-        dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
+        int membershipPoints = MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository));
+        dto.setMembershipPoints(membershipPoints);
+        dto.setMembershipLevel(MembershipLevel.of(membershipPoints));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
