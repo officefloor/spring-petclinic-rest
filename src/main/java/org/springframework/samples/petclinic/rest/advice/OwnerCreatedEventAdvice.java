@@ -45,17 +45,23 @@ public class OwnerCreatedEventAdvice {
         + "OwnerRestControllerV1.addOwner(..))", returning = "response")
     public void publishCreated(ResponseEntity<?> response) {
         if (response != null && response.getBody() instanceof OwnerDto owner) {
+            String memberId = owner.getIdentity() == null ? null : owner.getIdentity().getMemberId();
             AUDIT.info(new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
-                owner.getMemberId(), owner.getMembershipLevel()).toJson());
+                memberId, owner.getMembershipLevel(), OwnerSegment.of(owner)).toJson());
         }
     }
 
-    /** The immutable audit event; {@code identifier} is the owner's current primary identifier. */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel) {
+    /**
+     * The immutable schema-version-2 audit event; {@code identifier} is the owner's current primary
+     * identifier and {@code segment} the version-2 owner segment recomputed from the response.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String identifier, Integer membershipLevel,
+            String segment) {
 
         String toJson() {
-            return String.format("{\"seq\":%d,\"ownerId\":%s,\"memberId\":%s,\"membershipLevel\":%s,"
-                + "\"event\":\"OWNER_CREATED\"}", seq, ownerId, quote(identifier), membershipLevel);
+            return String.format("{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%s,\"memberId\":%s,"
+                + "\"membershipLevel\":%s,\"ownerSegment\":%s,\"event\":\"OWNER_CREATED\"}",
+                seq, ownerId, quote(identifier), membershipLevel, quote(segment));
         }
 
         private static String quote(String value) {

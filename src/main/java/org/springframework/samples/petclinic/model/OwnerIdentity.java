@@ -34,7 +34,7 @@ public final class OwnerIdentity {
 
     public static String key(Owner owner) {
         String email = owner.getEmail();
-        String source = owner.getTelephone() + "|" + (email == null ? "" : email.toLowerCase())
+        String source = "V2|" + owner.getTelephone() + "|" + (email == null ? "" : email.toLowerCase())
             + "|" + soundex(owner.getLastName());
         StringBuilder sb = new StringBuilder();
         for (byte b : sha256(source)) {

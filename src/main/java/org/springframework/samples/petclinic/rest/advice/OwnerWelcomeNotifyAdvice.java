@@ -37,7 +37,8 @@ public class OwnerWelcomeNotifyAdvice {
         + "OwnerRestControllerV1.addOwner(..))", returning = "response")
     public void enqueueWelcome(ResponseEntity<?> response) {
         if (response != null && response.getBody() instanceof OwnerDto owner) {
-            NOTIFY.info("WELCOME owner={} memberId={}", owner.getId(), owner.getMemberId());
+            NOTIFY.info("WELCOME owner={} memberId={}", owner.getId(),
+                owner.getIdentity() == null ? null : owner.getIdentity().getMemberId());
         }
     }
 }

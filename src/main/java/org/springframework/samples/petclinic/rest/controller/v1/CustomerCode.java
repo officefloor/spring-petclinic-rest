@@ -59,7 +59,8 @@ final class CustomerCode {
                 case 40 -> "QLD";
                 default -> null;
             };
-        return byPostcode != null ? byPostcode : CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        String plain = byPostcode != null ? byPostcode : CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+        return "V2" + plain;
     }
 
     private static String hash8(String value) {

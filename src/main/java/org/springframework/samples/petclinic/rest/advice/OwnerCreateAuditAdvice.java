@@ -43,6 +43,7 @@ public class OwnerCreateAuditAdvice {
             return;
         }
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
-            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), owner.getMembershipLevel());
+            owner.getId(), owner.getIdentity() == null ? null : owner.getIdentity().getMemberId(),
+            owner.getRegistrationDate(), owner.getMembershipLevel());
     }
 }

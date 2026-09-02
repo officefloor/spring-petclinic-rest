@@ -11,6 +11,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -31,32 +32,19 @@ public interface OwnerMapper {
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /**
-     * Derives the household identifier for the response: the deterministic {@link Household#id} over
-     * the owner's last name and postcode, so members of one household always report the same id.
-     * Non-persistent, so it never affects storage or the request payload.
+     * Derives the version-2 'identity' block and the top-level 'apiVersion' for the response. The
+     * block groups the memberId (the stored '<REGION><FY><HASH8><CHK>' assigned at creation), the
+     * version-2 {@link OwnerIdentity#key(Owner) identityKey} and the version-2
+     * {@link Household#id household id}. Non-persistent, so it never affects storage or the request.
      */
     @AfterMapping
-    default void deriveHouseholdId(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setHouseholdId(Household.id(owner.getLastName(), owner.getPostcode()));
-    }
-
-    /**
-     * Derives 'identityKey' for the response: the single duplicate-detection key from
-     * {@link OwnerIdentity#key(Owner)}. Non-persistent, so it never affects storage or the request payload.
-     */
-    @AfterMapping
-    default void deriveIdentityKey(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setIdentityKey(OwnerIdentity.key(owner));
-    }
-
-    /**
-     * Derives 'memberId' for the response: the stored unified member id (the same
-     * '<REGION><FY><HASH8><CHK>' value assigned at creation). Non-persistent here, so it never
-     * affects storage or the request payload.
-     */
-    @AfterMapping
-    default void deriveMemberId(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setMemberId(owner.getCustomerCode());
+    default void deriveIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getCustomerCode());
+        identity.setIdentityKey(OwnerIdentity.key(owner));
+        identity.setHouseholdId(Household.id(owner.getLastName(), owner.getPostcode()));
+        ownerDto.setIdentity(identity);
+        ownerDto.setApiVersion(2);
     }
 
     /**

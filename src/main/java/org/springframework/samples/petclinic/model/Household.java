@@ -34,7 +34,7 @@ public final class Household {
         if (lastName == null || postcode == null) {
             return null;
         }
-        String key = lastName.strip().replaceAll("\\s+", " ").toLowerCase() + '|' + postcode;
+        String key = "V2|" + lastName.strip().replaceAll("\\s+", " ").toLowerCase() + '|' + postcode;
         StringBuilder sb = new StringBuilder();
         for (byte b : sha256(key)) {
             sb.append(String.format("%02X", b));
