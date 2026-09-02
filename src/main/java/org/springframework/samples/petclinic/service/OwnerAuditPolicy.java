@@ -20,7 +20,8 @@ public final class OwnerAuditPolicy {
 
     /** Emit the create audit line for a freshly saved owner. */
     public static void auditCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            OwnerMembershipLevelPolicy.membershipLevel(owner));
     }
 }

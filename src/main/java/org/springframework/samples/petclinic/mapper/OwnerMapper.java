@@ -16,12 +16,12 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = {PetMapper.class, OwnerHouseholdTierPostProcessor.class})
+@Mapper(uses = {PetMapper.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipPolicy.membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipTierPolicy.membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
     OwnerDto toOwnerDto(Owner owner);
