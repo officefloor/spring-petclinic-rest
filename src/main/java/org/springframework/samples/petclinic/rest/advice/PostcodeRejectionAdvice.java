@@ -1,0 +1,49 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.advice;
+
+import java.net.URI;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * Maps {@link OwnerPostcodePolicy.InvalidPostcodeException} to a 400 Bad Request carrying an
+ * RFC7807 {@code application/problem+json} body. Kept separate from the general advice so this
+ * rejection is reported with its intended status rather than being swallowed by the catch-all
+ * {@code Exception} handler.
+ */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class PostcodeRejectionAdvice {
+
+    @ExceptionHandler(OwnerPostcodePolicy.InvalidPostcodeException.class)
+    public ResponseEntity<ProblemDetail> handleInvalidPostcode(OwnerPostcodePolicy.InvalidPostcodeException e, HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problemDetail.setType(URI.create(request.getRequestURL().toString()));
+        problemDetail.setTitle(e.getClass().getSimpleName());
+        problemDetail.setDetail("The supplied postcode is not valid for the owner's city");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
+    }
+}
