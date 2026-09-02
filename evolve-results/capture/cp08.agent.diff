@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d11e845bb..5a7d24ae4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +44,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+index 41f1807a9..431ad51a1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerTelephone.java
+@@ -7,17 +7,27 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
+ 
+ /**
+- * Strips every non-digit from the create request's telephone and requires exactly 10 digits,
+- * storing the normalized value in place. Runs before {@link BuildOwner}, so the entity and the
+- * response both carry the 10-digit form; too few (or too many) digits reject with 400.
++ * Rewrites the create request's telephone into E.164 form, storing it in place. Spaces, dashes and
++ * brackets are stripped; a leading '+' and country code are kept, otherwise country code '+61' is
++ * assumed and a single leading '0' is dropped from the national digits. Runs before {@link BuildOwner},
++ * so the entity and the response both carry the E.164 form; anything that cannot yield 8 to 15 digits
++ * after the '+' rejects with 400.
+  */
+ public class NormalizeOwnerTelephone {
+ 
+     public void service(@Val OwnerFieldsDto request) throws MissingOwnerFieldsException {
+-        String digits = request.getTelephone().replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        String cleaned = request.getTelephone().replaceAll("[\\s()\\-]", "");
++        String e164;
++        if (cleaned.startsWith("+")) {
++            e164 = cleaned;
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            e164 = "+61" + national;
++        }
++        if (!e164.substring(1).matches("\\d{8,15}")) {
+             throw new MissingOwnerFieldsException(List.of("telephone"));
+         }
+-        request.setTelephone(digits);
++        request.setTelephone(e164);
+     }
+ }
