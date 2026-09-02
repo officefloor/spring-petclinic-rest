@@ -6,27 +6,41 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Computes an owner's {@code membershipLevel}. The pre-tenure factors — an email on file and no
- * namesake — lift the level toward 3. Level 4 additionally requires tenure of more than 365 days
- * since {@code registrationDate}, so a newly created owner (zero tenure) never exceeds level 3.
+ * Scores an owner's membership. {@link #points(Owner)} sums the owner-only factors — +2 for an
+ * email on file, +1 for no namesake, +3 for tenure over 365 days since {@code registrationDate}
+ * (the household factor is added later, where the repository is available). {@link #level(int)}
+ * buckets a point total into the 1-4 membership level.
  */
 public final class MembershipLevel {
 
     private MembershipLevel() {
     }
 
-    public static int of(Owner owner) {
-        int level = 1;
+    public static int points(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += 1;
         }
         if (tenureDays(owner) > 365) {
-            level++;
+            points += 3;
         }
-        return Math.min(4, level);
+        return points;
+    }
+
+    public static int level(int points) {
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        if (points <= 5) {
+            return 3;
+        }
+        return 4;
     }
 
     private static long tenureDays(Owner owner) {

@@ -5,9 +5,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 
 /**
- * Upgrades an owner's membership tier to {@code GOLD} when their household (owners sharing the same
- * {@code householdId}) has three or more members. Applied after the base BRONZE/SILVER tier has been
- * mapped, so GOLD takes precedence; owners without a household are left untouched.
+ * Adds the household membership-points factor: +2 points when the owner's household (owners sharing
+ * the same {@code householdId}) has three or more members. Applied after the owner-only points have
+ * been mapped, then the membership level is recomputed; owners without a household are left untouched.
  */
 final class HouseholdTier {
 
@@ -26,7 +26,9 @@ final class HouseholdTier {
             }
         }
         if (members >= 3) {
-            dto.setMembershipLevel(3);
+            int points = dto.getMembershipPoints() + 2;
+            dto.setMembershipPoints(points);
+            dto.setMembershipLevel(MembershipLevel.level(points));
         }
     }
 }
