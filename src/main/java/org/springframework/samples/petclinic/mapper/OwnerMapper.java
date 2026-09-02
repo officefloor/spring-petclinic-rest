@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Membership tier: 'SILVER' when the owner has no namesakes (namesakeCount 0) and an
