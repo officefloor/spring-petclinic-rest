@@ -1,0 +1,71 @@
+/*
+ * Copyright 2016 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.springframework.samples.petclinic.rest.advice;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+/**
+ * Makes owner creation idempotent per {@code Idempotency-Key} request header. The first create
+ * seen for a key is remembered along with its fully-derived response; a later create repeating
+ * that key returns the originally created owner with {@code 200 OK} instead of creating a
+ * duplicate. Highest precedence makes this wrap every other owner-create advice, so a repeat
+ * short-circuits before any duplicate check runs.
+ */
+@Aspect
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class OwnerIdempotencyAdvice {
+
+    private static final String HEADER = "Idempotency-Key";
+
+    private final Map<String, Object> seen = new ConcurrentHashMap<>();
+
+    @Around("execution(* org.springframework.samples.petclinic.rest.controller.v1.OwnerRestControllerV1.addOwner(..))")
+    public Object idempotentCreate(ProceedingJoinPoint pjp) throws Throwable {
+        String key = idempotencyKey();
+        if (key == null) {
+            return pjp.proceed();
+        }
+        Object cached = seen.get(key);
+        if (cached != null) {
+            return ResponseEntity.ok(((ResponseEntity<?>) cached).getBody());
+        }
+        Object response = pjp.proceed();
+        seen.put(key, response);
+        return response;
+    }
+
+    private String idempotencyKey() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            String key = attrs.getRequest().getHeader(HEADER);
+            if (key != null && !key.isBlank()) {
+                return key;
+            }
+        }
+        return null;
+    }
+}
