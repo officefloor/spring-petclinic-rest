@@ -26,7 +26,7 @@ final class HouseholdTier {
             }
         }
         if (members >= 3) {
-            dto.setMembershipTier("GOLD");
+            dto.setMembershipLevel(3);
         }
     }
 }
