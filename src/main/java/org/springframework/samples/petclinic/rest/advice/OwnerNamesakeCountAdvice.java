@@ -23,6 +23,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
 /**
  * Populates the read-only {@code namesakeCount} on an owner response: the number of owners
  * registered before this one (lower id) that share the same first and last name, compared
@@ -53,7 +56,13 @@ public class OwnerNamesakeCountAdvice {
             .count();
         owner.setNamesakeCount(namesakeCount);
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        owner.setMembershipLevel(Math.min(3, 1 + (hasEmail ? 1 : 0) + (namesakeCount == 0 ? 1 : 0)));
+        owner.setMembershipLevel(Math.min(4, 1 + (hasEmail ? 1 : 0) + (namesakeCount == 0 ? 1 : 0) + tenureLevel(owner)));
+    }
+
+    /** +1 (unlocking level 4) once the owner's tenure exceeds 365 days; a new owner's zero tenure adds nothing. */
+    private static int tenureLevel(OwnerDto owner) {
+        LocalDate registered = owner.getRegistrationDate();
+        return registered != null && ChronoUnit.DAYS.between(registered, LocalDate.now()) > 365 ? 1 : 0;
     }
 
     private static boolean matches(String a, String b) {
