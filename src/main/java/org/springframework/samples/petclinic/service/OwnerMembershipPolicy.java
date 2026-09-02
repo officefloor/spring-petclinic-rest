@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.model.Owner;
 /**
  * Business rule: an owner's {@code membershipNumber} is derived as
  * {@code <customerCode>-M<YY>}, where YY is the last two digits of the registration-date
- * year (e.g. {@code SMI-0007-M26}). Kept as a small, self-contained unit so the rule can be
+ * fiscal year (e.g. {@code SMI-0007-M27}). Kept as a small, self-contained unit so the rule can be
  * applied from the read flow without adding complexity to the mapper, controller, or service.
  */
 public final class OwnerMembershipPolicy {
@@ -28,6 +28,7 @@ public final class OwnerMembershipPolicy {
         if (customerCode == null || registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode,
+            OwnerFiscalYearPolicy.fiscalYearOf(registrationDate) % 100);
     }
 }

@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.service;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
@@ -9,14 +8,14 @@ import org.springframework.stereotype.Component;
 /**
  * Business rule: an owner earns {@code membershipPoints} starting at 0 &mdash; plus 2 when an email
  * is present, plus 1 when {@code namesakeCount} is 0, plus 2 for a household of 3 or more, plus 3 for
- * tenure over 365 days &mdash; and those points map to a numeric {@code membershipLevel}: 1 (0-1),
+ * tenure over one fiscal year &mdash; and those points map to a numeric {@code membershipLevel}: 1 (0-1),
  * 2 (2-3), 3 (4-5), 4 (6 or more). Kept as a small, self-contained unit so the rule can be applied
  * from the read and audit flows without adding complexity to the mapper, controller, or service.
  */
 @Component
 public class OwnerMembershipLevelPolicy {
 
-    private static final long TENURE_DAYS = 365;
+    private static final long TENURE_FISCAL_YEARS = 1;
 
     private static final int LARGE_HOUSEHOLD = 3;
 
@@ -86,9 +85,10 @@ public class OwnerMembershipLevelPolicy {
         return count;
     }
 
-    /** True when tenure (days since registration) is more than the level-4 threshold. */
+    /** True when tenure (elapsed fiscal years since registration) is more than the level-4 threshold. */
     private static boolean exceedsTenure(LocalDate registrationDate) {
         return registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS;
+            && OwnerFiscalYearPolicy.fiscalYearOf(LocalDate.now())
+                - OwnerFiscalYearPolicy.fiscalYearOf(registrationDate) > TENURE_FISCAL_YEARS;
     }
 }

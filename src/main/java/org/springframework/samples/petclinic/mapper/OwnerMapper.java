@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.service.OwnerTelephoneDisplayPolicy.telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.service.OwnerCheckDigitPolicy.checkDigit(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.service.OwnerFiscalYearPolicy.fiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipPolicy.membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipLevel(owner))")
