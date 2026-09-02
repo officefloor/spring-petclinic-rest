@@ -6,10 +6,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Records the id of an existing owner in the same household (same computed {@code householdId}, from
- * last name and postcode) that has a different telephone — a soft, non-blocking duplicate. A declared
- * household member ({@code sharesHousehold=true}) is not a suspected duplicate, so it is skipped, as
- * is an owner with no household. Runs before the owner is saved, so {@code findAll()} sees only
+ * Records the id of an existing owner whose {@link IdentityKey} differs but whose {@link Soundex} of
+ * last name and whose postcode both match — a soft, non-blocking duplicate. This catches household
+ * members with different telephones (different key, same postcode and sound-alike name). A declared
+ * household member ({@code sharesHousehold=true}) is not a suspected duplicate, so it is skipped, as is
+ * an owner with no postcode. Runs before the owner is saved, so {@code findAll()} sees only
  * pre-existing owners. Leaves {@code possibleDuplicateOf} null when nothing matches.
  */
 public class FlagPossibleDuplicate {
@@ -18,14 +19,16 @@ public class FlagPossibleDuplicate {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || postcode.isEmpty()) {
             return;
         }
-        String telephone = owner.getTelephone();
+        String soundex = Soundex.of(owner.getLastName());
+        String identityKey = IdentityKey.forOwner(owner);
         for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(existing.getHouseholdId())
-                    && !telephone.equals(existing.getTelephone())) {
+            if (postcode.equals(existing.getPostcode())
+                    && soundex.equals(Soundex.of(existing.getLastName()))
+                    && !identityKey.equals(IdentityKey.forOwner(existing))) {
                 owner.setPossibleDuplicateOf(existing.getId());
                 return;
             }
