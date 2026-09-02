@@ -1,0 +1,107 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigitAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigitAdvice.java
+new file mode 100644
+index 000000000..75f31d1b1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerCheckDigitAdvice.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.aspectj.lang.annotation.AfterReturning;
++import org.aspectj.lang.annotation.Aspect;
++import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.util.CheckDigit;
++import org.springframework.stereotype.Component;
++
++/**
++ * Populates the read-only {@code checkDigit} on an owner response: the Luhn check digit over the
++ * digits of the owner's {@code customerCode}. Derived on the way out from the owner's own fields,
++ * so it never affects storage or the request.
++ */
++@Aspect
++@Component
++public class OwnerCheckDigitAdvice {
++
++    @AfterReturning(pointcut = "execution(* org.springframework.samples.petclinic.rest.controller.v1."
++        + "OwnerRestControllerV1.addOwner(..)) || execution(* org.springframework.samples.petclinic.rest."
++        + "controller.v1.OwnerRestControllerV1.getOwner(..))", returning = "response")
++    public void addCheckDigit(ResponseEntity<?> response) {
++        Object body = response == null ? null : response.getBody();
++        if (body instanceof OwnerDto owner && owner.getCustomerCode() != null) {
++            owner.setCheckDigit(CheckDigit.luhn(owner.getCustomerCode()));
++        }
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+new file mode 100644
+index 000000000..5aa74ddf6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the Luhn check digit (0-9) over the decimal digits contained in a string, ignoring any
++ * non-digit characters. Used to derive an owner's {@code checkDigit} from their {@code customerCode}.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    public static int luhn(String s) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 033fdd6a8..efa06f0f3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,15 @@ components:
+               type: string
+               example: 'SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registration date year.
