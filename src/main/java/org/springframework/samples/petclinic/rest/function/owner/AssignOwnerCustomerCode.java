@@ -8,16 +8,18 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's {@code customerCode} formatted {@code <REGION>-<HASH8>}: REGION is the region
- * code derived from the postcode (see {@link Locality}), and HASH8 is the first 8 upper-case hex
- * characters of SHA-256 over the normalized telephone followed by the last name (e.g.
- * 'NSW-1A2B3C4D'). Every value derived downstream — the membership number and its check digit, the
- * create audit record, and the locality — reads this identity.
+ * Assigns the owner's unified {@code memberId} formatted {@code <REGION><FY><HASH8><CHK>}: REGION is
+ * the region code (see {@link Locality}), FY is the 2-digit fiscal year (see {@link FiscalYear}),
+ * HASH8 is the first 8 upper-case hex characters of SHA-256 over the normalized telephone followed
+ * by the last name, and CHK is the single Luhn check digit (see {@link CheckDigit}) over the digits
+ * of {@code <REGION><FY><HASH8>} (e.g. 'NSW271A2B3C4D5'). Stored in the {@code customerCode} slot,
+ * so downstream deduplication, the create audit record and the response all read this identity.
  */
 public class AssignOwnerCustomerCode {
 
     public void service(@Val Owner owner) {
-        owner.setCustomerCode(Locality.of(owner) + "-" + hash8(owner));
+        owner.setCustomerCode(Locality.of(owner) + FiscalYear.yy(owner) + hash8(owner));
+        owner.setCustomerCode(owner.getCustomerCode() + CheckDigit.of(owner));
     }
 
     private static String hash8(Owner owner) {

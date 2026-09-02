@@ -20,14 +20,13 @@ public class SaveOwner {
         int namesakeCount = NamesakeCount.of(owner, ownerRepository);
         int membershipLevel = MembershipLevel.of(
             MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
-        String membershipNumber = owner.getCustomerCode() + "-M" + FiscalYear.yy(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel, membershipNumber);
-        // Immutable structured event. Carries the owner's current primary identifier
-        // (customerCode today, the memberId once that is unified) as the customerCode field.
+        String memberId = owner.getCustomerCode();
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
+        // Immutable structured event. Carries the owner's unified primary identifier as memberId.
         String event = String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            EVENT_SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), membershipLevel);
+            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel);
         AUDIT.info("{}", event);
     }
 }
