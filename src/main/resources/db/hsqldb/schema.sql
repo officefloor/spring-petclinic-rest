@@ -43,6 +43,7 @@ CREATE TABLE owners (
   city       VARCHAR(80),
   telephone  VARCHAR(20),
   email      VARCHAR(255),
+  title      VARCHAR(10),
   registration_date DATE,
   birth_date DATE,
   customer_code VARCHAR(20),

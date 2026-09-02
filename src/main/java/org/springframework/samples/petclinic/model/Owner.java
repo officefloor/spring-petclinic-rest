@@ -57,6 +57,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "postcode")
     private String postcode;
 
@@ -89,6 +92,14 @@ public class Owner extends Person {
 
     public void setCustomerCode(String customerCode) {
         this.customerCode = customerCode;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getEmail() {
