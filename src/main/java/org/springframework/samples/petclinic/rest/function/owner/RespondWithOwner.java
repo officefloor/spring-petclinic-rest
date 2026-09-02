@@ -12,6 +12,7 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+        HouseholdTier.applyGold(owner, ownerRepository, dto);
         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
         response.send(dto);
     }
