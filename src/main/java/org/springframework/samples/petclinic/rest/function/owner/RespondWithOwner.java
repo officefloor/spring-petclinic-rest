@@ -22,7 +22,7 @@ public class RespondWithOwner {
         dto.setNamesakeCount(namesakeCount);
         int membershipPoints = MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository));
         dto.setMembershipPoints(membershipPoints);
-        dto.setMembershipLevel(MembershipLevel.of(membershipPoints));
+        dto.setMembershipLevel(HouseholdLevelCeiling.cap(owner, MembershipLevel.of(membershipPoints), ownerRepository));
         dto.setLocality(Locality.of(owner));
         dto.setTimezone(REGION_TIMEZONE.get(dto.getLocality()));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));

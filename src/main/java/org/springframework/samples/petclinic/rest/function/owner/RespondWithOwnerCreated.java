@@ -19,7 +19,7 @@ public class RespondWithOwnerCreated {
         dto.setNamesakeCount(namesakeCount);
         int membershipPoints = MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository));
         dto.setMembershipPoints(membershipPoints);
-        dto.setMembershipLevel(MembershipLevel.of(membershipPoints));
+        dto.setMembershipLevel(HouseholdLevelCeiling.cap(owner, MembershipLevel.of(membershipPoints), ownerRepository));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
