@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+new file mode 100644
+index 000000000..695c76a5d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityResolver.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * Resolves an owner's locality (region) preferring the postcode: a 4-digit postcode is mapped by
++ * range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099) first, and only when it is absent or in no
++ * known range does the fixed city-to-region table decide. Cities that share a name are thereby
++ * disambiguated by their postcode. Yields 'UNKNOWN' when neither source identifies a region.
++ */
++final class LocalityResolver {
++
++    /** Fixed city-to-region fallback table. */
++    private static final Map<String, String> CITY_REGION =
++        Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    private LocalityResolver() {
++    }
++
++    static String resolve(String city, String postcode) {
++        String byPostcode = fromPostcode(postcode);
++        if (byPostcode != null) {
++            return byPostcode;
++        }
++        return CITY_REGION.getOrDefault(city, "UNKNOWN");
++    }
++
++    private static String fromPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return null;
++        }
++        return switch (Integer.parseInt(postcode) / 100) {
++            case 20 -> "NSW";
++            case 30 -> "VIC";
++            case 40 -> "QLD";
++            default -> null;
++        };
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d35d76ced..263da00c5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,7 +15,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ import java.nio.charset.StandardCharsets;
+ import java.util.Collection;
+ import java.util.List;
+-import java.util.Map;
+ import java.util.UUID;
+ 
+ /**
+@@ -58,17 +57,14 @@ public interface OwnerMapper {
+         ownerDto.setIdentityKey(OwnerIdentity.key(owner));
+     }
+ 
+-    /** Fixed city-to-region table used to derive an owner's locality. */
+-    Map<String, String> CITY_REGION = Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+-
+     /**
+-     * Derives 'locality' for the response: the canonical region for the owner's city from the fixed
+-     * {@link #CITY_REGION} table, or 'UNKNOWN' when the city is not listed. Non-persistent, so it
+-     * never affects storage or the request payload.
++     * Derives 'locality' for the response via {@link LocalityResolver#resolve}: the region from the
++     * owner's postcode range, falling back to the city. Non-persistent, so it never affects storage
++     * or the request payload.
+      */
+     @AfterMapping
+     default void deriveLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
+-        ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
++        ownerDto.setLocality(LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
+     }
+ 
+     /**
