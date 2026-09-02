@@ -7,9 +7,10 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Rejects a create request whose last name and address already belong to another owner, comparing
- * both case-insensitively with collapsed whitespace. A request that opts in with
- * {@code sharesHousehold=true} is allowed through. Responds 409 on a clash.
+ * Rejects a create request whose computed {@code householdId} (last name and postcode) already
+ * belongs to another owner: they are the same household. A request that opts in with
+ * {@code sharesHousehold=true} is allowed through as a declared household member. A request with no
+ * postcode has no household and is left untouched. Responds 409 on a clash.
  */
 public class RejectDuplicateHousehold {
 
@@ -18,17 +19,14 @@ public class RejectDuplicateHousehold {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return;
         }
-        String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String householdId = IdentityKey.household(request.getLastName(), request.getPostcode());
+        if (householdId == null) {
+            return;
+        }
         for (Owner owner : ownerRepository.findAll()) {
-            if (lastName.equals(normalize(owner.getLastName()))
-                    && address.equals(normalize(owner.getAddress()))) {
-                throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
+            if (householdId.equals(owner.getHouseholdId())) {
+                throw new DuplicateHouseholdException(request.getLastName(), request.getPostcode());
             }
         }
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }

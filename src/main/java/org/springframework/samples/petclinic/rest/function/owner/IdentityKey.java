@@ -16,9 +16,8 @@ public final class IdentityKey {
 
     /** The key a create request would take once saved (its would-be householdId included). */
     public static String forRequest(OwnerFieldsDto request) {
-        String householdId = Boolean.TRUE.equals(request.getSharesHousehold())
-                ? household(request.getLastName(), request.getAddress()) : null;
-        return key(request.getTelephone(), request.getEmail(), householdId);
+        return key(request.getTelephone(), request.getEmail(),
+                household(request.getLastName(), request.getPostcode()));
     }
 
     /** The key of an existing owner. */
@@ -30,10 +29,31 @@ public final class IdentityKey {
         return E164.toE164(telephone) + "|" + lower(email) + "|" + orEmpty(householdId);
     }
 
-    // Mirrors AssignHousehold's derivation so a request's would-be household matches a stored one.
-    private static String household(String lastName, String address) {
-        String normalized = normalize(lastName) + "|" + normalize(address);
-        return String.format("HH-%08X", normalized.hashCode());
+    /**
+     * The deterministic household id: the first 12 hex characters of SHA-256 over
+     * {@code normalizedLastName + '|' + postcode}. Owners with the same last name and postcode
+     * therefore compute the same value and share a household automatically. Null when no postcode.
+     */
+    public static String household(String lastName, String postcode) {
+        if (postcode == null || postcode.isEmpty()) {
+            return null;
+        }
+        return sha256Hex12(normalize(lastName) + "|" + postcode);
+    }
+
+    private static String sha256Hex12(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 12);
+        }
+        catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String normalize(String value) {
