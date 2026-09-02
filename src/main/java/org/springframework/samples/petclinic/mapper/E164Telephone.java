@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.mapper;
 
+import org.springframework.samples.petclinic.service.OwnerTelephoneLengthPolicy;
+
 /**
  * Converts a raw telephone into E.164 form. Kept as a small, self-contained unit so the
  * rule can be reused without adding complexity to the mapper or the owner model.
@@ -13,8 +15,10 @@ final class E164Telephone {
      * Normalize {@code telephone} to E.164: keep an explicit leading '+' and its country
      * code when present, otherwise assume '+61' and drop a single leading '0' from the
      * national digits. Spaces, dashes and brackets are stripped. The result is returned
-     * only when it holds 8 to 15 digits after the '+', so an unconvertible number stays
-     * as its cleaned form and is rejected by validation.
+     * only when it holds 8 to 15 digits after the '+' and its national-number length is
+     * valid for the country code (see
+     * {@link org.springframework.samples.petclinic.service.OwnerTelephoneLengthPolicy}), so
+     * an unconvertible number stays as its cleaned form and is rejected by validation.
      */
     static String toE164(String telephone) {
         if (telephone == null) {
@@ -32,6 +36,7 @@ final class E164Telephone {
         if (!digits.matches("[0-9]{8,15}")) {
             return cleaned;
         }
+        OwnerTelephoneLengthPolicy.requireValidNationalLength(digits);
         return "+" + digits;
     }
 }

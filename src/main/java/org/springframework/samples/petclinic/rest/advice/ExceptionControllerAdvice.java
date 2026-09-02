@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+import org.springframework.samples.petclinic.service.OwnerTelephoneLengthPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
@@ -147,6 +148,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(OwnerTelephonePolicy.DuplicateTelephoneException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The telephone number is already used by another owner");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerTelephoneLengthPolicy.InvalidNationalNumberLengthException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidNationalNumberLengthException(OwnerTelephoneLengthPolicy.InvalidNationalNumberLengthException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The telephone number's national-number length is wrong for its country code");
         return ResponseEntity.status(status).body(detail);
     }
 
