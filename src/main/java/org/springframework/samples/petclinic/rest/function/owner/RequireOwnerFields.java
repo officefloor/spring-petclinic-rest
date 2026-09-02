@@ -19,7 +19,9 @@ public class RequireOwnerFields {
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
-        require("address", request.getAddress(), missing);
+        if (isBlank(request.getAddressLine1()) && isBlank(request.getAddress())) {
+            missing.add("address");
+        }
         require("city", request.getCity(), missing);
         require("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
@@ -29,8 +31,12 @@ public class RequireOwnerFields {
     }
 
     private void require(String name, String value, List<String> missing) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(name);
         }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
