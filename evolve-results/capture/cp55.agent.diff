@@ -1,0 +1,56 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3d5f02b57..cdebc1bb8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.level(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.points(owner)))")
+     @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))))")
++    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.level(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.points(owner)), owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.forOwner(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..ad83969a5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,21 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Derives an owner's segment as {@code <TIER>_<AREA>}. TIER is {@code PREMIUM} when the
++ * membershipLevel is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO} when the locality
++ * is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    private OwnerSegment() {
++    }
++
++    public static String of(int membershipLevel, String locality) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = switch (locality) {
++            case "NSW", "VIC", "QLD" -> "METRO";
++            default -> "REGIONAL";
++        };
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6f524e23b..267bf6f15 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2205,6 +2205,12 @@ components:
+               type: string
+               example: "Australia/Sydney"
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's segment as '<TIER>_<AREA>': TIER is PREMIUM when membershipLevel is 3 or more else STANDARD; AREA is METRO for a known region (NSW, VIC, QLD) else REGIONAL."
++              type: string
++              example: "STANDARD_METRO"
++              readOnly: true
+             bulkSignupWarning:
+               title: Bulk signup warning
+               description: "True when more than 80 owners have already been registered today, otherwise false."
