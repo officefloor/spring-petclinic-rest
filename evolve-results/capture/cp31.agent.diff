@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 69b58ac3c..c934c8eb8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(owner.getPostcode() != null && owner.getPostcode().matches(\"20\\\\d{2}\") ? \"NSW\" : owner.getPostcode() != null && owner.getPostcode().matches(\"30\\\\d{2}\") ? \"VIC\" : owner.getPostcode() != null && owner.getPostcode().matches(\"40\\\\d{2}\") ? \"QLD\" : \"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.forOwner(owner))")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+new file mode 100644
+index 000000000..85d9e60de
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Computes the {@code checkDigit}: a single Luhn check digit over the digits contained in a
++ * customer code. Non-digit characters (such as the '-' separators) are skipped.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /** The Luhn check digit (0-9) over the digits in {@code code}. */
++    public static int of(String code) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl && (d *= 2) > 9) {
++                d -= 9;
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e103499e6..3c8ccaa0f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2093,6 +2093,15 @@ components:
+               type: string
+               example: "FRA-0007"
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: "A single Luhn check digit (0-9) computed over the digits of the customerCode."
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: "A stable shared identifier assigned when an owner joins an existing same-lastName household at the same address via sharesHousehold; every member shares one value."
