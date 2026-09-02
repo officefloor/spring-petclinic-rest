@@ -1,0 +1,109 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 5b9d6df9b..004aad2ac 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -40,9 +40,8 @@ import org.springframework.samples.petclinic.service.OwnerAuditPolicy;
+ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
+ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+-import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
++import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
+-import org.springframework.samples.petclinic.service.OwnerPossibleDuplicatePolicy;
+ import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
+ import org.springframework.security.access.prepost.PreAuthorize;
+@@ -114,9 +113,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService, owner);
+         OwnerCityCapacityPolicy.rejectWhenCityAtCapacity(this.clinicService, owner);
+         OwnerPostcodePolicy.rejectInvalidPostcode(owner);
+-        OwnerIdentityPolicy.rejectDuplicateIdentity(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
++        OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
+         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
+-        OwnerPossibleDuplicatePolicy.assignPossibleDuplicate(this.clinicService, owner);
+         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
+         this.clinicService.saveOwner(owner);
+         OwnerAuditPolicy.auditCreate(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java
+index 594c67a7a..bc6cb4a63 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerHouseholdPolicy.java
+@@ -9,12 +9,14 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+ /**
+- * Business rule: two owners must not share a household by accident. On creation an owner is
+- * rejected when another owner already has the same last name and address, compared
+- * case-insensitively after collapsing runs of whitespace. The caller may opt in to sharing a
+- * household ({@code sharesHousehold == true}), which skips the check. Kept as a small,
+- * self-contained unit so the rule can be enforced from the create flow without adding
+- * complexity to the controller or service.
++ * Business rule: a household is keyed on (last name, postcode). Every owner is given a
++ * deterministic {@code householdId} on creation &mdash; the first 12 hex characters of
++ * SHA-256 over {@code normalizedLastName|postcode} &mdash; so owners with the same last name
++ * and postcode share it automatically. Because they are the same household, a second such owner
++ * is rejected unless the request opts in to sharing ({@code sharesHousehold == true}), which only
++ * bypasses the rejection; the id is assigned either way. Kept as a small, self-contained unit so
++ * the rule can be enforced from the create flow without adding complexity to the controller or
++ * service.
+  */
+ public final class OwnerHouseholdPolicy {
+ 
+@@ -22,8 +24,8 @@ public final class OwnerHouseholdPolicy {
+     }
+ 
+     /**
+-     * Reject the given owner if another existing owner has the same last name and address,
+-     * unless the request explicitly opted in to sharing a household.
++     * Assign the owner's deterministic {@code householdId} and reject it when another existing owner
++     * is in the same (last name, postcode) household, unless the request opted in to sharing.
+      *
+      * @param clinicService   source of the existing owners
+      * @param owner           the owner being created
+@@ -32,12 +34,12 @@ public final class OwnerHouseholdPolicy {
+      */
+     public static void rejectDuplicateHousehold(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
+         String lastName = normalize(owner.getLastName());
+-        String address = normalize(owner.getAddress());
+-        owner.setHouseholdId(householdId(lastName, address));
++        String postcode = orEmpty(owner.getPostcode());
++        owner.setHouseholdId(householdId(lastName, postcode));
+         for (Owner existing : clinicService.findAllOwners()) {
+             if (!existing.getId().equals(owner.getId())
+                 && lastName.equals(normalize(existing.getLastName()))
+-                && address.equals(normalize(existing.getAddress()))) {
++                && postcode.equals(orEmpty(existing.getPostcode()))) {
+                 if (!Boolean.TRUE.equals(sharesHousehold)) {
+                     throw new DuplicateHouseholdException();
+                 }
+@@ -50,13 +52,17 @@ public final class OwnerHouseholdPolicy {
+         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+ 
+-    /** Derive a stable identifier shared by every owner in the same (last name, address) household. */
+-    private static String householdId(String lastName, String address) {
++    private static String orEmpty(String value) {
++        return value == null ? "" : value;
++    }
++
++    /** Derive a stable identifier shared by every owner in the same (last name, postcode) household. */
++    private static String householdId(String lastName, String postcode) {
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256")
+-                .digest((lastName + "|" + address).getBytes(StandardCharsets.UTF_8));
++                .digest((lastName + "|" + postcode).getBytes(StandardCharsets.UTF_8));
+             StringBuilder sb = new StringBuilder();
+-            for (int i = 0; i < 8; i++) {
++            for (int i = 0; i < 6; i++) {
+                 sb.append(String.format("%02x", digest[i]));
+             }
+             return sb.toString();
+@@ -66,7 +72,7 @@ public final class OwnerHouseholdPolicy {
+         }
+     }
+ 
+-    /** Thrown when another owner already shares the same last name and address. */
++    /** Thrown when another owner already shares the same last name and postcode. */
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public static class DuplicateHouseholdException extends RuntimeException {
+     }
