@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerDisposableEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
 import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
 import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
 import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
@@ -116,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerPostcodePolicy.rejectInvalidPostcode(owner);
         OwnerDisposableEmailPolicy.rejectDisposableDomain(owner);
         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
+        OwnerIdentityPolicy.rejectDuplicateIdentity(this.clinicService, owner);
         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
         this.clinicService.saveOwner(owner);
