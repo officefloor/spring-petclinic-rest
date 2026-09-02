@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0f4439e1b..3be2f1ace 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,6 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Membership level set at create time: start at 1, +1 when an email is present, +1 when the
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 94b22c6b2..53417346c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -53,9 +53,20 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "birth_date")
++    private java.time.LocalDate birthDate;
++
+     @Column(name = "registration_date")
+     private java.time.LocalDate registrationDate;
+ 
++    public java.time.LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(java.time.LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java
+new file mode 100644
+index 000000000..c41c26bfd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AgeBand.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++import java.time.Period;
++
++/**
++ * Derives an owner's age band from their birthDate relative to registrationDate:
++ * 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+). Returns null when no
++ * birthDate is supplied.
++ */
++public final class AgeBand {
++
++    private AgeBand() {
++    }
++
++    public static String of(LocalDate birthDate, LocalDate registrationDate) {
++        if (birthDate == null) {
++            return null;
++        }
++        LocalDate asOf = registrationDate == null ? LocalDate.now() : registrationDate;
++        int years = Period.between(birthDate, asOf).getYears();
++        if (years < 18) {
++            return "MINOR";
++        }
++        if (years < 65) {
++            return "ADULT";
++        }
++        return "SENIOR";
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 498fba774..7533fa56a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,6 +44,7 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
++  birth_date DATE,
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 556d3ac25..468da59dd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2044,6 +2044,12 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++        birthDate:
++          title: Birth date
++          description: Optional date of birth; when present the owner's ageBand is derived from it.
++          type: string
++          format: date
++          example: '1990-01-01'
+         registrationDate:
+           title: Registration date
+           description: The date the owner was registered; defaults to the server's current date.
+@@ -2164,6 +2170,12 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: "Age band derived from birthDate relative to registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+); absent when birthDate is not supplied."
++              type: string
++              example: 'ADULT'
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
