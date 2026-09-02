@@ -1,0 +1,148 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index a3ed3db2f..f80b1278e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Transient
++    private String addressLine1;
++
++    @Transient
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -125,6 +131,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index ac2151bfa..70162cfa7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -18,7 +18,9 @@ public class BuildOwner {
+         List<String> missing = new ArrayList<>();
+         require("firstName", request.getFirstName(), missing);
+         require("lastName", request.getLastName(), missing);
+-        require("address", request.getAddress(), missing);
++        if (isBlank(request.getAddressLine1()) && isBlank(request.getAddress())) {
++            missing.add("address"); // an address in either form is required
++        }
+         require("city", request.getCity(), missing);
+         require("telephone", request.getTelephone(), missing);
+         if (!missing.isEmpty()) {
+@@ -31,8 +33,12 @@ public class BuildOwner {
+     }
+ 
+     private static void require(String field, String value, List<String> missing) {
+-        if (value == null || value.isBlank()) {
++        if (isBlank(value)) {
+             missing.add(field);
+         }
+     }
++
++    private static boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+index 9998a465f..58d35b484 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeOwnerAddress.java
+@@ -20,18 +20,34 @@ public class NormalizeOwnerAddress {
+     private static final Map<String, String> ABBREVIATIONS = Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
+ 
+     public void service(@Val Owner owner) throws MissingOwnerFieldsException {
+-        String address = owner.getAddress() == null ? "" : owner.getAddress().trim();
++        String line1 = normalize(owner.getAddressLine1());
++        if (!line1.isEmpty()) {
++            String line2 = normalize(owner.getAddressLine2());
++            owner.setAddressLine1(line1);
++            owner.setAddressLine2(line2.isEmpty() ? null : line2);
++            owner.setAddress(line2.isEmpty() ? line1 : line1 + ' ' + line2);
++            return;
++        }
++        String address = normalize(owner.getAddress());
+         if (address.isEmpty()) {
+             throw new MissingOwnerFieldsException(List.of("address"));
+         }
++        owner.setAddress(address);
++    }
++
++    private static String normalize(String value) {
++        String trimmed = value == null ? "" : value.trim();
++        if (trimmed.isEmpty()) {
++            return "";
++        }
+         StringBuilder normalized = new StringBuilder();
+-        for (String token : address.split("\\s+")) {
++        for (String token : trimmed.split("\\s+")) {
+             String upper = token.toUpperCase(Locale.ROOT);
+             if (normalized.length() > 0) {
+                 normalized.append(' ');
+             }
+             normalized.append(ABBREVIATIONS.getOrDefault(upper, upper));
+         }
+-        owner.setAddress(normalized.toString());
++        return normalized.toString();
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2125e5798..e710a23e0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,23 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. Accepted for backward compatibility; when the structured 'addressLine1' is supplied it is preferred. On read this is the composed, normalized address (addressLine1, plus a space and addressLine2 when present).
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: First line of the structured address (street number and name). Preferred over the flat 'address' when present; supply this or 'address'.
++          type: string
++          maxLength: 255
++          example: '10 King Street'
++        addressLine2:
++          title: Address line 2
++          description: Optional second line of the structured address (unit, suite, etc.).
++          type: string
++          maxLength: 255
++          example: 'Unit 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2063,7 +2075,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
