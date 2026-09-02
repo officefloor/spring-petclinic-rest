@@ -19,6 +19,9 @@ public final class PossibleDuplicate {
     }
 
     public static Integer of(Owner owner, OwnerRepository repository) {
+        if (Boolean.TRUE.equals(owner.getSharesHousehold())) {
+            return null;
+        }
         String postcode = owner.getPostcode();
         if (postcode == null || postcode.isBlank()) {
             return null;
