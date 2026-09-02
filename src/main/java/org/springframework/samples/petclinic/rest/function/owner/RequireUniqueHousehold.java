@@ -19,10 +19,10 @@ public class RequireUniqueHousehold {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
         for (Owner owner : ownerRepository.findAll()) {
             if (lastName.equals(normalize(owner.getLastName()))
-                    && address.equals(normalize(owner.getAddress()))) {
+                    && address.equals(AddressNormalizer.normalize(owner.getAddress()))) {
                 throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
             }
         }

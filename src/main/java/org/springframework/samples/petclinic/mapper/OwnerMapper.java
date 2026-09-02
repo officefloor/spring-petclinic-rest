@@ -26,7 +26,8 @@ public interface OwnerMapper {
     /** Stable identifier for the household an owner belongs to: same last name and address (normalized
      *  as in the duplicate-household guard) yield the same id, so household-sharing owners match. */
     default String householdId(Owner owner) {
-        String key = normalizeHousehold(owner.getLastName()) + "|" + normalizeHousehold(owner.getAddress());
+        String key = normalizeHousehold(owner.getLastName()) + "|"
+                + org.springframework.samples.petclinic.rest.function.owner.AddressNormalizer.normalize(owner.getAddress());
         return String.format("H-%08X", key.hashCode());
     }
 

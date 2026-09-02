@@ -16,6 +16,7 @@ public class RequireOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
