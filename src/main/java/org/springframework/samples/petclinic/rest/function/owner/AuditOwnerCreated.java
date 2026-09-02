@@ -20,10 +20,11 @@ public class AuditOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         HouseholdTier.applyGold(owner, ownerRepository, dto);
+        String ownerSegment = OwnerSegment.of(dto.getMembershipLevel(), Region.of(owner));
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel());
         AUDIT.info("{}", String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), dto.getMembershipLevel()));
+            "{\"seq\":%d,\"schemaVersion\":2,\"ownerId\":%d,\"memberId\":\"%s\",\"ownerSegment\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), ownerSegment, dto.getMembershipLevel()));
     }
 }

@@ -25,7 +25,7 @@ public final class IdentityKey {
     }
 
     private static String key(String telephone, String email, String lastName) {
-        return sha256Hex(E164.toE164(telephone) + "|" + lower(email) + "|" + Soundex.of(lastName));
+        return sha256Hex("V2|" + E164.toE164(telephone) + "|" + lower(email) + "|" + Soundex.of(lastName));
     }
 
     /**
@@ -37,7 +37,7 @@ public final class IdentityKey {
         if (postcode == null || postcode.isEmpty()) {
             return null;
         }
-        return sha256Hex12(normalize(lastName) + "|" + postcode);
+        return sha256Hex12("V2|" + normalize(lastName) + "|" + postcode);
     }
 
     private static String sha256Hex12(String value) {

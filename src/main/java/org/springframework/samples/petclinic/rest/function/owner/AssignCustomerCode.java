@@ -9,8 +9,9 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's unified {@code memberId} (stored in {@code customerCode}) as
- * {@code <REGION><FY><HASH8><CHK>}. REGION is the region code derived from the postcode (2xxx→NSW,
- * 3xxx→VIC, 4xxx→QLD, then by city, else UNKNOWN); FY is the 2-digit fiscal year of the registration
+ * {@code <REGION><FY><HASH8><CHK>}. REGION is the version-2 region code: the plain {@link Region}
+ * carrying the fixed {@code V2} tag, so no version-1 memberId is ever produced again. FY is the
+ * 2-digit fiscal year of the registration
  * date; HASH8 is the first 8 upper-case hex characters of SHA-256 over the normalized (E.164)
  * telephone concatenated with the last name; CHK is a single Luhn check digit over the preceding
  * digits.
@@ -18,30 +19,10 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
-        String pc = owner.getPostcode();
-        String city = owner.getCity();
-        String region;
-        if (pc != null && pc.matches("20\\d{2}")) {
-            region = "NSW";
-        }
-        else if (pc != null && pc.matches("30\\d{2}")) {
-            region = "VIC";
-        }
-        else if (pc != null && pc.matches("40\\d{2}")) {
-            region = "QLD";
-        }
-        else if ("Sydney".equals(city)) {
-            region = "NSW";
-        }
-        else if ("Melbourne".equals(city)) {
-            region = "VIC";
-        }
-        else if ("Brisbane".equals(city)) {
-            region = "QLD";
-        }
-        else {
-            region = "UNKNOWN";
-        }
+        // Version-2 region code inside the identifier: the plain region carrying the fixed 'V2'
+        // tag, so the memberId never coincides with a version-1 value. The user-facing region
+        // (locality/timezone/segment) stays plain and is derived separately via Region.
+        String region = "V2" + Region.of(owner);
         byte[] digest;
         try {
             digest = MessageDigest.getInstance("SHA-256")
