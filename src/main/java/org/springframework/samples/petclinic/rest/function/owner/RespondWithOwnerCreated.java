@@ -19,6 +19,9 @@ public class RespondWithOwnerCreated {
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

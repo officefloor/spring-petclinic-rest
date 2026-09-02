@@ -18,6 +18,9 @@ public class RespondWithOwner {
         dto.setLocality(Locality.of(owner));
         dto.setBulkSignupWarning(BulkSignupWarning.of(owner, ownerRepository));
         dto.setContactPreference(ContactPreference.of(owner));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(dto);
     }
 }
