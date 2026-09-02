@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.forOwner(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
+    @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
