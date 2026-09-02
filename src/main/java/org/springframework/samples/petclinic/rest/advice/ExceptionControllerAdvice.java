@@ -30,6 +30,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.AccessDeniedException;
@@ -144,6 +145,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(OwnerTelephonePolicy.DuplicateTelephoneException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The telephone number is already used by another owner");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerCityCapacityPolicy.CityAtCapacityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleCityAtCapacityException(OwnerCityCapacityPolicy.CityAtCapacityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The owner's city already contains the maximum number of owners");
         return ResponseEntity.status(status).body(detail);
     }
 
