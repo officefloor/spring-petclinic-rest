@@ -1,0 +1,147 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index dd5a00e01..62ba59806 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+ import org.springframework.samples.petclinic.service.OwnerDisposableEmailPolicy;
+ import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
++import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
+ import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
+ import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
+@@ -116,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerPostcodePolicy.rejectInvalidPostcode(owner);
+         OwnerDisposableEmailPolicy.rejectDisposableDomain(owner);
+         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
++        OwnerIdentityPolicy.rejectDuplicateIdentity(this.clinicService, owner);
+         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
+         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityPolicy.java
+index da5c3c0aa..c5b780ce2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityPolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityPolicy.java
+@@ -5,18 +5,17 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+ /**
+- * Business rule: every owner is identified by a single derived {@code identityKey} of
+- * {@code normalizedTelephone|email|householdId}. This consolidates the former separate
+- * telephone, email and household duplicate checks into one key: on creation an owner is
+- * rejected only when its WHOLE identityKey exactly matches an existing owner's. Because the
+- * telephone is part of the key, two members of the same household (same householdId) with
+- * different telephones have different identityKeys and are both allowed; only an exact
+- * full-key match is a duplicate. Kept as a small, self-contained unit so the rule can be
+- * enforced from the create flow without adding complexity to the controller or service.
++ * Business rule: every owner is identified by a single derived {@code identityKey}: the SHA-256
++ * hex of {@code normalizedTelephone|lowerEmail|soundex(lastName)}. On creation an owner is
++ * rejected only when its identityKey exactly matches an existing (non-deleted) owner's. Because the
++ * telephone is part of the key, two owners with the same last name and postcode but DIFFERENT
++ * telephones have different identityKeys and are both created — the second is flagged a soft match
++ * by {@link OwnerPossibleDuplicatePolicy} rather than rejected. Kept as a small, self-contained unit
++ * so the rule can be enforced from the create flow without adding complexity to the controller or
++ * service.
+  *
+- * <p>Field canonicalisation is delegated to {@link OwnerFieldNormalizer} and the household-id
+- * adoption performed before the check to {@link SharedHouseholdIdAssignment}, keeping this class
+- * focused on the identity key itself.
++ * <p>Field canonicalisation is delegated to {@link OwnerFieldNormalizer} and the surname's phonetic
++ * code to {@link Soundex}, keeping this class focused on the identity key itself.
+  */
+ public final class OwnerIdentityPolicy {
+ 
+@@ -24,29 +23,29 @@ public final class OwnerIdentityPolicy {
+     }
+ 
+     /**
+-     * Assign the owner's householdId (when it knowingly joins an existing household) and reject
+-     * the owner when its whole identityKey matches any other existing owner's.
++     * Reject the owner when its identityKey matches any existing non-deleted owner's; otherwise flag
++     * it as a possible duplicate when it soft-matches one (see {@link OwnerPossibleDuplicatePolicy}).
+      *
+-     * @param clinicService   source of the existing owners
+-     * @param owner           the owner being created
+-     * @param sharesHousehold whether the request opted in to a shared household
++     * @param clinicService source of the existing owners
++     * @param owner         the owner being created
+      * @throws DuplicateIdentityException if the identityKey is already in use
+      */
+-    public static void rejectDuplicateIdentity(ClinicService clinicService, Owner owner, Boolean sharesHousehold) {
+-        SharedHouseholdIdAssignment.assign(clinicService, owner, sharesHousehold);
++    public static void rejectDuplicateIdentity(ClinicService clinicService, Owner owner) {
+         String key = identityKey(owner);
+         for (Owner existing : clinicService.findAllOwners()) {
+-            if (!existing.getId().equals(owner.getId()) && key.equals(identityKey(existing))) {
++            if (!existing.isDeleted() && !existing.getId().equals(owner.getId())
++                && key.equals(identityKey(existing))) {
+                 throw new DuplicateIdentityException();
+             }
+         }
++        OwnerPossibleDuplicatePolicy.assignPossibleDuplicate(clinicService, owner);
+     }
+ 
+-    /** The owner's derived identity key: normalized telephone, email and household id, '|'-joined. */
++    /** The owner's derived identity key: SHA-256 hex of {@code telephone|email|soundex(lastName)}. */
+     public static String identityKey(Owner owner) {
+-        return OwnerFieldNormalizer.telephone(owner.getTelephone()) + "|"
++        return Sha256Hex.lower(OwnerFieldNormalizer.telephone(owner.getTelephone()) + "|"
+             + OwnerFieldNormalizer.email(owner.getEmail()) + "|"
+-            + OwnerFieldNormalizer.orEmpty(owner.getHouseholdId());
++            + Soundex.of(owner.getLastName()), 32);
+     }
+ 
+     /** Thrown when another owner already has the same identityKey. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerPossibleDuplicatePolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerPossibleDuplicatePolicy.java
+index 8b66864ff..c4764725f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerPossibleDuplicatePolicy.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerPossibleDuplicatePolicy.java
+@@ -3,12 +3,12 @@ package org.springframework.samples.petclinic.service;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Business rule: an owner that is not a hard duplicate but shares an existing owner's last name
+- * and postcode with a different telephone is still created and flagged as a possible duplicate.
+- * On creation the owner records {@code possibleDuplicateOf} (the matching owner's id), from which
+- * {@code possibleDuplicate} is derived; when nothing matches it stays absent. Kept as a small,
+- * self-contained unit so the rule can be applied from the create flow without adding complexity
+- * to the controller or service.
++ * Business rule: an owner that is not a hard duplicate but whose {@code soundex(lastName)} and
++ * postcode match an existing (non-deleted) owner's — while its identityKey differs — is still
++ * created and flagged as a possible duplicate. On creation the owner records
++ * {@code possibleDuplicateOf} (the matching owner's id), from which {@code possibleDuplicate} is
++ * derived; when nothing matches it stays absent. Kept as a small, self-contained unit so the rule
++ * can be applied from the create flow without adding complexity to the controller or service.
+  */
+ public final class OwnerPossibleDuplicatePolicy {
+ 
+@@ -16,8 +16,8 @@ public final class OwnerPossibleDuplicatePolicy {
+     }
+ 
+     /**
+-     * Record {@code possibleDuplicateOf} for a newly created owner when another owner shares its
+-     * last name and postcode but has a different telephone.
++     * Record {@code possibleDuplicateOf} for a newly created owner when a non-deleted owner shares
++     * its {@code soundex(lastName)} and postcode but has a different identityKey.
+      *
+      * @param clinicService source of the existing owners
+      * @param owner         the owner being created
+@@ -27,13 +27,13 @@ public final class OwnerPossibleDuplicatePolicy {
+         if (postcode.isEmpty()) {
+             return;
+         }
+-        String lastName = OwnerFieldNormalizer.name(owner.getLastName());
+-        String telephone = OwnerFieldNormalizer.telephone(owner.getTelephone());
++        String soundex = Soundex.of(owner.getLastName());
++        String key = OwnerIdentityPolicy.identityKey(owner);
+         for (Owner existing : clinicService.findAllOwners()) {
+-            if (!existing.getId().equals(owner.getId())
+-                && lastName.equals(OwnerFieldNormalizer.name(existing.getLastName()))
++            if (!existing.isDeleted() && !existing.getId().equals(owner.getId())
++                && soundex.equals(Soundex.of(existing.getLastName()))
+                 && postcode.equals(OwnerFieldNormalizer.orEmpty(existing.getPostcode()))
+-                && !telephone.equals(OwnerFieldNormalizer.telephone(existing.getTelephone()))) {
++                && !key.equals(OwnerIdentityPolicy.identityKey(existing))) {
+                 owner.setPossibleDuplicateOf(existing.getId());
+                 return;
+             }
