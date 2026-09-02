@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.service.OwnerAuditPolicy;
 import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
@@ -116,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
         this.clinicService.saveOwner(owner);
+        OwnerAuditPolicy.auditCreate(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
