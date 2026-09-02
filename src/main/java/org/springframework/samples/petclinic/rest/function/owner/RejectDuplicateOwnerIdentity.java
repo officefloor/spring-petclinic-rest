@@ -15,13 +15,11 @@ public class RejectDuplicateOwnerIdentity {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DuplicateOwnerIdentityException {
-        String telephone = IdentityKey.telephone(owner);
-        String email = IdentityKey.email(owner);
+        String identityKey = IdentityKey.of(owner);
         for (Owner other : ownerRepository.findAll()) {
             if (other != owner && !Boolean.TRUE.equals(other.getDeleted())
-                    && telephone.equals(IdentityKey.telephone(other))
-                    && email.equals(IdentityKey.email(other))) {
-                throw new DuplicateOwnerIdentityException(IdentityKey.of(owner));
+                    && identityKey.equals(IdentityKey.of(other))) {
+                throw new DuplicateOwnerIdentityException(identityKey);
             }
         }
     }
