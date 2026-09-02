@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.service.OwnerTimezonePolicy.timezone(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
+    @Mapping(target = "capacityWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerCapacityWarningPolicy.capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.service.OwnerContactPreferencePolicy.contactPreference(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.OwnerIdentityPolicy.identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.service.OwnerAgeBandPolicy.ageBand(owner))")
