@@ -1,0 +1,268 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 37786af02..d35d76ced 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -7,6 +7,7 @@ import org.mapstruct.Mapping;
+ import org.mapstruct.MappingTarget;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+@@ -48,6 +49,15 @@ public interface OwnerMapper {
+         ownerDto.setHouseholdId(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString());
+     }
+ 
++    /**
++     * Derives 'identityKey' for the response: the single duplicate-detection key from
++     * {@link OwnerIdentity#key(Owner)}. Non-persistent, so it never affects storage or the request payload.
++     */
++    @AfterMapping
++    default void deriveIdentityKey(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        ownerDto.setIdentityKey(OwnerIdentity.key(owner));
++    }
++
+     /** Fixed city-to-region table used to derive an owner's locality. */
+     Map<String, String> CITY_REGION = Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+new file mode 100644
+index 000000000..e776aa032
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerIdentity.java
+@@ -0,0 +1,32 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++/**
++ * The single derived duplicate-detection key for an owner: the normalized telephone, the email
++ * (or empty) and the household id, joined with '|'. Two owners are duplicates only when their whole
++ * key matches. The household id is not carried on the persisted owner, so it contributes empty here.
++ */
++public final class OwnerIdentity {
++
++    private OwnerIdentity() {
++    }
++
++    public static String key(Owner owner) {
++        String email = owner.getEmail();
++        return owner.getTelephone() + "|" + (email == null ? "" : email) + "|";
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerHouseholdUniquenessAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerHouseholdUniquenessAdvice.java
+deleted file mode 100644
+index 73e4041bc..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerHouseholdUniquenessAdvice.java
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package org.springframework.samples.petclinic.rest.advice;
+-
+-import org.aspectj.lang.annotation.Aspect;
+-import org.aspectj.lang.annotation.Before;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+-import org.springframework.samples.petclinic.service.ClinicService;
+-import org.springframework.stereotype.Component;
+-import org.springframework.web.server.ResponseStatusException;
+-
+-/**
+- * Rejects creating an owner who shares another owner's household, i.e. the same last name and the
+- * same address compared case-insensitively with runs of whitespace collapsed. The check is skipped
+- * when the request explicitly opts in with {@code sharesHousehold} set to true.
+- */
+-@Aspect
+-@Component
+-public class OwnerHouseholdUniquenessAdvice {
+-
+-    private final ClinicService clinicService;
+-
+-    public OwnerHouseholdUniquenessAdvice(ClinicService clinicService) {
+-        this.clinicService = clinicService;
+-    }
+-
+-    @Before("execution(* org.springframework.samples.petclinic.rest.controller.v1.OwnerRestControllerV1.addOwner(..)) && args(fields)")
+-    public void rejectDuplicateHousehold(OwnerFieldsDto fields) {
+-        if (Boolean.TRUE.equals(fields.getSharesHousehold())) {
+-            return;
+-        }
+-        String lastName = normalize(fields.getLastName());
+-        String address = normalize(fields.getAddress());
+-        if (lastName == null || address == null) {
+-            return;
+-        }
+-        boolean taken = clinicService.findAllOwners().stream().anyMatch(existing ->
+-            lastName.equals(normalize(existing.getLastName())) && address.equals(normalize(existing.getAddress())));
+-        if (taken) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Another owner already shares this household");
+-        }
+-    }
+-
+-    private static String normalize(String value) {
+-        return value == null ? null : value.strip().replaceAll("\\s+", " ").toLowerCase();
+-    }
+-}
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerEmailUniquenessAspect.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityUniquenessAspect.java
+similarity index 64%
+rename from src/main/java/org/springframework/samples/petclinic/service/OwnerEmailUniquenessAspect.java
+rename to src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityUniquenessAspect.java
+index 48f825436..1ae8ce6a9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerEmailUniquenessAspect.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerIdentityUniquenessAspect.java
+@@ -19,38 +19,37 @@ import org.aspectj.lang.annotation.Aspect;
+ import org.aspectj.lang.annotation.Before;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.model.OwnerIdentity;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.stereotype.Component;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * Enforces that a newly created owner does not reuse another owner's email, compared case-insensitively.
+- * Updates to an existing owner keep their own email and are left untouched.
++ * Rejects a newly created owner whose whole {@link OwnerIdentity#key(Owner) identity key} — the
++ * normalized telephone, email and household id — exactly matches an existing owner's. This single
++ * key subsumes the former separate telephone, email and household duplicate checks. Updates to an
++ * existing owner keep their own identity and are left untouched.
+  */
+ @Aspect
+ @Component
+-public class OwnerEmailUniquenessAspect {
++public class OwnerIdentityUniquenessAspect {
+ 
+     private final OwnerRepository ownerRepository;
+ 
+-    public OwnerEmailUniquenessAspect(OwnerRepository ownerRepository) {
++    public OwnerIdentityUniquenessAspect(OwnerRepository ownerRepository) {
+         this.ownerRepository = ownerRepository;
+     }
+ 
+     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
+-    public void rejectDuplicateEmail(Owner owner) {
+-        String email = normalize(owner.getEmail());
+-        if (!owner.isNew() || email == null) {
++    public void rejectDuplicateIdentity(Owner owner) {
++        if (!owner.isNew()) {
+             return;
+         }
++        String identityKey = OwnerIdentity.key(owner);
+         boolean taken = ownerRepository.findAll().stream()
+-            .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
++            .anyMatch(existing -> identityKey.equals(OwnerIdentity.key(existing)));
+         if (taken) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use by another owner");
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Another owner already has this identity");
+         }
+     }
+-
+-    private static String normalize(String email) {
+-        return email == null ? null : email.toLowerCase();
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerTelephoneUniquenessAspect.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerTelephoneUniquenessAspect.java
+deleted file mode 100644
+index 9d18db473..000000000
+--- a/src/main/java/org/springframework/samples/petclinic/service/OwnerTelephoneUniquenessAspect.java
++++ /dev/null
+@@ -1,54 +0,0 @@
+-/*
+- * Copyright 2016 the original author or authors.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package org.springframework.samples.petclinic.service;
+-
+-import org.aspectj.lang.annotation.Aspect;
+-import org.aspectj.lang.annotation.Before;
+-import org.springframework.http.HttpStatus;
+-import org.springframework.samples.petclinic.model.Owner;
+-import org.springframework.samples.petclinic.repository.OwnerRepository;
+-import org.springframework.stereotype.Component;
+-import org.springframework.web.server.ResponseStatusException;
+-
+-/**
+- * Enforces that a newly created owner does not reuse another owner's telephone. The telephone
+- * has already been normalized (non-digits stripped to ten digits) by the field validation advice,
+- * so a plain equality comparison against the stored owners is sufficient. Updates to an existing
+- * owner keep their own number and are left untouched.
+- */
+-@Aspect
+-@Component
+-public class OwnerTelephoneUniquenessAspect {
+-
+-    private final OwnerRepository ownerRepository;
+-
+-    public OwnerTelephoneUniquenessAspect(OwnerRepository ownerRepository) {
+-        this.ownerRepository = ownerRepository;
+-    }
+-
+-    @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
+-    public void rejectDuplicateTelephone(Owner owner) {
+-        String telephone = owner.getTelephone();
+-        if (!owner.isNew() || telephone == null) {
+-            return;
+-        }
+-        boolean taken = ownerRepository.findAll().stream()
+-            .anyMatch(existing -> telephone.equals(existing.getTelephone()));
+-        if (taken) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Telephone already in use by another owner");
+-        }
+-    }
+-}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 07641e7d4..2c06c4d84 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,6 +2099,12 @@ components:
+               type: string
+               example: '2f8a1c9e-3b4d-3c2a-9e1f-7a6b5c4d3e2f'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: "Derived duplicate-detection key: normalized telephone, email (or empty) and household id joined with '|'. Two owners are duplicates only when their whole identity key matches."
++              type: string
++              example: '+61412345678||'
++              readOnly: true
+             locality:
+               title: Locality
+               description: The canonical region derived from the owner's city (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), or 'UNKNOWN' when the city is not in the table.
