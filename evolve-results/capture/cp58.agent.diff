@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 2574fbe6f..eb54f7f80 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -1,6 +1,8 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Locale;
+ import java.util.Map;
++import java.util.Set;
+ 
+ import net.officefloor.plugin.variable.Val;
+ import net.officefloor.web.ObjectResponse;
+@@ -14,6 +16,9 @@ public class RespondWithOwner {
+     private static final Map<String, String> REGION_TIMEZONE = Map.of(
+             "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
+ 
++    private static final Set<String> DISPOSABLE_DOMAINS =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+@@ -32,6 +37,17 @@ public class RespondWithOwner {
+         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+         dto.setPossibleDuplicate(possibleDuplicateOf != null);
+         dto.setPossibleDuplicateOf(possibleDuplicateOf);
++        dto.setRiskFlag(possibleDuplicateOf != null || Boolean.TRUE.equals(dto.getCapacityWarning())
++                || disposableAdjacent(owner.getEmail()));
+         response.send(dto);
+     }
++
++    /** A domain is disposable-adjacent when it is a known disposable domain or a subdomain of one. */
++    private static boolean disposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        String domain = email.substring(email.lastIndexOf('@') + 1).toLowerCase(Locale.ROOT);
++        return DISPOSABLE_DOMAINS.stream().anyMatch(d -> domain.equals(d) || domain.endsWith("." + d));
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1082ef010..50fc912f7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2207,6 +2207,12 @@ components:
+               format: int32
+               example: 7
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any of these hold - the owner is a possible duplicate, the email domain is disposable-adjacent (a known disposable domain or a subdomain of one), or the city is over its soft capacity (capacityWarning); otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: The preferred way to contact this owner - 'EMAIL' when an email is present, otherwise 'PHONE'.
