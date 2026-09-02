@@ -7,7 +7,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Business rule: on successful creation an audit line is emitted via the dedicated {@code AUDIT}
- * logger carrying the new owner's id, its {@code customerCode} and its {@code registrationDate}.
+ * logger carrying the new owner's id, its {@code customerCode}, its {@code registrationDate}, its
+ * {@code membershipLevel} and its {@code membershipNumber}.
  * Kept as a small, self-contained unit so the rule can be applied from the create flow after the
  * owner has been saved without adding complexity to the controller or service.
  */
@@ -20,8 +21,9 @@ public final class OwnerAuditPolicy {
 
     /** Emit the create audit line for a freshly saved owner. */
     public static void auditCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            OwnerMembershipLevelPolicy.membershipLevel(owner));
+            OwnerMembershipLevelPolicy.membershipLevel(owner),
+            OwnerMembershipPolicy.membershipNumber(owner));
     }
 }
