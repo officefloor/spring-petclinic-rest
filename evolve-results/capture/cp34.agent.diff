@@ -1,0 +1,123 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f8b77928a..e404335e9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -80,6 +80,21 @@ public interface OwnerMapper {
+         ownerDto.setContactPreference(email == null || email.isBlank() ? "PHONE" : "EMAIL");
+     }
+ 
++    /**
++     * Derives 'ageBand' for the response from the owner's birth date, measured against the
++     * registration date: 'MINOR' when under 18, 'ADULT' for 18-64 and 'SENIOR' for 65+. Left
++     * unset when no birth date is supplied. Non-persistent, so it never affects storage.
++     */
++    @AfterMapping
++    default void deriveAgeBand(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        java.time.LocalDate birthDate = owner.getBirthDate();
++        if (birthDate == null) {
++            return;
++        }
++        int years = java.time.Period.between(birthDate, owner.getRegistrationDate()).getYears();
++        ownerDto.setAgeBand(years < 18 ? "MINOR" : years < 65 ? "ADULT" : "SENIOR");
++    }
++
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 990065ef2..104958a52 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -61,6 +61,17 @@ public class Owner extends Person {
+     @Column(name = "postcode")
+     private String postcode;
+ 
++    @Column(name = "birth_date")
++    private LocalDate birthDate;
++
++    public LocalDate getBirthDate() {
++        return this.birthDate;
++    }
++
++    public void setBirthDate(LocalDate birthDate) {
++        this.birthDate = birthDate;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8303fbaf2..ef43679d1 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2026-09-01', NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2026-09-01', NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, '2026-09-01', NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, '2026-09-01', NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 216a2e781..d22621573 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,8 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  postcode VARCHAR(4)
++  postcode VARCHAR(4),
++  birth_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index efa06f0f3..d4398c083 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2049,6 +2049,12 @@ components:
+           type: string
+           format: date
+           example: '2026-09-02'
++        birthDate:
++          title: Birth date
++          description: The owner's date of birth. When present, drives the derived ageBand.
++          type: string
++          format: date
++          example: '1990-01-01'
+         sharesHousehold:
+           title: Shares household
+           description: When true, permits creating this owner even if another owner has the same last name and address.
+@@ -2132,6 +2138,12 @@ components:
+               type: string
+               example: 'EMAIL'
+               readOnly: true
++            ageBand:
++              title: Age band
++              description: "The owner's age band derived from birthDate against registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+)."
++              type: string
++              example: 'ADULT'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: Number of owners registered before this one that share the same first and last name (case-insensitive).
