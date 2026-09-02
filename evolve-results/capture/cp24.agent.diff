@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 44bbb89c8..b6515ea71 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipTier", expression = "java(Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+     @Mapping(target = "locality", expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+index 7fc30ca69..c11fbde98 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+@@ -26,7 +26,7 @@ final class HouseholdTier {
+             }
+         }
+         if (members >= 3) {
+-            dto.setMembershipTier("GOLD");
++            dto.setMembershipLevel(3);
+         }
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9ca100ba0..5425a97ff 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,11 +2108,14 @@ components:
+               type: string
+               example: "SMI-0007-M26"
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'."
+-              type: string
+-              example: "SILVER"
++            membershipLevel:
++              title: Membership level
++              description: "Numeric level from 1 to 3: starts at 1, +1 when an email is present, +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
