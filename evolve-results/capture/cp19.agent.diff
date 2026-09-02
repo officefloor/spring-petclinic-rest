@@ -1,0 +1,98 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index edc993e9f..b39dabfc4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
++import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+ import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -156,6 +157,14 @@ public class ExceptionControllerAdvice {
+         return ResponseEntity.status(status).body(detail);
+     }
+ 
++    @ExceptionHandler(OwnerDailyLimitPolicy.DailyLimitReachedException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleDailyLimitReachedException(OwnerDailyLimitPolicy.DailyLimitReachedException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "The maximum number of owners for today has already been reached");
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     @ExceptionHandler(OwnerHouseholdPolicy.DuplicateHouseholdException.class)
+     @ResponseBody
+     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(OwnerHouseholdPolicy.DuplicateHouseholdException e, HttpServletRequest request) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 097b8f2d6..d7e6cc42a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -38,6 +38,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
+ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
++import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+ import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+ import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
+ import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
+@@ -106,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        OwnerDailyLimitPolicy.rejectWhenDailyLimitReached(this.clinicService);
+         OwnerCityCapacityPolicy.rejectWhenCityAtCapacity(this.clinicService, owner);
+         OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
+         OwnerTelephonePolicy.rejectDuplicateTelephone(this.clinicService, owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java
+new file mode 100644
+index 000000000..26a2b3012
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerDailyLimitPolicy.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.service;
++
++import java.time.LocalDate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/**
++ * Business rule: no more than {@value #DAILY_LIMIT} owners may be created on a single day
++ * (by registrationDate). Kept as a small, self-contained unit so the rule can be enforced from
++ * the create flow without adding complexity to the controller or service.
++ */
++public final class OwnerDailyLimitPolicy {
++
++    private static final int DAILY_LIMIT = 100;
++
++    private OwnerDailyLimitPolicy() {
++    }
++
++    /**
++     * Reject the owner being created if {@value #DAILY_LIMIT} or more owners already share today's
++     * registration date.
++     *
++     * @param clinicService source of the existing owners
++     * @throws DailyLimitReachedException if today's create limit has already been reached
++     */
++    public static void rejectWhenDailyLimitReached(ClinicService clinicService) {
++        LocalDate today = LocalDate.now();
++        int count = 0;
++        for (Owner existing : clinicService.findAllOwners()) {
++            if (today.equals(existing.getRegistrationDate())) {
++                count++;
++            }
++        }
++        if (count >= DAILY_LIMIT) {
++            throw new DailyLimitReachedException();
++        }
++    }
++
++    /** Thrown when {@value #DAILY_LIMIT} or more owners already share today's registration date. */
++    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
++    public static class DailyLimitReachedException extends RuntimeException {
++    }
++}
