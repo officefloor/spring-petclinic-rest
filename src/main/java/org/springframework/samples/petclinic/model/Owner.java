@@ -66,6 +66,22 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /** True when this owner soft-matched an existing owner (see {@code possibleDuplicateOf}). */
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
+    }
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
