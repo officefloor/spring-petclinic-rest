@@ -45,8 +45,7 @@ public class OwnerFieldsValidationAdvice implements Validator {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
         rejectIfBlank(errors, "firstName", owner.getFirstName());
         rejectIfBlank(errors, "lastName", owner.getLastName());
-        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
-        rejectIfBlank(errors, "address", owner.getAddress());
+        rejectIfBlank(errors, "address", StructuredAddress.apply(owner));
         rejectIfBlank(errors, "city", owner.getCity());
         rejectIfBlank(errors, "telephone", owner.getTelephone());
         normalizeTelephone(errors, owner);
