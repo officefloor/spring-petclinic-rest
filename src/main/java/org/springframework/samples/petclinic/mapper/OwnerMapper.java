@@ -7,6 +7,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -46,6 +47,15 @@ public interface OwnerMapper {
         String key = (lastName.strip().replaceAll("\\s+", " ") + '\n'
             + address.strip().replaceAll("\\s+", " ")).toLowerCase();
         ownerDto.setHouseholdId(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString());
+    }
+
+    /**
+     * Derives 'identityKey' for the response: the single duplicate-detection key from
+     * {@link OwnerIdentity#key(Owner)}. Non-persistent, so it never affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveIdentityKey(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setIdentityKey(OwnerIdentity.key(owner));
     }
 
     /** Fixed city-to-region table used to derive an owner's locality. */

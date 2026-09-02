@@ -19,38 +19,37 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.http.HttpStatus;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.OwnerIdentity;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Enforces that a newly created owner does not reuse another owner's email, compared case-insensitively.
- * Updates to an existing owner keep their own email and are left untouched.
+ * Rejects a newly created owner whose whole {@link OwnerIdentity#key(Owner) identity key} — the
+ * normalized telephone, email and household id — exactly matches an existing owner's. This single
+ * key subsumes the former separate telephone, email and household duplicate checks. Updates to an
+ * existing owner keep their own identity and are left untouched.
  */
 @Aspect
 @Component
-public class OwnerEmailUniquenessAspect {
+public class OwnerIdentityUniquenessAspect {
 
     private final OwnerRepository ownerRepository;
 
-    public OwnerEmailUniquenessAspect(OwnerRepository ownerRepository) {
+    public OwnerIdentityUniquenessAspect(OwnerRepository ownerRepository) {
         this.ownerRepository = ownerRepository;
     }
 
     @Before("execution(* org.springframework.samples.petclinic.service.ClinicService.saveOwner(..)) && args(owner)")
-    public void rejectDuplicateEmail(Owner owner) {
-        String email = normalize(owner.getEmail());
-        if (!owner.isNew() || email == null) {
+    public void rejectDuplicateIdentity(Owner owner) {
+        if (!owner.isNew()) {
             return;
         }
+        String identityKey = OwnerIdentity.key(owner);
         boolean taken = ownerRepository.findAll().stream()
-            .anyMatch(existing -> email.equals(normalize(existing.getEmail())));
+            .anyMatch(existing -> identityKey.equals(OwnerIdentity.key(existing)));
         if (taken) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use by another owner");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Another owner already has this identity");
         }
-    }
-
-    private static String normalize(String email) {
-        return email == null ? null : email.toLowerCase();
     }
 }
