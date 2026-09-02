@@ -15,7 +15,6 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -58,17 +57,14 @@ public interface OwnerMapper {
         ownerDto.setIdentityKey(OwnerIdentity.key(owner));
     }
 
-    /** Fixed city-to-region table used to derive an owner's locality. */
-    Map<String, String> CITY_REGION = Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
     /**
-     * Derives 'locality' for the response: the canonical region for the owner's city from the fixed
-     * {@link #CITY_REGION} table, or 'UNKNOWN' when the city is not listed. Non-persistent, so it
-     * never affects storage or the request payload.
+     * Derives 'locality' for the response via {@link LocalityResolver#resolve}: the region from the
+     * owner's postcode range, falling back to the city. Non-persistent, so it never affects storage
+     * or the request payload.
      */
     @AfterMapping
     default void deriveLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
-        ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
+        ownerDto.setLocality(LocalityResolver.resolve(owner.getCity(), owner.getPostcode()));
     }
 
     /**
