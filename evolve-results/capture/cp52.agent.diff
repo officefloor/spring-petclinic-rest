@@ -1,0 +1,165 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+index 0e7080fa5..19edde246 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -6,10 +6,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+- * Records the id of an existing owner in the same household (same computed {@code householdId}, from
+- * last name and postcode) that has a different telephone — a soft, non-blocking duplicate. A declared
+- * household member ({@code sharesHousehold=true}) is not a suspected duplicate, so it is skipped, as
+- * is an owner with no household. Runs before the owner is saved, so {@code findAll()} sees only
++ * Records the id of an existing owner whose {@link IdentityKey} differs but whose {@link Soundex} of
++ * last name and whose postcode both match — a soft, non-blocking duplicate. This catches household
++ * members with different telephones (different key, same postcode and sound-alike name). A declared
++ * household member ({@code sharesHousehold=true}) is not a suspected duplicate, so it is skipped, as is
++ * an owner with no postcode. Runs before the owner is saved, so {@code findAll()} sees only
+  * pre-existing owners. Leaves {@code possibleDuplicateOf} null when nothing matches.
+  */
+ public class FlagPossibleDuplicate {
+@@ -18,14 +19,16 @@ public class FlagPossibleDuplicate {
+         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+             return;
+         }
+-        String householdId = owner.getHouseholdId();
+-        if (householdId == null) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isEmpty()) {
+             return;
+         }
+-        String telephone = owner.getTelephone();
++        String soundex = Soundex.of(owner.getLastName());
++        String identityKey = IdentityKey.forOwner(owner);
+         for (Owner existing : ownerRepository.findAll()) {
+-            if (householdId.equals(existing.getHouseholdId())
+-                    && !telephone.equals(existing.getTelephone())) {
++            if (postcode.equals(existing.getPostcode())
++                    && soundex.equals(Soundex.of(existing.getLastName()))
++                    && !identityKey.equals(IdentityKey.forOwner(existing))) {
+                 owner.setPossibleDuplicateOf(existing.getId());
+                 return;
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index ef55d49f0..b949014e4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -5,28 +5,27 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+  * Derives an owner's {@code identityKey}, the single value all duplicate detection is expressed
+- * through: {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are
+- * duplicates only when their whole keys match; because the telephone is part of the key, household
+- * members with different telephones have different keys and are both allowed.
++ * through: the SHA-256 hex of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
++ * Two owners are duplicates only when their whole keys match; because the telephone is part of the key,
++ * household members with different telephones have different keys and are both allowed.
+  */
+ public final class IdentityKey {
+ 
+     private IdentityKey() {
+     }
+ 
+-    /** The key a create request would take once saved (its would-be householdId included). */
++    /** The key a create request would take once saved. */
+     public static String forRequest(OwnerFieldsDto request) {
+-        return key(request.getTelephone(), request.getEmail(),
+-                household(request.getLastName(), request.getPostcode()));
++        return key(request.getTelephone(), request.getEmail(), request.getLastName());
+     }
+ 
+     /** The key of an existing owner. */
+     public static String forOwner(Owner owner) {
+-        return key(owner.getTelephone(), owner.getEmail(), owner.getHouseholdId());
++        return key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+     }
+ 
+-    private static String key(String telephone, String email, String householdId) {
+-        return E164.toE164(telephone) + "|" + lower(email) + "|" + orEmpty(householdId);
++    private static String key(String telephone, String email, String lastName) {
++        return sha256Hex(E164.toE164(telephone) + "|" + lower(email) + "|" + Soundex.of(lastName));
+     }
+ 
+     /**
+@@ -42,6 +41,10 @@ public final class IdentityKey {
+     }
+ 
+     private static String sha256Hex12(String value) {
++        return sha256Hex(value).substring(0, 12);
++    }
++
++    private static String sha256Hex(String value) {
+         try {
+             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                     .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+@@ -49,7 +52,7 @@ public final class IdentityKey {
+             for (byte b : digest) {
+                 hex.append(String.format("%02x", b));
+             }
+-            return hex.substring(0, 12);
++            return hex.toString();
+         }
+         catch (java.security.NoSuchAlgorithmException e) {
+             throw new IllegalStateException(e);
+@@ -63,8 +66,4 @@ public final class IdentityKey {
+     private static String lower(String value) {
+         return value == null ? "" : value.toLowerCase();
+     }
+-
+-    private static String orEmpty(String value) {
+-        return value == null ? "" : value;
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+new file mode 100644
+index 000000000..174eed6d7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+@@ -0,0 +1,47 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * American Soundex of a surname: the first letter followed by three consonant-class digits. Used as
++ * the phonetic component of an owner's {@link IdentityKey} and as the soft-match key (similar-sounding
++ * last names in the same postcode). Empty for a null or letter-free name.
++ */
++public final class Soundex {
++
++    private Soundex() {
++    }
++
++    public static String of(String name) {
++        String s = name == null ? "" : name.replaceAll("[^A-Za-z]", "").toUpperCase();
++        if (s.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder().append(s.charAt(0));
++        char prev = digit(s.charAt(0));
++        for (int i = 1; i < s.length() && code.length() < 4; i++) {
++            char c = s.charAt(i);
++            char d = digit(c);
++            if (d != '0' && d != prev) {
++                code.append(d);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = d;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static char digit(char c) {
++        switch (c) {
++            case 'B': case 'F': case 'P': case 'V': return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z': return '2';
++            case 'D': case 'T': return '3';
++            case 'L': return '4';
++            case 'M': case 'N': return '5';
++            case 'R': return '6';
++            default: return '0';
++        }
++    }
++}
