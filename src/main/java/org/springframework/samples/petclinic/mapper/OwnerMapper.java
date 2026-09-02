@@ -14,6 +14,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -45,6 +46,19 @@ public interface OwnerMapper {
         String key = (lastName.strip().replaceAll("\\s+", " ") + '\n'
             + address.strip().replaceAll("\\s+", " ")).toLowerCase();
         ownerDto.setHouseholdId(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString());
+    }
+
+    /** Fixed city-to-region table used to derive an owner's locality. */
+    Map<String, String> CITY_REGION = Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * Derives 'locality' for the response: the canonical region for the owner's city from the fixed
+     * {@link #CITY_REGION} table, or 'UNKNOWN' when the city is not listed. Non-persistent, so it
+     * never affects storage or the request payload.
+     */
+    @AfterMapping
+    default void deriveLocality(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        ownerDto.setLocality(CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN"));
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
