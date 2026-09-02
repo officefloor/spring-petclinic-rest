@@ -1,0 +1,194 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/MembershipPoints.java
+index 7a36b7bee..5b315b381 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/MembershipPoints.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/MembershipPoints.java
+@@ -18,15 +18,15 @@ package org.springframework.samples.petclinic.rest.advice;
+ import org.springframework.samples.petclinic.model.Household;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.util.FiscalYear;
+ 
+ import java.time.LocalDate;
+-import java.time.temporal.ChronoUnit;
+ import java.util.Collection;
+ 
+ /**
+  * Scores an owner's membership: points start at 0 and gain +2 for an email, +1 when namesakeCount
+- * is 0, +2 for a household of 3 or more members and +3 for tenure over 365 days. The points map to a
+- * membershipLevel of 1 (0-1 points), 2 (2-3), 3 (4-5) or 4 (6 or more). Both are set on the response.
++ * is 0, +2 for a household of 3 or more members and +3 for tenure over one fiscal year. The points map
++ * to a membershipLevel of 1 (0-1 points), 2 (2-3), 3 (4-5) or 4 (6 or more). Both are set on the response.
+  */
+ final class MembershipPoints {
+ 
+@@ -49,9 +49,9 @@ final class MembershipPoints {
+             .count();
+     }
+ 
+-    /** True once the owner's tenure exceeds 365 days; a new owner's zero tenure counts as false. */
++    /** True once the owner's tenure exceeds one fiscal year; a new owner's zero tenure counts as false. */
+     private static boolean longTenure(OwnerDto owner) {
+         LocalDate registered = owner.getRegistrationDate();
+-        return registered != null && ChronoUnit.DAYS.between(registered, LocalDate.now()) > 365;
++        return registered != null && FiscalYear.elapsed(registered, LocalDate.now()) > 1;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFiscalYearAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFiscalYearAdvice.java
+new file mode 100644
+index 000000000..70fe0ce11
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFiscalYearAdvice.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.rest.advice;
++
++import org.aspectj.lang.annotation.AfterReturning;
++import org.aspectj.lang.annotation.Aspect;
++import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.util.FiscalYear;
++import org.springframework.stereotype.Component;
++
++/**
++ * Populates the read-only {@code fiscalYear} on an owner response, formatted {@code 'FY<YY>'} for the
++ * fiscal year of the business-day-adjusted registration date. Derived on the way out, so it never
++ * affects storage or the request.
++ */
++@Aspect
++@Component
++public class OwnerFiscalYearAdvice {
++
++    @AfterReturning(pointcut = "execution(* org.springframework.samples.petclinic.rest.controller.v1."
++        + "OwnerRestControllerV1.addOwner(..)) || execution(* org.springframework.samples.petclinic.rest."
++        + "controller.v1.OwnerRestControllerV1.getOwner(..))", returning = "response")
++    public void addFiscalYear(ResponseEntity<?> response) {
++        Object body = response == null ? null : response.getBody();
++        if (!(body instanceof OwnerDto owner) || owner.getRegistrationDate() == null) {
++            return;
++        }
++        owner.setFiscalYear(FiscalYear.label(owner.getRegistrationDate()));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerMembershipNumberAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerMembershipNumberAdvice.java
+index aa9637173..c85d2898d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerMembershipNumberAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerMembershipNumberAdvice.java
+@@ -19,12 +19,13 @@ import org.aspectj.lang.annotation.AfterReturning;
+ import org.aspectj.lang.annotation.Aspect;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.util.FiscalYear;
+ import org.springframework.stereotype.Component;
+ 
+ /**
+  * Populates the read-only {@code membershipNumber} on an owner response, formatted
+- * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the registration date year
+- * (e.g. {@code 'SMI-0007-M26'}). Derived on the way out from the owner's own fields, so it never
++ * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the registration date's fiscal
++ * year (e.g. {@code 'SMI-0007-M26'}). Derived on the way out from the owner's own fields, so it never
+  * affects storage or the request.
+  */
+ @Aspect
+@@ -41,6 +42,6 @@ public class OwnerMembershipNumberAdvice {
+             return;
+         }
+         owner.setMembershipNumber(String.format("%s-M%02d",
+-            owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100));
++            owner.getCustomerCode(), FiscalYear.of(owner.getRegistrationDate()) % 100));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+new file mode 100644
+index 000000000..f883814f8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+@@ -0,0 +1,44 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.Month;
++
++/**
++ * Fiscal-year arithmetic: the fiscal year runs 1 July to 30 June and is named by the calendar year
++ * in which it ends, so a July date belongs to the following year's fiscal year.
++ */
++public final class FiscalYear {
++
++    private FiscalYear() {
++    }
++
++    /** The fiscal year a date falls in (e.g. 2027 for 2 July 2026). */
++    public static int of(LocalDate date) {
++        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
++    }
++
++    /** The fiscal year of a date formatted {@code 'FY<YY>'} (last two digits). */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", of(date) % 100);
++    }
++
++    /** Whole fiscal years elapsed from one date to another. */
++    public static int elapsed(LocalDate from, LocalDate to) {
++        return of(to) - of(from);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b03f2927d..8a6f68759 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2139,10 +2139,16 @@ components:
+               readOnly: true
+             membershipNumber:
+               title: Membership number
+-              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the registration date year.
++              description: The owner's membership number, formatted '<customerCode>-M<YY>' where YY is the last two digits of the fiscal year of the registration date.
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: The fiscal year of the registration date, formatted 'FY<YY>'. The fiscal year starts on 1 July and is named by the calendar year in which it ends.
++              type: string
++              example: 'FY26'
++              readOnly: true
+             householdId:
+               title: Household ID
+               description: Stable identifier shared by owners in the same household (same last name and address).
+@@ -2189,7 +2195,7 @@ components:
+               readOnly: true
+             membershipPoints:
+               title: Membership points
+-              description: "Membership points: start at 0, +2 when an email is present, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 when tenure exceeds 365 days."
++              description: "Membership points: start at 0, +2 when an email is present, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 when tenure exceeds one fiscal year."
+               type: integer
+               format: int32
+               minimum: 0
