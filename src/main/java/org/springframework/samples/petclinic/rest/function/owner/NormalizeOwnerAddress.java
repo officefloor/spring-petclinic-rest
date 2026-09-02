@@ -20,18 +20,34 @@ public class NormalizeOwnerAddress {
     private static final Map<String, String> ABBREVIATIONS = Map.of("ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
 
     public void service(@Val Owner owner) throws MissingOwnerFieldsException {
-        String address = owner.getAddress() == null ? "" : owner.getAddress().trim();
+        String line1 = normalize(owner.getAddressLine1());
+        if (!line1.isEmpty()) {
+            String line2 = normalize(owner.getAddressLine2());
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+            owner.setAddress(line2.isEmpty() ? line1 : line1 + ' ' + line2);
+            return;
+        }
+        String address = normalize(owner.getAddress());
         if (address.isEmpty()) {
             throw new MissingOwnerFieldsException(List.of("address"));
         }
+        owner.setAddress(address);
+    }
+
+    private static String normalize(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
         StringBuilder normalized = new StringBuilder();
-        for (String token : address.split("\\s+")) {
+        for (String token : trimmed.split("\\s+")) {
             String upper = token.toUpperCase(Locale.ROOT);
             if (normalized.length() > 0) {
                 normalized.append(' ');
             }
             normalized.append(ABBREVIATIONS.getOrDefault(upper, upper));
         }
-        owner.setAddress(normalized.toString());
+        return normalized.toString();
     }
 }
