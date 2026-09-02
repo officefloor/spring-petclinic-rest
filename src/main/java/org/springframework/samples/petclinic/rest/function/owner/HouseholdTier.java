@@ -30,5 +30,18 @@ final class HouseholdTier {
             dto.setMembershipPoints(points);
             dto.setMembershipLevel(MembershipLevel.level(points));
         }
+        // A new member's level may sit at most one above the current household maximum.
+        int bonus = members >= 3 ? 2 : 0;
+        int maxOther = -1;
+        for (Owner existing : ownerRepository.findAll()) {
+            if (!householdId.equals(existing.getHouseholdId())
+                    || (existing.getId() != null && existing.getId().equals(owner.getId()))) {
+                continue;
+            }
+            maxOther = Math.max(maxOther, MembershipLevel.level(MembershipLevel.points(existing) + bonus));
+        }
+        if (maxOther >= 0 && dto.getMembershipLevel() > maxOther + 1) {
+            dto.setMembershipLevel(maxOther + 1);
+        }
     }
 }
