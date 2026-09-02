@@ -1,52 +1,30 @@
 package org.springframework.samples.petclinic.service;
 
-import java.util.Map;
-
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Business rule: an owner's {@code locality} is the canonical region derived first from its
- * {@code postcode} range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), falling back to a fixed
- * city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD) when the postcode is absent or
- * in no known range, or {@code UNKNOWN} when neither resolves. Kept as a small, self-contained unit
- * so the rule can be applied from the read flow without adding complexity to the mapper, controller,
- * or service.
+ * Business rule: an owner's {@code locality} is the REGION component of its region-and-hash
+ * {@code customerCode} (the {@code <REGION>} in {@code <REGION>-<HASH8>}), or {@code UNKNOWN}
+ * when no customer code has been assigned yet. Kept as a small, self-contained unit so the rule
+ * can be applied from the read flow without adding complexity to the mapper, controller, or service.
  */
 public final class OwnerLocalityPolicy {
-
-    private static final Map<String, String> CITY_REGION = Map.of(
-        "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    private static final Map<String, int[]> REGION_RANGE = Map.of(
-        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     private OwnerLocalityPolicy() {
     }
 
     /**
-     * Derive the {@code locality} for the given owner, preferring the postcode range over the city.
+     * Derive the {@code locality} for the given owner from its customer code's region component.
      *
      * @param owner the owner whose locality to derive
-     * @return the region for the owner's postcode range, else the canonical region for its city, or
-     *     {@code "UNKNOWN"} when neither resolves
+     * @return the REGION portion of the customer code, or {@code "UNKNOWN"} when it is not set
      */
     public static String locality(Owner owner) {
-        String byPostcode = regionByPostcode(owner.getPostcode());
-        return byPostcode != null ? byPostcode : CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
-    }
-
-    /** The region whose range contains the postcode, or {@code null} when absent or out of range. */
-    private static String regionByPostcode(String postcode) {
-        if (postcode == null) {
-            return null;
+        String code = owner.getCustomerCode();
+        if (code == null) {
+            return "UNKNOWN";
         }
-        int code = Integer.parseInt(postcode);
-        for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
-            int[] range = entry.getValue();
-            if (code >= range[0] && code <= range[1]) {
-                return entry.getKey();
-            }
-        }
-        return null;
+        int dash = code.indexOf('-');
+        return dash < 0 ? code : code.substring(0, dash);
     }
 }

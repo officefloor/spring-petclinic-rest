@@ -1,16 +1,24 @@
 package org.springframework.samples.petclinic.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Map;
+
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Business rule: on creation an owner is assigned a {@code customerCode} formatted
- * {@code <CITY3>-<LAST3>-<NNNN>}, where CITY3 is the upper-cased first three letters of the city,
- * LAST3 the upper-cased first three letters of the last name, and NNNN a per-city 4-digit
- * zero-padded sequence equal to one more than the number of owners already in that city
- * (e.g. {@code LON-SMI-0007}). Kept as a small, self-contained unit so the rule can be
- * applied from the create flow without adding complexity to the controller or service.
+ * {@code <REGION>-<HASH8>}, where REGION is the region code derived from the owner's postcode
+ * (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099, else {@code UNKNOWN}) and HASH8 is the first
+ * eight upper-case hex characters of SHA-256 over the normalized telephone concatenated with
+ * the last name (e.g. {@code NSW-1A2B3C4D}). Kept as a small, self-contained unit so the rule
+ * can be applied from the create flow without adding complexity to the controller or service.
  */
 public final class OwnerCustomerCodePolicy {
+
+    private static final Map<String, int[]> REGION_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     private OwnerCustomerCodePolicy() {
     }
@@ -18,23 +26,44 @@ public final class OwnerCustomerCodePolicy {
     /**
      * Assign the {@code customerCode} for a newly created owner.
      *
-     * @param clinicService source of the current owner count
+     * @param clinicService retained for call-site compatibility; not used by the identity rule
      * @param owner         the owner being created
      */
     public static void assignCustomerCode(ClinicService clinicService, Owner owner) {
-        String city3 = prefix(owner.getCity());
-        String last3 = prefix(owner.getLastName());
-        int sequence = ownersInCity(clinicService, owner.getCity()) + 1;
-        owner.setCustomerCode(String.format("%s-%s-%04d", city3, last3, sequence));
+        owner.setCustomerCode(region(owner.getPostcode()) + "-" + hash8(owner));
     }
 
-    private static String prefix(String value) {
-        return value.substring(0, Math.min(3, value.length())).toUpperCase();
+    /** The region whose postcode range contains {@code postcode}, or {@code UNKNOWN}. */
+    static String region(String postcode) {
+        if (postcode != null) {
+            int code = Integer.parseInt(postcode);
+            for (Map.Entry<String, int[]> entry : REGION_RANGE.entrySet()) {
+                int[] range = entry.getValue();
+                if (code >= range[0] && code <= range[1]) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return "UNKNOWN";
     }
 
-    private static int ownersInCity(ClinicService clinicService, String city) {
-        return (int) clinicService.findAllOwners().stream()
-            .filter(other -> city.equalsIgnoreCase(other.getCity()))
-            .count();
+    /** First eight upper-case hex characters of SHA-256(normalizedTelephone + lastName). */
+    private static String hash8(Owner owner) {
+        String input = orEmpty(owner.getTelephone()) + orEmpty(owner.getLastName());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02X", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }
