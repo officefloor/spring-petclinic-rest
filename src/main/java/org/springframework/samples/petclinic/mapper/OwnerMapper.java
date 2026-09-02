@@ -25,28 +25,18 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), \"\"))")
     @Mapping(target = "checkDigit", expression = "java(owner.getCustomerCode() == null ? null : org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** Membership level: start at 1, +1 when an email is present, +1 when the owner has no
-     *  namesakes (namesakeCount 0), +1 when tenure exceeds 365 days. Level 4 requires that
-     *  tenure, so a new owner (zero tenure) never exceeds 3. Capped at 4. */
+    /** Membership level, derived from {@link org.springframework.samples.petclinic.rest.function.owner.MembershipPoints
+     *  membershipPoints}: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more). */
     default Integer membershipLevel(Owner owner) {
-        int level = 1;
-        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-            level++;
-        }
-        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
-        }
-        java.time.LocalDate registration = owner.getRegistrationDate();
-        if (registration != null && registration.isBefore(java.time.LocalDate.now().minusDays(365))) {
-            level++;
-        }
-        return Math.min(level, 4);
+        return org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.level(
+                org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner));
     }
 
     /** Membership number: '<customerCode>-M<YY>', YY being the last two digits of the
