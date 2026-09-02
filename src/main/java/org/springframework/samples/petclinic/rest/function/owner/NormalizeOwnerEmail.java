@@ -15,6 +15,9 @@ public class NormalizeOwnerEmail {
 
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    private static final java.util.Set<String> DISPOSABLE_DOMAINS =
+            java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     public void service(@Val OwnerFieldsDto request) throws InvalidOwnerEmailException {
         String email = request.getEmail();
         if (email == null) {
@@ -23,6 +26,10 @@ public class NormalizeOwnerEmail {
         if (!EMAIL.matcher(email).matches()) {
             throw new InvalidOwnerEmailException(email);
         }
-        request.setEmail(email.toLowerCase());
+        String normalised = email.toLowerCase();
+        if (DISPOSABLE_DOMAINS.contains(normalised.substring(normalised.lastIndexOf('@') + 1))) {
+            throw new InvalidOwnerEmailException(email);
+        }
+        request.setEmail(normalised);
     }
 }
