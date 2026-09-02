@@ -37,6 +37,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -103,6 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        OwnerHouseholdPolicy.rejectDuplicateHousehold(this.clinicService, owner, ownerFieldsDto.getSharesHousehold());
         OwnerTelephonePolicy.rejectDuplicateTelephone(this.clinicService, owner);
         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
         this.clinicService.saveOwner(owner);
