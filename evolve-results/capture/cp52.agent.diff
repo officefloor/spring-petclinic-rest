@@ -1,0 +1,168 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index 2f170101f..98731d1b3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -1,15 +1,18 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Locale;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Derives an owner's {@code identityKey}: the single value duplicate detection is expressed
+- * through. It is {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}, where the
+- * telephone is E.164 (see {@link E164Telephone}), the email is lower-cased (empty when absent) and
+- * the household id groups owners by last name and address (see {@link HouseholdId}). Because the
+- * telephone is part of the key, two members of one household with different telephones have
++ * through. It is the SHA-256 hex digest of {@code normalizedTelephone + '|' + (email or empty) +
++ * '|' + soundex(lastName)}, where the telephone is E.164 (see {@link E164Telephone}), the email is
++ * lower-cased (empty when absent) and the last name is reduced to its {@link Soundex} code. Because
++ * the telephone is part of the key, two members of one household with different telephones have
+  * different keys and are both allowed; only owners that collide on the key are duplicates.
+  */
+ public final class IdentityKey {
+@@ -18,7 +21,7 @@ public final class IdentityKey {
+     }
+ 
+     public static String of(Owner owner) {
+-        return telephone(owner) + '|' + email(owner) + '|' + HouseholdId.of(owner);
++        return sha256Hex(telephone(owner) + '|' + email(owner) + '|' + Soundex.of(owner.getLastName()));
+     }
+ 
+     static String telephone(Owner owner) {
+@@ -30,4 +33,18 @@ public final class IdentityKey {
+         String email = owner.getEmail();
+         return (email == null || email.isBlank()) ? "" : email.toLowerCase(Locale.ROOT);
+     }
++
++    private static String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder hex = new StringBuilder(64);
++            for (byte b : digest) {
++                hex.append(String.format("%02x", b));
++            }
++            return hex.toString();
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+index ac226474a..bd31db4a2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -7,9 +7,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Finds the existing owner this owner is a possible (soft) duplicate of: another owner sharing this
+- * owner's last name (case-insensitive) and postcode but with a different telephone. A shared last
+- * name and postcode with a matching telephone would be a hard duplicate (rejected at create, see
+- * {@link RejectDuplicateOwnerIdentity}), so a differing telephone is exactly the soft-match case.
++ * owner's {@link Soundex} last name and postcode but with a different {@link IdentityKey}. A shared
++ * identity key would be a hard duplicate (rejected at create, see {@link RejectDuplicateOwnerIdentity}),
++ * so a differing key on a like-sounding name at the same postcode is exactly the soft-match case.
+  * Owners without a postcode never soft-match. Returns the matching owner's id (the lowest when
+  * several match), or {@code null} when there is no possible duplicate.
+  */
+@@ -26,19 +26,17 @@ public final class PossibleDuplicate {
+         if (postcode == null || postcode.isBlank()) {
+             return null;
+         }
++        String soundex = Soundex.of(owner.getLastName());
++        String identityKey = IdentityKey.of(owner);
+         Integer match = null;
+         for (Owner other : repository.findAll()) {
+             if (!Objects.equals(other.getId(), owner.getId()) && postcode.equals(other.getPostcode())
+-                    && equalsIgnoreCase(owner.getLastName(), other.getLastName())
+-                    && !Objects.equals(owner.getTelephone(), other.getTelephone())
++                    && soundex.equals(Soundex.of(other.getLastName()))
++                    && !identityKey.equals(IdentityKey.of(other))
+                     && (match == null || other.getId() < match)) {
+                 match = other.getId();
+             }
+         }
+         return match;
+     }
+-
+-    private static boolean equalsIgnoreCase(String a, String b) {
+-        return a == null ? b == null : a.equalsIgnoreCase(b);
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerIdentity.java
+index 4d4feb1e0..5bb18987c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDuplicateOwnerIdentity.java
+@@ -15,13 +15,11 @@ public class RejectDuplicateOwnerIdentity {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DuplicateOwnerIdentityException {
+-        String telephone = IdentityKey.telephone(owner);
+-        String email = IdentityKey.email(owner);
++        String identityKey = IdentityKey.of(owner);
+         for (Owner other : ownerRepository.findAll()) {
+             if (other != owner && !Boolean.TRUE.equals(other.getDeleted())
+-                    && telephone.equals(IdentityKey.telephone(other))
+-                    && email.equals(IdentityKey.email(other))) {
+-                throw new DuplicateOwnerIdentityException(IdentityKey.of(owner));
++                    && identityKey.equals(IdentityKey.of(other))) {
++                throw new DuplicateOwnerIdentityException(identityKey);
+             }
+         }
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+new file mode 100644
+index 000000000..02fdd13fd
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * American Soundex code of a name: its first letter followed by three digits derived from the
++ * remaining consonants (like-sounding letters share a digit; vowels and repeats drop out, {@code H}
++ * and {@code W} never separate), padded with zeros to four characters. A null or letterless name
++ * yields {@code "0000"}. Used both inside the {@link IdentityKey} and by {@link PossibleDuplicate},
++ * so last names that merely sound alike are grouped identically in each.
++ */
++public final class Soundex {
++
++    private static final String DIGITS = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    public static String of(String name) {
++        String letters = name == null ? "" : name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "0000";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char previous = digit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char d = digit(c);
++            if (d != '0' && d != previous) {
++                code.append(d);
++            }
++            if (c != 'H' && c != 'W') {
++                previous = d;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    private static char digit(char c) {
++        return DIGITS.charAt(c - 'A');
++    }
++}
