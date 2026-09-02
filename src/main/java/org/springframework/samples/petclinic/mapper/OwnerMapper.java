@@ -80,6 +80,21 @@ public interface OwnerMapper {
         ownerDto.setContactPreference(email == null || email.isBlank() ? "PHONE" : "EMAIL");
     }
 
+    /**
+     * Derives 'ageBand' for the response from the owner's birth date, measured against the
+     * registration date: 'MINOR' when under 18, 'ADULT' for 18-64 and 'SENIOR' for 65+. Left
+     * unset when no birth date is supplied. Non-persistent, so it never affects storage.
+     */
+    @AfterMapping
+    default void deriveAgeBand(Owner owner, @MappingTarget OwnerDto ownerDto) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null) {
+            return;
+        }
+        int years = java.time.Period.between(birthDate, owner.getRegistrationDate()).getYears();
+        ownerDto.setAgeBand(years < 18 ? "MINOR" : years < 65 ? "ADULT" : "SENIOR");
+    }
+
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
 
     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
