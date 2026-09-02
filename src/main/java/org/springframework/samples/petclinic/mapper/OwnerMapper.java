@@ -20,7 +20,19 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+    @Mapping(target = "householdId", expression = "java(householdId(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Stable identifier for the household an owner belongs to: same last name and address (normalized
+     *  as in the duplicate-household guard) yield the same id, so household-sharing owners match. */
+    default String householdId(Owner owner) {
+        String key = normalizeHousehold(owner.getLastName()) + "|" + normalizeHousehold(owner.getAddress());
+        return String.format("H-%08X", key.hashCode());
+    }
+
+    private static String normalizeHousehold(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
