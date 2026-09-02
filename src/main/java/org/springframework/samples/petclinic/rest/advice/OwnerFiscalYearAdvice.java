@@ -23,25 +23,22 @@ import org.springframework.samples.petclinic.util.FiscalYear;
 import org.springframework.stereotype.Component;
 
 /**
- * Populates the read-only {@code membershipNumber} on an owner response, formatted
- * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the registration date's fiscal
- * year (e.g. {@code 'SMI-0007-M26'}). Derived on the way out from the owner's own fields, so it never
+ * Populates the read-only {@code fiscalYear} on an owner response, formatted {@code 'FY<YY>'} for the
+ * fiscal year of the business-day-adjusted registration date. Derived on the way out, so it never
  * affects storage or the request.
  */
 @Aspect
 @Component
-public class OwnerMembershipNumberAdvice {
+public class OwnerFiscalYearAdvice {
 
     @AfterReturning(pointcut = "execution(* org.springframework.samples.petclinic.rest.controller.v1."
         + "OwnerRestControllerV1.addOwner(..)) || execution(* org.springframework.samples.petclinic.rest."
         + "controller.v1.OwnerRestControllerV1.getOwner(..))", returning = "response")
-    public void addMembershipNumber(ResponseEntity<?> response) {
+    public void addFiscalYear(ResponseEntity<?> response) {
         Object body = response == null ? null : response.getBody();
-        if (!(body instanceof OwnerDto owner) || owner.getCustomerCode() == null
-            || owner.getRegistrationDate() == null) {
+        if (!(body instanceof OwnerDto owner) || owner.getRegistrationDate() == null) {
             return;
         }
-        owner.setMembershipNumber(String.format("%s-M%02d",
-            owner.getCustomerCode(), FiscalYear.of(owner.getRegistrationDate()) % 100));
+        owner.setFiscalYear(FiscalYear.label(owner.getRegistrationDate()));
     }
 }

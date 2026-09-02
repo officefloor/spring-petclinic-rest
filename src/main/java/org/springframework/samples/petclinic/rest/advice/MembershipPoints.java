@@ -18,15 +18,15 @@ package org.springframework.samples.petclinic.rest.advice;
 import org.springframework.samples.petclinic.model.Household;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.util.FiscalYear;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 
 /**
  * Scores an owner's membership: points start at 0 and gain +2 for an email, +1 when namesakeCount
- * is 0, +2 for a household of 3 or more members and +3 for tenure over 365 days. The points map to a
- * membershipLevel of 1 (0-1 points), 2 (2-3), 3 (4-5) or 4 (6 or more). Both are set on the response.
+ * is 0, +2 for a household of 3 or more members and +3 for tenure over one fiscal year. The points map
+ * to a membershipLevel of 1 (0-1 points), 2 (2-3), 3 (4-5) or 4 (6 or more). Both are set on the response.
  */
 final class MembershipPoints {
 
@@ -49,9 +49,9 @@ final class MembershipPoints {
             .count();
     }
 
-    /** True once the owner's tenure exceeds 365 days; a new owner's zero tenure counts as false. */
+    /** True once the owner's tenure exceeds one fiscal year; a new owner's zero tenure counts as false. */
     private static boolean longTenure(OwnerDto owner) {
         LocalDate registered = owner.getRegistrationDate();
-        return registered != null && ChronoUnit.DAYS.between(registered, LocalDate.now()) > 365;
+        return registered != null && FiscalYear.elapsed(registered, LocalDate.now()) > 1;
     }
 }
