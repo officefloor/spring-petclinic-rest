@@ -26,9 +26,26 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "address", source = "address", qualifiedByName = "normalizeAddress")
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "email", source = "email", qualifiedByName = "normalizeEmail")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /**
+     * Canonicalise the address on create: trim, collapse whitespace runs, upper-case, and expand
+     * the common street-type abbreviations. The normalized value is what gets stored, returned, and
+     * compared by the household rules.
+     */
+    @Named("normalizeAddress")
+    default String normalizeAddress(String address) {
+        if (address == null) {
+            return null;
+        }
+        return address.trim().replaceAll("\\s+", " ").toUpperCase()
+            .replaceAll("\\bST\\b", "STREET")
+            .replaceAll("\\bRD\\b", "ROAD")
+            .replaceAll("\\bAVE\\b", "AVENUE");
+    }
 
     /** Store the telephone in E.164 form (see {@link E164Telephone#toE164}). */
     @Named("normalizeTelephone")
