@@ -52,16 +52,12 @@ public interface OwnerMapper {
         return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
     }
 
-    /** Stable identifier for the household an owner belongs to: same last name and address (normalized
-     *  as in the duplicate-household guard) yield the same id, so household-sharing owners match. */
+    /** Stable identifier for the household an owner belongs to: the first 12 hex characters of SHA-256
+     *  over (normalizedLastName + '|' + postcode), so owners with the same last name and postcode
+     *  share it. */
     default String householdId(Owner owner) {
-        String key = normalizeHousehold(owner.getLastName()) + "|"
-                + org.springframework.samples.petclinic.rest.function.owner.AddressNormalizer.normalize(owner.getAddress());
-        return String.format("H-%08X", key.hashCode());
-    }
-
-    private static String normalizeHousehold(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(
+                owner.getLastName(), owner.getPostcode());
     }
 
     Owner toOwner(OwnerDto ownerDto);
