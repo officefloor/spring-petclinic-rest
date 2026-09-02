@@ -13,7 +13,12 @@ public class SaveOwner {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         ownerRepository.save(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}", owner.getId(),
-            owner.getCustomerCode(), owner.getRegistrationDate());
+        int namesakeCount = NamesakeCount.of(owner, ownerRepository);
+        int membershipLevel = MembershipLevel.of(
+            MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
+        String membershipNumber = owner.getCustomerCode() + "-M"
+            + String.format("%02d", owner.getRegistrationDate().getYear() % 100);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel, membershipNumber);
     }
 }
