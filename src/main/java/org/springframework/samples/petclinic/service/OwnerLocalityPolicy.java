@@ -24,6 +24,9 @@ public final class OwnerLocalityPolicy {
         if (id == null) {
             return "UNKNOWN";
         }
+        if (id.startsWith("V2")) {
+            id = id.substring(2);
+        }
         int end = 0;
         while (end < id.length() && Character.isLetter(id.charAt(end))) {
             end++;

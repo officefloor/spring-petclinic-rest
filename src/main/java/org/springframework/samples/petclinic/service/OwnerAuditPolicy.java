@@ -29,7 +29,7 @@ public final class OwnerAuditPolicy {
      * the owner id, its {@code memberId} and its membership level.
      */
     static void auditCreatedEvent(Owner owner) {
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+        AUDIT.info("{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(),
             OwnerMembershipLevelPolicy.membershipLevel(owner));
     }

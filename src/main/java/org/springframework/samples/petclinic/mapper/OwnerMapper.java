@@ -29,7 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
     @Mapping(target = "capacityWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerCapacityWarningPolicy.capacityWarning(owner))")
     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.service.OwnerContactPreferencePolicy.contactPreference(owner))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.OwnerIdentityPolicy.identityKey(owner))")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity", expression = "java(toIdentity(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.service.OwnerAgeBandPolicy.ageBand(owner))")
     @Mapping(target = "selfLink", expression = "java(org.springframework.samples.petclinic.service.OwnerSelfLinkPolicy.selfLink(owner))")
     @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.service.OwnerSegmentPolicy.ownerSegment(owner))")
@@ -37,6 +38,14 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /** Group the version-2 derived identifiers under the owner response's nested {@code identity} object. */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto toIdentity(Owner owner) {
+        return new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto()
+            .memberId(owner.getMemberId())
+            .householdId(owner.getHouseholdId())
+            .identityKey(org.springframework.samples.petclinic.service.OwnerIdentityPolicy.identityKey(owner));
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)

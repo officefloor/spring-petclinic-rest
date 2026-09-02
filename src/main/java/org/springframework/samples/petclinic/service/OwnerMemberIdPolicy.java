@@ -31,7 +31,7 @@ public final class OwnerMemberIdPolicy {
      * @param owner         the owner being created
      */
     public static void assignMemberId(ClinicService clinicService, Owner owner) {
-        String body = region(owner.getPostcode()) + fiscalYear(owner) + hash8(owner);
+        String body = "V2" + region(owner.getPostcode()) + fiscalYear(owner) + hash8(owner);
         owner.setMemberId(deduplicate(clinicService, body + luhn(body)));
     }
 

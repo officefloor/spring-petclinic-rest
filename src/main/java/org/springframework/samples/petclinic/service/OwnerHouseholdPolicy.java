@@ -35,7 +35,7 @@ public final class OwnerHouseholdPolicy {
 
     /** Derive a stable identifier shared by every owner in the same (last name, postcode) household. */
     private static String householdId(String lastName, String postcode) {
-        return Sha256Hex.lower(lastName + "|" + postcode, 6);
+        return Sha256Hex.lower("V2|" + lastName + "|" + postcode, 6);
     }
 
     /** Thrown when another owner already shares the same last name and postcode. */

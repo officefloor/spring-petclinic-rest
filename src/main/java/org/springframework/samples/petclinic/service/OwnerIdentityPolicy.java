@@ -43,7 +43,7 @@ public final class OwnerIdentityPolicy {
 
     /** The owner's derived identity key: SHA-256 hex of {@code telephone|email|soundex(lastName)}. */
     public static String identityKey(Owner owner) {
-        return Sha256Hex.lower(OwnerFieldNormalizer.telephone(owner.getTelephone()) + "|"
+        return Sha256Hex.lower("V2|" + OwnerFieldNormalizer.telephone(owner.getTelephone()) + "|"
             + OwnerFieldNormalizer.email(owner.getEmail()) + "|"
             + Soundex.of(owner.getLastName()), 32);
     }
