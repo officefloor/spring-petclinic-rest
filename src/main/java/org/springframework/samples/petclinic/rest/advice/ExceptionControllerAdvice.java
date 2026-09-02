@@ -34,6 +34,7 @@ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
 import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
 import org.springframework.samples.petclinic.service.OwnerEmailPolicy;
 import org.springframework.samples.petclinic.service.OwnerHouseholdPolicy;
+import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephoneLengthPolicy;
 import org.springframework.samples.petclinic.service.OwnerTelephonePolicy;
 import org.springframework.security.access.AccessDeniedException;
@@ -188,6 +189,14 @@ public class ExceptionControllerAdvice {
     public ResponseEntity<ProblemDetail> handleDuplicateHouseholdException(OwnerHouseholdPolicy.DuplicateHouseholdException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
         ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "Another owner already shares this last name and address");
+        return ResponseEntity.status(status).body(detail);
+    }
+
+    @ExceptionHandler(OwnerIdentityPolicy.DuplicateIdentityException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleDuplicateIdentityException(OwnerIdentityPolicy.DuplicateIdentityException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), "Another owner already has this identity key");
         return ResponseEntity.status(status).body(detail);
     }
 
