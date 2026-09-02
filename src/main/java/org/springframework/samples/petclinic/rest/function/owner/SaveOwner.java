@@ -23,12 +23,14 @@ public class SaveOwner {
         int membershipLevel = MembershipLevel.of(
             MembershipPoints.of(owner, namesakeCount, HouseholdSize.of(owner, ownerRepository)));
         String memberId = owner.getCustomerCode();
+        String ownerSegment = OwnerSegment.of(membershipLevel, Locality.of(owner));
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
-        // Immutable structured event. Carries the owner's unified primary identifier as memberId.
+        // Immutable structured event (schema v2). Carries the owner's unified primary identifier as memberId
+        // and the owner segment recomputed from the version-2 identity (its region stays the plain code).
         String event = String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel);
+            "{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"ownerSegment\":\"%s\",\"event\":\"OWNER_CREATED\"}",
+            EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel, ownerSegment);
         AUDIT.info("{}", event);
         NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), memberId);
     }

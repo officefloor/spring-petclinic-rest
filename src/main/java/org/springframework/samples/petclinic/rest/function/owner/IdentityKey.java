@@ -21,7 +21,7 @@ public final class IdentityKey {
     }
 
     public static String of(Owner owner) {
-        return sha256Hex(telephone(owner) + '|' + email(owner) + '|' + Soundex.of(owner.getLastName()));
+        return sha256Hex("V2|" + telephone(owner) + '|' + email(owner) + '|' + Soundex.of(owner.getLastName()));
     }
 
     static String telephone(Owner owner) {

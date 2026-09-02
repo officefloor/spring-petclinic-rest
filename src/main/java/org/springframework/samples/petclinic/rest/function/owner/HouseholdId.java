@@ -21,7 +21,7 @@ public final class HouseholdId {
 
     public static String of(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalize(owner.getLastName()) + '|' + postcode;
+        String key = "V2|" + normalize(owner.getLastName()) + '|' + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder id = new StringBuilder(12);
