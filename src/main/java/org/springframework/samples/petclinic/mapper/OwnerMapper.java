@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
-    @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
