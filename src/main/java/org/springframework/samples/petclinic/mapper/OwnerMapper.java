@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
+    @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.service.OwnerContactPreferencePolicy.contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
