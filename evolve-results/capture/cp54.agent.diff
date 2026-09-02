@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index b0b385a5a..f5b07a38e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.service.OwnerTimezonePolicy.timezone(owner))")
+     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
++    @Mapping(target = "capacityWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerCapacityWarningPolicy.capacityWarning(owner))")
+     @Mapping(target = "contactPreference", expression = "java(org.springframework.samples.petclinic.service.OwnerContactPreferencePolicy.contactPreference(owner))")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.service.OwnerIdentityPolicy.identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.service.OwnerAgeBandPolicy.ageBand(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerCapacityWarningPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerCapacityWarningPolicy.java
+new file mode 100644
+index 000000000..565cb9a36
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerCapacityWarningPolicy.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.service;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.stereotype.Component;
++
++/**
++ * Business rule: flag a city that is approaching the {@value #CITY_CAPACITY}-owner hard limit for the
++ * response once it already holds between {@value #WARN_FROM} and {@value #CITY_CAPACITY}-1 owners.
++ * Mirrors the count used by {@link OwnerCityCapacityPolicy} (which hard-rejects at
++ * {@value #CITY_CAPACITY}). Kept as a small, self-contained unit so the flag can be derived during
++ * owner-to-DTO mapping without adding complexity to the mapper, controller or service.
++ */
++@Component
++public class OwnerCapacityWarningPolicy {
++
++    private static final int WARN_FROM = 40;
++
++    private static final int CITY_CAPACITY = 50;
++
++    private static ClinicService clinicService;
++
++    OwnerCapacityWarningPolicy(ClinicService clinicService) {
++        OwnerCapacityWarningPolicy.clinicService = clinicService;
++    }
++
++    /**
++     * @param owner the owner whose city to total
++     * @return true when the owner's city already holds {@value #WARN_FROM}..{@value #CITY_CAPACITY}-1 owners
++     */
++    public static boolean capacityWarning(Owner owner) {
++        String city = owner.getCity();
++        int count = 0;
++        for (Owner existing : clinicService.findAllOwners()) {
++            if (city != null && city.equals(existing.getCity())) {
++                count++;
++            }
++        }
++        return count >= WARN_FROM && count < CITY_CAPACITY;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9ebe5af09..63c84089d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2265,6 +2265,14 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                True when the owner's city already holds between 40 and 49 owners, approaching the
++                per-city hard limit of 50; false otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
