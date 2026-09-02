@@ -57,6 +57,23 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "title")
+    private String title;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /** Salutation = title + ' ' + last name, or just the last name when no title was given. */
+    public String getSalutation() {
+        return (this.title == null || this.title.isBlank())
+            ? getLastName() : this.title + " " + getLastName();
+    }
+
     @Column(name = "registration_date")
     private LocalDate registrationDate;
 
