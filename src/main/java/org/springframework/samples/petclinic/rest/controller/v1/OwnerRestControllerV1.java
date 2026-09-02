@@ -46,6 +46,7 @@ import org.springframework.samples.petclinic.service.OwnerIdentityPolicy;
 import org.springframework.samples.petclinic.service.OwnerNamesakePolicy;
 import org.springframework.samples.petclinic.service.OwnerPostcodePolicy;
 import org.springframework.samples.petclinic.service.OwnerRegistrationDatePolicy;
+import org.springframework.samples.petclinic.service.OwnerWelcomeNotificationPolicy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -122,6 +123,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerMemberIdPolicy.assignMemberId(this.clinicService, owner);
         this.clinicService.saveOwner(owner);
         OwnerAuditPolicy.auditCreate(owner);
+        OwnerWelcomeNotificationPolicy.enqueueWelcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
