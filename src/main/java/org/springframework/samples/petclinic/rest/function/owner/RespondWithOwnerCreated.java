@@ -22,8 +22,8 @@ public class RespondWithOwnerCreated {
         long createdToday = ownerRepository.findAll().stream()
                 .filter(other -> today.equals(other.getRegistrationDate())).count();
         dto.setBulkSignupWarning(createdToday > 80);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }

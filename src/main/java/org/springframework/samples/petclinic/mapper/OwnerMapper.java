@@ -22,20 +22,21 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** Membership tier: 'GOLD' when the owner's household has 3+ members (householdCount);
-     *  otherwise 'SILVER' when the owner has no namesakes (namesakeCount 0) and an email is
-     *  present, otherwise 'BRONZE'. */
-    default String membershipTier(Owner owner) {
-        if (owner.getHouseholdCount() != null && owner.getHouseholdCount() >= 3) {
-            return "GOLD";
+    /** Membership level set at create time: start at 1, +1 when an email is present, +1 when the
+     *  owner has no namesakes (namesakeCount 0), capped at 3 (level 4 is reserved for tenure). */
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+            level++;
         }
-        boolean unique = Integer.valueOf(0).equals(owner.getNamesakeCount());
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** Membership number: '<customerCode>-M<YY>', YY being the last two digits of the
