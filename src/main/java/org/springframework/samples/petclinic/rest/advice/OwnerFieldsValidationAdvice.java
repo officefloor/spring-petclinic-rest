@@ -58,18 +58,18 @@ public class OwnerFieldsValidationAdvice implements Validator {
     }
 
     /**
-     * Strips every non-digit character from the telephone and requires exactly ten digits,
-     * storing the normalized value back on the payload so it is persisted and echoed as-is.
+     * Normalizes the telephone to E.164 form, storing it back on the payload so it is persisted
+     * and echoed as-is; rejects the field when no valid E.164 number can be formed.
      */
     private void normalizeTelephone(Errors errors, OwnerFieldsDto owner) {
         if (owner.getTelephone() == null) {
             return;
         }
-        String digits = owner.getTelephone().replaceAll("\\D", "");
-        if (digits.length() == 10) {
-            owner.setTelephone(digits);
+        String e164 = E164Telephone.toE164(owner.getTelephone());
+        if (e164 != null) {
+            owner.setTelephone(e164);
         } else {
-            errors.rejectValue("telephone", "telephone.invalid", "must contain exactly 10 digits");
+            errors.rejectValue("telephone", "telephone.invalid", "must be a valid E.164 telephone");
         }
     }
 }
