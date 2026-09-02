@@ -14,6 +14,7 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         HouseholdTier.applyGold(owner, ownerRepository, dto);
         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
+        dto.setCapacityWarning(CityCapacity.approaching(owner, ownerRepository));
         response.send(dto);
     }
 }

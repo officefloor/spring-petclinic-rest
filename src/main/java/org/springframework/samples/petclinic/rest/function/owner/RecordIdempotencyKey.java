@@ -18,6 +18,7 @@ public class RecordIdempotencyKey {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         HouseholdTier.applyGold(owner, ownerRepository, dto);
         dto.setBulkSignupWarning(BulkSignup.warned(ownerRepository));
+        dto.setCapacityWarning(CityCapacity.approaching(owner, ownerRepository));
         store.record(token.key(), dto);
     }
 }
