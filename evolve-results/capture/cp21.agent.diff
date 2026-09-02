@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 733db4fba..5290f5a57 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.service.OwnerAuditPolicy;
+ import org.springframework.samples.petclinic.service.OwnerCityCapacityPolicy;
+ import org.springframework.samples.petclinic.service.OwnerCustomerCodePolicy;
+ import org.springframework.samples.petclinic.service.OwnerDailyLimitPolicy;
+@@ -116,6 +117,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerNamesakePolicy.assignNamesakeCount(this.clinicService, owner);
+         OwnerCustomerCodePolicy.assignCustomerCode(this.clinicService, owner);
+         this.clinicService.saveOwner(owner);
++        OwnerAuditPolicy.auditCreate(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditPolicy.java b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditPolicy.java
+new file mode 100644
+index 000000000..d837fcf50
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/service/OwnerAuditPolicy.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.service;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Business rule: on successful creation an audit line is emitted via the dedicated {@code AUDIT}
++ * logger carrying the new owner's id, its {@code customerCode} and its {@code registrationDate}.
++ * Kept as a small, self-contained unit so the rule can be applied from the create flow after the
++ * owner has been saved without adding complexity to the controller or service.
++ */
++public final class OwnerAuditPolicy {
++
++    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
++
++    private OwnerAuditPolicy() {
++    }
++
++    /** Emit the create audit line for a freshly saved owner. */
++    public static void auditCreate(Owner owner) {
++        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++    }
++}
