@@ -52,5 +52,8 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    public String getDisplayName() {
+        return this.lastName + ", " + this.firstName;
+    }
 
 }
