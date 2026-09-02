@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index dcb1ab1bb..de568294c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,8 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.points(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.level(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.points(owner)))")
+     @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+index c11fbde98..f0f773961 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdTier.java
+@@ -5,9 +5,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ /**
+- * Upgrades an owner's membership tier to {@code GOLD} when their household (owners sharing the same
+- * {@code householdId}) has three or more members. Applied after the base BRONZE/SILVER tier has been
+- * mapped, so GOLD takes precedence; owners without a household are left untouched.
++ * Adds the household membership-points factor: +2 points when the owner's household (owners sharing
++ * the same {@code householdId}) has three or more members. Applied after the owner-only points have
++ * been mapped, then the membership level is recomputed; owners without a household are left untouched.
+  */
+ final class HouseholdTier {
+ 
+@@ -26,7 +26,9 @@ final class HouseholdTier {
+             }
+         }
+         if (members >= 3) {
+-            dto.setMembershipLevel(3);
++            int points = dto.getMembershipPoints() + 2;
++            dto.setMembershipPoints(points);
++            dto.setMembershipLevel(MembershipLevel.level(points));
+         }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+index 21e5b7ed3..4b54cf765 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+@@ -6,27 +6,41 @@ import java.time.temporal.ChronoUnit;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Computes an owner's {@code membershipLevel}. The pre-tenure factors — an email on file and no
+- * namesake — lift the level toward 3. Level 4 additionally requires tenure of more than 365 days
+- * since {@code registrationDate}, so a newly created owner (zero tenure) never exceeds level 3.
++ * Scores an owner's membership. {@link #points(Owner)} sums the owner-only factors — +2 for an
++ * email on file, +1 for no namesake, +3 for tenure over 365 days since {@code registrationDate}
++ * (the household factor is added later, where the repository is available). {@link #level(int)}
++ * buckets a point total into the 1-4 membership level.
+  */
+ public final class MembershipLevel {
+ 
+     private MembershipLevel() {
+     }
+ 
+-    public static int of(Owner owner) {
+-        int level = 1;
++    public static int points(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+-            level++;
++            points += 1;
+         }
+         if (tenureDays(owner) > 365) {
+-            level++;
++            points += 3;
+         }
+-        return Math.min(4, level);
++        return points;
++    }
++
++    public static int level(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
+     }
+ 
+     private static long tenureDays(Owner owner) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 42de27e41..37f8ea56c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2140,14 +2140,22 @@ components:
+               type: string
+               example: "SMI-0007-M26"
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "Membership score: starts at 0, +2 when an email is present, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "Numeric level from 1 to 3: starts at 1, +1 when an email is present, +1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              description: "Numeric level from membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more)."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
