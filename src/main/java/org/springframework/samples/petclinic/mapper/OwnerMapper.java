@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.service.OwnerTelephoneDisplayPolicy.telephoneDisplay(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.service.OwnerCheckDigitPolicy.checkDigit(owner))")
     @Mapping(target = "membershipNumber", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipPolicy.membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.service.OwnerMembershipLevelPolicy.membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.service.OwnerLocalityPolicy.locality(owner))")
     @Mapping(target = "bulkSignupWarning", expression = "java(org.springframework.samples.petclinic.service.OwnerBulkSignupPolicy.bulkSignupWarning(owner))")
