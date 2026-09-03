@@ -15,6 +15,8 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     private static final AtomicLong SEQ = new AtomicLong();
 
     @PostPersist
@@ -26,5 +28,6 @@ public class OwnerAuditListener {
             "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(),
             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner)));
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 }
