@@ -41,6 +41,8 @@ public interface OwnerMapper {
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.util.TelephoneFormatter.toDisplay(owner.getTelephone()))")
+    @Mapping(target = "selfLink",
+        expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Age band derived from birthDate against registrationDate: MINOR (under 18), ADULT (18-64) or SENIOR (65+); null when birthDate is absent. */
