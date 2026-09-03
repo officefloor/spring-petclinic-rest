@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java
+index 1f5a16e60..b1016c06b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java
+@@ -1,14 +1,16 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
+ import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Single source of duplicate detection: an owner's identity is its normalized telephone,
+- * email and household id joined as {@code normalizedTelephone|email|householdId} (email and
+- * household id empty when absent). Two owners collide only when their whole keys are equal, so
+- * members of one household with different telephones stay distinct.
++ * Single source of duplicate detection: an owner's identity is the SHA-256 hex of
++ * {@code normalizedTelephone|lowerEmail|soundex(lastName)} (email empty when absent). Two owners
++ * collide only when their whole keys are equal, so members of one household (same last name and
++ * postcode) with different telephones stay distinct and surface only as soft matches.
+  */
+ public final class IdentityKey {
+ 
+@@ -17,7 +19,19 @@ public final class IdentityKey {
+ 
+     /** The derived identity key of {@code owner}; telephone is already E.164-normalized upstream. */
+     public static String of(Owner owner) {
+-        return blank(owner.getTelephone()) + "|" + blank(owner.getEmail()) + "|" + blank(owner.getHouseholdId());
++        String raw = blank(owner.getTelephone()) + "|" + lower(owner.getEmail()) + "|"
++            + Soundex.code(owner.getLastName());
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(digest.length * 2);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (Exception e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ 
+     /** {@code true} when an existing owner has the exact same identity key as {@code candidate}. */
+@@ -29,4 +43,8 @@ public final class IdentityKey {
+     private static String blank(String value) {
+         return value == null ? "" : value;
+     }
++
++    private static String lower(String value) {
++        return value == null ? "" : value.toLowerCase();
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+index 0c2637375..a859c5b2c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/PossibleDuplicates.java
+@@ -5,10 +5,9 @@ import java.util.Collection;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Soft duplicate detection. A candidate that is not a hard {@link IdentityKey} duplicate but shares
+- * an existing owner's household (same computed household id) while using a different telephone is a
+- * possible duplicate of that owner. A declared household member ({@code sharesHousehold}) is not a
+- * suspected duplicate.
++ * Soft duplicate detection. A candidate that is not a hard {@link IdentityKey} duplicate but whose
++ * last name (by {@link Soundex}) and postcode match an existing owner's is a possible duplicate of
++ * that owner. A declared household member ({@code sharesHousehold}) is not a suspected duplicate.
+  */
+ final class PossibleDuplicates {
+ 
+@@ -17,13 +16,16 @@ final class PossibleDuplicates {
+ 
+     /** Id of the earliest existing owner {@code candidate} softly duplicates, or {@code null} when none. */
+     static Integer matchId(Owner candidate, Collection<Owner> existing, Boolean sharesHousehold) {
+-        if (Boolean.TRUE.equals(sharesHousehold) || candidate.getHouseholdId() == null) {
++        if (Boolean.TRUE.equals(sharesHousehold)) {
+             return null;
+         }
+-        String id = candidate.getHouseholdId();
++        String key = IdentityKey.of(candidate);
++        String soundex = Soundex.code(candidate.getLastName());
++        String postcode = candidate.getPostcode();
+         return existing.stream()
+-            .filter(other -> id.equals(other.getHouseholdId()))
+-            .filter(other -> !candidate.getTelephone().equals(other.getTelephone()))
++            .filter(other -> !IdentityKey.of(other).equals(key))
++            .filter(other -> soundex.equals(Soundex.code(other.getLastName())))
++            .filter(other -> postcode != null && postcode.equals(other.getPostcode()))
+             .map(Owner::getId)
+             .filter(other -> other != null)
+             .min(Integer::compareTo)
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Soundex.java
+new file mode 100644
+index 000000000..95be7af22
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/Soundex.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++/**
++ * American Soundex phonetic code of a surname: the first letter followed by up to three digits.
++ * Used by identity and soft-duplicate detection so that similar-sounding last names group together.
++ */
++final class Soundex {
++
++    /** Digit for each letter A..Z ('0' = not coded). Indexed by {@code letter - 'A'}. */
++    private static final String MAP = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    /** American Soundex code (letter + three digits) of {@code name}; {@code "0000"} when blank. */
++    static String code(String name) {
++        String s = name == null ? "" : name.toUpperCase().replaceAll("[^A-Z]", "");
++        if (s.isEmpty()) {
++            return "0000";
++        }
++        StringBuilder sb = new StringBuilder().append(s.charAt(0));
++        char prev = MAP.charAt(s.charAt(0) - 'A');
++        for (int i = 1; i < s.length() && sb.length() < 4; i++) {
++            char c = s.charAt(i);
++            char d = MAP.charAt(c - 'A');
++            if (d != '0' && d != prev) {
++                sb.append(d);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = d;
++            }
++        }
++        while (sb.length() < 4) {
++            sb.append('0');
++        }
++        return sb.toString();
++    }
++}
