@@ -49,6 +49,7 @@ CREATE TABLE owners (
   household_id VARCHAR(64),
   namesake_count INTEGER,
   membership_cap INTEGER,
+  capacity_warning BOOLEAN,
   birth_date DATE,
   possible_duplicate_of INTEGER,
   title      VARCHAR(10),

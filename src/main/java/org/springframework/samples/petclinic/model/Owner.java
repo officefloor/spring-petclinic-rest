@@ -109,6 +109,13 @@ public class Owner extends Person {
 
     public void setMembershipCap(Integer membershipCap) { this.membershipCap = membershipCap; }
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
+    public Boolean getCapacityWarning() { return this.capacityWarning; }
+
+    public void setCapacityWarning(Boolean capacityWarning) { this.capacityWarning = capacityWarning; }
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 

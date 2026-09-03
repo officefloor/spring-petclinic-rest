@@ -116,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
         owner.setMembershipCap(MembershipCap.of(owner, existingOwners));
+        owner.setCapacityWarning(CityCapacityWarning.isApproaching(owner, existingOwners));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(BulkSignupWarning.isTriggered(existingOwners));
