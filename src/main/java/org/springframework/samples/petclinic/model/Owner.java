@@ -49,8 +49,19 @@ public class Owner extends Person {
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
     private String telephone;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
     @Column(name = "email")
     private String email;
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    public void setCustomerCode(String customerCode) {
+        this.customerCode = customerCode;
+    }
 
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
