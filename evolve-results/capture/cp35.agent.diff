@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+new file mode 100644
+index 000000000..6632f829d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Finds an existing owner that {@code owner} possibly duplicates: another owner sharing this
++ * one's last name (case-insensitive) and postcode but with a different telephone — a soft match
++ * that is not a hard {@link IdentityKey} duplicate. Returns the earliest such owner's id, or
++ * {@code null} when there is none.
++ */
++public final class PossibleDuplicate {
++
++    private PossibleDuplicate() {
++    }
++
++    public static Integer of(Owner owner, OwnerRepository ownerRepository) {
++        String postcode = owner.getPostcode();
++        if (postcode == null || postcode.isBlank()) {
++            return null;
++        }
++        return ownerRepository.findAll().stream()
++                .filter(other -> other.getId() != null && !other.getId().equals(owner.getId()))
++                .filter(other -> postcode.equals(other.getPostcode()))
++                .filter(other -> other.getLastName().equalsIgnoreCase(owner.getLastName()))
++                .filter(other -> !owner.getTelephone().equals(other.getTelephone()))
++                .map(Owner::getId)
++                .min(Integer::compareTo)
++                .orElse(null);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 97b3bbc00..edb556fc4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -16,6 +16,9 @@ public class RespondWithOwner {
+         dto.setNamesakeCount(namesakeCount);
+         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
+         dto.setContactPreference(owner.getEmail() != null ? "EMAIL" : "PHONE");
++        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
++        dto.setPossibleDuplicate(possibleDuplicateOf != null);
++        dto.setPossibleDuplicateOf(possibleDuplicateOf);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index ef21d0f76..70f90f2a7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -22,6 +22,9 @@ public class RespondWithOwnerCreated {
+         dto.setNamesakeCount(namesakeCount);
+         dto.setMembershipLevel(membershipLevel);
+         dto.setBulkSignupWarning(BulkSignup.isWarned(owner, ownerRepository));
++        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
++        dto.setPossibleDuplicate(possibleDuplicateOf != null);
++        dto.setPossibleDuplicateOf(possibleDuplicateOf);
+         LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 74807a399..e6641253a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2163,6 +2163,20 @@ components:
+               default: false
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when another owner shares this owner's last name and postcode but has a different telephone, otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner this one possibly duplicates (same last name and postcode, different telephone), absent when possibleDuplicate is false.
++              type: integer
++              format: int32
++              example: 7
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: "The owner's age band derived from birthDate against registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+). Absent when birthDate is not supplied."
