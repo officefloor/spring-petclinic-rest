@@ -78,8 +78,8 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -139,12 +139,12 @@ public class Owner extends Person {
         this.deleted = deleted;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public Integer getNamesakeCount() {

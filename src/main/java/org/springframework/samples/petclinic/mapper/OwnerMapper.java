@@ -23,8 +23,6 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "householdId", expression = "java(householdId(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
-    @Mapping(target = "checkDigit", expression = "java(owner.getCustomerCode() == null ? null : org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode()))")
@@ -46,16 +44,6 @@ public interface OwnerMapper {
         }
         return org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.level(
                 org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner));
-    }
-
-    /** Membership number: '<customerCode>-M<YY>', YY being the last two digits of the
-     *  registrationDate year. Null until both source fields are assigned. */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-                org.springframework.samples.petclinic.rest.function.owner.FiscalYear.shortYear(owner.getRegistrationDate()));
     }
 
     /** Stable identifier for the household an owner belongs to: the first 12 hex characters of SHA-256

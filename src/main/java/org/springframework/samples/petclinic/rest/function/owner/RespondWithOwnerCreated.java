@@ -25,11 +25,10 @@ public class RespondWithOwnerCreated {
         long createdToday = ownerRepository.findAll().stream()
                 .filter(other -> today.equals(other.getRegistrationDate())).count();
         dto.setBulkSignupWarning(createdToday > 80);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel(),
-                dto.getMembershipNumber());
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-                SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), dto.getMembershipLevel());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), dto.getMembershipLevel());
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), dto.getMembershipLevel());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
