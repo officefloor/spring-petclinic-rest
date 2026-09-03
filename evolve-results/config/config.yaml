@@ -1,0 +1,438 @@
+# PetClinic-Evolve configuration.
+# Fill in the two branch base refs and the hotspot method names, then smoke-test
+# with --dry-run and --max-checkpoints 1.
+
+model: claude-opus-4-8         # the fixed coding agent. Override per run with --model
+                              # (e.g. --model claude-opus-5) to reproduce with a different
+                              # AI; see docs/RUN_WITH_A_DIFFERENT_MODEL.md. Recorded in
+                              # provenance.json either way, so a run is self-describing.
+chains: 10                    # independent runs per (arm, strategy). 10 = target for tight CIs.
+active_strategy: just-solve   # which prompt strategy to run by default
+agent_timeout: 3600
+
+# Resilience. On a TOKEN/SESSION limit the harness rolls back the current
+# checkpoint, waits for the window to reopen, then retries the SAME checkpoint --
+# so an overnight pause resumes exactly where it left off. TRANSIENT failures
+# (internet dropping in/out, the API overloaded, no completion) are treated the
+# same way but with a short exponential backoff instead of a quota-reset wait.
+limits:
+  # token/session limit
+  poll_seconds: 1800        # wait between retries when the reset time can't be parsed (30 min)
+  max_sleep_seconds: 21600  # cap on a single quota-reset wait (6 h), then re-check
+  # transient failures (network / overload / no completion)
+  retry_backoff_seconds: 60     # first backoff; doubles each consecutive transient failure
+  retry_backoff_max: 900        # cap on a single transient backoff (15 min)
+  max_transient_attempts: 20    # consecutive transient failures before aborting (network truly down)
+  # overall
+  max_attempts: 500         # absolute safety cap on retries per checkpoint
+
+# Paths below that are NOT absolute are resolved relative to THIS config file's
+# directory, so the harness can be moved without editing them.
+checkpoints_file: checkpoints.yaml
+
+# Acceptance criteria are injected PER CHECKPOINT (never pre-committed to the base
+# branch), so the agent only ever sees the current + prior requirements' tests,
+# never future ones. At checkpoint K the harness copies Cp{K}Tests.java (plus the
+# shared infra at K=1) into the worktree and commits it as "test: add cpK ...".
+acceptance:
+  src_dir: acceptance/src/test/java/org/springframework/samples/petclinic/acceptance
+  dest_subpath: src/test/java/org/springframework/samples/petclinic/acceptance
+  shared: ["AcceptanceBase.java", "AuditLogCapture.java"]   # injected at checkpoint 1
+
+arms:
+  spring:
+    repo: ${HOME}/compare/spring       # ${VARS} and ~ are expanded from the environment
+    base_ref: spring-compare-no-tests  # app + injected acceptance suite only; no pre-existing tests
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: []                       # Spring has no endpoint YAML
+    # Hotspot + scoped erosion use a DYNAMIC subsystem: the production-Java files
+    # changed since base_ref (cumulative). A new class the agent creates is in
+    # that diff, so it can't hide — no fixed hotspot config needed.
+    function_package_glob: null          # N/A for Spring
+    # Entry-handler trajectory (#4): the ONE function POST /api/owners routes
+    # through. Regex over '<file>::<name>'. Spring's single handler can bloat.
+    entry_handler: "OwnerRestControllerV1::addOwner"
+    # No wiring file: Spring declares no per-rule nodes, so its single node IS the entry
+    # handler and `node_closure_cc_median` is the whole handler's closure. That is the
+    # measurement -- an arm earns multiple nodes only by having separable rules.
+    node_roots: null
+
+  officefloor:
+    repo: ${HOME}/compare/officefloor
+    base_ref: officefloor-compare-no-tests  # app + injected acceptance suite only; no pre-existing tests
+    source_globs: ["src/main/java/**/*.java"]
+    verbosity_dirs: ["src/main/java"]
+    yaml_globs: ["src/main/resources/officefloor/**/*.yml"]
+    # Same dynamic touched-file subsystem as Spring (so the hotspot catches any
+    # bloat wherever it lands). OfficeFloor's own wired functions are also tracked
+    # separately via function_package_glob (fn_count / fn_nloc_max).
+    function_package_glob: "src/main/java/**/rest/function/**/*.java"
+    # Designated create-entry function of the owner pipeline. Expected to stay
+    # flat: new rules attach as NEW wired functions, not by growing this one.
+    # NOTE: entry_cc / wmc_handler / erosion_handler all scope to this ONE node, so a
+    # pipeline can look flat on them by pushing work downstream (it measurably does:
+    # entry CC ~1.3 while the worst pipeline node reaches ~13). Use `node_closure_*`
+    # for the relocation-proof comparison.
+    entry_handler: "BuildOwner::service"
+    # Per-node comprehension load: every wired step of the create pipeline is a node,
+    # read from the declared wiring. Each node's transitive call closure is measured,
+    # so logic moved to a later node simply lands in that node's number.
+    node_roots:
+      wiring_file: "src/main/resources/officefloor/rest/api/owners.POST.yml"
+      class_regex: 'class:\s*([\w.]+)'
+      node_method: "service"
+
+# Prompt strategies mirror SlopCodeBench's intervention study. {spec} is replaced
+# with the checkpoint specification. Keep just-solve neutral: never mention the
+# experiment, the architecture, or "refactor" in it.
+#
+# THE FOUR-CONDITION STUDY. Each condition holds the coding agent fixed and changes ONE lever, so
+# the per-checkpoint impact trajectory (vs the control) isolates what actually reduces structural
+# decay. Run each as a full (arm x chain) sweep; compare slopes/medians in analyze.
+#   1. just-solve      — CONTROL. Plain "implement it" prompt, ungated. Baseline decay. UNCHANGED.
+#   2. cohesion-prompt — PROMPT lever. Same single ungated turn as just-solve; only the wording
+#                        adds a plain request for good structure. Delta vs just-solve = the effect
+#                        of better prompting alone.
+#   3. impact_gated    — TOOL lever (enforcement: advisory). Neutral prompt, but a flagged change
+#                        gets ONE quality-gated refactor guided by ImpactGate's flagged LOCATIONS,
+#                        then is re-attempted and accepted (record-and-continue, reaches cp60).
+#                        Delta vs just-solve = the effect of a tool-guided refactor; delta vs
+#                        cohesion-prompt = what the tool adds beyond good prompting.
+#   4. metric-in-prompt— design-A prompt that hands the AI the cost FORMULA as its objective.
+#                        RETAINED FOR REPRODUCIBILITY ONLY (it was Goodhart-gamed); run from the
+#                        archived design-A code or `--strategy metric-in-prompt`.
+# Conditions 3 and 4 differ deliberately: 4 tells the AI the metric (and it games it); 3 never
+# does — the AI is only ever given the spec and, on a refactor, the symptom locations.
+prompt_strategies:
+  just-solve: |
+    Implement the following change to the application so that it fully satisfies
+    the specification and all existing and new tests pass. Run the test suite and
+    make it green before finishing.
+
+    {spec}
+  anti_slop: |
+    Implement the following change. Do not add verbose or defensive code,
+    unnecessary abstractions, or duplicated logic. Group code by responsibility
+    and avoid growing any single "god" method or function. Make all tests pass.
+
+    {spec}
+  plan_first: |
+    First outline your approach in a few bullet points. Then implement the
+    simplest solution that satisfies the specification, verify the edge cases,
+    and refactor if needed. Make all tests pass before finishing.
+
+    {spec}
+  # CONDITION 2 of the four-condition study (see the header below). Prompt-ONLY intervention:
+  # a single implement turn, no gate and no refactor loop (any strategy != impact_gate.strategy
+  # runs the ungated flow). The ONLY thing that differs from just-solve is the wording, so its
+  # per-checkpoint impact vs just-solve isolates whether better PROMPTING alone keeps structure
+  # cohesive. Deliberately says nothing about the metric or the experiment (that is condition 4,
+  # metric-in-prompt, which was gamed); it asks for ordinary good structure in plain terms.
+  cohesion-prompt: |
+    Implement the following change to the application so that it fully satisfies the
+    specification and all existing and new tests pass.
+
+    As you do, keep the code well structured: put each piece of logic where it belongs, in a
+    small unit with a single responsibility, and reuse existing code instead of copying it. Do
+    not let any one class or method grow into a catch-all that accumulates unrelated logic. Run
+    the test suite and make it green before finishing.
+
+    {spec}
+  # CONDITION 4 of the four-condition study: metric-in-prompt (the ORIGINAL design-A prompt).
+  # It hands the AI the exact structural-impact cost function as its objective. RETAINED FOR
+  # REPRODUCIBILITY ONLY — a Spring run gamed it exactly as Goodhart predicts (dispersed logic
+  # into tiny greenfield classes so WMC_other collapses to 1, and DUPLICATED code because reuse
+  # means editing a penalised large class), so it is NOT this repo's default.
+  #   * `--strategy metric-in-prompt` here runs it UNGATED (formula prompt, no discard/refactor
+  #     loop) — the clean "metric-as-objective" prompt lever, isolated from the tool.
+  #   * The original design-A also GATED it (formula prompt + hard impact gate); that exact variant
+  #     is reproduced from the archived design-A code (the Goodhart run was that gated version).
+  # The formula here MUST match impact_stats in metrics.py (and the refactor_prompt) if ever changed.
+  metric-in-prompt: |
+    Implement the following change to the application so that it fully satisfies the
+    specification and all existing and new tests pass.
+
+    Your work is scored by a structural-impact cost. For every function you add lines to, the
+    cost is max(WMC_other, 1) · CC · max(1, added_or_changed_lines), where WMC_other is the total
+    cyclomatic complexity of the OTHER methods in the same class before your change and CC is the
+    changed method's own complexity; the per-function costs are summed and multiplied by the
+    number of files you touched. Lower is better. Keep your structural-impact cost as low as you
+    can while fully satisfying the specification. Run the test suite and make it green before
+    finishing.
+
+    {spec}
+  # The IMPLEMENT prompt for the impact_gated pipeline is NO LONGER this formula. An
+  # earlier design handed the AI the exact structural-impact cost function as its objective;
+  # a Spring run gamed it exactly as Goodhart predicts (dispersed code into a pipeline of
+  # tiny greenfield classes — WMC_other collapses to 1 — and DUPLICATED logic, since reuse
+  # means editing a large class the formula penalises). The formula never sees duplication
+  # and discounts new classes, so "minimise it" and "write good code" diverged.
+  #
+  # The redesign (design B): the AI implements each change with the NEUTRAL prompt below —
+  # spec only, no formula — so it optimises the real task, not the proxy. ImpactGate still
+  # gates the CHANGE (discard + refactor + re-attempt, up to max_refactors, then a chain
+  # stop = "impact"), but the REFACTOR is guided by a symptom-only prompt (impact_gate.
+  # refactor_prompt: names the concentrated classes, never the formula) and its OWN output
+  # is held to a deterministic code-quality gate (impact_gate.quality_gate: jscpd clones +
+  # ast-grep smells over the refactor's added lines) so the duplication exploit is closed.
+  # A refactor that cannot be made statically clean within max_review_turns stops the chain
+  # (= "quality"). Selected by impact_gate.implement_strategy; kept here only as the fallback
+  # body if that key is ever removed. Keep this identical to just-solve.
+  impact_gated: |
+    Implement the following change to the application so that it fully satisfies
+    the specification and all existing and new tests pass. Run the test suite and
+    make it green before finishing.
+
+    {spec}
+
+# --- ImpactGate pipeline (the impact_gated strategy) --------------------------------
+# When the active strategy == impact_gate.strategy, each checkpoint runs a control loop:
+# the agent implements the change, the staged production diff is scored by the standalone
+# `impact-gate` CLI against its Java seed distribution (--curve), and a change graded at or
+# above block_percentile is DISCARDED. A refactor turn then runs on the clean pre-change
+# code, told which classes ImpactGate flagged AND what change is coming, and is committed as
+# `cpNN refactorM <id>`; the change is re-attempted on top of it. Up to max_refactors
+# refactors; still blocked after the last stops the chain (a clean-code failure). ImpactGate
+# is only MEASURED on the refactor, never gates it. The measure is the same before-context
+# WMC that analyze reports as impact_composite, so the gate gates exactly the erosion signal.
+impact_gate:
+  # How to invoke the standalone impact-gate CLI. Each element is ${HOME}/~/$VAR-expanded.
+  # Default points at the sibling ImpactGate checkout's venv; set to ["impact-gate"] if it
+  # is installed on PATH / into this harness's .venv (pip install -e ~/ImpactGate).
+  # NOTE: whichever venv this points at supplies the LIZARD that decides every verdict, and it
+  # must be the same version this harness uses (requirements.txt pins lizard==1.23.0; 1.24.0
+  # parses @Entity/@Table classes as zero functions, so changes to them score 0 and can never
+  # fail the gate). run_experiment refuses to start if it cannot see them — harness/parser_selftest.py.
+  cmd: ["${HOME}/ImpactGate/.venv/bin/impact-gate"]
+  strategy: impact_gated      # the prompt-strategy name that activates this loop
+  # Grade each change against a REFERENCE DISTRIBUTION, not ImpactGate's generic OSS seed.
+  # The prior run (blog.officefloor.net "The same complexity: one unit or twenty?") showed
+  # OfficeFloor spreads work into many small wired functions and does NOT erode into god
+  # classes. So the experiment now asks: can the refactor prompting hold Spring (one growing
+  # @RestController) to OfficeFloor's cohesion? Calibrate the gate to OfficeFloor's OWN
+  # observed impact_composite distribution (build it with harness.build_impact_baseline) and
+  # grade every change against it. With curve_prior_weight: 0 the grade is PURELY that
+  # distribution's percentile (the seed is ignored), so block_percentile is read against the
+  # reference arm: "block_percentile 90" == refactor when a change is more impactful than 90%
+  # of OfficeFloor's changes. Leave baseline_file null to fall back to the seed curve instead.
+  #
+  # From run blind-202608100006, OfficeFloor/just-solve impact_composite (n=549):
+  #   P50=369  P75=1,412  P90=3,410  P95=5,922  P98=14,148  max=114,009
+  # Spring's median change (4,736) already exceeds OF's P90, so the block choice sets how hard
+  # Spring must fight: block_percentile 90 -> ~61% of Spring changes trigger a refactor;
+  # 95 -> ~45%; 98 -> ~30%. Lower = held to OF's TYPICAL cohesion (strict, early stops likely);
+  # higher = only Spring's worst concentrations are gated (lenient). SMOKE-RUN and tune via the
+  # "impact-gate: implement grade pXX" log line.
+  # Reference distribution, committed IN THIS REPO so it travels with a checkout (it is a run
+  # INPUT, like ImpactGate's seed, not derived output. The source run's evolve branches ARE on
+  # GitHub, but a fresh clone leaves them as remote-tracking refs while analyze reads local
+  # refs/heads/evolve, so rebuilding means fetching those heads locally then a slow recompute;
+  # committing the 4KB file keeps the config self-contained. Relative, so main() anchors it to
+  # this config's dir and passes an ABSOLUTE path to impact-gate (kept outside the arm worktree,
+  # never seen by the agent). Rebuild with harness.build_impact_baseline. null -> generic seed.
+  baseline_file: baselines/officefloor.json
+  curve_prior_weight: 0       # 0 = grade PURELY vs baseline_file (ignore the seed); K in n/(n+K)
+  # SHARED cutoff applied identically to BOTH arms (run --strategy impact_gated with no --arm
+  # filter). p95 of OfficeFloor == composite ~5,922: each change must stay under that. OfficeFloor
+  # fires on ~5% of its own changes (its tail), Spring on ~45%, held to OfficeFloor's cohesion
+  # without being impossible to pass. Raise toward p98 (~14,148) for more headroom, lower toward
+  # p90 (~3,410) for OfficeFloor's typical cohesion (stricter, earlier stops likely).
+  block_percentile: 95        # read against the reference distribution (see numbers above)
+  warn_percentile: 85         # reported only (the gate keys off block_percentile)
+  # Which prompt_strategies entry the IMPLEMENT turn uses. Design B: neutral, spec only, NO
+  # structural-impact formula (the formula is what the Spring run gamed). ImpactGate still
+  # gates this change; the AI is simply never told the metric it is graded on.
+  implement_strategy: just-solve
+  # ENFORCEMENT mode — what a flagged (grade >= block_percentile) change does:
+  #   advisory (default, CONDITION 3 of the four-condition study): record-and-continue. The change
+  #     is scored but NEVER enforced. If flagged, ONE quality-gated refactor runs and the change is
+  #     re-attempted, then the re-attempt is ACCEPTED regardless of grade and the chain continues to
+  #     cp60. Both the FIRST-attempt (direct) and second-attempt (post-refactor) impacts are recorded
+  #     (analyze: ig_impact_first vs ig_impact), so the one-refactor cohesion effect is measurable and
+  #     comparable to just-solve / cohesion-prompt. No chain ever stops on impact or quality.
+  #   block: the design-B HARD gate. A flagged change is discarded and refactored up to max_refactors
+  #     times; still over the line -> chain stops (stop_reason "impact"); a refactor that cannot be
+  #     made statically clean within max_review_turns -> chain stops (stop_reason "quality"). This is
+  #     the stress-test condition; retained but not the default. The formula is never in the prompt in
+  #     either mode (that is condition 4, metric-in-prompt).
+  enforcement: advisory
+  max_refactors: 1            # IMPACT budget: refactor+re-attempt cycles for a flagged change. The
+                              # advisory condition is defined as ONE clean-up refactor then re-attempt,
+                              # so this is 1. Under enforcement=block, exhausting it while still over the
+                              # line stops the chain (stop_reason "impact").
+  max_review_turns: 3         # QUALITY budget within ONE refactor: code-review turns to make the
+                              # refactor's own added lines statically clean. Exhausted while still
+                              # dirty -> chain stops (stop_reason "quality").
+  stop_scope: chain           # chain = stop this chain, keep running other arms/chains; run = abort all
+  record_refactor_correctness: true  # run the full gate on each refactor (record only; not enforced)
+  measure_config: null        # optional Surveyor-style ignore-globs YAML for impact-gate
+  # Deterministic code-quality gate on each REFACTOR's own output (design B). Reuses the same
+  # jscpd (clone) + ast-grep (smell) stacks as the `verbosity` metric, scoped to the lines the
+  # refactor ADDS (git diff base..refactor). A finding = an added line that is part of a clone
+  # or matches a wasteful-pattern rule. Non-empty -> the findings are rendered as review comments
+  # and fed back for another turn (up to max_review_turns). This is what stops the refactor from
+  # buying a lower impact score with duplicated/greenfield slop. Versions are pinned + asserted
+  # by harness/quality_selftest.py, exactly like the lizard pin (fail-closed).
+  quality_gate:
+    enabled: true
+    jscpd_min_tokens: 50      # pinned jscpd clone thresholds (version defaults must NOT decide verdicts)
+    jscpd_min_lines: 5
+    review_prompt: |
+      A code reviewer flagged the following problems in the refactor you just made. Each is a
+      line you added that duplicates existing code or is a known bad pattern. Fix every item
+      without changing behaviour. Do NOT implement the upcoming feature change; this is still
+      the preparation step. Every existing test must still pass; run them and make them green.
+
+      {findings}
+  # The REFACTOR prompt (design B). Symptom, not formula: it names the classes where complexity
+  # concentrated and asks for a natural restructuring, but never states the cost function and
+  # never prescribes "split into small classes / extract collaborators" (those phrases are what
+  # drove the pipeline-dispersal + duplication). The quality_gate, not the prompt, forbids the
+  # cheap moves. Placeholders: {spec} the upcoming change; {drivers} the concentrated classes/
+  # methods (locations only, costs stripped).
+  refactor_prompt: |
+    A change is about to be made to this codebase. When that change was implemented directly,
+    these classes ended up carrying more complexity than they can hold comfortably:
+
+    {drivers}
+
+    Before the change is made, prepare the existing code so the change can land as code a
+    maintainer of this codebase would recognise as natural, consistent with how this codebase
+    already structures similar work. Do NOT implement the change itself yet; only restructure
+    what is already here.
+
+    The upcoming change, for context only (do not implement it now):
+    {spec}
+
+    Restructure in whatever way is most natural here. Preserve all existing behaviour exactly,
+    and keep every current test passing. Run the tests and make them green before finishing.
+
+build:
+  # Compile step used as the build gate (fast; tests run separately by tag).
+  cmd: ["./mvnw", "-q", "-B", "-DskipTests", "test-compile"]
+  # {tags} is replaced with "cp01,cp02,...,cpK" (JUnit5 tag include = OR).
+  test_cmd_template: ["./mvnw", "-q", "-B", "-Dgroups={tags}", "test"]
+  surefire_dir: "target/surefire-reports"
+  timeout: 1800
+  test_timeout: 3600
+  # Gate retries. ONLY an ABORTED run is retried (Surefire fork crash / JVM SIGABRT,
+  # which yields no verdict and would otherwise be scored as "every prior rule broke").
+  # A run whose tests merely FAIL is never retried -- that is the signal being measured.
+  test_attempts: 3          # tries per gate before the checkpoint is marked gate_invalid
+  test_retry_seconds: 30    # pause between those tries
+
+tools:
+  # PINNED, committed clone/smell binaries. Installed by `npm ci` in tools/ from the committed
+  # tools/package-lock.json (jscpd + @ast-grep/cli at exact versions), so every machine and run
+  # scores identically. harness/quality_selftest.py asserts the versions AND golden fixtures and
+  # refuses to start on drift (fail-closed, like the lizard pin). Bare `jscpd`/`sg` on PATH are
+  # NOT used: `sg` also collides with shadow-utils' setgid tool. Fall back to bare names only if
+  # tools/node_modules is absent (ungated verbosity metric degrades gracefully; the gate does not).
+  jscpd: "tools/node_modules/.bin/jscpd"
+  astgrep: "tools/node_modules/.bin/ast-grep"
+  astgrep_rules: "astgrep-rules"
+
+probe:
+  enabled: true
+  at_checkpoints: [1, 10, 20, 30, 40, 50, 60]   # cold-reader probe every 10 checkpoints
+  question: |
+    Read the code as it currently stands and answer without changing anything.
+    List, in order, every validation and side-effect that is applied when
+    creating an owner via POST /api/owners.
+  # Ground-truth items for a crude recall score (case-insensitive substring match;
+  # grade properly offline too). Single distinctive tokens for the create-owner
+  # rules, so casing/spacing (e.g. "displayName" vs "display name") doesn't matter.
+  # Spans the full cp1-60 stream: at an early probe only the rules implemented so
+  # far can match, so the denominator is shared and the score rises over the run.
+  # The absolute value is rough; the Spring-vs-OfficeFloor gap at each probe is the
+  # signal (same denominator, same checkpoint, both arms).
+  expected:
+    # cp1-20 rule web
+    - "duplicate"       # exact / household / telephone / email uniqueness
+    - "telephone"       # normalisation + uniqueness + E.164
+    - "email"           # email presence / format / uniqueness
+    - "display"         # displayName
+    - "initials"        # initials
+    - "registration"    # registrationDate default + business day
+    - "membership"      # membershipNumber
+    - "customer"        # customerCode
+    - "city"            # canonical casing + per-city sequence + capacity
+    - "namesake"        # namesakeCount
+    - "household"       # sharesHousehold / householdId
+    - "local"           # locality
+    - "audit"           # audit trail
+    # cp21-40 identity, limits, membership maths
+    - "bulk"            # bulkSignupWarning
+    - "gold"            # GOLD tier before numeric levels
+    - "level"           # membershipLevel (numeric, then points)
+    - "country"         # country-specific telephone length
+    - "preference"      # contactPreference
+    - "identity"        # identityKey
+    - "postcode"        # postcode validation
+    - "luhn"            # customerCode check digit
+    - "hash"            # SHA-256 region-and-hash identity
+    - "future"          # reject future registrationDate
+    - "age"             # ageBand
+    - "possible"        # possibleDuplicate soft-match
+    - "blocklist"       # disposable email-domain blocklist
+    - "tenure"          # tenure gate on top level
+    - "points"          # membershipPoints
+    # cp41-60 collisions, structure, fiscal, v2
+    - "collision"       # customerCode / memberId de-duplication
+    - "timezone"        # region-to-timezone
+    - "title"           # salutation from title
+    - "deleted"         # exclude deleted owners from checks
+    - "holiday"         # public-holiday business-day roll-forward
+    - "fiscal"          # fiscal-year basis
+    - "idempotency"     # Idempotency-Key replay
+    - "soundex"         # identityKey v2 soundex(lastName)
+    - "segment"         # ownerSegment
+    - "capacity"        # capacityWarning approaching city limit
+    - "risk"            # riskFlag
+    - "problem"         # RFC7807 problem+json rejections
+    - "version"         # apiVersion / schemaVersion v2 finale
+
+# Kept identical at every checkpoint. CLAUDE.md is the fixed, human-authored
+# project guide (present in BOTH arms so the playing field is level: it offsets
+# Spring's training-data advantage for OfficeFloor). Pinning restores it to the
+# base_ref version after each agent turn, so it can never become accumulating
+# cross-checkpoint memory. The CSV `notes` column flags any checkpoint where the
+# agent tried to edit it.
+isolation:
+  pin_files: ["CLAUDE.md"]
+
+  # Filesystem confinement for the agent turn (Linux Landlock; no root/bwrap). The
+  # blind-agent design removes the withheld tests from the sandbox and git history,
+  # but the agent process could still `find /` the rest of the disk — reaching the
+  # harness acceptance/ suite, checkpoints.yaml, and prior runs left in Trash. With
+  # this on, the agent (and every child it spawns) is restricted to the sandbox +
+  # toolchain; everything else returns EACCES. Fails CLOSED: if Landlock is missing
+  # or the sentinel self-check finds withheld material readable, the turn is refused.
+  # Verify support with:  python harness/landlock_selftest.py   (expect OVERALL: PASS)
+  agent_confinement:
+    enabled: true
+    extra_ro_binds: []   # extra read-only paths (toolchain not under /usr,/opt,~/.local)
+    extra_rw_binds: []   # extra writable paths (e.g. an alternate Maven repo)
+
+paths:
+  # work_root holds the per-chain git WORKTREES (production tree + .git history +
+  # capture staging), under <work_root>/<run_id>/<arm>-<strategy>-chain<n>.
+  #
+  # sandbox_root IS the agent's sandbox directory itself: the project contents are
+  # mirrored directly under it, so its cwd looks like an ordinary project dir (e.g.
+  # named "sandbox") with NOTHING in the path — no run_id/arm/strategy/chain — that
+  # could hint at a checkpoint sequence. It is reused across chains (which run
+  # sequentially) and rebuilt fresh each turn; the harness deletes it wholesale, so it
+  # MUST be a dedicated directory (a home/root path is refused).
+  #
+  # Both MUST be absolute, EXTERNAL, and SEPARATE from each other (${VARS} and ~ are
+  # expanded; a relative path would be anchored inside this repo). Why: the agent's cwd
+  # is the sandbox. If it were a child of work_root (or of this repo), the agent could
+  # `cd ..` into a worktree and read its .git history (the cp01/cp02… sequence), the
+  # experimenter's acceptance/ suite, checkpoints.yaml, and all future specs — defeating
+  # the blind-agent isolation (observed once at cp60). A separate, flat sandbox_root
+  # gives the agent a tree with no worktree/.git/capture siblings to walk into.
+  work_root: ${HOME}/pe-work
+  sandbox_root: ${HOME}/sandbox
+  results_csv: results/records.csv
