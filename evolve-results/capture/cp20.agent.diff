@@ -1,0 +1,58 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AdjustRegistrationDate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AdjustRegistrationDate.java
+new file mode 100644
+index 000000000..cfac2a5e9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AdjustRegistrationDate.java
+@@ -0,0 +1,23 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Rolls the effective registrationDate (supplied or defaulted) forward to the next
++ * Monday when it lands on a weekend, before {@link CheckDailyLimit} counts by it and the
++ * membership number derives its year segment from it.
++ */
++public class AdjustRegistrationDate {
++
++    public void service(@Val Owner owner) {
++        LocalDate date = owner.getRegistrationDate();
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        owner.setRegistrationDate(date);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
+index ddfc461be..35a5ca000 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDailyLimit.java
+@@ -18,7 +18,7 @@ public class CheckDailyLimit {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository)
+             throws DailyOwnerLimitException {
+-        LocalDate today = LocalDate.now();
++        LocalDate today = owner.getRegistrationDate();
+         long count = ownerRepository.findAll().stream()
+                 .filter(other -> today.equals(other.getRegistrationDate()))
+                 .count();
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 45ffadf06..76fa10a71 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -19,6 +19,11 @@ checkHousehold:
+ checkCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckCityCapacity
+   govern: [ transaction ]
++  next: adjustDate
++
++adjustDate:
++  class: org.springframework.samples.petclinic.rest.function.owner.AdjustRegistrationDate
++  govern: [ transaction ]
+   next: checkDailyLimit
+ 
+ checkDailyLimit:
