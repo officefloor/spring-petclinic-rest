@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -55,6 +56,9 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import jakarta.transaction.Transactional;
 
 /**
@@ -67,6 +71,49 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Serializes {@link OwnerCreatedEvent structured audit events} to their JSON form. Stateless and
+     * thread-safe, so a single shared instance serves every create.
+     */
+    private static final ObjectMapper AUDIT_MAPPER = JsonMapper.builder().build();
+
+    /**
+     * Monotonically increasing sequence stamped onto each {@link OwnerCreatedEvent OWNER_CREATED}
+     * event, so the ordering of creates is recoverable from the audit stream alone. Shared across all
+     * creates (hence {@code static}) and incremented once per emitted event.
+     */
+    private static final AtomicLong AUDIT_SEQ = new AtomicLong();
+
+    /**
+     * Immutable structured audit event emitted (as JSON) alongside the human-readable audit line when
+     * an owner is created. Its {@code customerCode} component carries the owner's <em>current primary
+     * identifier</em>: today that is the {@link Owner#getCustomerCode() customerCode}, and when the
+     * customerCode is later unified into the memberId this event will carry the memberId instead — so
+     * downstream consumers always read the owner's primary identifier from the same event.
+     *
+     * <p>The component order matches the serialized field order
+     * {@code {seq, ownerId, customerCode, membershipLevel, event}}.
+     */
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+                                     Integer membershipLevel, String event) {
+
+        private static final String OWNER_CREATED = "OWNER_CREATED";
+
+        static OwnerCreatedEvent of(long seq, Owner owner) {
+            return new OwnerCreatedEvent(seq, owner.getId(), primaryIdentifier(owner),
+                owner.getMembershipLevel(), OWNER_CREATED);
+        }
+
+        /**
+         * The owner's current primary identifier. Today the owner is identified by its
+         * {@link Owner#getCustomerCode() customerCode}; when that is unified into the memberId this
+         * single method changes to return the memberId and the event follows automatically.
+         */
+        private static String primaryIdentifier(Owner owner) {
+            return owner.getCustomerCode();
+        }
+    }
 
     /**
      * The HTTP request header a client may send to make a create idempotent. When a create repeats
@@ -211,7 +258,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             owner.getMembershipLevel(), owner.getMembershipNumber());
+        emitOwnerCreatedEvent(owner);
         return created(owner);
+    }
+
+    /**
+     * Emit the immutable {@link OwnerCreatedEvent} for a just-persisted owner as a JSON object on the
+     * {@code AUDIT} logger. A fresh {@link #AUDIT_SEQ monotonic sequence} is stamped onto the event so
+     * the order of creates is recoverable from the audit stream. The event carries the owner's current
+     * primary identifier (its customerCode today, its memberId once that unification lands).
+     */
+    private void emitOwnerCreatedEvent(Owner owner) {
+        OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_SEQ.incrementAndGet(), owner);
+        AUDIT.info(AUDIT_MAPPER.writeValueAsString(event));
     }
 
     /**
