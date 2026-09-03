@@ -1,0 +1,84 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 496b4c20a..6f050ba12 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,7 +31,8 @@ public abstract class OwnerMapper {
+ 
+     /** Membership level derived from the owner's membership points. */
+     protected int membershipLevel(Owner owner) {
+-        return MembershipLevel.level(membershipPoints(owner));
++        return org.springframework.samples.petclinic.rest.function.owner.HouseholdCeiling.cap(
++            MembershipLevel.level(membershipPoints(owner)), owner, ownerRepository);
+     }
+ 
+     @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdCeiling.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdCeiling.java
+new file mode 100644
+index 000000000..ee01294c3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/HouseholdCeiling.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Caps an owner's membershipLevel at one above the current maximum membershipLevel among
++ * their existing household members (other owners sharing the same householdId). With no
++ * existing household member no cap applies.
++ */
++public final class HouseholdCeiling {
++
++    private HouseholdCeiling() {
++    }
++
++    /** The level, capped at one above the highest level among existing household members. */
++    public static int cap(int level, Owner owner, OwnerRepository ownerRepository) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return level;
++        }
++        int ceiling = -1;
++        for (Owner other : ownerRepository.findAll()) {
++            if (isMember(owner, other, householdId)) {
++                ceiling = Math.max(ceiling, MembershipLevel.level(MembershipLevel.points(other, ownerRepository)));
++            }
++        }
++        return ceiling < 0 ? level : Math.min(level, ceiling + 1);
++    }
++
++    /** True when {@code other} is a distinct owner in the same household as {@code owner}. */
++    private static boolean isMember(Owner owner, Owner other, String householdId) {
++        if (other == owner || !householdId.equals(other.getHouseholdId())) {
++            return false;
++        }
++        return owner.getId() == null || !owner.getId().equals(other.getId());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 9df6ad4e6..a8915c183 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -24,18 +24,12 @@ validatePostcode:
+   govern: [ transaction ]
+   next: assignHousehold
+ 
+-# Assign householdId before the household/identity checks so it forms part of the key.
++# Assign householdId before the identity check so it forms part of the key. Household
++# members with different telephones are admitted here and capped by MembershipLevel; the
++# identity check below is the sole duplicate gate (see CheckUniqueIdentity).
+ assignHousehold:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId
+   govern: [ transaction ]
+-  next: checkHousehold
+-
+-# Reject a second owner in the same household (same householdId) with 409, unless the
+-# request opts in with sharesHousehold to be created as a declared household member.
+-checkHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueHousehold
+-  method: service
+-  govern: [ transaction ]
+   next: checkIdentity
+ 
+ checkIdentity:
