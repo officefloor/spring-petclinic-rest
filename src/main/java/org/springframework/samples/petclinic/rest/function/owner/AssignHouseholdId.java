@@ -18,8 +18,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * the household resolves to the same value regardless of creation order. Existing members that
  * predate the household are back-filled so both sides carry the shared id. An owner with no household
  * peer keeps a null {@code householdId}. It also records {@code householdSize} — the number of owners
- * that share the household after this create (the existing peers plus this new owner) — which drives
- * the GOLD membership tier.
+ * that share the household after this create (the existing peers plus this new owner).
  */
 public class AssignHouseholdId {
 

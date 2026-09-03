@@ -23,7 +23,8 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel",
+            expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipLevel(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     default String initials(Owner owner) {
@@ -57,20 +58,21 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: {@code GOLD} when the owner's household had 3 or more members
-     * after this owner was created; otherwise {@code SILVER} when the owner's name was unique on
-     * creation (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
+     * The owner's membership level, a number from 1 to 3 assigned on creation. Starts at 1; add 1
+     * when an email is present; add 1 when the owner's name was unique on creation (namesakeCount is
+     * 0); capped at 3. Level 4 is reserved for tenure.
      */
-    default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            return OwnerDto.MembershipTierEnum.GOLD;
+    static int membershipLevel(Owner owner) {
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         Integer namesakeCount = owner.getNamesakeCount();
-        boolean unique = namesakeCount != null && namesakeCount == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return unique && hasEmail ? OwnerDto.MembershipTierEnum.SILVER
-                : OwnerDto.MembershipTierEnum.BRONZE;
+        if (namesakeCount != null && namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     Owner toOwner(OwnerDto ownerDto);
