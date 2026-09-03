@@ -49,7 +49,8 @@ public class BuildOwner {
     /**
      * Normalizes a raw telephone to E.164. A leading '+' keeps its country code;
      * otherwise '+61' is assumed and a single leading '0' is dropped. Spaces, dashes
-     * and brackets are stripped. Returns null when the result is not 8..15 digits.
+     * and brackets are stripped. Returns null when the national-number length is
+     * wrong for the country code (see {@link E164Length}).
      */
     static String toE164(String raw) {
         String trimmed = raw.trim();
@@ -61,6 +62,6 @@ public class BuildOwner {
             String national = trimmed.replaceAll("\\D", "");
             digits = "61" + (national.startsWith("0") ? national.substring(1) : national);
         }
-        return digits.length() >= 8 && digits.length() <= 15 ? "+" + digits : null;
+        return E164Length.isValid(digits) ? "+" + digits : null;
     }
 }
