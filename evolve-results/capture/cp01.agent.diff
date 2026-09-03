@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index a82ccaabf..247c88af2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -31,10 +31,13 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.security.access.AccessDeniedException;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.validation.BindingResult;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
++import org.springframework.web.bind.WebDataBinder;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.InitBinder;
+ import org.springframework.web.bind.annotation.ResponseBody;
+ 
+ /**
+@@ -53,6 +56,21 @@ public class ExceptionControllerAdvice {
+     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
+     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+ 
++    private final OwnerFieldsValidator ownerFieldsValidator = new OwnerFieldsValidator();
++
++    /**
++     * Registers the {@link OwnerFieldsValidator} for {@link OwnerFieldsDto} request bodies so a
++     * missing or blank required field is reported alongside the schema's own constraints.
++     *
++     * @param binder the data binder for the request body being bound
++     */
++    @InitBinder
++    public void registerOwnerFieldsValidator(WebDataBinder binder) {
++        if (binder.getTarget() instanceof OwnerFieldsDto) {
++            binder.addValidators(ownerFieldsValidator);
++        }
++    }
++
+     /**
+      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
+      * class.
+@@ -157,6 +175,10 @@ public class ExceptionControllerAdvice {
+                 request.getRequestURI(),
+                 bindingResult.getFieldErrors());
+             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
++            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
++                .map(fieldError -> fieldError.getField())
++                .distinct()
++                .toList());
+             return ResponseEntity.status(status).body(detail);
+         }
+         return ResponseEntity.status(status).body(detail);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java
+new file mode 100644
+index 000000000..eb856446c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.List;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.validation.Errors;
++import org.springframework.validation.ValidationUtils;
++import org.springframework.validation.Validator;
++
++/**
++ * Rejects an {@link OwnerFieldsDto} whose required identity fields are missing or blank
++ * (null, empty or whitespace-only). This complements the schema's bean-validation
++ * constraints, which do not treat a whitespace-only address or city as invalid.
++ */
++public class OwnerFieldsValidator implements Validator {
++
++    private static final List<String> REQUIRED_FIELDS =
++        List.of("firstName", "lastName", "address", "city", "telephone");
++
++    @Override
++    public boolean supports(Class<?> clazz) {
++        return OwnerFieldsDto.class.isAssignableFrom(clazz);
++    }
++
++    @Override
++    public void validate(Object target, Errors errors) {
++        for (String field : REQUIRED_FIELDS) {
++            ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
++        }
++    }
++}
