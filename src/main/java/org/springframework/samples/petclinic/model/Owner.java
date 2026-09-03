@@ -422,24 +422,55 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4: it starts at 1, gains 1 when an email is
-     * present, gains 1 when namesakeCount is 0, and gains 1 when the owner's {@linkplain #getTenureDays()
-     * tenure} exceeds 365 days. The email and namesake factors are the only ones available on creation,
-     * so a newly created owner (zero tenure) never exceeds level 3; level 4 is reached only once tenure
-     * grows beyond 365 days.
+     * The owner's membership points: they start at 0, gain 2 when an email is present, gain 1 when
+     * namesakeCount is 0, gain 2 for a {@linkplain #hasLargeHousehold() household of 3 or more}, and
+     * gain 3 when the owner's {@linkplain #getTenureDays() tenure} exceeds 365 days. The email,
+     * namesake and household factors are available on creation; the tenure factor is reached only
+     * once tenure grows beyond 365 days.
      */
-    public Integer getMembershipLevel() {
-        int level = 1;
+    public Integer getMembershipPoints() {
+        int points = 0;
         if (hasEmail()) {
-            level++;
+            points += 2;
         }
         if (hasNoNamesakes()) {
-            level++;
+            points += 1;
+        }
+        if (hasLargeHousehold()) {
+            points += 2;
         }
         if (hasTenureBeyondOneYear()) {
-            level++;
+            points += 3;
         }
-        return level;
+        return points;
+    }
+
+    /**
+     * The owner's membership level, a number from 1 to 4 derived from {@linkplain #getMembershipPoints()
+     * membershipPoints}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or
+     * more.
+     */
+    public Integer getMembershipLevel() {
+        int points = getMembershipPoints();
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
+    }
+
+    /**
+     * Whether this owner belongs to a household of three or more: its {@link #getHouseholdSize()
+     * householdSize} is {@code 3} or greater. A {@code null} householdSize, meaning the size is not
+     * known, is treated as not a large household.
+     */
+    private boolean hasLargeHousehold() {
+        return this.householdSize != null && this.householdSize >= 3;
     }
 
     /**
