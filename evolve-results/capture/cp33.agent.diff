@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..21704b9ec
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by {@code BuildOwner} when a create request supplies a registration date later
++ * than the current server date. Handled by {@link FutureRegistrationDateExceptionHandler},
++ * which responds 400.
++ */
++public class FutureRegistrationDateException extends Exception {
++
++    public FutureRegistrationDateException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+new file mode 100644
+index 000000000..1ce6ff700
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class FutureRegistrationDateExceptionHandler {
++
++    public void handle(@Parameter FutureRegistrationDateException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index d8d218e3f..4e3148818 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -8,6 +8,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.AddressRequiredException;
++import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -16,10 +17,14 @@ import org.springframework.web.bind.annotation.RequestBody;
+ public class BuildOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+-            Out<Boolean> sharesHousehold) throws InvalidTelephoneException, AddressRequiredException {
++            Out<Boolean> sharesHousehold)
++            throws InvalidTelephoneException, AddressRequiredException, FutureRegistrationDateException {
+         request.setTelephone(E164.normalize(request.getTelephone()));
+         request.setAddress(Address.normalize(request.getAddress()));
+         Owner owner = ownerMapper.toOwner(request);
++        if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException("registrationDate must not be later than the current date");
++        }
+         LocalDate registrationDate = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+         owner.setRegistrationDate(BusinessDay.rollForward(registrationDate));
+         built.set(owner);
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml
+new file mode 100644
+index 000000000..6a32d7ea8
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateExceptionHandler
