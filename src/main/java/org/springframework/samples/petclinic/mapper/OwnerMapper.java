@@ -34,6 +34,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.CustomerCodes.region(owner))")
     @Mapping(target = "timezone",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.RegionTimezone.of(owner))")
+    @Mapping(target = "ownerSegment",
+        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.OwnerSegment.of(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "checkDigit",
