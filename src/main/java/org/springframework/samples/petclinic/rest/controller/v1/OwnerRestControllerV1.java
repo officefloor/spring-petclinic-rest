@@ -107,10 +107,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
         if (IdentityKey.isDuplicate(owner, existingOwners)
+            || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())
             || CityCapacity.isAtCapacity(owner, existingOwners)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setPossibleDuplicateOf(PossibleDuplicates.matchId(owner, existingOwners));
+        owner.setPossibleDuplicateOf(
+            PossibleDuplicates.matchId(owner, existingOwners, ownerFieldsDto.getSharesHousehold()));
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
         this.clinicService.saveOwner(owner);
