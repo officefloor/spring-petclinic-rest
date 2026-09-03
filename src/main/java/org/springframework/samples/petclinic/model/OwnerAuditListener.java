@@ -15,7 +15,9 @@ public class OwnerAuditListener {
 
     @PostPersist
     void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
+            owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100));
     }
 }
