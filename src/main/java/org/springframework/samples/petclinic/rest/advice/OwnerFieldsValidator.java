@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 
@@ -60,6 +61,15 @@ public class OwnerFieldsValidator implements Validator {
             owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
         validatePostcode(owner, errors);
+        validateRegistrationDate(owner, errors);
+    }
+
+    /** Rejects a supplied registrationDate later than the current server date. */
+    private void validateRegistrationDate(OwnerFieldsDto owner, Errors errors) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate != null && registrationDate.isAfter(LocalDate.now())) {
+            errors.rejectValue("registrationDate", "registrationDate", "must not be in the future");
+        }
     }
 
     /** Rejects a supplied 4-digit postcode that falls outside the range for the city's
