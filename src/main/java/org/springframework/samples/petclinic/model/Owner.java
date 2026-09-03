@@ -190,6 +190,14 @@ public class Owner extends Person {
     }
 
     /**
+     * The Luhn check digit (a single digit, {@code 0}-{@code 9}) computed over the decimal digits
+     * contained in the owner's {@link #customerCode}.
+     */
+    public int getCheckDigit() {
+        return luhnCheckDigit(this.customerCode);
+    }
+
+    /**
      * The Luhn check digit (a single digit, {@code 0}-{@code 9}) over the decimal digits
      * contained in {@code value}. Reading the digits right to left, every second one is
      * doubled (subtracting 9 whenever doubling yields a value above 9); the transformed
