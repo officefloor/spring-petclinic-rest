@@ -77,6 +77,17 @@ public class Owner extends Person {
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
 
+    @Column(name = "birth_date", columnDefinition = "DATE")
+    private LocalDate birthDate;
+
+    public LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
