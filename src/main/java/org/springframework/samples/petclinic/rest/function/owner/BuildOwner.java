@@ -20,7 +20,7 @@ public class BuildOwner {
             Out<Boolean> sharesHousehold)
             throws InvalidTelephoneException, AddressRequiredException, FutureRegistrationDateException {
         request.setTelephone(E164.normalize(request.getTelephone()));
-        request.setAddress(Address.normalize(request.getAddress()));
+        AddressForm.apply(request);
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
             throw new FutureRegistrationDateException("registrationDate must not be later than the current date");
