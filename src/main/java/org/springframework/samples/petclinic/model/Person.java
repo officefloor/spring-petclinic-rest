@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.Transient;
 
 import jakarta.validation.constraints.NotEmpty;
 
@@ -52,5 +53,20 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    @Transient
+    private String title;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /** The optional title and last name (e.g. "DR who"); just the last name when no title is given. */
+    public String getSalutation() {
+        return (title == null || title.isEmpty()) ? lastName : title + " " + lastName;
+    }
 
 }
