@@ -149,10 +149,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(customerCode(owner));
-        owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
-        owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
-        owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
+        assignDerivedAttributes(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -160,6 +157,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Assign the attributes that are derived once, at creation time, and stored on the owner: its
+     * {@link #customerCode(Owner) customerCode}, {@link #namesakeCount(String, String) namesakeCount},
+     * {@link #isBulkSignup(LocalDate) bulk-signup warning} and {@link #householdSize(String)
+     * householdSize}. Each is computed from the owner's own fields together with the owners already
+     * present, so this runs after the owner has been validated and has passed the duplicate and
+     * capacity checks, and immediately before it is persisted.
+     */
+    private void assignDerivedAttributes(Owner owner) {
+        owner.setCustomerCode(customerCode(owner));
+        owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
     }
 
     /**
