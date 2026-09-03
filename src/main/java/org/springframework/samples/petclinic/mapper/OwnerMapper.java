@@ -25,7 +25,16 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipLevel",
             expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipLevel(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's preferred contact channel: {@code EMAIL} when an email is present, otherwise
+     * {@code PHONE}.
+     */
+    default String contactPreference(Owner owner) {
+        return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+    }
 
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
