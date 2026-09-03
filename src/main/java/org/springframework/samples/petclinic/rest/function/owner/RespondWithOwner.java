@@ -28,6 +28,7 @@ public class RespondWithOwner {
                 .filter(other -> owner.getCity() != null && owner.getCity().equalsIgnoreCase(other.getCity()))
                 .count();
         dto.setCapacityWarning(cityOwners >= 40 && cityOwners < 50);
+        dto.setRiskFlag(possibleDuplicateOf != null || cityOwners >= 40 || DisposableAdjacent.matches(owner.getEmail()));
         response.send(dto);
     }
 }
