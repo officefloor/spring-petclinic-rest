@@ -24,21 +24,19 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
-        expression = "java(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()))")
+        expression = "java(org.springframework.samples.petclinic.util.MemberIds.regionOf(owner.getMemberId()))")
     @Mapping(target = "ownerSegment",
-        expression = "java(org.springframework.samples.petclinic.util.OwnerSegments.of(membershipLevel(owner), org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode())))")
+        expression = "java(org.springframework.samples.petclinic.util.OwnerSegments.of(membershipLevel(owner), org.springframework.samples.petclinic.util.MemberIds.regionOf(owner.getMemberId())))")
     @Mapping(target = "timezone",
-        expression = "java(org.springframework.samples.petclinic.util.Localities.timezoneFor(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode())))")
+        expression = "java(org.springframework.samples.petclinic.util.Localities.timezoneFor(org.springframework.samples.petclinic.util.MemberIds.regionOf(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.util.CheckDigits.luhn(owner.getCustomerCode()))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "telephoneDisplay",
@@ -80,19 +78,9 @@ public interface OwnerMapper {
         return stored != null ? stored : org.springframework.samples.petclinic.util.MembershipLevels.level(owner);
     }
 
-    /** The 'FY<YY>' fiscal year of the (business-day-adjusted) registrationDate; null when the date is absent. */
+    /** The 'FY<YY>' fiscal year carried by the memberId; null when the memberId is absent. */
     default String fiscalYear(Owner owner) {
-        return owner.getRegistrationDate() == null ? null
-            : org.springframework.samples.petclinic.util.FiscalYears.label(owner.getRegistrationDate());
-    }
-
-    /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate fiscal year. */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-            org.springframework.samples.petclinic.util.FiscalYears.startYear(owner.getRegistrationDate()) % 100);
+        return org.springframework.samples.petclinic.util.MemberIds.fiscalYearLabel(owner.getMemberId());
     }
 
     Owner toOwner(OwnerDto ownerDto);

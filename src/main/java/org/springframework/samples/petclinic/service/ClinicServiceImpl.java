@@ -232,9 +232,9 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public void saveOwner(Owner owner) throws DataAccessException {
-        if (owner.isNew() && owner.getCustomerCode() == null) {
+        if (owner.isNew() && owner.getMemberId() == null) {
             Collection<Owner> existing = ownerRepository.findAll();
-            owner.assignCustomerCode(existing);
+            owner.assignMemberId(existing);
             owner.assignNamesakeCount(existing);
             owner.assignPossibleDuplicate(existing);
         }

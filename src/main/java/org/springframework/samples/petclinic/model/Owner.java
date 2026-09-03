@@ -17,7 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
-import org.springframework.samples.petclinic.util.CustomerCodes;
+import org.springframework.samples.petclinic.util.MemberIds;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import jakarta.persistence.*;
@@ -71,7 +71,7 @@ public class Owner extends Person {
     }
 
     @Column(name = "customer_code")
-    private String customerCode;
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -112,8 +112,8 @@ public class Owner extends Person {
         this.possibleDuplicateOf = org.springframework.samples.petclinic.util.PossibleDuplicates.matchIn(this, existingOwners);
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
     public Integer getNamesakeCount() {
@@ -161,9 +161,9 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
-    /** Assign the '<REGION>-<HASH8>' customer code: region from the postcode, HASH8 from telephone+lastName. */
-    public void assignCustomerCode(Collection<Owner> existingOwners) {
-        this.customerCode = CustomerCodes.buildUnique(getCity(), getPostcode(), getTelephone(), getLastName(), existingOwners);
+    /** Assign the '<REGION><FY><HASH8><CHK>' member id: region from the postcode, HASH8 from telephone+lastName, FY from the registration date. */
+    public void assignMemberId(Collection<Owner> existingOwners) {
+        this.memberId = MemberIds.buildUnique(getCity(), getPostcode(), getTelephone(), getLastName(), getRegistrationDate(), existingOwners);
     }
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
