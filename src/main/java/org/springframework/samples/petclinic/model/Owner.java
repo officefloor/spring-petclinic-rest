@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.HashUtils;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -674,17 +675,78 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's identity key: the single derived value used for duplicate detection.
-     * It joins the normalized (E.164) telephone, the email (already lower-cased, or the
-     * empty string when absent) and the householdId (or the empty string when the owner
-     * has no household) with {@code '|'}, e.g. {@code '+61412345678|jane@example.test|3C1A9F2B7D4E'}.
-     * Two owners are duplicates only when their whole identity keys are equal.
+     * The owner's identity key: the single derived value used for duplicate detection. It is the
+     * lower-case hex SHA-256 (64 characters) of the normalized (E.164) telephone, the email
+     * (already lower-cased, or the empty string when absent) and the {@linkplain #soundex(String)
+     * soundex} of the lastName, joined with {@code '|'} before hashing, e.g. the digest of
+     * {@code '+61412345678|jane@example.test|J500'}. Two owners are duplicates, and the second is
+     * rejected with {@code 409}, only when their whole identity keys are equal.
      */
     public String getIdentityKey() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
-        String householdPart = this.householdId == null ? "" : this.householdId;
-        return telephonePart + "|" + emailPart + "|" + householdPart;
+        String soundexPart = soundex(this.getLastName());
+        return HashUtils.sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+    }
+
+    /**
+     * The American Soundex code of {@code name}: its first letter followed by three digits encoding
+     * the remaining consonant sounds ({@code b,f,p,v -> 1}; {@code c,g,j,k,q,s,x,z -> 2};
+     * {@code d,t -> 3}; {@code l -> 4}; {@code m,n -> 5}; {@code r -> 6}; vowels and {@code h,w,y}
+     * are not coded). Adjacent letters with the same code, and same-coded letters separated only by
+     * {@code h} or {@code w}, contribute a single digit; a vowel between two same-coded letters
+     * keeps both. The result is right-padded with zeros and truncated to four characters. Non-letters
+     * are ignored, and a {@code null} or letter-free name yields the empty string. Used to build the
+     * owner's {@link #getIdentityKey() identity key} and to group households by surname sound.
+     */
+    public static String soundex(String name) {
+        if (name == null) {
+            return "";
+        }
+        String letters = name.toUpperCase().replaceAll("[^A-Z]", "");
+        if (letters.isEmpty()) {
+            return "";
+        }
+        StringBuilder code = new StringBuilder();
+        code.append(letters.charAt(0));
+        char previous = soundexDigit(letters.charAt(0));
+        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
+            char c = letters.charAt(i);
+            char digit = soundexDigit(c);
+            if (digit != '0' && digit != previous) {
+                code.append(digit);
+            }
+            if (c != 'H' && c != 'W') {
+                previous = digit;
+            }
+        }
+        while (code.length() < 4) {
+            code.append('0');
+        }
+        return code.toString();
+    }
+
+    /**
+     * The Soundex digit for a single upper-case letter (see {@link #soundex(String)}), or
+     * {@code '0'} for a letter that is not coded (a vowel, or {@code h}, {@code w} or {@code y}).
+     */
+    private static char soundexDigit(char c) {
+        switch (c) {
+            case 'B': case 'F': case 'P': case 'V':
+                return '1';
+            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
+                return '2';
+            case 'D': case 'T':
+                return '3';
+            case 'L':
+                return '4';
+            case 'M': case 'N':
+                return '5';
+            case 'R':
+                return '6';
+            default:
+                return '0';
+        }
     }
 
     protected Set<Pet> getPetsInternal() {

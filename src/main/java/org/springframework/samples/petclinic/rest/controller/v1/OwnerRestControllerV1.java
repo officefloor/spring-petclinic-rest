@@ -313,9 +313,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * deterministically from the owner's lastName and postcode, so every owner sharing that
      * lastName and postcode is assigned the same value automatically, independent of whether the
      * owner declares it shares a household. The link is assigned before the
-     * {@link #checkForConflicts(Owner) conflict checks} because it is part of the owner's
-     * {@link Owner#getIdentityKey() identity} and feeds its {@link #householdSize(String) household
-     * size}.
+     * {@link #checkForConflicts(Owner) conflict checks} because it feeds the owner's
+     * {@link #householdSize(String) household size} and {@link #membershipLevel(Owner) membership
+     * level}.
      */
     private void assignHousehold(Owner owner) {
         owner.setHouseholdId(householdId(owner));
@@ -323,17 +323,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
-     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} only when
-     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household with
-     * existing members is not a conflict: the owner is admitted as a household member and has its
-     * {@linkplain #membershipLevel(Owner) membership level} capped at one above the household
-     * maximum. Returns {@code null} when the owner clashes with nothing and may be created.
+     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
+     * {@linkplain #isDuplicateIdentity(Owner) duplicates an existing owner's identity key} or when
+     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household (the
+     * same surname sound and postcode) but with a different identity key is not a conflict: such an
+     * owner is admitted and later {@linkplain #findSoftDuplicate(Owner) flagged as a possible
+     * duplicate}. Returns {@code null} when the owner clashes with nothing and may be created.
      */
     private HttpStatus checkForConflicts(Owner owner) {
+        if (isDuplicateIdentity(owner)) {
+            return HttpStatus.CONFLICT;
+        }
         if (isCityAtCapacity(owner.getCity())) {
             return HttpStatus.CONFLICT;
         }
         return null;
+    }
+
+    /**
+     * Whether an existing owner already carries this owner's {@link Owner#getIdentityKey() identity
+     * key}. This is the single hard-duplicate rule: two owners are duplicates exactly when their
+     * identity keys are equal, and the second is rejected with {@code 409 Conflict}. Like the other
+     * identity rules it considers only the {@linkplain #activeOwners() active owners}, so an owner
+     * flagged {@linkplain Owner#isDeleted() deleted} never triggers a duplicate. The email-domain
+     * blocklist is applied earlier, during {@link #normalizeAndValidate(Owner) validation}, so a
+     * disposable-email owner is rejected before it reaches this check.
+     */
+    private boolean isDuplicateIdentity(Owner owner) {
+        String identityKey = owner.getIdentityKey();
+        return activeOwners().stream()
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**
@@ -420,20 +439,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The existing owner this owner softly duplicates, or {@code null} when there is none. A soft
-     * match is an existing owner that shares this owner's lastName (compared case-insensitively,
-     * with collapsed whitespace) and its postcode but carries a different telephone; the earliest
-     * such owner (by id) is returned. A postcode is required for a soft match, so an owner without a
-     * postcode never matches.
+     * match is an existing owner whose {@link Owner#getIdentityKey() identity key} differs from this
+     * owner's (so it is not already a hard duplicate) but whose lastName has the same
+     * {@link Owner#soundex(String) soundex} and whose postcode matches; the earliest such owner (by
+     * id) is returned. Two owners sharing a surname sound and postcode but differing in telephone (or
+     * email) therefore surface here as a soft match rather than being rejected. A postcode is required
+     * for a soft match, so an owner without a postcode never matches.
      */
     private Owner findSoftDuplicate(Owner owner) {
         if (owner.getPostcode() == null) {
             return null;
         }
-        String candidateLastName = normalizeName(owner.getLastName());
+        String candidateSoundex = Owner.soundex(owner.getLastName());
+        String identityKey = owner.getIdentityKey();
         return activeOwners().stream()
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-            .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .filter(existing -> Owner.soundex(existing.getLastName()).equals(candidateSoundex))
+            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
             .min(Comparator.comparingInt(Owner::getId))
             .orElse(null);
     }
