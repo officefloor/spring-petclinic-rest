@@ -104,7 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Collection<Owner> existingOwners = this.clinicService.findAllOwners();
         boolean telephoneTaken = existingOwners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
-        if (telephoneTaken || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
+        if (telephoneTaken || CityCapacity.isAtCapacity(owner, existingOwners)
+            || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
