@@ -156,6 +156,21 @@ public class Owner extends Person {
         return this.customerCode + "-M" + String.format("%02d", this.registrationDate.getYear() % 100);
     }
 
+    /** Fixed city-to-region table used to derive an owner's locality. */
+    private static final Map<String, String> CITY_REGION = Map.of(
+        "Sydney", "NSW",
+        "Melbourne", "VIC",
+        "Brisbane", "QLD");
+
+    /**
+     * The owner's locality: the canonical region derived from the city using the fixed
+     * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
+     * {@code Brisbane -> QLD}), or {@code 'UNKNOWN'} when the city is not in the table.
+     */
+    public String getLocality() {
+        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+    }
+
     /**
      * The owner's membership tier: {@code 'SILVER'} when namesakeCount is 0 and an email is
      * present, otherwise {@code 'BRONZE'}.
