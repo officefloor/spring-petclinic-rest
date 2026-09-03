@@ -27,7 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel",
         expression = "java(Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality",
-        expression = "java(switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; })")
+        expression = "java(switch (owner.getPostcode() != null && owner.getPostcode().matches(\"[0-9]{4}\") ? owner.getPostcode().substring(0, 2) : \"\") { case \"20\" -> \"NSW\"; case \"30\" -> \"VIC\"; case \"40\" -> \"QLD\"; default -> switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; }; })")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey",
