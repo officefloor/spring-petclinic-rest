@@ -40,6 +40,10 @@ public class FlagPossibleDuplicate {
 
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
+            // A soft-deleted owner is not a duplicate match.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (!lastName.equals(OwnerIdentity.normalizeName(existing.getLastName()))) {
                 continue;
             }

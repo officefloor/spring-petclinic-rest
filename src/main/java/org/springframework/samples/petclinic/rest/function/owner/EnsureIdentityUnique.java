@@ -28,6 +28,10 @@ public class EnsureIdentityUnique {
         String householdId = OwnerIdentity.deriveHouseholdId(
                 OwnerIdentity.normalizeName(request.getLastName()), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
+            // A soft-deleted owner no longer blocks a create.
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             String existingHousehold = OwnerIdentity.deriveHouseholdId(
                     OwnerIdentity.normalizeName(existing.getLastName()), existing.getPostcode());
             if (householdId.equals(existingHousehold)) {

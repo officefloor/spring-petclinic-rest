@@ -14,6 +14,8 @@ public class BuildOwner {
     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
             throws FutureRegistrationDateException {
         Owner owner = ownerMapper.toOwner(request);
+        // A newly created owner is not deleted.
+        owner.setDeleted(false);
         LocalDate effective = owner.getRegistrationDate();
         if (effective == null) {
             effective = LocalDate.now();
