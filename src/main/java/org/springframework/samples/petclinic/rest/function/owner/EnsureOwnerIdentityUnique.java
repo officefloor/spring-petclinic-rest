@@ -16,6 +16,7 @@ public class EnsureOwnerIdentityUnique {
             throws DuplicateIdentityException {
         String identityKey = IdentityKey.of(owner);
         boolean taken = ownerRepository.findAll().stream()
+                .filter(other -> !other.isDeleted())
                 .anyMatch(other -> identityKey.equals(IdentityKey.of(other)));
         if (taken) {
             throw new DuplicateIdentityException("An owner with the same identity already exists");

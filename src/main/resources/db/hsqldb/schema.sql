@@ -47,7 +47,8 @@ CREATE TABLE owners (
   registration_date DATE,
   birth_date DATE,
   customer_code VARCHAR(20),
-  title      VARCHAR(10)
+  title      VARCHAR(10),
+  deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

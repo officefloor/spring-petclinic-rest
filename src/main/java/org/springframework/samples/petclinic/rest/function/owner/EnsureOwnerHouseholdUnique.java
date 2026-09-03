@@ -18,6 +18,7 @@ public class EnsureOwnerHouseholdUnique {
         }
         String householdId = HouseholdId.of(owner);
         boolean clash = ownerRepository.findAll().stream()
+                .filter(other -> !other.isDeleted())
                 .anyMatch(other -> householdId.equals(HouseholdId.of(other)));
         if (clash) {
             throw new DuplicateHouseholdException(
