@@ -158,6 +158,18 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
+    @Transient
+    private String addressLine1;
+
+    public String getAddressLine1() {
+        return this.addressLine1;
+    }
+
+    /** Store addressLine1 normalized so it is returned in canonical form. */
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = AddressNormalizer.normalize(addressLine1);
+    }
+
     public String getAddress() {
         return this.address;
     }

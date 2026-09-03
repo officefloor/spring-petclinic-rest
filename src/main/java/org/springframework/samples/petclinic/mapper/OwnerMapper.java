@@ -117,6 +117,7 @@ public interface OwnerMapper {
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "registrationDate", expression = "java(effectiveRegistrationDate(ownerDto))")
+    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.compose(ownerDto.getAddressLine1(), ownerDto.getAddressLine2(), ownerDto.getAddress()))")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     /** The supplied registration date, or today's date when absent, rolled forward off weekends to a business day. */

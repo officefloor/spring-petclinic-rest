@@ -57,7 +57,9 @@ public class OwnerRequiredFieldsAdvice implements RequestBodyAdvice {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", owner.getFirstName());
         addIfBlank(missing, "lastName", owner.getLastName());
-        addIfBlank(missing, "address", owner.getAddress());
+        if (isBlank(owner.getAddress()) && isBlank(owner.getAddressLine1())) {
+            missing.add("address");
+        }
         addIfBlank(missing, "city", owner.getCity());
         addIfBlank(missing, "telephone", owner.getTelephone());
         if (!missing.isEmpty()) {
@@ -67,9 +69,13 @@ public class OwnerRequiredFieldsAdvice implements RequestBodyAdvice {
     }
 
     private void addIfBlank(List<String> missing, String field, String value) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(field);
         }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @Override

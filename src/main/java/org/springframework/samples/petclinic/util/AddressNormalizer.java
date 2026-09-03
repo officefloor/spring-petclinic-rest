@@ -50,6 +50,21 @@ public final class AddressNormalizer {
         return result.toString();
     }
 
+    /**
+     * Compose the canonical address from the structured lines, falling back to the flat address.
+     * Returns the normalized {@code addressLine1}, with a single space and the normalized
+     * {@code addressLine2} appended when {@code addressLine2} is present; when {@code addressLine1}
+     * is blank the flat {@code address} is normalized and returned instead.
+     */
+    public static String compose(String addressLine1, String addressLine2, String address) {
+        String line1 = normalize(addressLine1);
+        if (line1 == null || line1.isEmpty()) {
+            return normalize(address);
+        }
+        String line2 = normalize(addressLine2);
+        return (line2 == null || line2.isEmpty()) ? line1 : line1 + " " + line2;
+    }
+
     private static String expand(String token) {
         switch (token) {
             case "ST":
