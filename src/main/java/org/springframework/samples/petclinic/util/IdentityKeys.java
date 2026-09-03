@@ -32,9 +32,10 @@ public final class IdentityKeys {
     private IdentityKeys() {
     }
 
-    /** The identity key of the given owner. */
+    /** The version-2 identity key of the given owner: the SHA-256 input mixes in the fixed 'V2' version
+     *  tag so no key produced under version 1 recurs. */
     public static String of(Owner owner) {
-        String raw = orEmpty(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()) + '|' + soundex(owner.getLastName());
+        String raw = "V2" + orEmpty(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()) + '|' + soundex(owner.getLastName());
         return sha256Hex(raw);
     }
 

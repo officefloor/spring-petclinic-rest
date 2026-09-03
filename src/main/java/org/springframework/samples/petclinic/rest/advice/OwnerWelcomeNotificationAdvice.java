@@ -52,7 +52,8 @@ public class OwnerWelcomeNotificationAdvice implements ResponseBodyAdvice<Object
                                   Class<? extends HttpMessageConverter<?>> selectedConverterType,
                                   ServerHttpRequest request, ServerHttpResponse response) {
         if (body instanceof OwnerDto owner) {
-            NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
+            String memberId = owner.getIdentity() == null ? null : owner.getIdentity().getMemberId();
+            NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), memberId);
         }
         return body;
     }

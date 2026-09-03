@@ -24,7 +24,11 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
+    @Mapping(target = "apiVersion", constant = "2")
+    @Mapping(target = "identity.memberId", expression = "java(owner.getMemberId())")
+    @Mapping(target = "identity.identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "identity.householdId", expression = "java(owner.getHouseholdId())")
+    @Mapping(target = "householdId", ignore = true)
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -36,7 +40,6 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.Localities.timezoneFor(org.springframework.samples.petclinic.util.MemberIds.regionOf(owner.getMemberId())))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "possibleDuplicate", expression = "java(owner.getPossibleDuplicateOf() != null)")
     @Mapping(target = "telephoneDisplay",

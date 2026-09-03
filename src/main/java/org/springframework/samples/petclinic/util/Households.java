@@ -33,9 +33,10 @@ public final class Households {
     private Households() {
     }
 
-    /** The deterministic householdId for the given last name and postcode. */
+    /** The deterministic version-2 householdId for the given last name and postcode: the SHA-256 hash
+     *  mixes in the fixed 'V2' version tag so no id produced under version 1 recurs. */
     public static String id(String lastName, String postcode) {
-        String key = normalize(lastName) + '|' + (postcode == null ? "" : postcode);
+        String key = "V2" + normalize(lastName) + '|' + (postcode == null ? "" : postcode);
         byte[] digest = sha256(key);
         StringBuilder hex = new StringBuilder(12);
         for (int i = 0; i < 6; i++) {

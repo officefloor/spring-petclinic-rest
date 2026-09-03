@@ -36,11 +36,16 @@ public final class MemberIds {
     private MemberIds() {
     }
 
-    /** Build the {@code <REGION><FY><HASH8><CHK>} member id from region, registration fiscal year and the telephone+lastName hash. */
+    /**
+     * Build the {@code <REGION><FY><HASH8><CHK>} member id under the version-2 algorithm: the visible
+     * REGION prefix stays the plain region (so 'locality' reads back plain), while HASH8 mixes the fixed
+     * 'V2' version tag and the region into the hashed material so the id differs from every version-1 id.
+     */
     public static String build(String city, String postcode, String telephone, String lastName, LocalDate registrationDate) {
-        String body = Localities.regionFor(city, postcode)
+        String region = Localities.regionFor(city, postcode);
+        String body = region
             + String.format("%02d", FiscalYears.startYear(registrationDate) % 100)
-            + hash8(telephone + lastName);
+            + hash8("V2" + region + telephone + lastName);
         return body + CheckDigits.luhn(body);
     }
 

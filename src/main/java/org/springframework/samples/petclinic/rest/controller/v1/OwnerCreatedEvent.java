@@ -18,26 +18,38 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.springframework.samples.petclinic.util.MemberIds;
+import org.springframework.samples.petclinic.util.OwnerSegments;
+
 /**
  * Immutable structured audit event emitted when an owner is created. It carries
  * the owner's current primary identifier: the {@code customerCode} today, and
  * whatever replaces it later (e.g. a unified {@code memberId}), passed in by the
- * caller so this event stays agnostic to which identifier is primary.
+ * caller so this event stays agnostic to which identifier is primary. Emitted under
+ * schema version 2, which adds the derived {@code ownerSegment} recomputed from the
+ * version-2 identity's region.
  */
-public record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel) {
+public record OwnerCreatedEvent(int seq, Integer ownerId, String customerCode, Integer membershipLevel,
+        String ownerSegment) {
+
+    /** Audit schema version: 2 stamps every event with {@code schemaVersion} and the owner segment. */
+    private static final int SCHEMA_VERSION = 2;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
-    /** Next event for an owner, stamped with a monotonically increasing {@code seq} across creates. */
+    /** Next event for an owner, stamped with a monotonically increasing {@code seq} across creates and
+     *  the owner segment recomputed from the version-2 identity's region and the membership level. */
     public static OwnerCreatedEvent next(Integer ownerId, String primaryIdentifier, Integer membershipLevel) {
-        return new OwnerCreatedEvent(SEQ.incrementAndGet(), ownerId, primaryIdentifier, membershipLevel);
+        String segment = OwnerSegments.of(membershipLevel == null ? 0 : membershipLevel,
+            MemberIds.regionOf(primaryIdentifier));
+        return new OwnerCreatedEvent(SEQ.incrementAndGet(), ownerId, primaryIdentifier, membershipLevel, segment);
     }
 
-    /** Compact JSON rendering with a stable field order. */
+    /** Compact JSON rendering with a stable field order, led by the audit {@code schemaVersion}. */
     public String toJson() {
         return String.format(
-            "{\"seq\":%d,\"ownerId\":%s,\"customerCode\":%s,\"membershipLevel\":%s,\"event\":\"OWNER_CREATED\"}",
-            seq, ownerId, quote(customerCode), membershipLevel);
+            "{\"schemaVersion\":%d,\"seq\":%d,\"ownerId\":%s,\"customerCode\":%s,\"membershipLevel\":%s,\"ownerSegment\":%s,\"event\":\"OWNER_CREATED\"}",
+            SCHEMA_VERSION, seq, ownerId, quote(customerCode), membershipLevel, quote(ownerSegment));
     }
 
     private static String quote(String value) {
