@@ -35,7 +35,16 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's canonical URL, formatted {@code '/api/owners/<id>'} where id is the owner's id.
+     * Null when the owner has no id yet.
+     */
+    default String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * The owner's stored E.164 {@code telephone} formatted for humans: the '+' country code, a space,
