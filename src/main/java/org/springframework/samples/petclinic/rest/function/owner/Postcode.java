@@ -1,6 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
@@ -14,14 +13,6 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeExce
 final class Postcode {
 
     private static final Pattern FOUR_DIGITS = Pattern.compile("^[0-9]{4}$");
-
-    /** City -> canonical region, from the fixed city-to-region table. */
-    private static final Map<String, String> CITY_REGION = Map.of(
-            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
-
-    /** Region -> inclusive 4-digit postcode range {low, high}. */
-    private static final Map<String, int[]> REGION_RANGE = Map.of(
-            "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
 
     private Postcode() {
     }
@@ -39,9 +30,9 @@ final class Postcode {
         if (!FOUR_DIGITS.matcher(trimmed).matches()) {
             throw new InvalidPostcodeException(postcode);
         }
-        String region = city == null ? null : CITY_REGION.get(city);
+        String region = OwnerRegion.regionForCity(city);
         if (region != null) {
-            int[] range = REGION_RANGE.get(region);
+            int[] range = OwnerRegion.rangeForRegion(region);
             int value = Integer.parseInt(trimmed);
             if (value < range[0] || value > range[1]) {
                 throw new InvalidPostcodeException(postcode);

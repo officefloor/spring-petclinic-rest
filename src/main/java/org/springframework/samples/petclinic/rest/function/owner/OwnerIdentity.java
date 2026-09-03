@@ -68,14 +68,25 @@ public final class OwnerIdentity {
 
     /** {@code H-} plus the first 12 upper-case hex chars of SHA-256(lastName + '|' + address). */
     public static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
+        return "H-" + sha256Hex(normalizedLastName + '|' + normalizedAddress, 12);
+    }
+
+    /**
+     * The first {@code hexChars} upper-case hex characters of SHA-256 over the UTF-8 bytes of
+     * {@code input} — the shared primitive behind every hash-derived identity part.
+     */
+    static String sha256Hex(String input, int hexChars) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((normalizedLastName + '|' + normalizedAddress).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("H-");
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
+                    .digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hexChars);
+            for (byte b : digest) {
+                sb.append(String.format("%02X", b));
+                if (sb.length() >= hexChars) {
+                    break;
+                }
             }
-            return sb.toString();
+            return sb.substring(0, hexChars);
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);
