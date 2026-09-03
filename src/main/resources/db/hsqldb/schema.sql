@@ -42,6 +42,7 @@ CREATE TABLE owners (
   address    VARCHAR(255),
   city       VARCHAR(80),
   telephone  VARCHAR(20),
+  title      VARCHAR(10),
   email      VARCHAR(255),
   postcode   VARCHAR(4),
   birth_date DATE,

@@ -47,6 +47,17 @@ public class Owner extends Person {
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
     private String telephone;
 
+    @Column(name = "title")
+    private String title;
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
     @Column(name = "email")
     private String email;
 

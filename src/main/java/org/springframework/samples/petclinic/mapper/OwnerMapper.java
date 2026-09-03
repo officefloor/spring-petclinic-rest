@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "addressLine1", source = "address")
+    @Mapping(target = "salutation", expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Membership level, derived from {@link org.springframework.samples.petclinic.rest.function.owner.MembershipPoints
