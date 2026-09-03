@@ -1,0 +1,135 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1f44370ce..9c74cc5c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,10 +57,21 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     /** Assign the '<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code ownerCount}. */
+     public void assignCustomerCode(int ownerCount) {
+         String prefix = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
+index 86fe8a940..8c7c41895 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
+@@ -21,7 +21,9 @@ import java.io.IOException;
+ import java.io.InputStream;
+ import java.lang.reflect.Method;
+ import java.lang.reflect.Type;
++import java.nio.charset.StandardCharsets;
+ import java.util.Locale;
++import java.util.UUID;
+ 
+ import org.springframework.core.MethodParameter;
+ import org.springframework.core.Ordered;
+@@ -41,6 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdvice;
+ 
+ import tools.jackson.databind.JsonNode;
+ import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.node.ObjectNode;
+ 
+ /**
+  * Rejects a create-owner request whose lastName and address already belong to another owner
+@@ -76,13 +79,23 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
+             throws IOException {
+         byte[] bytes = inputMessage.getBody().readAllBytes();
+         JsonNode body = objectMapper.readTree(bytes);
+-        if (!body.path("sharesHousehold").asBoolean(false)
+-                && isHouseholdTaken(body.path("lastName").asString(""), body.path("address").asString(""))) {
++        String lastName = body.path("lastName").asString("");
++        String address = body.path("address").asString("");
++        if (body.path("sharesHousehold").asBoolean(false)) {
++            ((ObjectNode) body).put("householdId", householdId(lastName, address));
++            bytes = objectMapper.writeValueAsBytes(body);
++        } else if (isHouseholdTaken(lastName, address)) {
+             throw new DuplicateHouseholdException();
+         }
+         return buffered(bytes, inputMessage.getHeaders());
+     }
+ 
++    /** Stable identifier shared by every owner with the same normalized lastName and address. */
++    private String householdId(String lastName, String address) {
++        String key = normalize(lastName) + '\n' + normalize(address);
++        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
++    }
++
+     private boolean isHouseholdTaken(String lastName, String address) {
+         String key = normalize(lastName) + '\n' + normalize(address);
+         for (Owner existing : clinicService.findAllOwners()) {
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b30d3434..25fb0a163 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c3148c2c9..f949135fd 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2044,6 +2044,11 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        householdId:
++          title: Household ID
++          description: Stable shared identifier for owners of the same household (same last name and address), assigned when 'sharesHousehold' is set.
++          type: string
++          example: '2f1b8c0e-0d3a-3b6e-9f4a-1c2d3e4f5a6b'
+       required:
+         - firstName
+         - lastName
