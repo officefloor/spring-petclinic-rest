@@ -146,6 +146,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -181,6 +182,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> day.equals(existing.getRegistrationDate()))
             .count();
         return count >= 100;
+    }
+
+    /**
+     * Whether creating this owner pushes the day's total past the bulk-signup threshold, i.e.
+     * more than 80 owners have already been created for the given business day. Counts the owners
+     * already carrying that {@code registrationDate} (the same accumulation as the daily-limit
+     * rule); when that count exceeds 80 the newly created owner is flagged with a bulk-signup
+     * warning.
+     */
+    private boolean isBulkSignup(LocalDate day) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> day.equals(existing.getRegistrationDate()))
+            .count();
+        return count > 80;
     }
 
     /**
