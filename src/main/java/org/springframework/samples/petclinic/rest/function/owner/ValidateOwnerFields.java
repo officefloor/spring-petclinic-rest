@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsException;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,13 +15,14 @@ import org.springframework.web.bind.annotation.RequestBody;
  * firstName, lastName, address, city or telephone. A whitespace-only value counts as blank, which
  * bean validation alone does not catch for the pattern-less address/city fields, so the check is
  * explicit here. The telephone is then normalized by stripping every non-digit character and must
- * be exactly 10 digits; the normalized value is written back so it is stored and returned. On
- * success it republishes the body for {@link BuildOwner}.
+ * be exactly 10 digits; the normalized value is written back so it is stored and returned. The
+ * optional email, when present, must be a syntactically valid address and is normalized to lower
+ * case; a present-but-invalid email is a 400. On success it republishes the body for {@link BuildOwner}.
  */
 public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws MissingOwnerFieldsException, InvalidTelephoneException {
+            throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException {
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
@@ -35,6 +37,7 @@ public class ValidateOwnerFields {
             throw new InvalidTelephoneException(request.getTelephone());
         }
         request.setTelephone(telephone);
+        request.setEmail(OwnerEmail.normalize(request.getEmail()));
         validated.set(request);
     }
 
