@@ -1,0 +1,214 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 1e5755d8d..eaa14e7d0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.HashUtils;
+ 
+ import jakarta.persistence.*;
+ import jakarta.validation.constraints.Email;
+@@ -674,17 +675,78 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's identity key: the single derived value used for duplicate detection.
+-     * It joins the normalized (E.164) telephone, the email (already lower-cased, or the
+-     * empty string when absent) and the householdId (or the empty string when the owner
+-     * has no household) with {@code '|'}, e.g. {@code '+61412345678|jane@example.test|3C1A9F2B7D4E'}.
+-     * Two owners are duplicates only when their whole identity keys are equal.
++     * The owner's identity key: the single derived value used for duplicate detection. It is the
++     * lower-case hex SHA-256 (64 characters) of the normalized (E.164) telephone, the email
++     * (already lower-cased, or the empty string when absent) and the {@linkplain #soundex(String)
++     * soundex} of the lastName, joined with {@code '|'} before hashing, e.g. the digest of
++     * {@code '+61412345678|jane@example.test|J500'}. Two owners are duplicates, and the second is
++     * rejected with {@code 409}, only when their whole identity keys are equal.
+      */
+     public String getIdentityKey() {
+         String telephonePart = this.telephone == null ? "" : this.telephone;
+         String emailPart = this.email == null ? "" : this.email;
+-        String householdPart = this.householdId == null ? "" : this.householdId;
+-        return telephonePart + "|" + emailPart + "|" + householdPart;
++        String soundexPart = soundex(this.getLastName());
++        return HashUtils.sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
++    }
++
++    /**
++     * The American Soundex code of {@code name}: its first letter followed by three digits encoding
++     * the remaining consonant sounds ({@code b,f,p,v -> 1}; {@code c,g,j,k,q,s,x,z -> 2};
++     * {@code d,t -> 3}; {@code l -> 4}; {@code m,n -> 5}; {@code r -> 6}; vowels and {@code h,w,y}
++     * are not coded). Adjacent letters with the same code, and same-coded letters separated only by
++     * {@code h} or {@code w}, contribute a single digit; a vowel between two same-coded letters
++     * keeps both. The result is right-padded with zeros and truncated to four characters. Non-letters
++     * are ignored, and a {@code null} or letter-free name yields the empty string. Used to build the
++     * owner's {@link #getIdentityKey() identity key} and to group households by surname sound.
++     */
++    public static String soundex(String name) {
++        if (name == null) {
++            return "";
++        }
++        String letters = name.toUpperCase().replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder();
++        code.append(letters.charAt(0));
++        char previous = soundexDigit(letters.charAt(0));
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char digit = soundexDigit(c);
++            if (digit != '0' && digit != previous) {
++                code.append(digit);
++            }
++            if (c != 'H' && c != 'W') {
++                previous = digit;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++
++    /**
++     * The Soundex digit for a single upper-case letter (see {@link #soundex(String)}), or
++     * {@code '0'} for a letter that is not coded (a vowel, or {@code h}, {@code w} or {@code y}).
++     */
++    private static char soundexDigit(char c) {
++        switch (c) {
++            case 'B': case 'F': case 'P': case 'V':
++                return '1';
++            case 'C': case 'G': case 'J': case 'K': case 'Q': case 'S': case 'X': case 'Z':
++                return '2';
++            case 'D': case 'T':
++                return '3';
++            case 'L':
++                return '4';
++            case 'M': case 'N':
++                return '5';
++            case 'R':
++                return '6';
++            default:
++                return '0';
++        }
+     }
+ 
+     protected Set<Pet> getPetsInternal() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7823a3563..dbef4f8ee 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -313,9 +313,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * deterministically from the owner's lastName and postcode, so every owner sharing that
+      * lastName and postcode is assigned the same value automatically, independent of whether the
+      * owner declares it shares a household. The link is assigned before the
+-     * {@link #checkForConflicts(Owner) conflict checks} because it is part of the owner's
+-     * {@link Owner#getIdentityKey() identity} and feeds its {@link #householdSize(String) household
+-     * size}.
++     * {@link #checkForConflicts(Owner) conflict checks} because it feeds the owner's
++     * {@link #householdSize(String) household size} and {@link #membershipLevel(Owner) membership
++     * level}.
+      */
+     private void assignHousehold(Owner owner) {
+         owner.setHouseholdId(householdId(owner));
+@@ -323,19 +323,38 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
+-     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} only when
+-     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household with
+-     * existing members is not a conflict: the owner is admitted as a household member and has its
+-     * {@linkplain #membershipLevel(Owner) membership level} capped at one above the household
+-     * maximum. Returns {@code null} when the owner clashes with nothing and may be created.
++     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
++     * {@linkplain #isDuplicateIdentity(Owner) duplicates an existing owner's identity key} or when
++     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household (the
++     * same surname sound and postcode) but with a different identity key is not a conflict: such an
++     * owner is admitted and later {@linkplain #findSoftDuplicate(Owner) flagged as a possible
++     * duplicate}. Returns {@code null} when the owner clashes with nothing and may be created.
+      */
+     private HttpStatus checkForConflicts(Owner owner) {
++        if (isDuplicateIdentity(owner)) {
++            return HttpStatus.CONFLICT;
++        }
+         if (isCityAtCapacity(owner.getCity())) {
+             return HttpStatus.CONFLICT;
+         }
+         return null;
+     }
+ 
++    /**
++     * Whether an existing owner already carries this owner's {@link Owner#getIdentityKey() identity
++     * key}. This is the single hard-duplicate rule: two owners are duplicates exactly when their
++     * identity keys are equal, and the second is rejected with {@code 409 Conflict}. Like the other
++     * identity rules it considers only the {@linkplain #activeOwners() active owners}, so an owner
++     * flagged {@linkplain Owner#isDeleted() deleted} never triggers a duplicate. The email-domain
++     * blocklist is applied earlier, during {@link #normalizeAndValidate(Owner) validation}, so a
++     * disposable-email owner is rejected before it reaches this check.
++     */
++    private boolean isDuplicateIdentity(Owner owner) {
++        String identityKey = owner.getIdentityKey();
++        return activeOwners().stream()
++            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
++    }
++
+     /**
+      * Build the {@code 201 Created} response for a persisted owner: its {@link OwnerDto} body and a
+      * {@code Location} header pointing at {@code /api/owners/{id}}.
+@@ -420,20 +439,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * The existing owner this owner softly duplicates, or {@code null} when there is none. A soft
+-     * match is an existing owner that shares this owner's lastName (compared case-insensitively,
+-     * with collapsed whitespace) and its postcode but carries a different telephone; the earliest
+-     * such owner (by id) is returned. A postcode is required for a soft match, so an owner without a
+-     * postcode never matches.
++     * match is an existing owner whose {@link Owner#getIdentityKey() identity key} differs from this
++     * owner's (so it is not already a hard duplicate) but whose lastName has the same
++     * {@link Owner#soundex(String) soundex} and whose postcode matches; the earliest such owner (by
++     * id) is returned. Two owners sharing a surname sound and postcode but differing in telephone (or
++     * email) therefore surface here as a soft match rather than being rejected. A postcode is required
++     * for a soft match, so an owner without a postcode never matches.
+      */
+     private Owner findSoftDuplicate(Owner owner) {
+         if (owner.getPostcode() == null) {
+             return null;
+         }
+-        String candidateLastName = normalizeName(owner.getLastName());
++        String candidateSoundex = Owner.soundex(owner.getLastName());
++        String identityKey = owner.getIdentityKey();
+         return activeOwners().stream()
+             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+-            .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
+-            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
++            .filter(existing -> Owner.soundex(existing.getLastName()).equals(candidateSoundex))
++            .filter(existing -> !identityKey.equals(existing.getIdentityKey()))
+             .min(Comparator.comparingInt(Owner::getId))
+             .orElse(null);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 586eb5f3e..9396b0e45 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2296,13 +2296,13 @@ components:
+               title: Identity key
+               description: >-
+                 The single derived key used for duplicate detection: the
+-                normalized (E.164) telephone, the email (lower-cased, or empty
+-                when absent) and the householdId (or empty when the owner has no
+-                household), joined with '|'. Two owners are duplicates, and the
+-                second is rejected with 409, only when their whole identity keys
+-                are equal.
++                lower-case hex SHA-256 of the normalized (E.164) telephone, the
++                email (lower-cased, or empty when absent) and the Soundex of the
++                lastName, joined with '|' before hashing. Two owners are
++                duplicates, and the second is rejected with 409, only when their
++                whole identity keys are equal.
+               type: string
+-              example: '+61412345678|jane@example.test|3C1A9F2B7D4E'
++              example: '3c1a9f2b7d4e5061728394a5b6c7d8e9f0011223344556677889900aabbccddee'
+               readOnly: true
+             checkDigit:
+               title: Check digit
