@@ -189,6 +189,35 @@ public class Owner extends Person {
         return this.customerCode + "-M" + String.format("%02d", this.registrationDate.getYear() % 100);
     }
 
+    /**
+     * The Luhn check digit (a single digit, {@code 0}-{@code 9}) over the decimal digits
+     * contained in {@code value}. Reading the digits right to left, every second one is
+     * doubled (subtracting 9 whenever doubling yields a value above 9); the transformed
+     * digits are summed, and the check digit is the amount that must be added to that sum to
+     * reach the next multiple of ten. Any non-digit character in {@code value} is ignored, so
+     * the digit is taken over exactly the digits the string carries.
+     */
+    private static int luhnCheckDigit(String value) {
+        int sum = 0;
+        boolean doubling = true;
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int digit = c - '0';
+            if (doubling) {
+                digit *= 2;
+                if (digit > 9) {
+                    digit -= 9;
+                }
+            }
+            sum += digit;
+            doubling = !doubling;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
     /** Fixed city-to-region table used to derive an owner's locality. */
     private static final Map<String, String> CITY_REGION = Map.of(
         "Sydney", "NSW",
