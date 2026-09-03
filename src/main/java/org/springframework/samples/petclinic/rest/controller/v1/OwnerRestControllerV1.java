@@ -22,7 +22,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.slf4j.Logger;
@@ -256,13 +258,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The number of national (subscriber) digits required for each known country calling
+     * code, keyed by the code's digits (without the leading '+'). A number whose country
+     * code appears here must carry exactly this many digits after the code, e.g. '+61'
+     * requires 9 national digits and '+1' requires 10.
+     */
+    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY = Map.of(
+        "1", 10,
+        "61", 9);
+
+    /**
      * Convert a raw telephone input to its E.164 representation, or {@code null} if it
      * cannot form a valid E.164 number.
      *
      * <p>A leading '+' and country code are kept when present; otherwise country code
      * '+61' is assumed and a single leading '0' is dropped from the national digits.
      * Spaces, dashes and brackets (indeed any non-digit) are stripped. The result must
-     * carry 8 to 15 digits after the '+'.
+     * carry 8 to 15 digits after the '+', and — for a recognised country calling code —
+     * exactly the national-digit count that code requires (see
+     * {@link #NATIONAL_DIGITS_BY_COUNTRY}); otherwise it is rejected as invalid.
      */
     private String toE164(String telephone) {
         if (telephone == null) {
@@ -282,7 +296,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (e164.length() < 8 || e164.length() > 15) {
             return null;
         }
+        if (!hasValidNationalLength(e164)) {
+            return null;
+        }
         return "+" + e164;
+    }
+
+    /**
+     * Whether the E.164 digit string (no leading '+') carries the national-number length
+     * required by its country calling code. The longest matching known code wins; a number
+     * whose country code is not recognised passes this check (its length is governed only by
+     * the general 8-15 digit bound in {@link #toE164}).
+     */
+    private boolean hasValidNationalLength(String e164) {
+        return NATIONAL_DIGITS_BY_COUNTRY.entrySet().stream()
+            .filter(entry -> e164.startsWith(entry.getKey()))
+            .max(Comparator.comparingInt(entry -> entry.getKey().length()))
+            .map(entry -> e164.length() - entry.getKey().length() == entry.getValue())
+            .orElse(true);
     }
 
     /**
