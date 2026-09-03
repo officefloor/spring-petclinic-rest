@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,9 +19,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class ValidateOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
-            throws InvalidEmailException, InvalidTelephoneException {
+            throws InvalidEmailException, InvalidTelephoneException, InvalidPostcodeException {
         request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
+        request.setPostcode(Postcode.normalize(request.getPostcode(), request.getCity()));
         validated.set(request);
     }
 }
