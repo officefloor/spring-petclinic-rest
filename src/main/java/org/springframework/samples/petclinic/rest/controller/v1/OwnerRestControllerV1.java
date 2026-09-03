@@ -109,9 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
         HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
-        String last = owner.getLastName();
-        owner.setCustomerCode(last.substring(0, Math.min(3, last.length())).toUpperCase()
-            + String.format("-%04d", existingOwners.size() + 1));
+        owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
