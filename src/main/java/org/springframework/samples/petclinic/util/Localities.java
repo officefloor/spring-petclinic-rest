@@ -46,7 +46,7 @@ public final class Localities {
 
     /** Return the canonical region for {@code city}, or {@code UNKNOWN} when it is not in the table. */
     public static String regionFor(String city) {
-        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+        return city == null ? "UNKNOWN" : CITY_REGION.getOrDefault(city, "UNKNOWN");
     }
 
     /** Prefer the region from the postcode range; fall back to the city table when the postcode is absent or unknown. */
