@@ -18,6 +18,7 @@ import java.util.List;
 @Mapper(uses = PetMapper.class)
 public interface OwnerMapper {
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -81,6 +82,18 @@ public interface OwnerMapper {
      */
     default String contactPreference(Owner owner) {
         return owner.getEmail() != null && !owner.getEmail().isBlank() ? "EMAIL" : "PHONE";
+    }
+
+    /**
+     * The owner's salutation: the honorific {@code title}, a single space, then the {@code lastName}
+     * when a title is present, or just the {@code lastName} when no title is given.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     default String initials(Owner owner) {
