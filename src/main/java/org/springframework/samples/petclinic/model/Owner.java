@@ -85,6 +85,9 @@ public class Owner extends Person {
     private boolean bulkSignupWarning;
 
     @Transient
+    private boolean capacityWarning;
+
+    @Transient
     private Integer possibleDuplicateOf;
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
@@ -209,6 +212,14 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public boolean isCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public Integer getPossibleDuplicateOf() {
