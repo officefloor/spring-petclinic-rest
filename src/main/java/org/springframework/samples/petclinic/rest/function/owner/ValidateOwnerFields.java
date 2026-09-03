@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
@@ -28,7 +29,7 @@ public class ValidateOwnerFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
-            InvalidPostcodeException {
+            DisposableEmailException, InvalidPostcodeException {
         request.setAddress(OwnerAddress.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
