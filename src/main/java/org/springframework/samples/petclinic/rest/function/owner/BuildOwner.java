@@ -16,8 +16,9 @@ public class BuildOwner {
 
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
-    public void service(@RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
-            throws MissingOwnerFieldsException {
+    public void service(@RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+            Out<Boolean> sharesHousehold) throws MissingOwnerFieldsException {
+        sharesHousehold.set(Boolean.TRUE.equals(request.getSharesHousehold()));
         Map<String, String> required = new LinkedHashMap<>();
         required.put("firstName", request.getFirstName());
         required.put("lastName", request.getLastName());
