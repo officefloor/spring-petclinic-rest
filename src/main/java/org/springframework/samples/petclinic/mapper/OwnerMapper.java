@@ -24,6 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(java.lang.Math.min(1 + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0), 3))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand", expression = "java(owner.getBirthDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity.identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.checkDigit(owner))")
     OwnerDto toOwnerDto(Owner owner);
