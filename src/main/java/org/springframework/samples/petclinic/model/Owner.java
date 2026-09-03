@@ -184,13 +184,26 @@ public class Owner extends Person {
         "Melbourne", "VIC",
         "Brisbane", "QLD");
 
+    /** The region reported for a city that is not present in {@link #CITY_REGION}. */
+    public static final String UNKNOWN_REGION = "UNKNOWN";
+
     /**
-     * The owner's locality: the canonical region derived from the city using the fixed
-     * city-to-region table ({@code Sydney -> NSW}, {@code Melbourne -> VIC},
-     * {@code Brisbane -> QLD}), or {@code 'UNKNOWN'} when the city is not in the table.
+     * The canonical region for a city, derived from the fixed city-to-region table
+     * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), or
+     * {@link #UNKNOWN_REGION} when the city is not in the table. This is the single
+     * source of the city-to-region mapping, shared by every rule that is keyed by
+     * region so the mapping is never re-derived elsewhere.
+     */
+    public static String regionOf(String city) {
+        return CITY_REGION.getOrDefault(city, UNKNOWN_REGION);
+    }
+
+    /**
+     * The owner's locality: the {@linkplain #regionOf(String) canonical region} of the
+     * owner's city, or {@link #UNKNOWN_REGION} when the city has no known region.
      */
     public String getLocality() {
-        return CITY_REGION.getOrDefault(this.city, "UNKNOWN");
+        return regionOf(this.city);
     }
 
     /**
