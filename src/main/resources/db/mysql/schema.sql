@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
   household_id VARCHAR(64),
   namesake_count INT,
   bulk_signup_warning BIT(1),
+  capacity_warning BIT(1),
   household_size INT,
   possible_duplicate BIT(1),
   possible_duplicate_of INT,

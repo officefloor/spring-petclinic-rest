@@ -428,7 +428,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assign the attributes that are derived once, at creation time, and stored on the owner: its
      * {@link #customerCode(Owner) customerCode}, {@link #namesakeCount(String, String) namesakeCount},
-     * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #householdSize(String)
+     * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #isCityApproachingCapacity(String)
+     * capacity warning}, {@link #householdSize(String)
      * householdSize} and {@link #membershipLevel(Owner) membershipLevel}. Each is computed from the
      * owner's own fields together with the owners already present, so this runs after the owner has
      * been validated and has passed the duplicate and capacity checks, and immediately before it is
@@ -438,6 +439,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        owner.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
         owner.setMembershipLevel(membershipLevel(owner));
         assignPossibleDuplicate(owner, sharesHousehold);
@@ -598,10 +600,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * more owners. Cities are compared case-insensitively.
      */
     private boolean isCityAtCapacity(String city) {
-        long count = this.clinicService.findAllOwners().stream()
+        return cityOwnerCount(city) >= 50;
+    }
+
+    /**
+     * Whether the given city is approaching its owner capacity, i.e. it already contains between 40
+     * and 49 owners (inclusive) and so is nearing the {@link #isCityAtCapacity(String) hard capacity
+     * limit} of 50. When true, a newly created owner in that city is flagged with a
+     * {@code capacityWarning}; the hard rejection at 50 is unchanged. Cities are compared
+     * case-insensitively.
+     */
+    private boolean isCityApproachingCapacity(String city) {
+        long count = cityOwnerCount(city);
+        return count >= 40 && count <= 49;
+    }
+
+    /**
+     * The number of existing owners in the given city, compared case-insensitively. Counted over the
+     * owners present before this create.
+     */
+    private long cityOwnerCount(String city) {
+        return this.clinicService.findAllOwners().stream()
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count();
-        return count >= 50;
     }
 
     /**
