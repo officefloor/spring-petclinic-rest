@@ -31,6 +31,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "checkDigit",
+        expression = "java(org.springframework.samples.petclinic.util.CheckDigits.luhn(owner.getCustomerCode()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** The single duplicate-detection key: normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty). */
