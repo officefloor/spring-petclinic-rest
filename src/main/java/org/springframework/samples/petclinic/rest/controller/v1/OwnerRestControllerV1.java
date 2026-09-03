@@ -133,14 +133,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isDailyLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (isTelephoneInUse(telephone)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (isEmailInUse(owner.getEmail())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
+        if (isDuplicate(owner, sharesHousehold)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (sharesHousehold) {
@@ -314,6 +308,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .max(Comparator.comparingInt(entry -> entry.getKey().length()))
             .map(entry -> e164.length() - entry.getKey().length() == entry.getValue())
             .orElse(true);
+    }
+
+    /**
+     * Whether the candidate owner duplicates an owner that already exists, and so must be
+     * rejected with {@code 409 Conflict}. An owner is a duplicate when it reuses an existing
+     * owner's telephone (compared in E.164 form) or email (compared case-insensitively), or —
+     * unless it is explicitly joining a shared household ({@code sharesHousehold}) — when it
+     * matches an existing household by lastName and address. Any single match makes the owner a
+     * duplicate.
+     */
+    private boolean isDuplicate(Owner owner, boolean sharesHousehold) {
+        return isTelephoneInUse(owner.getTelephone())
+            || isEmailInUse(owner.getEmail())
+            || (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress()));
     }
 
     /**
