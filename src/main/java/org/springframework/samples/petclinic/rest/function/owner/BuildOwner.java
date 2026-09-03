@@ -22,7 +22,11 @@ public class BuildOwner {
         Map<String, String> required = new LinkedHashMap<>();
         required.put("firstName", request.getFirstName());
         required.put("lastName", request.getLastName());
-        String address = AddressNormalizer.normalize(request.getAddress());
+        String line1 = request.getAddressLine1();
+        boolean structured = line1 != null && !line1.isBlank();
+        String address = structured
+                ? AddressNormalizer.compose(line1, request.getAddressLine2())
+                : AddressNormalizer.normalize(request.getAddress());
         required.put("address", address);
         required.put("city", request.getCity());
         required.put("telephone", request.getTelephone());
@@ -39,6 +43,11 @@ public class BuildOwner {
         }
         owner.setTelephone(telephone);
         owner.setAddress(address);
+        if (structured) {
+            String line2 = AddressNormalizer.normalize(request.getAddressLine2());
+            owner.setAddressLine1(AddressNormalizer.normalize(line1));
+            owner.setAddressLine2(line2.isEmpty() ? null : line2);
+        }
         String email = owner.getEmail();
         if (email != null && !EMAIL.matcher(email).matches()) {
             throw new MissingOwnerFieldsException(List.of("email"));

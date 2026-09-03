@@ -14,6 +14,16 @@ public final class AddressNormalizer {
     private AddressNormalizer() {
     }
 
+    /**
+     * The composed address from structured lines: the normalized {@code line1}, with a
+     * single space and the normalized {@code line2} appended when {@code line2} is present.
+     */
+    public static String compose(String line1, String line2) {
+        String a = normalize(line1);
+        String b = normalize(line2);
+        return b.isEmpty() ? a : a + " " + b;
+    }
+
     public static String normalize(String value) {
         if (value == null) {
             return "";
