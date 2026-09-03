@@ -312,6 +312,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
+     * The owners a newly created owner is checked against by the duplicate and identity rules:
+     * the {@link #isHouseholdDuplicate(Owner) household-duplicate} and {@link #findSoftDuplicate(Owner)
+     * soft-duplicate} checks, the {@link #customerCode(Owner) customerCode} de-duplication and the
+     * {@link #namesakeCount(String, String) namesake} count. This is the single place that scope is
+     * defined, so every one of those rules considers exactly the same set of owners; it currently
+     * spans every owner the clinic holds.
+     */
+    private Collection<Owner> activeOwners() {
+        return this.clinicService.findAllOwners();
+    }
+
+    /**
      * The existing owner this owner softly duplicates, or {@code null} when there is none. A soft
      * match is an existing owner that shares this owner's lastName (compared case-insensitively,
      * with collapsed whitespace) and its postcode but carries a different telephone; the earliest
@@ -323,7 +335,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return null;
         }
         String candidateLastName = normalizeName(owner.getLastName());
-        return this.clinicService.findAllOwners().stream()
+        return activeOwners().stream()
             .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
             .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
             .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
@@ -349,7 +361,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName()).substring(0, 8);
         String base = region + "-" + hash8;
 
-        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+        Set<String> existingCodes = activeOwners().stream()
             .map(Owner::getCustomerCode)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
@@ -421,7 +433,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private int namesakeCount(String firstName, String lastName) {
         String candidateFirstName = normalizeName(firstName);
         String candidateLastName = normalizeName(lastName);
-        return (int) this.clinicService.findAllOwners().stream()
+        return (int) activeOwners().stream()
             .filter(existing -> normalizeName(existing.getFirstName()).equals(candidateFirstName)
                 && normalizeName(existing.getLastName()).equals(candidateLastName))
             .count();
@@ -492,7 +504,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (householdId == null) {
             return false;
         }
-        return this.clinicService.findAllOwners().stream()
+        return activeOwners().stream()
             .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
