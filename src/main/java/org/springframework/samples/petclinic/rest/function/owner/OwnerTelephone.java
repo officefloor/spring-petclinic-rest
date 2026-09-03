@@ -16,8 +16,12 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * <p>For known country codes the national-number length is also checked: {@code '+61'} requires 9
  * national digits and {@code '+1'} requires 10. A number whose national part is the wrong length for
  * its country is rejected. Country codes not listed here are only length-checked by the E.164 range.
+ *
+ * <p>{@link #toDisplay} renders a stored E.164 number for humans: the {@code '+'} country code, a
+ * space, then the national digits grouped in threes (e.g. {@code '+61412345678'} becomes
+ * {@code '+61 412 345 678'}).
  */
-final class OwnerTelephone {
+public final class OwnerTelephone {
 
     /** E.164: a {@code '+'} followed by 8 to 15 digits. */
     private static final Pattern E164 = Pattern.compile("\\+[0-9]{8,15}");
@@ -68,5 +72,44 @@ final class OwnerTelephone {
             }
         }
         return e164;
+    }
+
+    /**
+     * Formats a stored E.164 telephone for display: the {@code '+'} country code, a space, then the
+     * national digits grouped in threes. Known country codes ({@code '+61'}, {@code '+1'}) split the
+     * country code from the national number; otherwise the whole run of digits is grouped in threes.
+     *
+     * @param e164 the stored E.164 number (a {@code '+'} followed by digits).
+     * @return the human-readable form, e.g. {@code '+61 412 345 678'}, or {@code null} when
+     *         {@code e164} is null.
+     */
+    public static String toDisplay(String e164) {
+        if (e164 == null) {
+            return null;
+        }
+        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
+        String countryCode = null;
+        String national = digits;
+        for (String code : NATIONAL_LENGTHS.keySet()) {
+            if (digits.startsWith(code)) {
+                countryCode = code;
+                national = digits.substring(code.length());
+                break;
+            }
+        }
+        String grouped = groupInThrees(national);
+        return countryCode == null ? "+" + grouped : "+" + countryCode + " " + grouped;
+    }
+
+    /** Groups a run of digits into space-separated groups of three, from the left. */
+    private static String groupInThrees(String digits) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                builder.append(' ');
+            }
+            builder.append(digits.charAt(i));
+        }
+        return builder.toString();
     }
 }

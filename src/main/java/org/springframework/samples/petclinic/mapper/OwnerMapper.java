@@ -29,7 +29,18 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's stored E.164 {@code telephone} formatted for humans: the '+' country code, a space,
+     * then the national digits grouped in threes (e.g. {@code '+61 412 345 678'}). Null when no
+     * telephone is recorded.
+     */
+    default String telephoneDisplay(Owner owner) {
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone.toDisplay(
+                owner.getTelephone());
+    }
 
     /**
      * The owner's age band, computed from {@code birthDate} against {@code registrationDate}:
