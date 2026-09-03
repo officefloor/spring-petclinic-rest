@@ -14,7 +14,8 @@ public class RespondWithOwner {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
-        dto.setMembershipTier(namesakeCount == 0 && owner.getEmail() != null ? "SILVER" : "BRONZE");
+        dto.setMembershipTier(Household.size(owner, ownerRepository) >= 3 ? "GOLD"
+                : namesakeCount == 0 && owner.getEmail() != null ? "SILVER" : "BRONZE");
         response.send(dto);
     }
 }
