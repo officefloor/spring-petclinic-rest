@@ -107,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneTaken || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
         HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
         String last = owner.getLastName();
         owner.setCustomerCode(last.substring(0, Math.min(3, last.length())).toUpperCase()
