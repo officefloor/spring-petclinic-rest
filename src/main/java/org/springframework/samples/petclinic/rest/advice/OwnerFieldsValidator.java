@@ -41,10 +41,11 @@ public class OwnerFieldsValidator implements Validator {
 
     @Override
     public void validate(Object target, Errors errors) {
+        OwnerFieldsDto owner = (OwnerFieldsDto) target;
+        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }
-        OwnerFieldsDto owner = (OwnerFieldsDto) target;
         String telephone = owner.getTelephone();
         String raw = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
         String e164 = raw.startsWith("+") ? raw
