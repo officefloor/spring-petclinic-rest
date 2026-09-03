@@ -58,9 +58,9 @@ public interface OwnerMapper {
         return age < 65 ? "ADULT" : "SENIOR";
     }
 
-    /** The single duplicate-detection key: normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty). */
+    /** The single duplicate-detection key: SHA-256 hex of normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName). */
     default String identityKey(Owner owner) {
-        return orEmpty(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()) + '|' + orEmpty(owner.getHouseholdId());
+        return org.springframework.samples.petclinic.util.IdentityKeys.of(owner);
     }
 
     default String orEmpty(String value) {

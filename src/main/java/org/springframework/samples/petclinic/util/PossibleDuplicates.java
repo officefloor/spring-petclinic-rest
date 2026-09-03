@@ -26,14 +26,23 @@ public final class PossibleDuplicates {
     }
 
     /**
-     * Id of an existing owner this one is a suspected (soft) duplicate of, or {@code null}.
+     * Id of an existing (non-deleted) owner this one is a suspected (soft) duplicate of, or {@code null}.
      *
-     * <p>The household is now keyed deterministically on {@code (lastName, postcode)}: a second owner
-     * sharing an existing household is rejected as a hard duplicate (409) unless it declares
-     * {@code sharesHousehold}, in which case it is a declared member. A declared member is not a
-     * suspected duplicate, so no successfully created owner is ever a possible duplicate.
+     * <p>A soft match is an owner whose {@link IdentityKeys#of identityKey} differs (so it is not a hard
+     * 409 duplicate) yet whose {@code soundex(lastName)} and postcode both match: the same household
+     * reached under a different telephone or email.
      */
     public static Integer matchIn(Owner owner, Collection<Owner> existing) {
+        String key = IdentityKeys.of(owner);
+        String soundex = IdentityKeys.soundex(owner.getLastName());
+        String postcode = owner.getPostcode();
+        for (Owner other : existing) {
+            if (!other.isDeleted() && postcode != null && postcode.equals(other.getPostcode())
+                && soundex.equals(IdentityKeys.soundex(other.getLastName()))
+                && !key.equals(IdentityKeys.of(other))) {
+                return other.getId();
+            }
+        }
         return null;
     }
 }
