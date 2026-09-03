@@ -1,0 +1,86 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 883577f27..2b7992bab 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
++    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()))")
+@@ -61,20 +62,34 @@ public interface OwnerMapper {
+         return value == null ? "" : value;
+     }
+ 
+-    /** Numeric level 1-4: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3, then +1 (level 4) only with tenure over 365 days. */
+-    default Integer membershipLevel(Owner owner) {
+-        int level = 1;
++    /** Membership points: +2 for an email, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days. */
++    default int membershipPoints(Owner owner) {
++        int points = 0;
+         if (owner.getEmail() != null) {
+-            level++;
++            points += 2;
+         }
+         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+-            level++;
++            points += 1;
++        }
++        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
++            points += 2;
++        }
++        if (tenureDays(owner) > 365) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** Numeric level derived from membershipPoints: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
++    default Integer membershipLevel(Owner owner) {
++        int points = membershipPoints(owner);
++        if (points <= 1) {
++            return 1;
+         }
+-        level = Math.min(level, 3);
+-        if (level == 3 && tenureDays(owner) > 365) {
+-            level++;
++        if (points <= 3) {
++            return 2;
+         }
+-        return level;
++        return points <= 5 ? 3 : 4;
+     }
+ 
+     /** Days of tenure since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7dd24ff86..2686508cc 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2106,14 +2106,22 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: "The owner's membership points: 0, plus 2 when an email is present, plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more, plus 3 for tenure over 365 days."
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: "The owner's membership level from 1 to 3: starts at 1, plus 1 when an email is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              description: "The owner's membership level derived from membershipPoints: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more)."
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
