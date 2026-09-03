@@ -64,6 +64,9 @@ public class Owner extends Person {
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
+    @Column(name = "household_member_count")
+    private Integer householdMemberCount;
+
     public String getCustomerCode() {
         return this.customerCode;
     }
@@ -86,6 +89,22 @@ public class Owner extends Person {
             }
         }
         this.namesakeCount = count;
+        assignHouseholdMemberCount(existingOwners);
+    }
+
+    public Integer getHouseholdMemberCount() {
+        return this.householdMemberCount;
+    }
+
+    /** Record how many owners (this one included) share this owner's household after this create. */
+    public void assignHouseholdMemberCount(Collection<Owner> existingOwners) {
+        int count = 1;
+        for (Owner other : existingOwners) {
+            if (householdId != null && householdId.equals(other.getHouseholdId())) {
+                count++;
+            }
+        }
+        this.householdMemberCount = count;
     }
 
     public String getHouseholdId() {

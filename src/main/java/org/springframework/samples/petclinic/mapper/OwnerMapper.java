@@ -30,8 +30,12 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'. */
+    /** 'GOLD' for a 3+ member household, else 'SILVER' with no namesakes and an email, otherwise 'BRONZE'. */
     default String membershipTier(Owner owner) {
+        Integer household = owner.getHouseholdMemberCount();
+        if (household != null && household >= 3) {
+            return "GOLD";
+        }
         boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
         return silver ? "SILVER" : "BRONZE";
     }
