@@ -445,6 +445,34 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's stored E.164 {@linkplain #getTelephone() telephone} formatted for humans:
+     * a {@code '+'}, the {@linkplain #countryCodeOf(String) country calling code}, a space, and
+     * the national digits grouped into threes from the left separated by spaces,
+     * e.g. {@code '+61412345678'} -> {@code '+61 412 345 678'}. The raw {@link #getTelephone()
+     * telephone} stays in E.164. Returns the telephone unchanged when it is {@code null}, not in
+     * E.164 form, or carries no known country code.
+     */
+    public String getTelephoneDisplay() {
+        if (this.telephone == null || !this.telephone.startsWith("+")) {
+            return this.telephone;
+        }
+        String digits = this.telephone.substring(1);
+        String countryCode = countryCodeOf(digits);
+        if (countryCode == null) {
+            return this.telephone;
+        }
+        String national = digits.substring(countryCode.length());
+        StringBuilder groups = new StringBuilder();
+        for (int i = 0; i < national.length(); i += 3) {
+            if (groups.length() > 0) {
+                groups.append(' ');
+            }
+            groups.append(national, i, Math.min(i + 3, national.length()));
+        }
+        return "+" + countryCode + " " + groups;
+    }
+
+    /**
      * The owner's identity key: the single derived value used for duplicate detection.
      * It joins the normalized (E.164) telephone, the email (already lower-cased, or the
      * empty string when absent) and the householdId (or the empty string when the owner
