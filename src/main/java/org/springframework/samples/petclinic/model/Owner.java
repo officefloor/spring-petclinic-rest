@@ -89,6 +89,13 @@ public class Owner extends Person {
         this.email = email == null ? null : email.toLowerCase();
     }
 
+    /**
+     * The owner's name formatted as {@code 'LastName, FirstName'} from the stored names.
+     */
+    public String getDisplayName() {
+        return this.getLastName() + ", " + this.getFirstName();
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
