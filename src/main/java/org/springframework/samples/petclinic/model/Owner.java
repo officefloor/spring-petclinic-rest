@@ -96,6 +96,15 @@ public class Owner extends Person {
         return this.getLastName() + ", " + this.getFirstName();
     }
 
+    /**
+     * The owner's initials: the upper-cased first letters of firstName and lastName,
+     * dot-separated with a trailing dot, e.g. {@code 'J.S.'}.
+     */
+    public String getInitials() {
+        return Character.toUpperCase(this.getFirstName().charAt(0)) + "."
+            + Character.toUpperCase(this.getLastName().charAt(0)) + ".";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
