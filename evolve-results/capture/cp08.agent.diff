@@ -1,0 +1,114 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7d38ee9d4..3337e6da8 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -34,10 +35,10 @@ public interface OwnerMapper {
+         defaultExpression = "java(java.time.LocalDate.now())")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    /** Strip every non-digit character so the create path stores the bare 10-digit telephone. */
++    /** Normalize to E.164 so the create path stores, and duplicate detection compares, that form. */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
++        return TelephoneNormalizer.toE164(telephone);
+     }
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7ab2eeb5d..e24760720 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,9 +16,9 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
+@@ -45,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be valid E.164")
+     private String telephone;
+ 
+     @Column(name = "email")
+@@ -86,8 +85,9 @@ public class Owner extends Person {
+         return this.telephone;
+     }
+ 
++    /** Store the telephone in E.164 form so create and update persist and return it normalized. */
+     public void setTelephone(String telephone) {
+-        this.telephone = telephone;
++        this.telephone = TelephoneNormalizer.toE164(telephone);
+     }
+ 
+     public String getEmail() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+new file mode 100644
+index 000000000..01ae4090d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Normalizes telephone numbers to E.164 form.
++ *
++ * <p>Spaces, dashes and brackets are stripped. A leading '+' with its country code is
++ * kept as given; otherwise country code '+61' is assumed and a single leading '0' is
++ * dropped from the national digits. The result is expected to carry 8 to 15 digits after
++ * the '+', which callers enforce (Bean Validation / DTO pattern) so an unformattable
++ * input is rejected with 400. Normalization is idempotent, so a value already in E.164
++ * form is returned unchanged.
++ */
++public final class TelephoneNormalizer {
++
++    private TelephoneNormalizer() {
++    }
++
++    /** Return {@code telephone} in E.164 form, or {@code null} when it is {@code null}. */
++    public static String toE164(String telephone) {
++        if (telephone == null) {
++            return null;
++        }
++        String digits = telephone.replaceAll("[^0-9+]", "");
++        if (digits.startsWith("+")) {
++            return "+" + digits.substring(1).replace("+", "");
++        }
++        if (digits.startsWith("0")) {
++            digits = digits.substring(1);
++        }
++        return "+61" + digits;
++    }
++}
