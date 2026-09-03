@@ -1,0 +1,152 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index eaa14e7d0..34f9ba2cf 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -85,6 +85,9 @@ public class Owner extends Person {
+     @Column(name = "bulk_signup_warning")
+     private Boolean bulkSignupWarning;
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
+@@ -248,6 +251,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Boolean getCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(Boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getHouseholdSize() {
+         return this.householdSize;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4c30a0111..db3dc7748 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -428,7 +428,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * Assign the attributes that are derived once, at creation time, and stored on the owner: its
+      * {@link #customerCode(Owner) customerCode}, {@link #namesakeCount(String, String) namesakeCount},
+-     * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #householdSize(String)
++     * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #isCityApproachingCapacity(String)
++     * capacity warning}, {@link #householdSize(String)
+      * householdSize} and {@link #membershipLevel(Owner) membershipLevel}. Each is computed from the
+      * owner's own fields together with the owners already present, so this runs after the owner has
+      * been validated and has passed the duplicate and capacity checks, and immediately before it is
+@@ -438,6 +439,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setCustomerCode(customerCode(owner));
+         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
+         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
++        owner.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
+         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
+         owner.setMembershipLevel(membershipLevel(owner));
+         assignPossibleDuplicate(owner, sharesHousehold);
+@@ -598,10 +600,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * more owners. Cities are compared case-insensitively.
+      */
+     private boolean isCityAtCapacity(String city) {
+-        long count = this.clinicService.findAllOwners().stream()
++        return cityOwnerCount(city) >= 50;
++    }
++
++    /**
++     * Whether the given city is approaching its owner capacity, i.e. it already contains between 40
++     * and 49 owners (inclusive) and so is nearing the {@link #isCityAtCapacity(String) hard capacity
++     * limit} of 50. When true, a newly created owner in that city is flagged with a
++     * {@code capacityWarning}; the hard rejection at 50 is unchanged. Cities are compared
++     * case-insensitively.
++     */
++    private boolean isCityApproachingCapacity(String city) {
++        long count = cityOwnerCount(city);
++        return count >= 40 && count <= 49;
++    }
++
++    /**
++     * The number of existing owners in the given city, compared case-insensitively. Counted over the
++     * owners present before this create.
++     */
++    private long cityOwnerCount(String city) {
++        return this.clinicService.findAllOwners().stream()
+             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+             .count();
+-        return count >= 50;
+     }
+ 
+     /**
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index 27dfd65ba..43a69349b 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 9ff689a9b..74ffcb0b2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,6 +53,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   bulk_signup_warning BOOLEAN,
++  capacity_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 4967b58cb..0cab72cac 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_id VARCHAR(64),
+   namesake_count INT,
+   bulk_signup_warning BIT(1),
++  capacity_warning BIT(1),
+   household_size INT,
+   possible_duplicate BIT(1),
+   possible_duplicate_of INT,
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 13c847db9..c5221cb3c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       household_id TEXT,
+                                       namesake_count INTEGER,
+                                       bulk_signup_warning BOOLEAN,
++                                      capacity_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9396b0e45..b7eb77c92 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2275,6 +2275,16 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: >-
++                Whether, at the time this owner was created, its city was
++                approaching the owner capacity limit of 50: true when the city
++                already held between 40 and 49 owners, otherwise false. The hard
++                rejection at 50 is unchanged.
++              type: boolean
++              example: false
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: >-
