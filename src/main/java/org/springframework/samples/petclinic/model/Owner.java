@@ -97,6 +97,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "risk_flag")
+    private Boolean riskFlag;
+
     @Column(name = "membership_level")
     private Integer membershipLevel;
 
@@ -281,6 +284,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getRiskFlag() {
+        return this.riskFlag;
+    }
+
+    public void setRiskFlag(Boolean riskFlag) {
+        this.riskFlag = riskFlag;
     }
 
     /**

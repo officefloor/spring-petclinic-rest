@@ -450,6 +450,39 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
         owner.setMembershipLevel(membershipLevel(owner));
         assignPossibleDuplicate(owner, sharesHousehold);
+        owner.setRiskFlag(isRiskFlagged(owner));
+    }
+
+    /**
+     * Whether a newly created owner should be flagged for review. True when any of these hold: the
+     * owner is a {@linkplain Owner#getPossibleDuplicate() possible duplicate}, its email domain is
+     * {@linkplain #isDisposableAdjacentEmail(String) disposable-adjacent}, or its city is over its
+     * soft capacity (the city is {@linkplain #isCityApproachingCapacity(String) approaching capacity},
+     * so its {@link Owner#getCapacityWarning() capacityWarning} is set); otherwise false. Computed
+     * during {@link #assignDerivedAttributes(Owner, boolean)}, after the possible-duplicate and
+     * capacity-warning attributes it reads have already been assigned.
+     */
+    private boolean isRiskFlagged(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || isDisposableAdjacentEmail(owner.getEmail())
+            || Boolean.TRUE.equals(owner.getCapacityWarning());
+    }
+
+    /**
+     * Whether the given email's domain is disposable-adjacent: a subdomain of a known
+     * {@linkplain #DISPOSABLE_EMAIL_DOMAINS disposable} domain (e.g. {@code x.mailinator.com}). An
+     * exactly-disposable domain is rejected earlier during {@link #normalizeAndValidate(Owner)
+     * validation}, so it never reaches here; a subdomain is admitted but still flagged as adjacent.
+     * The email is optional, so a {@code null} or empty email is not disposable-adjacent; otherwise
+     * its {@linkplain Owner#emailDomainOf(String) domain} (compared case-insensitively) is tested.
+     */
+    private boolean isDisposableAdjacentEmail(String email) {
+        String domain = Owner.emailDomainOf(email);
+        if (domain == null) {
+            return false;
+        }
+        return DISPOSABLE_EMAIL_DOMAINS.stream()
+            .anyMatch(disposable -> domain.endsWith("." + disposable));
     }
 
     /**
