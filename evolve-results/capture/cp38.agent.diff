@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+new file mode 100644
+index 000000000..30cf27694
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when an owner request carries an {@code email} whose domain is on the disposable-domain
++ * blocklist (e.g. {@code mailinator.com}). Handled globally by {@link DisposableEmailExceptionHandler},
++ * which responds 400.
++ */
++public class DisposableEmailException extends Exception {
++
++    private final String email;
++
++    public DisposableEmailException(String email) {
++        super("Email domain is on the disposable-domain blocklist: " + email);
++        this.email = email;
++    }
++
++    public String getEmail() {
++        return this.email;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+new file mode 100644
+index 000000000..e779988fb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 400 when an owner request carries an {@code email} whose domain is on the disposable-domain
++ * blocklist.
++ */
++public class DisposableEmailExceptionHandler {
++
++    public void handle(@Parameter DisposableEmailException ex,
++            ObjectResponse<ResponseEntity<Map<String, List<String>>>> response) {
++        response.send(ResponseEntity.badRequest().body(Map.of("errors", List.of("email"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+index f6c1e44e2..796dee004 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerEmail.java
+@@ -1,12 +1,15 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.Set;
+ import java.util.regex.Pattern;
+ 
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+ 
+ /**
+  * Normalizes the optional owner {@code email}. Email is absent when null or blank; when present it must
+- * be a syntactically valid address, and is stored/returned lower-cased.
++ * be a syntactically valid address whose domain is not on the disposable-domain blocklist, and is
++ * stored/returned lower-cased.
+  */
+ final class OwnerEmail {
+ 
+@@ -16,14 +19,22 @@ final class OwnerEmail {
+      */
+     private static final Pattern SYNTAX = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+ 
++    /**
++     * Disposable email domains that are rejected: an address in one of these is a throwaway inbox, so
++     * an owner supplying one is a 400.
++     */
++    private static final Set<String> BLOCKED_DOMAINS = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
+     private OwnerEmail() {
+     }
+ 
+     /**
+      * @return the trimmed, lower-cased email, or {@code null} when it is absent (null or blank).
+      * @throws InvalidEmailException when present but not syntactically valid.
++     * @throws DisposableEmailException when present and its domain is on the disposable-domain blocklist.
+      */
+-    static String normalize(String email) throws InvalidEmailException {
++    static String normalize(String email) throws InvalidEmailException, DisposableEmailException {
+         if (email == null || email.isBlank()) {
+             return null;
+         }
+@@ -31,6 +42,11 @@ final class OwnerEmail {
+         if (!SYNTAX.matcher(trimmed).matches()) {
+             throw new InvalidEmailException(email);
+         }
+-        return trimmed.toLowerCase();
++        String normalized = trimmed.toLowerCase();
++        String domain = normalized.substring(normalized.lastIndexOf('@') + 1);
++        if (BLOCKED_DOMAINS.contains(domain)) {
++            throw new DisposableEmailException(email);
++        }
++        return normalized;
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+index 6dc4297f5..5fe8b5fdc 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwner.java
+@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ import jakarta.validation.Valid;
+ import net.officefloor.plugin.variable.Out;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+@@ -19,7 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
+ public class ValidateOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+-            throws InvalidEmailException, InvalidTelephoneException, InvalidPostcodeException {
++            throws InvalidEmailException, DisposableEmailException, InvalidTelephoneException,
++            InvalidPostcodeException {
+         request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
+         request.setEmail(OwnerEmail.normalize(request.getEmail()));
+         request.setPostcode(Postcode.normalize(request.getPostcode(), request.getCity()));
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+index ca8dca70c..ff603a909 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/ValidateOwnerFields.java
+@@ -5,6 +5,7 @@ import java.util.List;
+ 
+ import net.officefloor.plugin.variable.Out;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidEmailException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidPostcodeException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+@@ -28,7 +29,7 @@ public class ValidateOwnerFields {
+ 
+     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
+             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
+-            InvalidPostcodeException {
++            DisposableEmailException, InvalidPostcodeException {
+         request.setAddress(OwnerAddress.normalize(request.getAddress()));
+         List<String> missing = new ArrayList<>();
+         require("firstName", request.getFirstName(), missing);
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+new file mode 100644
+index 000000000..7f783fc25
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DisposableEmailExceptionHandler
