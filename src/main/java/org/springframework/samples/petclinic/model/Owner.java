@@ -72,6 +72,9 @@ public class Owner extends Person {
     @Transient
     private boolean bulkSignupWarning;
 
+    @Transient
+    private Integer possibleDuplicateOf;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -162,6 +165,19 @@ public class Owner extends Person {
 
     public void setBulkSignupWarning(boolean bulkSignupWarning) {
         this.bulkSignupWarning = bulkSignupWarning;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /** True when a soft-duplicate match was recorded (see {@code possibleDuplicateOf}). */
+    public boolean isPossibleDuplicate() {
+        return this.possibleDuplicateOf != null;
     }
 
     protected Set<Pet> getPetsInternal() {
