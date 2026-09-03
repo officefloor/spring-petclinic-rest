@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 60f7c9f7b..2309de9ae 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,8 +29,19 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The owner's stored E.164 {@code telephone} formatted for humans: the '+' country code, a space,
++     * then the national digits grouped in threes (e.g. {@code '+61 412 345 678'}). Null when no
++     * telephone is recorded.
++     */
++    default String telephoneDisplay(Owner owner) {
++        return org.springframework.samples.petclinic.rest.function.owner.OwnerTelephone.toDisplay(
++                owner.getTelephone());
++    }
++
+     /**
+      * The owner's age band, computed from {@code birthDate} against {@code registrationDate}:
+      * {@code MINOR} (under 18), {@code ADULT} (18-64) or {@code SENIOR} (65+). Null when no
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+index 8f58214e7..d2d937e78 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerTelephone.java
+@@ -16,8 +16,12 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
+  * <p>For known country codes the national-number length is also checked: {@code '+61'} requires 9
+  * national digits and {@code '+1'} requires 10. A number whose national part is the wrong length for
+  * its country is rejected. Country codes not listed here are only length-checked by the E.164 range.
++ *
++ * <p>{@link #toDisplay} renders a stored E.164 number for humans: the {@code '+'} country code, a
++ * space, then the national digits grouped in threes (e.g. {@code '+61412345678'} becomes
++ * {@code '+61 412 345 678'}).
+  */
+-final class OwnerTelephone {
++public final class OwnerTelephone {
+ 
+     /** E.164: a {@code '+'} followed by 8 to 15 digits. */
+     private static final Pattern E164 = Pattern.compile("\\+[0-9]{8,15}");
+@@ -69,4 +73,43 @@ final class OwnerTelephone {
+         }
+         return e164;
+     }
++
++    /**
++     * Formats a stored E.164 telephone for display: the {@code '+'} country code, a space, then the
++     * national digits grouped in threes. Known country codes ({@code '+61'}, {@code '+1'}) split the
++     * country code from the national number; otherwise the whole run of digits is grouped in threes.
++     *
++     * @param e164 the stored E.164 number (a {@code '+'} followed by digits).
++     * @return the human-readable form, e.g. {@code '+61 412 345 678'}, or {@code null} when
++     *         {@code e164} is null.
++     */
++    public static String toDisplay(String e164) {
++        if (e164 == null) {
++            return null;
++        }
++        String digits = e164.startsWith("+") ? e164.substring(1) : e164;
++        String countryCode = null;
++        String national = digits;
++        for (String code : NATIONAL_LENGTHS.keySet()) {
++            if (digits.startsWith(code)) {
++                countryCode = code;
++                national = digits.substring(code.length());
++                break;
++            }
++        }
++        String grouped = groupInThrees(national);
++        return countryCode == null ? "+" + grouped : "+" + countryCode + " " + grouped;
++    }
++
++    /** Groups a run of digits into space-separated groups of three, from the left. */
++    private static String groupInThrees(String digits) {
++        StringBuilder builder = new StringBuilder();
++        for (int i = 0; i < digits.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                builder.append(' ');
++            }
++            builder.append(digits.charAt(i));
++        }
++        return builder.toString();
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a3bbd119b..3eb39be4a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2157,6 +2157,14 @@ components:
+               type: string
+               example: '+61412345678|george.franklin@example.com|3A7F9C2E1B0D'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: >-
++                The stored E.164 'telephone' formatted for humans: the '+' country code, a space,
++                then the national digits grouped in threes.
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: >-
