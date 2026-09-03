@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4e01244bb..2ce629dd4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -26,6 +26,7 @@ public interface OwnerMapper {
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.of(owner))")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
++    @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java
+new file mode 100644
+index 000000000..9e3414a0c
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/TelephoneDisplay.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Formats an owner's stored E.164 telephone for humans: keep the leading '+' and country
++ * code, add a space, then the national digits grouped in threes (e.g. '+61412345678' ->
++ * '+61 412 345 678'). '+61' and '+1' country codes are recognised; anything else keeps its
++ * digits ungrouped after the '+'. The raw stored 'telephone' is left untouched.
++ */
++public final class TelephoneDisplay {
++
++    private TelephoneDisplay() {
++    }
++
++    public static String of(Owner owner) {
++        String telephone = owner.getTelephone();
++        if (telephone == null || !telephone.startsWith("+")) {
++            return telephone;
++        }
++        String digits = telephone.substring(1);
++        int codeLength = digits.startsWith("61") ? 2 : digits.startsWith("1") ? 1 : 0;
++        String national = groupInThrees(digits.substring(codeLength));
++        return "+" + digits.substring(0, codeLength) + " " + national;
++    }
++
++    private static String groupInThrees(String national) {
++        StringBuilder grouped = new StringBuilder();
++        for (int i = 0; i < national.length(); i++) {
++            if (i > 0 && i % 3 == 0) {
++                grouped.append(' ');
++            }
++            grouped.append(national.charAt(i));
++        }
++        return grouped.toString();
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e6641253a..cafc968f1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2183,6 +2183,12 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            telephoneDisplay:
++              title: Telephone display
++              description: "The stored E.164 telephone formatted for humans: country code, a space, then national digits grouped in threes (e.g. '+61 412 345 678'). Raw 'telephone' stays E.164."
++              type: string
++              example: '+61 412 345 678'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
