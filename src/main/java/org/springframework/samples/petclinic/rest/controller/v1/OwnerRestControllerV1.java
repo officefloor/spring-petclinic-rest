@@ -66,14 +66,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final VisitMapper visitMapper;
 
+    private final AddressNormalizer addressNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
-                                 VisitMapper visitMapper) {
+                                 VisitMapper visitMapper,
+                                 AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -195,18 +199,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * trimmed), so the check does not depend on casing or spacing.
      */
     private boolean isHouseholdInUse(String lastName, String address) {
-        String candidateLastName = normalize(lastName);
-        String candidateAddress = normalize(address);
+        String candidateLastName = normalizeName(lastName);
+        String candidateAddress = addressNormalizer.normalize(address);
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalize(existing.getLastName()).equals(candidateLastName)
-                && normalize(existing.getAddress()).equals(candidateAddress));
+            .anyMatch(existing -> normalizeName(existing.getLastName()).equals(candidateLastName)
+                && addressNormalizer.normalize(existing.getAddress()).equals(candidateAddress));
     }
 
     /**
-     * Normalize a value for household comparison: trim, collapse internal whitespace runs to a
-     * single space and lower-case. A null value normalizes to the empty string.
+     * Normalize an owner's name for household comparison: trim, collapse internal whitespace runs
+     * to a single space and lower-case. A null value normalizes to the empty string.
      */
-    private String normalize(String value) {
+    private String normalizeName(String value) {
         if (value == null) {
             return "";
         }
@@ -221,7 +225,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * upper-case hex characters of the SHA-256 of {@code '<lastName>|<address>'}.
      */
     private String householdId(String lastName, String address) {
-        String key = normalize(lastName) + "|" + normalize(address);
+        String key = normalizeName(lastName) + "|" + addressNormalizer.normalize(address);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(key.getBytes(StandardCharsets.UTF_8));
