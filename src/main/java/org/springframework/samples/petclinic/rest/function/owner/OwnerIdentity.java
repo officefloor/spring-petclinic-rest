@@ -22,7 +22,7 @@ public final class OwnerIdentity {
     public static String key(String telephone, String email, String lastName) {
         String tel = telephone == null ? "" : telephone;
         String mail = email == null ? "" : email.toLowerCase();
-        String raw = tel + "|" + mail + "|" + Soundex.of(lastName);
+        String raw = "V2|" + tel + "|" + mail + "|" + Soundex.of(lastName);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);

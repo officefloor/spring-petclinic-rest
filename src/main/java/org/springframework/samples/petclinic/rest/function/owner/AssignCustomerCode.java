@@ -23,7 +23,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = CityLocality.of(owner.getCity(), owner.getPostcode());
+        String region = "V2" + CityLocality.of(owner.getCity(), owner.getPostcode());
         String prefix = region + String.format("%02d", FiscalYear.shortYear(owner.getRegistrationDate()))
                 + hash8(owner.getTelephone() + owner.getLastName());
         String base = prefix + CheckDigit.of(prefix);

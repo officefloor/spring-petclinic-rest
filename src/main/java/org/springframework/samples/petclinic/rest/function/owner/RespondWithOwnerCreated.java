@@ -29,8 +29,8 @@ public class RespondWithOwnerCreated {
         dto.setBulkSignupWarning(createdToday > 80);
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), dto.getMembershipLevel());
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-                SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), dto.getMembershipLevel());
+        AUDIT.info("{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), dto.getMembershipLevel(), dto.getOwnerSegment());
         NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }

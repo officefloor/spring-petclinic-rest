@@ -16,7 +16,7 @@ public final class HouseholdId {
     }
 
     public static String of(String lastName, String postcode) {
-        String key = normalize(lastName) + "|" + (postcode == null ? "" : postcode);
+        String key = "V2|" + normalize(lastName) + "|" + (postcode == null ? "" : postcode);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest).substring(0, 12);

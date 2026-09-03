@@ -21,8 +21,8 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
-    @Mapping(target = "householdId", expression = "java(householdId(owner))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode()))")
@@ -52,6 +52,17 @@ public interface OwnerMapper {
     default String householdId(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(
                 owner.getLastName(), owner.getPostcode());
+    }
+
+    /** Groups the owner's version-2 identifiers (memberId, householdId, identityKey). */
+    default org.springframework.samples.petclinic.rest.dto.IdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.IdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.IdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(householdId(owner));
+        identity.setIdentityKey(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(
+                owner.getTelephone(), owner.getEmail(), owner.getLastName()));
+        return identity;
     }
 
     Owner toOwner(OwnerDto ownerDto);
