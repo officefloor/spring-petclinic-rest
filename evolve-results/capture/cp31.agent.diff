@@ -1,0 +1,89 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c5d2ecdce..3f4bb84d5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,8 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
++    @Mapping(target = "checkDigit",
++        expression = "java(org.springframework.samples.petclinic.util.CheckDigits.luhn(owner.getCustomerCode()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** The single duplicate-detection key: normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty). */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+new file mode 100644
+index 000000000..6efe45933
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigits.java
+@@ -0,0 +1,50 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the Luhn check digit over the digits contained in a string.
++ */
++public final class CheckDigits {
++
++    private CheckDigits() {
++    }
++
++    /** Return the Luhn check digit (0-9) over the digits contained in {@code s}, or {@code null} when {@code s} is null. */
++    public static Integer luhn(String s) {
++        if (s == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = s.length() - 1; i >= 0; i--) {
++            char c = s.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 57096b723..7ec03731a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2141,6 +2141,15 @@ components:
+               type: string
+               example: '+61412345678||'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: The Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
