@@ -1,0 +1,80 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 1bb231db2..ab2115d3b 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipPoints",
+@@ -97,6 +98,17 @@ public interface OwnerMapper {
+                 owner.getCustomerCode());
+     }
+ 
++    /**
++     * The IANA timezone name for the owner's locality (region), from the fixed region-to-timezone
++     * table (NSW -> Australia/Sydney, VIC -> Australia/Melbourne, QLD -> Australia/Brisbane); see
++     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion#timezoneOf}.
++     * Null when the region is absent or unknown.
++     */
++    default String timezone(Owner owner) {
++        return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.timezoneOf(
++                owner.getCustomerCode());
++    }
++
+     /**
+      * A single Luhn check digit (0-9) computed over the digits of the owner's {@code customerCode}.
+      * Null when the customer code is absent.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
+index 07584fb1a..6291df0c2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRegion.java
+@@ -21,6 +21,10 @@ public final class OwnerRegion {
+     private static final Map<String, int[]> REGION_RANGE = Map.of(
+             "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
+ 
++    /** Region -> IANA timezone name, from the fixed region-to-timezone table. */
++    private static final Map<String, String> REGION_TIMEZONE = Map.of(
++            "NSW", "Australia/Sydney", "VIC", "Australia/Melbourne", "QLD", "Australia/Brisbane");
++
+     private OwnerRegion() {
+     }
+ 
+@@ -71,4 +75,14 @@ public final class OwnerRegion {
+         int dash = customerCode.indexOf('-');
+         return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
+     }
++
++    /**
++     * The IANA timezone name for the owner's region, resolved from the REGION component of the
++     * {@code customerCode} through the fixed region-to-timezone table (NSW -> Australia/Sydney,
++     * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). {@code null} when the region is
++     * absent or unknown.
++     */
++    public static String timezoneOf(String customerCode) {
++        return REGION_TIMEZONE.get(regionOf(customerCode));
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8b3457d28..8ca9625ca 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2113,6 +2113,15 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            timezone:
++              title: Timezone
++              description: >-
++                The IANA timezone name for the owner's locality (region), from the fixed
++                region-to-timezone table (NSW -> Australia/Sydney, VIC -> Australia/Melbourne,
++                QLD -> Australia/Brisbane); null when the region is absent or unknown.
++              type: string
++              example: 'Australia/Sydney'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
