@@ -15,6 +15,7 @@ public class RespondWithOwner {
         int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
+        dto.setContactPreference(owner.getEmail() != null ? "EMAIL" : "PHONE");
         response.send(dto);
     }
 }
