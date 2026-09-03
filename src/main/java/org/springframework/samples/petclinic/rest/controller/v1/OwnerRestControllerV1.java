@@ -125,14 +125,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
 
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        assignHousehold(owner, sharesHousehold);
+        assignHousehold(owner);
 
-        HttpStatus conflict = checkForConflicts(owner);
+        HttpStatus conflict = checkForConflicts(owner, sharesHousehold);
         if (conflict != null) {
             return new ResponseEntity<>(conflict);
         }
 
-        assignDerivedAttributes(owner);
+        assignDerivedAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -173,28 +173,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Assign the owner its household link. An owner that declares it shares a household
-     * ({@code sharesHousehold}) is given the {@link #householdId(Owner) householdId} it shares with
-     * the other members of its household; an owner that does not declare it keeps no household. The
-     * link is assigned before the {@link #checkForConflicts(Owner) conflict checks} because it is
-     * part of the owner's {@link Owner#getIdentityKey() identity} and feeds its
-     * {@link #householdSize(String) household size}.
+     * Assign the owner its household link. The {@link #householdId(Owner) householdId} is computed
+     * deterministically from the owner's lastName and postcode, so every owner sharing that
+     * lastName and postcode is assigned the same value automatically, independent of whether the
+     * owner declares it shares a household. The link is assigned before the
+     * {@link #checkForConflicts(Owner, boolean) conflict checks} because it is part of the owner's
+     * {@link Owner#getIdentityKey() identity} and feeds its {@link #householdSize(String) household
+     * size}.
      */
-    private void assignHousehold(Owner owner, boolean sharesHousehold) {
-        if (sharesHousehold) {
-            owner.setHouseholdId(householdId(owner));
-        }
+    private void assignHousehold(Owner owner) {
+        owner.setHouseholdId(householdId(owner));
     }
 
     /**
      * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
      * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
-     * {@link #isDuplicate(Owner) duplicates} an existing owner's identity or when its
-     * {@link #isCityAtCapacity(String) city is already at capacity}. Returns {@code null} when the
-     * owner clashes with nothing and may be created.
+     * {@link #isHouseholdDuplicate(Owner) duplicates an existing household} or when its
+     * {@link #isCityAtCapacity(String) city is already at capacity}. Declaring {@code
+     * sharesHousehold} bypasses only the household-duplicate block (the owner is then created as a
+     * declared household member); it does not lift the city-capacity limit. Returns {@code null}
+     * when the owner clashes with nothing and may be created.
      */
-    private HttpStatus checkForConflicts(Owner owner) {
-        if (isDuplicate(owner)) {
+    private HttpStatus checkForConflicts(Owner owner, boolean sharesHousehold) {
+        if (!sharesHousehold && isHouseholdDuplicate(owner)) {
             return HttpStatus.CONFLICT;
         }
         if (isCityAtCapacity(owner.getCity())) {
@@ -222,24 +223,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * present, so this runs after the owner has been validated and has passed the duplicate and
      * capacity checks, and immediately before it is persisted.
      */
-    private void assignDerivedAttributes(Owner owner) {
+    private void assignDerivedAttributes(Owner owner, boolean sharesHousehold) {
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
-        assignPossibleDuplicate(owner);
+        assignPossibleDuplicate(owner, sharesHousehold);
     }
 
     /**
-     * Flag a newly created owner as a possible (soft) duplicate. Because this runs after the hard
-     * {@link #isDuplicate(Owner) duplicate} check, the owner is not an exact identity match; it is a
-     * soft match of an existing owner as determined by {@link #findSoftDuplicate(Owner)}. When such
-     * an owner exists the new owner is flagged with {@code possibleDuplicate = true} and
-     * {@code possibleDuplicateOf} set to that owner's id; otherwise {@code possibleDuplicate = false}
-     * and no matching id is recorded.
+     * Flag a newly created owner as a possible (soft) duplicate. An owner that declares it shares a
+     * household ({@code sharesHousehold}) is a declared household member, not a suspected duplicate,
+     * so it is never flagged. Otherwise, because this runs after the hard
+     * {@link #isHouseholdDuplicate(Owner) household-duplicate} check, the owner is not a household
+     * match; it is flagged only when it is a soft match of an existing owner as determined by
+     * {@link #findSoftDuplicate(Owner)}. When such an owner exists the new owner is flagged with
+     * {@code possibleDuplicate = true} and {@code possibleDuplicateOf} set to that owner's id;
+     * otherwise {@code possibleDuplicate = false} and no matching id is recorded.
      */
-    private void assignPossibleDuplicate(Owner owner) {
-        Owner match = findSoftDuplicate(owner);
+    private void assignPossibleDuplicate(Owner owner, boolean sharesHousehold) {
+        Owner match = sharesHousehold ? null : findSoftDuplicate(owner);
         owner.setPossibleDuplicate(match != null);
         owner.setPossibleDuplicateOf(match == null ? null : match.getId());
     }
@@ -419,18 +422,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Whether the candidate owner duplicates an owner that already exists, and so must be
-     * rejected with {@code 409 Conflict}. All duplicate detection is consolidated into a single
-     * derived {@link Owner#getIdentityKey() identityKey} — the normalized telephone, email (or
-     * empty) and householdId (or empty) joined with {@code '|'} — and an owner is a duplicate only
-     * when its WHOLE identity key equals that of an existing owner. Because the telephone is part
-     * of the key, two members of the same household with different telephones have different
-     * identity keys and are both allowed; only an exact full-key match is a duplicate.
+     * Whether the candidate owner belongs to a household that already exists, and so must be
+     * rejected with {@code 409 Conflict} unless it declares {@code sharesHousehold}. The household
+     * is keyed by the deterministic {@link #householdId(Owner) householdId} (derived from lastName
+     * and postcode), so any existing owner carrying the same householdId means this owner is a
+     * second member of an already-registered household. Two owners sharing a lastName and postcode
+     * are therefore the same household: the second is a household duplicate.
      */
-    private boolean isDuplicate(Owner owner) {
-        String identityKey = owner.getIdentityKey();
+    private boolean isHouseholdDuplicate(Owner owner) {
+        String householdId = owner.getHouseholdId();
+        if (householdId == null) {
+            return false;
+        }
         return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
+            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
     }
 
     /**
@@ -446,13 +451,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * A stable shared identifier for the household an owner belongs to, derived deterministically
-     * from its lastName and address. Both are normalized (case-insensitive, whitespace-collapsed)
-     * before hashing, so every owner sharing the same household is assigned the same value
-     * regardless of the order in which they are created. Formatted as the first 12 upper-case hex
-     * characters of the SHA-256 of {@code '<lastName>|<address>'}.
+     * from its lastName and postcode. The lastName is normalized (case-insensitive,
+     * whitespace-collapsed) before hashing, so every owner sharing the same lastName and postcode is
+     * assigned the same value regardless of the order in which they are created. Formatted as the
+     * first 12 upper-case hex characters of the SHA-256 of {@code '<normalizedLastName>|<postcode>'}
+     * (an absent postcode contributes the empty string).
      */
     private String householdId(Owner owner) {
-        String key = normalizeName(owner.getLastName()) + "|" + addressNormalizer.normalize(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String key = normalizeName(owner.getLastName()) + "|" + postcode;
         return shaHexUpper(key).substring(0, 12);
     }
 
