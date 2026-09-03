@@ -316,11 +316,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * the {@link #isHouseholdDuplicate(Owner) household-duplicate} and {@link #findSoftDuplicate(Owner)
      * soft-duplicate} checks, the {@link #customerCode(Owner) customerCode} de-duplication and the
      * {@link #namesakeCount(String, String) namesake} count. This is the single place that scope is
-     * defined, so every one of those rules considers exactly the same set of owners; it currently
-     * spans every owner the clinic holds.
+     * defined, so every one of those rules considers exactly the same set of owners; it spans every
+     * owner the clinic holds except those flagged {@linkplain Owner#isDeleted() deleted}, which a
+     * soft delete retains but excludes from duplicate and identity detection.
      */
     private Collection<Owner> activeOwners() {
-        return this.clinicService.findAllOwners();
+        return this.clinicService.findAllOwners().stream()
+            .filter(owner -> !owner.isDeleted())
+            .collect(Collectors.toList());
     }
 
     /**
@@ -580,7 +583,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
         this.clinicService.deleteOwner(owner);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), HttpStatus.OK);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

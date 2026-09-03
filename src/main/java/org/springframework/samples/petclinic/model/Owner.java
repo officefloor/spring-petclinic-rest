@@ -94,6 +94,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -264,6 +267,19 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    /**
+     * Whether the owner has been soft-deleted. A newly created owner is {@code false};
+     * {@code DELETE /api/owners/{id}} marks the owner {@code deleted} while retaining the row, and
+     * a deleted owner is ignored by the create endpoint's duplicate and identity checks.
+     */
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     /**
