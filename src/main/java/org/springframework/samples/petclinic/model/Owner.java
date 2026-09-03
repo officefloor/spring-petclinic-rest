@@ -381,6 +381,46 @@ public class Owner extends Person {
     }
 
     /**
+     * The national (subscriber) digit count required by each known country calling code, keyed by
+     * the code's digits (without the leading {@code '+'}): {@code '+1'} carries 10 national digits
+     * and {@code '+61'} carries 9. This is the single source of the country-calling-code table,
+     * shared by every rule keyed by an E.164 number's country code so the mapping is never
+     * re-derived elsewhere.
+     */
+    private static final Map<String, Integer> NATIONAL_DIGITS_BY_COUNTRY = Map.of(
+        "1", 10,
+        "61", 9);
+
+    /**
+     * The country calling code (its digits, without the leading {@code '+'}) that prefixes the given
+     * E.164 digit string, choosing the longest matching code known to
+     * {@link #NATIONAL_DIGITS_BY_COUNTRY}, or {@code null} when the number begins with no known
+     * country code. This is the single place a country code is read from an E.164 number, so every
+     * rule keyed by that code shares one derivation.
+     */
+    private static String countryCodeOf(String e164Digits) {
+        return NATIONAL_DIGITS_BY_COUNTRY.keySet().stream()
+            .filter(e164Digits::startsWith)
+            .max(Comparator.comparingInt(String::length))
+            .orElse(null);
+    }
+
+    /**
+     * Whether the E.164 digit string (no leading {@code '+'}) carries the national-number length
+     * required by its {@linkplain #countryCodeOf(String) country calling code}. The longest matching
+     * known code wins; a number whose country code is not recognised passes this check (its length is
+     * then governed only by the general E.164 bound), while a recognised code must be followed by
+     * exactly the national-digit count it requires ({@code '+1'} 10, {@code '+61'} 9).
+     */
+    public static boolean hasValidNationalLength(String e164Digits) {
+        String countryCode = countryCodeOf(e164Digits);
+        if (countryCode == null) {
+            return true;
+        }
+        return e164Digits.length() - countryCode.length() == NATIONAL_DIGITS_BY_COUNTRY.get(countryCode);
+    }
+
+    /**
      * The owner's membership level, a number from 1 to 3 determined on creation: it starts at 1,
      * gains 1 when an email is present, gains 1 when namesakeCount is 0, and is capped at 3.
      * Level 4 is reserved for tenure.
