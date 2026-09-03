@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -9,7 +8,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Derives an owner's membership standing as points, then a level. Points accrue from an
  * email (+2), a zero namesake count (+1), a household of three or more (+2) and tenure of
- * more than 365 days since registration (+3). The points map to a level: 1 (0-1), 2 (2-3),
+ * more than one elapsed fiscal year since registration (+3). The points map to a level: 1 (0-1), 2 (2-3),
  * 3 (4-5), 4 (6 or more).
  */
 public final class MembershipLevel {
@@ -29,7 +28,7 @@ public final class MembershipLevel {
         if (HouseholdTier.isGold(owner, ownerRepository)) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) > 1) {
             points += 3;
         }
         return points;
@@ -49,8 +48,8 @@ public final class MembershipLevel {
         return 1;
     }
 
-    private static long tenureDays(Owner owner) {
+    private static int tenureFiscalYears(Owner owner) {
         LocalDate registrationDate = owner.getRegistrationDate();
-        return registrationDate == null ? 0 : ChronoUnit.DAYS.between(registrationDate, LocalDate.now());
+        return registrationDate == null ? 0 : FiscalYear.elapsed(registrationDate, LocalDate.now());
     }
 }
