@@ -144,19 +144,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Bring a freshly mapped owner into its canonical, valid form, or report the reason it must be
-     * rejected. The owner's address is normalized (a blank address is rejected), its telephone is
-     * converted to E.164 (an unconvertible number is rejected), its postcode is checked against its
-     * city's region, a registration date in the future is rejected, and the effective registration
-     * date (the supplied one, or today when none was given) is rolled onto a business day and stored
-     * back on the owner. Returns {@code null} once the owner is valid and normalized, or the
-     * {@link HttpStatus} the create must fail with ({@code 400 Bad Request}) otherwise.
+     * rejected. The owner's {@link #normalizeAddress(Owner) address is normalized} (a missing address
+     * is rejected), its telephone is converted to E.164 (an unconvertible number is rejected), its
+     * postcode is checked against its city's region, a registration date in the future is rejected,
+     * and the effective registration date (the supplied one, or today when none was given) is rolled
+     * onto a business day and stored back on the owner. Returns {@code null} once the owner is valid
+     * and normalized, or the {@link HttpStatus} the create must fail with ({@code 400 Bad Request})
+     * otherwise.
      */
     private HttpStatus normalizeAndValidate(Owner owner) {
-        String address = addressNormalizer.normalize(owner.getAddress());
-        if (address.isEmpty()) {
+        if (!normalizeAddress(owner)) {
             return HttpStatus.BAD_REQUEST;
         }
-        owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return HttpStatus.BAD_REQUEST;
@@ -176,6 +175,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
         return null;
+    }
+
+    /**
+     * Normalize the owner's supplied address into its canonical stored form and report whether an
+     * address was supplied at all. The raw address is run through the {@link AddressNormalizer}
+     * (trimmed, whitespace-collapsed, upper-cased, common street-type abbreviations expanded) and
+     * stored back on the owner. Returns {@code true} once a non-blank address has been normalized and
+     * stored, or {@code false} when no address was supplied (a blank address canonicalises to the
+     * empty string), in which case the create must be rejected with {@code 400 Bad Request}.
+     */
+    private boolean normalizeAddress(Owner owner) {
+        String address = addressNormalizer.normalize(owner.getAddress());
+        if (address.isEmpty()) {
+            return false;
+        }
+        owner.setAddress(address);
+        return true;
     }
 
     /**
