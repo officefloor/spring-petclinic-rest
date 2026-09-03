@@ -75,6 +75,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "title")
+    private String title;
+
     @Transient
     private boolean bulkSignupWarning;
 
@@ -163,6 +166,14 @@ public class Owner extends Person {
 
     public void setHouseholdId(String householdId) {
         this.householdId = householdId;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getPostcode() {
