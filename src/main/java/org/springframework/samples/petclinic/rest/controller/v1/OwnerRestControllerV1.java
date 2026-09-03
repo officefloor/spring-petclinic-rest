@@ -114,49 +114,104 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String address = addressNormalizer.normalize(owner.getAddress());
-        if (address.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+
+        HttpStatus invalid = normalizeAndValidate(owner);
+        if (invalid != null) {
+            return new ResponseEntity<>(invalid);
         }
-        owner.setAddress(address);
-        String telephone = toE164(owner.getTelephone());
-        if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        owner.setTelephone(telephone);
-        if (!owner.isPostcodeValid()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        if (owner.getRegistrationDate() != null
-            && owner.getRegistrationDate().isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        LocalDate effectiveDate = owner.getRegistrationDate() != null
-            ? owner.getRegistrationDate() : LocalDate.now();
-        owner.setRegistrationDate(toBusinessDay(effectiveDate));
         if (isDailyLimitReached(owner.getRegistrationDate())) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
+
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (sharesHousehold) {
-            owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+        assignHousehold(owner, sharesHousehold);
+
+        HttpStatus conflict = checkForConflicts(owner);
+        if (conflict != null) {
+            return new ResponseEntity<>(conflict);
         }
-        if (isDuplicate(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
-        if (isCityAtCapacity(owner.getCity())) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
+
         assignDerivedAttributes(owner);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
-        OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        return created(owner);
+    }
+
+    /**
+     * Bring a freshly mapped owner into its canonical, valid form, or report the reason it must be
+     * rejected. The owner's address is normalized (a blank address is rejected), its telephone is
+     * converted to E.164 (an unconvertible number is rejected), its postcode is checked against its
+     * city's region, a registration date in the future is rejected, and the effective registration
+     * date (the supplied one, or today when none was given) is rolled onto a business day and stored
+     * back on the owner. Returns {@code null} once the owner is valid and normalized, or the
+     * {@link HttpStatus} the create must fail with ({@code 400 Bad Request}) otherwise.
+     */
+    private HttpStatus normalizeAndValidate(Owner owner) {
+        String address = addressNormalizer.normalize(owner.getAddress());
+        if (address.isEmpty()) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        owner.setAddress(address);
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        owner.setTelephone(telephone);
+        if (!owner.isPostcodeValid()) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        if (owner.getRegistrationDate() != null
+            && owner.getRegistrationDate().isAfter(LocalDate.now())) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        LocalDate effectiveDate = owner.getRegistrationDate() != null
+            ? owner.getRegistrationDate() : LocalDate.now();
+        owner.setRegistrationDate(toBusinessDay(effectiveDate));
+        return null;
+    }
+
+    /**
+     * Assign the owner its household link. An owner that declares it shares a household
+     * ({@code sharesHousehold}) is given the {@link #householdId(Owner) householdId} it shares with
+     * the other members of its household; an owner that does not declare it keeps no household. The
+     * link is assigned before the {@link #checkForConflicts(Owner) conflict checks} because it is
+     * part of the owner's {@link Owner#getIdentityKey() identity} and feeds its
+     * {@link #householdSize(String) household size}.
+     */
+    private void assignHousehold(Owner owner, boolean sharesHousehold) {
+        if (sharesHousehold) {
+            owner.setHouseholdId(householdId(owner));
+        }
+    }
+
+    /**
+     * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
+     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
+     * {@link #isDuplicate(Owner) duplicates} an existing owner's identity or when its
+     * {@link #isCityAtCapacity(String) city is already at capacity}. Returns {@code null} when the
+     * owner clashes with nothing and may be created.
+     */
+    private HttpStatus checkForConflicts(Owner owner) {
+        if (isDuplicate(owner)) {
+            return HttpStatus.CONFLICT;
+        }
+        if (isCityAtCapacity(owner.getCity())) {
+            return HttpStatus.CONFLICT;
+        }
+        return null;
+    }
+
+    /**
+     * Build the {@code 201 Created} response for a persisted owner: its {@link OwnerDto} body and a
+     * {@code Location} header pointing at {@code /api/owners/{id}}.
+     */
+    private ResponseEntity<OwnerDto> created(Owner owner) {
+        HttpHeaders headers = new HttpHeaders();
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
-        return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+        return new ResponseEntity<>(ownerMapper.toOwnerDto(owner), headers, HttpStatus.CREATED);
     }
 
     /**
@@ -178,24 +233,35 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Flag a newly created owner as a possible (soft) duplicate. Because this runs after the hard
      * {@link #isDuplicate(Owner) duplicate} check, the owner is not an exact identity match; it is a
-     * soft match when an existing owner shares its lastName (compared case-insensitively, with
-     * collapsed whitespace) and its postcode but carries a different telephone. When such an owner
-     * exists the new owner is flagged with {@code possibleDuplicate = true} and
-     * {@code possibleDuplicateOf} set to the matching owner's id (the earliest such owner when more
-     * than one matches); otherwise {@code possibleDuplicate = false} and no matching id is recorded.
-     * A postcode is required for a soft match, so an owner without a postcode is never flagged.
+     * soft match of an existing owner as determined by {@link #findSoftDuplicate(Owner)}. When such
+     * an owner exists the new owner is flagged with {@code possibleDuplicate = true} and
+     * {@code possibleDuplicateOf} set to that owner's id; otherwise {@code possibleDuplicate = false}
+     * and no matching id is recorded.
      */
     private void assignPossibleDuplicate(Owner owner) {
-        String candidateLastName = normalizeName(owner.getLastName());
-        Owner match = owner.getPostcode() == null ? null
-            : this.clinicService.findAllOwners().stream()
-                .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
-                .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
-                .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
-                .min(Comparator.comparingInt(Owner::getId))
-                .orElse(null);
+        Owner match = findSoftDuplicate(owner);
         owner.setPossibleDuplicate(match != null);
         owner.setPossibleDuplicateOf(match == null ? null : match.getId());
+    }
+
+    /**
+     * The existing owner this owner softly duplicates, or {@code null} when there is none. A soft
+     * match is an existing owner that shares this owner's lastName (compared case-insensitively,
+     * with collapsed whitespace) and its postcode but carries a different telephone; the earliest
+     * such owner (by id) is returned. A postcode is required for a soft match, so an owner without a
+     * postcode never matches.
+     */
+    private Owner findSoftDuplicate(Owner owner) {
+        if (owner.getPostcode() == null) {
+            return null;
+        }
+        String candidateLastName = normalizeName(owner.getLastName());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+            .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
+            .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+            .min(Comparator.comparingInt(Owner::getId))
+            .orElse(null);
     }
 
     /**
@@ -379,14 +445,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * A stable shared identifier for the household formed by a given lastName and address.
-     * Derived deterministically from the normalized (case-insensitive, whitespace-collapsed)
-     * lastName and address, so every owner sharing the same household is assigned the same
-     * value regardless of the order in which they are created. Formatted as the first 12
-     * upper-case hex characters of the SHA-256 of {@code '<lastName>|<address>'}.
+     * A stable shared identifier for the household an owner belongs to, derived deterministically
+     * from its lastName and address. Both are normalized (case-insensitive, whitespace-collapsed)
+     * before hashing, so every owner sharing the same household is assigned the same value
+     * regardless of the order in which they are created. Formatted as the first 12 upper-case hex
+     * characters of the SHA-256 of {@code '<lastName>|<address>'}.
      */
-    private String householdId(String lastName, String address) {
-        String key = normalizeName(lastName) + "|" + addressNormalizer.normalize(address);
+    private String householdId(Owner owner) {
+        String key = normalizeName(owner.getLastName()) + "|" + addressNormalizer.normalize(owner.getAddress());
         return shaHexUpper(key).substring(0, 12);
     }
 
