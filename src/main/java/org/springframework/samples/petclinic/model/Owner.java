@@ -54,6 +54,19 @@ public class Owner extends Person {
     @Column(name = "registration_date", columnDefinition = "DATE")
     private java.time.LocalDate registrationDate;
 
+    @Column(name = "customer_code")
+    private String customerCode;
+
+    public String getCustomerCode() {
+        return this.customerCode;
+    }
+
+    /** Assign the '<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code ownerCount}. */
+    public void assignCustomerCode(int ownerCount) {
+        String prefix = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
+        this.customerCode = String.format("%s-%04d", prefix, ownerCount + 1);
+    }
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
