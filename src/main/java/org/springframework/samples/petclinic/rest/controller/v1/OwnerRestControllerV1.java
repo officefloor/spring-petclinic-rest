@@ -347,14 +347,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String householdId(String lastName, String address) {
         String key = normalizeName(lastName) + "|" + addressNormalizer.normalize(address);
+        return shaHexUpper(key).substring(0, 12);
+    }
+
+    /**
+     * The SHA-256 digest of {@code input}'s UTF-8 bytes, rendered as an upper-case hexadecimal
+     * string (two hex characters per digest byte, so 64 characters in all). This is the single
+     * place the hashing-and-hex-encoding is performed; callers that need a shorter opaque token
+     * take a prefix of the result (e.g. {@link #householdId} keeps the first 12 characters).
+     */
+    private String shaHexUpper(String input) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(key.getBytes(StandardCharsets.UTF_8));
+                .digest(input.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.substring(0, 12).toUpperCase();
+            return sb.toString().toUpperCase();
         }
         catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);

@@ -254,8 +254,19 @@ public class Owner extends Person {
      * table}, yielding {@link #UNKNOWN_REGION} when the city has no known region.
      */
     public String getLocality() {
-        String byPostcode = regionOfPostcode(this.postcode);
+        String byPostcode = getRegion();
         return byPostcode != null ? byPostcode : regionOf(this.city);
+    }
+
+    /**
+     * The region derived from this owner's postcode alone: the region whose fixed
+     * {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the postcode, or {@code null}
+     * when the postcode is absent, not four digits, or in no known range. This is the postcode
+     * half of {@link #getLocality()} and the single place a region is read from an owner's
+     * postcode, so every rule keyed by the postcode-derived region shares one derivation.
+     */
+    public String getRegion() {
+        return regionOfPostcode(this.postcode);
     }
 
     /**
