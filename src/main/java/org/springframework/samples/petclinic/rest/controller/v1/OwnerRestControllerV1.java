@@ -147,6 +147,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
+        owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -232,6 +233,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeName(existing.getFirstName()).equals(candidateFirstName)
                 && normalizeName(existing.getLastName()).equals(candidateLastName))
             .count();
+    }
+
+    /**
+     * The number of members in this owner's household after this create: the count of existing
+     * owners already carrying the same non-null {@code householdId} plus one for the owner being
+     * created. An owner with no household ({@code householdId == null}) is a household of one.
+     * Owners sharing a household are matched by their assigned {@code householdId}, so the count
+     * does not depend on the order in which household members were created.
+     */
+    private int householdSize(String householdId) {
+        if (householdId == null) {
+            return 1;
+        }
+        long existing = this.clinicService.findAllOwners().stream()
+            .filter(other -> householdId.equals(other.getHouseholdId()))
+            .count();
+        return (int) existing + 1;
     }
 
     /**
