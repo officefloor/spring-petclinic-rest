@@ -1,0 +1,62 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+new file mode 100644
+index 000000000..0e685ecc0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerSegment.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives the owner's segment, formatted {@code <TIER>_<AREA>}. TIER is {@code PREMIUM}
++ * when the membership level is 3 or more, otherwise {@code STANDARD}. AREA is {@code METRO}
++ * when the {@link Locality} is a known region (NSW, VIC or QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegment {
++
++    private static final Set<String> KNOWN_REGIONS = Set.of("NSW", "VIC", "QLD");
++
++    private OwnerSegment() {
++    }
++
++    public static String of(int membershipLevel, Owner owner) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = KNOWN_REGIONS.contains(Locality.of(owner)) ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 8dc93933d..35e6a15d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -16,7 +16,9 @@ public class RespondWithOwner {
+         dto.setNamesakeCount(namesakeCount);
+         int membershipPoints = MembershipLevel.points(owner, namesakeCount, Household.size(owner, ownerRepository));
+         dto.setMembershipPoints(membershipPoints);
+-        dto.setMembershipLevel(MembershipCap.apply(owner, MembershipLevel.level(membershipPoints), ownerRepository));
++        int membershipLevel = MembershipCap.apply(owner, MembershipLevel.level(membershipPoints), ownerRepository);
++        dto.setMembershipLevel(membershipLevel);
++        dto.setOwnerSegment(OwnerSegment.of(membershipLevel, owner));
+         dto.setContactPreference(owner.getEmail() != null ? "EMAIL" : "PHONE");
+         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+         dto.setPossibleDuplicate(possibleDuplicateOf != null);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 455d3d10a..f44c0bc52 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2197,6 +2197,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's segment formatted '<TIER>_<AREA>': TIER is 'PREMIUM' when membershipLevel is 3 or more else 'STANDARD'; AREA is 'METRO' when the locality is a known region (NSW/VIC/QLD) else 'REGIONAL'."
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             timezone:
+               title: Timezone
+               description: "The IANA timezone derived from the region (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane)."
