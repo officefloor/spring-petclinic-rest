@@ -36,6 +36,7 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -92,14 +93,14 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
 
     /** Stable identifier shared by every owner with the same normalized lastName and address. */
     private String householdId(String lastName, String address) {
-        String key = normalize(lastName) + '\n' + normalize(address);
+        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private boolean isHouseholdTaken(String lastName, String address) {
-        String key = normalize(lastName) + '\n' + normalize(address);
+        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
         for (Owner existing : clinicService.findAllOwners()) {
-            if (key.equals(normalize(existing.getLastName()) + '\n' + normalize(existing.getAddress()))) {
+            if (key.equals(normalize(existing.getLastName()) + '\n' + AddressNormalizer.normalize(existing.getAddress()))) {
                 return true;
             }
         }

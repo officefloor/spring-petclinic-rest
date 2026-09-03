@@ -16,6 +16,7 @@
 package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import jakarta.persistence.*;
@@ -93,8 +94,9 @@ public class Owner extends Person {
         return this.address;
     }
 
+    /** Store the address normalized so create persists and returns the canonical form. */
     public void setAddress(String address) {
-        this.address = address;
+        this.address = AddressNormalizer.normalize(address);
     }
 
     public String getCity() {
