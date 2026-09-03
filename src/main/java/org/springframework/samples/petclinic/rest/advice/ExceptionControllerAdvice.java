@@ -136,7 +136,12 @@ public class ExceptionControllerAdvice {
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleRejectedRequestException(RejectedRequestException e, HttpServletRequest request) {
         HttpStatus status = e.getStatus();
-        return ResponseEntity.status(status).build();
+        logger.warn("Request rejected at {} {} with status {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            status.value());
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), status.getReasonPhrase());
+        return ResponseEntity.status(status).body(detail);
     }
 
     /**
