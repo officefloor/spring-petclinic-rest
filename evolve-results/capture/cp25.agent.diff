@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DuplicateEmails.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DuplicateEmails.java
+new file mode 100644
+index 000000000..d29b7977e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DuplicateEmails.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Enforces email uniqueness: an owner's email (compared case-insensitively / lower-cased)
++ * may not already belong to any other owner.
++ */
++final class DuplicateEmails {
++
++    private DuplicateEmails() {
++    }
++
++    /**
++     * Returns {@code true} when {@code candidate}'s email is already used by one of the
++     * {@code existing} owners, comparing lower-cased (case-insensitively). A {@code null}
++     * candidate email is never a duplicate.
++     */
++    static boolean isTaken(Owner candidate, Collection<Owner> existing) {
++        String email = candidate.getEmail();
++        if (email == null) {
++            return false;
++        }
++        return existing.stream()
++            .map(Owner::getEmail)
++            .filter(Objects::nonNull)
++            .anyMatch(email::equalsIgnoreCase);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index aac40666e..2ad66aca2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -107,7 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         boolean telephoneTaken = existingOwners.stream()
+             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
+-        if (telephoneTaken || CityCapacity.isAtCapacity(owner, existingOwners)
++        if (telephoneTaken || DuplicateEmails.isTaken(owner, existingOwners)
++            || CityCapacity.isAtCapacity(owner, existingOwners)
+             || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
