@@ -73,8 +73,8 @@ public class Owner extends Person {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    @Column(name = "customer_code")
-    private String customerCode;
+    @Column(name = "member_id")
+    private String memberId;
 
     @Column(name = "household_id")
     private String householdId;
@@ -219,12 +219,12 @@ public class Owner extends Person {
         return "SENIOR";
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    public String getMemberId() {
+        return this.memberId;
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     public String getHouseholdId() {
@@ -321,31 +321,71 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the {@linkplain #getFiscalYear() fiscal year} of the
-     * (business-day-adjusted) registrationDate, e.g. {@code 'NSW-3C1A9F2B-M27'}.
+     * The fixed length of the tail that every {@linkplain #getMemberId() memberId} carries after its
+     * {@code <REGION>} prefix: the 2-digit fiscal-year code, the 8-character HASH8 and the single Luhn
+     * check digit ({@code 2 + 8 + 1 = 11}). The region prefix is therefore everything in the memberId
+     * (before any collision suffix) up to this trailing block, so the region and fiscal-year segments
+     * are read back from the memberId rather than re-derived.
      */
-    public String getMembershipNumber() {
-        return this.customerCode + "-M" + fiscalYearCode();
+    private static final int MEMBER_ID_TAIL = 11;
+
+    /**
+     * The owner's base memberId, formatted {@code '<REGION><FY><HASH8><CHK>'}: the
+     * {@linkplain #getRegion() region} derived from the owner's postcode (or {@link #UNKNOWN_REGION}
+     * when the postcode maps to no known region), the 2-digit {@linkplain #fiscalYearCode() fiscal-year
+     * code} FY, the 8 upper-case hex HASH8 (the first 8 hex characters of the SHA-256 of the normalized
+     * (E.164) telephone concatenated with the lastName, the same HASH8 the region-and-hash identity
+     * uses), and a single Luhn {@linkplain #luhnCheckDigit(String) check digit} CHK computed over the
+     * decimal digits of {@code <REGION><FY><HASH8>}, e.g. {@code 'NSW273C1A9F2B4'}. This is the single
+     * source of the owner's identity; the stored {@linkplain #getMemberId() memberId} is this value
+     * (with a collision suffix appended only when it clashes with an existing owner's), and the owner's
+     * {@linkplain #getLocality() locality} and {@linkplain #getFiscalYear() fiscal year} are read back
+     * from it.
+     */
+    public String computeMemberId() {
+        String region = getRegion() != null ? getRegion() : UNKNOWN_REGION;
+        String hash8 = HashUtils.sha256Hex(this.telephone + this.getLastName()).toUpperCase().substring(0, 8);
+        String prefix = region + fiscalYearCode() + hash8;
+        return prefix + luhnCheckDigit(prefix);
     }
 
     /**
-     * The owner's fiscal year, formatted {@code 'FY<YY>'} where YY is the last two digits of the
-     * {@linkplain #fiscalYearOf(LocalDate) fiscal year} of the (business-day-adjusted)
-     * {@link #registrationDate}, e.g. {@code 'FY27'}. The fiscal year starts on 1 July and is
+     * The {@linkplain #getMemberId() memberId} without its collision suffix: the memberId up to the
+     * first {@code '-'} (the {@code '-<n>'} suffix appended only to de-duplicate a clashing id), or
+     * {@code null} when the owner has no memberId. This is the {@code '<REGION><FY><HASH8><CHK>'} base
+     * from which the {@linkplain #getLocality() locality} and {@linkplain #getFiscalYear() fiscal year}
+     * are read.
+     */
+    private String memberIdBase() {
+        if (this.memberId == null) {
+            return null;
+        }
+        int dash = this.memberId.indexOf('-');
+        return dash < 0 ? this.memberId : this.memberId.substring(0, dash);
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code 'FY<YY>'}, e.g. {@code 'FY27'}. The two YY digits are
+     * read from the {@linkplain #getMemberId() memberId} (the {@code <FY>} segment embedded in it), so
+     * the fiscal-year value shares the owner's single memberId identity; for an owner that has no
+     * memberId the digits fall back to the {@linkplain #fiscalYearCode() fiscal-year code} of the
+     * (business-day-adjusted) {@link #registrationDate}. The fiscal year starts on 1 July and is
      * labelled by the calendar year in which it ends.
      */
     public String getFiscalYear() {
+        String base = memberIdBase();
+        if (base != null && base.length() >= MEMBER_ID_TAIL) {
+            return "FY" + base.substring(base.length() - MEMBER_ID_TAIL, base.length() - MEMBER_ID_TAIL + 2);
+        }
         return "FY" + fiscalYearCode();
     }
 
     /**
      * The two-digit fiscal-year code {@code '<YY>'}: the last two digits of the
      * {@linkplain #fiscalYearOf(LocalDate) fiscal year} of the (business-day-adjusted)
-     * {@link #registrationDate}, zero-padded, e.g. {@code '27'}. This is the single source of the
-     * fiscal-year digits, shared by every value that embeds them (the {@linkplain #getFiscalYear()
-     * fiscal year} and the {@linkplain #getMembershipNumber() membership number}) so the derivation
-     * is never repeated.
+     * {@link #registrationDate}, zero-padded, e.g. {@code '27'}. This is the FY segment embedded in the
+     * owner's {@linkplain #computeMemberId() memberId} at creation, and the fallback the
+     * {@linkplain #getFiscalYear() fiscal year} reads when no memberId is present.
      */
     private String fiscalYearCode() {
         return String.format("%02d", fiscalYearOf(this.registrationDate) % 100);
@@ -359,14 +399,6 @@ public class Owner extends Person {
      */
     private static int fiscalYearOf(LocalDate date) {
         return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
-     * The Luhn check digit (a single digit, {@code 0}-{@code 9}) computed over the decimal digits
-     * contained in the owner's {@link #customerCode}.
-     */
-    public int getCheckDigit() {
-        return luhnCheckDigit(this.customerCode);
     }
 
     /**
@@ -419,18 +451,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the {@code <REGION>} component of the {@link #getCustomerCode()
-     * customerCode} (its prefix up to the first {@code '-'}), which is the region derived from
-     * the owner's postcode at creation ({@link #UNKNOWN_REGION} when the postcode maps to no
-     * known region). Locality is read from the region-and-hash identity so it never re-derives
-     * a region of its own; it is {@link #UNKNOWN_REGION} for an owner that has no customerCode.
+     * The owner's locality: the {@code <REGION>} component of the {@link #getMemberId() memberId} (its
+     * prefix before the trailing {@code <FY><HASH8><CHK>} block), which is the region derived from the
+     * owner's postcode at creation ({@link #UNKNOWN_REGION} when the postcode maps to no known region).
+     * Locality is read from the memberId identity so it never re-derives a region of its own; it is
+     * {@link #UNKNOWN_REGION} for an owner that has no memberId.
      */
     public String getLocality() {
-        if (this.customerCode == null) {
+        String base = memberIdBase();
+        if (base == null || base.length() <= MEMBER_ID_TAIL) {
             return UNKNOWN_REGION;
         }
-        int dash = this.customerCode.indexOf('-');
-        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
+        return base.substring(0, base.length() - MEMBER_ID_TAIL);
     }
 
     /** Fixed region-to-timezone table, mapping a region to its IANA timezone name. */
@@ -469,8 +501,9 @@ public class Owner extends Person {
      * The region derived from this owner's postcode alone: the region whose fixed
      * {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the postcode, or {@code null}
      * when the postcode is absent, not four digits, or in no known range. This is the {@code <REGION>}
-     * component built into the owner's customer code at creation and, through it, the source of the
-     * owner's {@linkplain #getLocality() locality}. It is the single place a region is read from an
+     * component built into the owner's {@linkplain #computeMemberId() memberId} at creation and,
+     * through it, the source of the owner's {@linkplain #getLocality() locality}. It is the single
+     * place a region is read from an
      * owner's postcode, so every rule keyed by the postcode-derived region shares one derivation.
      */
     public String getRegion() {

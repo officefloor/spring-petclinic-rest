@@ -87,15 +87,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Immutable structured audit event emitted (as JSON) alongside the human-readable audit line when
-     * an owner is created. Its {@code customerCode} component carries the owner's <em>current primary
-     * identifier</em>: today that is the {@link Owner#getCustomerCode() customerCode}, and when the
-     * customerCode is later unified into the memberId this event will carry the memberId instead — so
-     * downstream consumers always read the owner's primary identifier from the same event.
+     * an owner is created. Its {@code memberId} component carries the owner's <em>primary
+     * identifier</em>, the unified {@link Owner#getMemberId() memberId}, so downstream consumers always
+     * read the owner's primary identifier from the same event.
      *
      * <p>The component order matches the serialized field order
-     * {@code {seq, ownerId, customerCode, membershipLevel, event}}.
+     * {@code {seq, ownerId, memberId, membershipLevel, event}}.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode,
+    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
                                      Integer membershipLevel, String event) {
 
         private static final String OWNER_CREATED = "OWNER_CREATED";
@@ -106,12 +105,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
 
         /**
-         * The owner's current primary identifier. Today the owner is identified by its
-         * {@link Owner#getCustomerCode() customerCode}; when that is unified into the memberId this
-         * single method changes to return the memberId and the event follows automatically.
+         * The owner's primary identifier: its unified {@link Owner#getMemberId() memberId}.
          */
         private static String primaryIdentifier(Owner owner) {
-            return owner.getCustomerCode();
+            return owner.getMemberId();
         }
     }
 
@@ -255,9 +252,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
         assignDerivedAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
         return created(owner);
     }
@@ -265,8 +262,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Emit the immutable {@link OwnerCreatedEvent} for a just-persisted owner as a JSON object on the
      * {@code AUDIT} logger. A fresh {@link #AUDIT_SEQ monotonic sequence} is stamped onto the event so
-     * the order of creates is recoverable from the audit stream. The event carries the owner's current
-     * primary identifier (its customerCode today, its memberId once that unification lands).
+     * the order of creates is recoverable from the audit stream. The event carries the owner's primary
+     * identifier, its unified memberId.
      */
     private void emitOwnerCreatedEvent(Owner owner) {
         OwnerCreatedEvent event = OwnerCreatedEvent.of(AUDIT_SEQ.incrementAndGet(), owner);
@@ -427,7 +424,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Assign the attributes that are derived once, at creation time, and stored on the owner: its
-     * {@link #customerCode(Owner) customerCode}, {@link #namesakeCount(String, String) namesakeCount},
+     * {@link #memberId(Owner) memberId}, {@link #namesakeCount(String, String) namesakeCount},
      * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #isCityApproachingCapacity(String)
      * capacity warning}, {@link #householdSize(String)
      * householdSize} and {@link #membershipLevel(Owner) membershipLevel}. Each is computed from the
@@ -436,7 +433,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * persisted.
      */
     private void assignDerivedAttributes(Owner owner, boolean sharesHousehold) {
-        owner.setCustomerCode(customerCode(owner));
+        owner.setMemberId(memberId(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         owner.setCapacityWarning(isCityApproachingCapacity(owner.getCity()));
@@ -486,7 +483,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * The owners a newly created owner is checked against by the duplicate and identity rules:
      * the {@link #householdMembers(String) household} membership and {@link #findSoftDuplicate(Owner)
-     * soft-duplicate} checks, the {@link #customerCode(Owner) customerCode} de-duplication and the
+     * soft-duplicate} checks, the {@link #memberId(Owner) memberId} de-duplication and the
      * {@link #namesakeCount(String, String) namesake} count. This is the single place that scope is
      * defined, so every one of those rules considers exactly the same set of owners; it spans every
      * owner the clinic holds except those flagged {@linkplain Owner#isDeleted() deleted}, which a
@@ -522,33 +519,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a newly created owner, formatted {@code '<REGION>-<HASH8>'}
-     * where REGION is the region derived from the owner's postcode (or {@link Owner#UNKNOWN_REGION}
-     * when the postcode is absent or maps to no known region) and HASH8 is the first 8 upper-case
-     * hex characters of the SHA-256 of the normalized (E.164) telephone concatenated with the
-     * lastName (e.g. {@code 'NSW-3C1A9F2B'}). This is the single source of the owner's identity:
-     * every value built from the customer code (the membership number and its check digit) and the
-     * owner's locality are derived from it.
+     * Build the memberId for a newly created owner, formatted {@code '<REGION><FY><HASH8><CHK>'}: the
+     * region derived from the owner's postcode (or {@link Owner#UNKNOWN_REGION} when the postcode is
+     * absent or maps to no known region), the 2-digit fiscal-year code FY of the business-day-adjusted
+     * registrationDate, the first 8 upper-case hex characters HASH8 of the SHA-256 of the normalized
+     * (E.164) telephone concatenated with the lastName, and a single Luhn check digit CHK over the
+     * decimal digits of {@code <REGION><FY><HASH8>} (e.g. {@code 'NSW273C1A9F2B4'}). The
+     * {@code <REGION><FY><HASH8><CHK>} value is computed by {@link Owner#computeMemberId()}; this is
+     * the single source of the owner's identity, from which the owner's locality and fiscal year are
+     * read back.
      *
-     * <p>When the computed code collides with an existing owner's {@code customerCode}, a
-     * {@code '-<n>'} suffix is appended with the smallest {@code n} of 2 or more that makes the code
-     * unique, and the de-duplicated code is returned.
+     * <p>When the computed memberId collides with an existing owner's {@code memberId}, a
+     * {@code '-<n>'} suffix is appended with the smallest {@code n} of 2 or more that makes the
+     * memberId unique, and the de-duplicated memberId is returned.
      */
-    private String customerCode(Owner owner) {
-        String region = owner.getRegion() != null ? owner.getRegion() : Owner.UNKNOWN_REGION;
-        String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName()).substring(0, 8);
-        String base = region + "-" + hash8;
+    private String memberId(Owner owner) {
+        String base = owner.computeMemberId();
 
-        Set<String> existingCodes = activeOwners().stream()
-            .map(Owner::getCustomerCode)
+        Set<String> existingIds = activeOwners().stream()
+            .map(Owner::getMemberId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
 
-        if (!existingCodes.contains(base)) {
+        if (!existingIds.contains(base)) {
             return base;
         }
         int n = 2;
-        while (existingCodes.contains(base + "-" + n)) {
+        while (existingIds.contains(base + "-" + n)) {
             n++;
         }
         return base + "-" + n;
@@ -739,9 +736,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * The upper-case rendering of the {@linkplain HashUtils#sha256Hex(String) SHA-256 hex} of
      * {@code input} (two hex characters per digest byte, so 64 characters in all). Callers that
      * need a shorter opaque token take a prefix of the result (e.g. {@link #householdId} keeps the
-     * first 12 characters and {@link #customerCode} keeps the first 8). The hashing itself lives in
-     * {@link HashUtils} so the one implementation is shared with the owner's
-     * {@link Owner#getIdentityKey() identity key}.
+     * first 12 characters). The hashing itself lives in {@link HashUtils} so the one implementation is
+     * shared with the owner's {@link Owner#getIdentityKey() identity key} and its
+     * {@link Owner#computeMemberId() memberId} HASH8.
      */
     private String shaHexUpper(String input) {
         return HashUtils.sha256Hex(input).toUpperCase();
