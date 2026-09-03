@@ -1,0 +1,63 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 116841dec..3b3049832 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
+ import java.security.NoSuchAlgorithmException;
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+@@ -120,10 +121,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+         }
+         owner.setTelephone(telephone);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(LocalDate.now());
+-        }
+-        if (isDailyLimitReached()) {
++        LocalDate effectiveDate = owner.getRegistrationDate() != null
++            ? owner.getRegistrationDate() : LocalDate.now();
++        owner.setRegistrationDate(toBusinessDay(effectiveDate));
++        if (isDailyLimitReached(owner.getRegistrationDate())) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         if (isTelephoneInUse(telephone)) {
+@@ -164,18 +165,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     }
+ 
+     /**
+-     * Whether the per-day owner creation limit has been reached, i.e. 100 or more owners have
+-     * already been created today (counted by their {@code registrationDate} matching the current
+-     * date). When true, a new owner must be rejected with {@code 429 Too Many Requests}.
++     * Whether the per-day owner creation limit has been reached for the given business day, i.e.
++     * 100 or more owners already carry that {@code registrationDate}. The day is the adjusted
++     * (business-day) registration date of the owner being created, so owners are counted per
++     * business day. When true, a new owner must be rejected with {@code 429 Too Many Requests}.
+      */
+-    private boolean isDailyLimitReached() {
+-        LocalDate today = LocalDate.now();
++    private boolean isDailyLimitReached(LocalDate day) {
+         long count = this.clinicService.findAllOwners().stream()
+-            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .filter(existing -> day.equals(existing.getRegistrationDate()))
+             .count();
+         return count >= 100;
+     }
+ 
++    /**
++     * Roll a registration date forward onto a business day: when it falls on a Saturday or Sunday,
++     * advance it to the following Monday; a weekday is returned unchanged.
++     */
++    private LocalDate toBusinessDay(LocalDate date) {
++        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
++            date = date.plusDays(1);
++        }
++        return date;
++    }
++
+     /**
+      * Whether the given city has reached its owner capacity, i.e. it already contains 50 or
+      * more owners. Cities are compared case-insensitively, matching {@link #nextCustomerCode}.
