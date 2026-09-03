@@ -22,6 +22,10 @@ public class RespondWithOwner {
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
         dto.setSelfLink("/api/owners/" + owner.getId());
+        long cityOwners = ownerRepository.findAll().stream()
+                .filter(other -> owner.getCity() != null && owner.getCity().equalsIgnoreCase(other.getCity()))
+                .count();
+        dto.setCapacityWarning(cityOwners >= 40 && cityOwners < 50);
         response.send(dto);
     }
 }
