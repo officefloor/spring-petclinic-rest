@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DailyOwnerLimitException;
 
 /**
- * Rejects a create once {@value #DAILY_LIMIT} or more owners already share today's
- * registration date.
+ * Rejects a create once {@value #DAILY_LIMIT} or more owners already share the new
+ * owner's (business-day adjusted) registration date.
  */
 public class EnsureDailyOwnerLimitNotExceeded {
 
@@ -17,9 +17,9 @@ public class EnsureDailyOwnerLimitNotExceeded {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate registrationDate = owner.getRegistrationDate();
         long count = ownerRepository.findAll().stream()
-                .filter(other -> today.equals(other.getRegistrationDate()))
+                .filter(other -> registrationDate.equals(other.getRegistrationDate()))
                 .count();
         if (count >= DAILY_LIMIT) {
             throw new DailyOwnerLimitException("The maximum number of owners for today has been reached");
