@@ -60,6 +60,7 @@ public class OwnerFieldsValidator implements Validator {
         if (email != null) {
             owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
+        DisposableEmailDomains.reject(owner.getEmail(), errors);
         validatePostcode(owner, errors);
         validateRegistrationDate(owner, errors);
     }
