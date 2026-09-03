@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() != null && owner.getRegistrationDate() != null ? owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100) : null)")
     @Mapping(target = "membershipTier", expression = "java(java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"SILVER\" : \"BRONZE\")")
+    @Mapping(target = "locality", expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
