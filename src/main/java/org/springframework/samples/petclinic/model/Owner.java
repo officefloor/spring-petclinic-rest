@@ -93,6 +93,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
@@ -551,11 +554,27 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership level, a number from 1 to 4 derived from {@linkplain #getMembershipPoints()
-     * membershipPoints}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or
-     * more.
+     * The owner's membership level, a number from 1 to 4. For an owner created through the
+     * creation pipeline this is the value assigned and stored at creation time; an owner that
+     * carries no assigned level (e.g. seed data, or an owner not created through that pipeline)
+     * reports its {@linkplain #getBaseMembershipLevel() base level} derived from its
+     * membershipPoints. This is the single value read by the API for an owner's membership level.
      */
     public Integer getMembershipLevel() {
+        return this.membershipLevel != null ? this.membershipLevel : getBaseMembershipLevel();
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
+    }
+
+    /**
+     * The owner's base membership level, a number from 1 to 4 derived directly from
+     * {@linkplain #getMembershipPoints() membershipPoints}: level 1 for 0-1 points, level 2 for 2-3,
+     * level 3 for 4-5, and level 4 for 6 or more. This is the level the creation pipeline starts
+     * from when it assigns the owner's stored {@linkplain #getMembershipLevel() membershipLevel}.
+     */
+    public Integer getBaseMembershipLevel() {
         int points = getMembershipPoints();
         if (points >= 6) {
             return 4;

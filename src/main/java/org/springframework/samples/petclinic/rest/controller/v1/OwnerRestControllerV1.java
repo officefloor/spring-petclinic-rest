@@ -356,17 +356,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Assign the attributes that are derived once, at creation time, and stored on the owner: its
      * {@link #customerCode(Owner) customerCode}, {@link #namesakeCount(String, String) namesakeCount},
-     * {@link #isBulkSignup(LocalDate) bulk-signup warning} and {@link #householdSize(String)
-     * householdSize}. Each is computed from the owner's own fields together with the owners already
-     * present, so this runs after the owner has been validated and has passed the duplicate and
-     * capacity checks, and immediately before it is persisted.
+     * {@link #isBulkSignup(LocalDate) bulk-signup warning}, {@link #householdSize(String)
+     * householdSize} and {@link #membershipLevel(Owner) membershipLevel}. Each is computed from the
+     * owner's own fields together with the owners already present, so this runs after the owner has
+     * been validated and has passed the duplicate and capacity checks, and immediately before it is
+     * persisted.
      */
     private void assignDerivedAttributes(Owner owner, boolean sharesHousehold) {
         owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
+        owner.setMembershipLevel(membershipLevel(owner));
         assignPossibleDuplicate(owner, sharesHousehold);
+    }
+
+    /**
+     * The membership level to assign a newly created owner and store on it as its
+     * {@link Owner#getMembershipLevel() membershipLevel}: the owner's own
+     * {@linkplain Owner#getBaseMembershipLevel() base level} derived from its membershipPoints. This
+     * is the single place the stored membership level is derived; it runs during
+     * {@link #assignDerivedAttributes(Owner, boolean)}, after the owner has passed the duplicate and
+     * capacity checks and so has its {@linkplain #householdMembers(String) household members}
+     * available to it.
+     */
+    private Integer membershipLevel(Owner owner) {
+        return owner.getBaseMembershipLevel();
     }
 
     /**
@@ -580,12 +595,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * are therefore the same household: the second is a household duplicate.
      */
     private boolean isHouseholdDuplicate(Owner owner) {
-        String householdId = owner.getHouseholdId();
+        return !householdMembers(owner.getHouseholdId()).isEmpty();
+    }
+
+    /**
+     * The existing owners already registered in the household identified by {@code householdId}: the
+     * {@linkplain #activeOwners() active owners} carrying that same non-null householdId. The owner
+     * being created is not yet persisted, so it is never among them, and a {@code null} householdId
+     * (an owner with no household) yields an empty collection. This is the single source of a
+     * household's existing membership, shared by every rule keyed by an owner's household (the
+     * {@link #isHouseholdDuplicate(Owner) household-duplicate} check and the
+     * {@link #membershipLevel(Owner) membership-level} derivation) so the set is never re-derived
+     * elsewhere; like the other identity rules it ignores {@linkplain Owner#isDeleted() deleted}
+     * owners.
+     */
+    private Collection<Owner> householdMembers(String householdId) {
         if (householdId == null) {
-            return false;
+            return List.of();
         }
         return activeOwners().stream()
-            .anyMatch(existing -> householdId.equals(existing.getHouseholdId()));
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .collect(Collectors.toList());
     }
 
     /**
