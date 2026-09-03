@@ -22,6 +22,12 @@ public class ValidateOwner {
     public void service(@Valid @RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws InvalidEmailException, DisposableEmailException, InvalidTelephoneException,
             InvalidPostcodeException {
+        String line1 = OwnerAddress.normalize(request.getAddressLine1());
+        String line2 = OwnerAddress.normalize(request.getAddressLine2());
+        request.setAddressLine1(line1.isEmpty() ? null : line1);
+        request.setAddressLine2(line2.isEmpty() ? null : line2);
+        request.setAddress(OwnerAddress.compose(request.getAddressLine1(),
+                request.getAddressLine2(), request.getAddress()));
         request.setTelephone(OwnerTelephone.toE164(request.getTelephone()));
         request.setEmail(OwnerEmail.normalize(request.getEmail()));
         request.setPostcode(Postcode.normalize(request.getPostcode(), request.getCity()));

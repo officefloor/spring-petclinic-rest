@@ -30,10 +30,20 @@ public class ValidateOwnerFields {
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException, InvalidTelephoneException, InvalidEmailException,
             DisposableEmailException, InvalidPostcodeException {
-        request.setAddress(OwnerAddress.normalize(request.getAddress()));
+        // Normalize whichever address fields are supplied, preferring the structured form. The stored,
+        // returned 'address' is the composed value (normalized addressLine1, plus a space and the
+        // normalized addressLine2 when present), falling back to the flat 'address'.
+        String line1 = OwnerAddress.normalize(request.getAddressLine1());
+        String line2 = OwnerAddress.normalize(request.getAddressLine2());
+        request.setAddressLine1(line1.isEmpty() ? null : line1);
+        request.setAddressLine2(line2.isEmpty() ? null : line2);
+        request.setAddress(OwnerAddress.compose(request.getAddressLine1(),
+                request.getAddressLine2(), request.getAddress()));
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
+        // Valid when an address is supplied in EITHER form; the composed value is blank only when both
+        // the structured addressLine1 and the flat address are missing.
         require("address", request.getAddress(), missing);
         require("city", request.getCity(), missing);
         require("telephone", request.getTelephone(), missing);

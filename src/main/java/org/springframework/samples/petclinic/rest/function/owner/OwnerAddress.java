@@ -42,4 +42,23 @@ final class OwnerAddress {
         }
         return sb.toString();
     }
+
+    /**
+     * The composed {@code address} an owner stores and returns, preferring the structured fields when
+     * present. When {@code addressLine1} is non-blank the result is the normalized {@code addressLine1}
+     * with a single space and the normalized {@code addressLine2} appended when {@code addressLine2} is
+     * present; otherwise it falls back to the flat {@code address}. All three inputs are normalized here,
+     * so callers may pass the raw request values.
+     *
+     * @return the composed, normalized address, or the empty string when no address is supplied in
+     *         either form.
+     */
+    static String compose(String addressLine1, String addressLine2, String flatAddress) {
+        String line1 = normalize(addressLine1);
+        if (line1.isEmpty()) {
+            return normalize(flatAddress);
+        }
+        String line2 = normalize(addressLine2);
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
+    }
 }
