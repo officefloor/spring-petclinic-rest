@@ -1,6 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.net.URI;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 
 public class RespondWithOwnerCreated {
+
+    private static final AtomicInteger SEQ = new AtomicInteger();
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
@@ -29,6 +32,9 @@ public class RespondWithOwnerCreated {
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
         LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel, MembershipNumber.of(owner));
+        LoggerFactory.getLogger("AUDIT").info(
+                "{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), membershipLevel);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
