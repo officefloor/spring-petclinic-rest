@@ -1,0 +1,68 @@
+/*
+ * Copyright 2016-2017 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.controller.v1;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ContentCachingResponseWrapper;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * Makes owner creation idempotent: when a {@code POST /api/owners} carries an
+ * {@code Idempotency-Key} already seen, the originally created owner is replayed
+ * with {@code 200 OK} instead of the request creating a duplicate.
+ */
+@Component
+public class IdempotentOwnerCreateFilter extends OncePerRequestFilter {
+
+    private final Map<String, byte[]> replies = new ConcurrentHashMap<>();
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
+        String key = request.getHeader("Idempotency-Key");
+        boolean create = "POST".equalsIgnoreCase(request.getMethod())
+            && request.getRequestURI().endsWith("/api/owners");
+        if (key == null || !create) {
+            chain.doFilter(request, response);
+            return;
+        }
+        byte[] seen = replies.get(key);
+        if (seen != null) {
+            response.setStatus(HttpStatus.OK.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.getOutputStream().write(seen);
+            return;
+        }
+        ContentCachingResponseWrapper caching = new ContentCachingResponseWrapper(response);
+        chain.doFilter(request, caching);
+        if (caching.getStatus() >= 200 && caching.getStatus() < 300) {
+            replies.putIfAbsent(key, caching.getContentAsByteArray());
+        }
+        caching.copyBodyToResponse();
+    }
+}
