@@ -107,7 +107,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         boolean telephoneTaken = existingOwners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
-        if (telephoneTaken || CityCapacity.isAtCapacity(owner, existingOwners)
+        if (telephoneTaken || DuplicateEmails.isTaken(owner, existingOwners)
+            || CityCapacity.isAtCapacity(owner, existingOwners)
             || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
