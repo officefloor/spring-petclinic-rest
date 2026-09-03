@@ -114,6 +114,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -176,6 +180,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(this::toE164)
             .filter(Objects::nonNull)
             .anyMatch(telephone::equals);
+    }
+
+    /**
+     * Whether any existing owner already shares a household with the candidate, i.e. has both
+     * the same lastName and the same address. Both fields are compared case-insensitively and
+     * with internal runs of whitespace collapsed to a single space (and surrounding whitespace
+     * trimmed), so the check does not depend on casing or spacing.
+     */
+    private boolean isHouseholdInUse(String lastName, String address) {
+        String candidateLastName = normalize(lastName);
+        String candidateAddress = normalize(address);
+        return this.clinicService.findAllOwners().stream()
+            .anyMatch(existing -> normalize(existing.getLastName()).equals(candidateLastName)
+                && normalize(existing.getAddress()).equals(candidateAddress));
+    }
+
+    /**
+     * Normalize a value for household comparison: trim, collapse internal whitespace runs to a
+     * single space and lower-case. A null value normalizes to the empty string.
+     */
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
