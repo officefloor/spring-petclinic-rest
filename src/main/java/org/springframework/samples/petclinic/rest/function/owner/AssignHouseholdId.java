@@ -17,15 +17,14 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignHouseholdId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String householdId = OwnerIdentity.deriveHouseholdId(
-                OwnerIdentity.normalizeName(owner.getLastName()), owner.getPostcode());
+        String householdId = OwnerIdentity.householdIdOf(owner.getLastName(), owner.getPostcode());
         owner.setHouseholdId(householdId);
 
         // Count the existing members of this household (same computed householdId) plus this owner.
         int size = 1;
         for (Owner existing : ownerRepository.findAll()) {
-            String existingHousehold = OwnerIdentity.deriveHouseholdId(
-                    OwnerIdentity.normalizeName(existing.getLastName()), existing.getPostcode());
+            String existingHousehold = OwnerIdentity.householdIdOf(
+                    existing.getLastName(), existing.getPostcode());
             if (householdId.equals(existingHousehold)) {
                 size++;
             }

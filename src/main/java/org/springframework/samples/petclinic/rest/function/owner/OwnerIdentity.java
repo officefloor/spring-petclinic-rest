@@ -76,6 +76,16 @@ public final class OwnerIdentity {
     }
 
     /**
+     * The household id for a raw (un-normalized) {@code lastName} and {@code postcode} — normalizes the
+     * lastName and defers to {@link #deriveHouseholdId}. This is the one derivation every household
+     * check shares, so two owners resolve to the same household exactly when this returns the same
+     * value.
+     */
+    public static String householdIdOf(String lastName, String postcode) {
+        return deriveHouseholdId(normalizeName(lastName), postcode);
+    }
+
+    /**
      * HASH8: the first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone +
      * lastName}, where the telephone is canonicalized to E.164. This is the hashed component of the
      * owner's {@code customerCode} ({@code <REGION>-<HASH8>}).

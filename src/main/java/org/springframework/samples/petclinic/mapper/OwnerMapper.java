@@ -28,9 +28,9 @@ public interface OwnerMapper {
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints",
-            expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipPoints(owner))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembership.points(owner))")
     @Mapping(target = "membershipLevel",
-            expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipLevel(owner))")
+            expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembership.level(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
@@ -162,16 +162,6 @@ public interface OwnerMapper {
     }
 
     /**
-     * The fiscal year the {@code date} falls in, as an integer. The fiscal year starts on 1 July and is
-     * named by the calendar year in which it ends, so 1 July 2026 - 30 June 2027 is fiscal year 2027: a
-     * date in July or later belongs to the next calendar year's fiscal year, an earlier date to the
-     * current calendar year's.
-     */
-    static int fiscalYearOf(java.time.LocalDate date) {
-        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
-    }
-
-    /**
      * The owner's fiscal year, formatted {@code FY<YY>} where YY is the last two digits of the fiscal
      * year the business-day-adjusted registrationDate falls in (fiscal year starting 1 July), e.g.
      * {@code FY27}. Null when the registration date is absent.
@@ -180,7 +170,9 @@ public interface OwnerMapper {
         if (owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
+        return String.format("FY%02d",
+                org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
+                        .fiscalYearOf(owner.getRegistrationDate()) % 100);
     }
 
     /**
@@ -193,53 +185,8 @@ public interface OwnerMapper {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-                fiscalYearOf(owner.getRegistrationDate()) % 100);
-    }
-
-    /**
-     * The owner's membership points. Starts at 0; add 2 when an email is present; add 1 when the owner's
-     * name was unique on creation (namesakeCount is 0); add 2 for a household of 3 or more members; add 3
-     * for tenure of one or more elapsed fiscal years (the current fiscal year differs from the fiscal
-     * year the registrationDate falls in; fiscal year starting 1 July).
-     */
-    static int membershipPoints(Owner owner) {
-        int points = 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        if (hasEmail) {
-            points += 2;
-        }
-        Integer namesakeCount = owner.getNamesakeCount();
-        if (namesakeCount != null && namesakeCount == 0) {
-            points += 1;
-        }
-        Integer householdSize = owner.getHouseholdSize();
-        if (householdSize != null && householdSize >= 3) {
-            points += 2;
-        }
-        if (owner.getRegistrationDate() != null
-                && fiscalYearOf(java.time.LocalDate.now())
-                        - fiscalYearOf(owner.getRegistrationDate()) >= 1) {
-            points += 3;
-        }
-        return points;
-    }
-
-    /**
-     * The owner's membership level, derived by banding {@link #membershipPoints(Owner)}: level 1 for
-     * 0-1 points, level 2 for 2-3, level 3 for 4-5, level 4 for 6 or more.
-     */
-    static int membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
-        if (points >= 6) {
-            return 4;
-        }
-        if (points >= 4) {
-            return 3;
-        }
-        if (points >= 2) {
-            return 2;
-        }
-        return 1;
+                org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
+                        .fiscalYearOf(owner.getRegistrationDate()) % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
