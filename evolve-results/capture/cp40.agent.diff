@@ -1,0 +1,110 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d53a29d64..3f11ed3d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -422,24 +422,55 @@ public class Owner extends Person {
+     }
+ 
+     /**
+-     * The owner's membership level, a number from 1 to 4: it starts at 1, gains 1 when an email is
+-     * present, gains 1 when namesakeCount is 0, and gains 1 when the owner's {@linkplain #getTenureDays()
+-     * tenure} exceeds 365 days. The email and namesake factors are the only ones available on creation,
+-     * so a newly created owner (zero tenure) never exceeds level 3; level 4 is reached only once tenure
+-     * grows beyond 365 days.
++     * The owner's membership points: they start at 0, gain 2 when an email is present, gain 1 when
++     * namesakeCount is 0, gain 2 for a {@linkplain #hasLargeHousehold() household of 3 or more}, and
++     * gain 3 when the owner's {@linkplain #getTenureDays() tenure} exceeds 365 days. The email,
++     * namesake and household factors are available on creation; the tenure factor is reached only
++     * once tenure grows beyond 365 days.
+      */
+-    public Integer getMembershipLevel() {
+-        int level = 1;
++    public Integer getMembershipPoints() {
++        int points = 0;
+         if (hasEmail()) {
+-            level++;
++            points += 2;
+         }
+         if (hasNoNamesakes()) {
+-            level++;
++            points += 1;
++        }
++        if (hasLargeHousehold()) {
++            points += 2;
+         }
+         if (hasTenureBeyondOneYear()) {
+-            level++;
++            points += 3;
++        }
++        return points;
++    }
++
++    /**
++     * The owner's membership level, a number from 1 to 4 derived from {@linkplain #getMembershipPoints()
++     * membershipPoints}: level 1 for 0-1 points, level 2 for 2-3, level 3 for 4-5, and level 4 for 6 or
++     * more.
++     */
++    public Integer getMembershipLevel() {
++        int points = getMembershipPoints();
++        if (points >= 6) {
++            return 4;
++        }
++        if (points >= 4) {
++            return 3;
+         }
+-        return level;
++        if (points >= 2) {
++            return 2;
++        }
++        return 1;
++    }
++
++    /**
++     * Whether this owner belongs to a household of three or more: its {@link #getHouseholdSize()
++     * householdSize} is {@code 3} or greater. A {@code null} householdSize, meaning the size is not
++     * known, is treated as not a large household.
++     */
++    private boolean hasLargeHousehold() {
++        return this.householdSize != null && this.householdSize >= 3;
+     }
+ 
+     /**
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 52f3d505c..fe9d838fe 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2168,18 +2168,28 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: >-
++                The owner's membership points: start at 0, add 2 when an email is
++                present, add 1 when namesakeCount is 0, add 2 for a household of 3
++                or more, and add 3 for tenure over 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+               description: >-
+-                The owner's membership level, a number from 1 to 3 determined on
+-                creation: it starts at 1, gains 1 when an email is present, gains
+-                1 when namesakeCount is 0, and is capped at 3. Level 4 is reserved
+-                for tenure.
++                The owner's membership level, a number from 1 to 4 derived from
++                membershipPoints: 1 for 0-1 points, 2 for 2-3, 3 for 4-5, and 4
++                for 6 or more.
+               type: integer
+               format: int32
+               minimum: 1
+-              maximum: 3
+-              example: 3
++              maximum: 4
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
