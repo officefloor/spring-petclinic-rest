@@ -42,6 +42,7 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.AgeBand.of(owner))")
     @Mapping(target = "telephoneDisplay",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.TelephoneDisplay.of(owner))")
+    @Mapping(target = "addressLine1", source = "address")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);

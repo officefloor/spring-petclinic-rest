@@ -43,7 +43,7 @@ public class OwnerFieldsValidator implements Validator {
     @Override
     public void validate(Object target, Errors errors) {
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
-        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
+        owner.setAddress(composeAddress(owner));
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }
@@ -63,6 +63,18 @@ public class OwnerFieldsValidator implements Validator {
         DisposableEmailDomains.reject(owner.getEmail(), errors);
         validatePostcode(owner, errors);
         validateRegistrationDate(owner, errors);
+    }
+
+    /** The effective, normalized address: the composed structured lines when a non-blank
+     * addressLine1 is supplied (addressLine2 appended after a single space when present),
+     * otherwise the normalized flat address for backward compatibility. */
+    private String composeAddress(OwnerFieldsDto owner) {
+        String line1 = AddressNormalizer.normalize(owner.getAddressLine1());
+        if (line1.isEmpty()) {
+            return AddressNormalizer.normalize(owner.getAddress());
+        }
+        String line2 = AddressNormalizer.normalize(owner.getAddressLine2());
+        return line2.isEmpty() ? line1 : line1 + " " + line2;
     }
 
     /** Rejects a supplied registrationDate later than the current server date. */
