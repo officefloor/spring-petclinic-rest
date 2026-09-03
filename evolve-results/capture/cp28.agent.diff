@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 8d20362a9..0d1d057f1 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,8 @@ public interface OwnerMapper {
+         expression = "java(switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; })")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "identityKey",
++        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java
+new file mode 100644
+index 000000000..1f5a16e60
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/IdentityKey.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Single source of duplicate detection: an owner's identity is its normalized telephone,
++ * email and household id joined as {@code normalizedTelephone|email|householdId} (email and
++ * household id empty when absent). Two owners collide only when their whole keys are equal, so
++ * members of one household with different telephones stay distinct.
++ */
++public final class IdentityKey {
++
++    private IdentityKey() {
++    }
++
++    /** The derived identity key of {@code owner}; telephone is already E.164-normalized upstream. */
++    public static String of(Owner owner) {
++        return blank(owner.getTelephone()) + "|" + blank(owner.getEmail()) + "|" + blank(owner.getHouseholdId());
++    }
++
++    /** {@code true} when an existing owner has the exact same identity key as {@code candidate}. */
++    static boolean isDuplicate(Owner candidate, Collection<Owner> existing) {
++        String key = of(candidate);
++        return existing.stream().anyMatch(other -> of(other).equals(key));
++    }
++
++    private static String blank(String value) {
++        return value == null ? "" : value;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2ad66aca2..3136d63a1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -105,15 +105,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (DailyRegistrationLimit.isReached(existingOwners)) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        boolean telephoneTaken = existingOwners.stream()
+-            .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
+-        if (telephoneTaken || DuplicateEmails.isTaken(owner, existingOwners)
+-            || CityCapacity.isAtCapacity(owner, existingOwners)
+-            || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
++        HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
++        if (IdentityKey.isDuplicate(owner, existingOwners)
++            || CityCapacity.isAtCapacity(owner, existingOwners)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
+-        HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
+         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 7c6191461..9aa62ef3b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2135,6 +2135,12 @@ components:
+               default: false
+               example: false
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: Derived duplicate-detection key formatted 'normalizedTelephone|email|householdId' (email and householdId empty when absent). Two owners are duplicates only when their whole identity keys are equal.
++              type: string
++              example: '+61412345678||'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
