@@ -82,6 +82,18 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    /** Record the id of an existing owner this one is a possible (soft) duplicate of, or null. */
+    public void assignPossibleDuplicate(Collection<Owner> existingOwners) {
+        this.possibleDuplicateOf = org.springframework.samples.petclinic.util.PossibleDuplicates.matchIn(this, existingOwners);
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }

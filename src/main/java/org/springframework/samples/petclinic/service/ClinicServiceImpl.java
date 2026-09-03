@@ -236,6 +236,7 @@ public class ClinicServiceImpl implements ClinicService {
             Collection<Owner> existing = ownerRepository.findAll();
             owner.assignCustomerCode((int) existing.stream().filter(o -> owner.getCity().equalsIgnoreCase(o.getCity())).count());
             owner.assignNamesakeCount(existing);
+            owner.assignPossibleDuplicate(existing);
         }
         ownerRepository.save(owner);
 
