@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index de3976ac9..88435b2ae 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -32,6 +32,7 @@ public interface OwnerMapper {
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+     @Mapping(target = "addressLine1", source = "address")
++    @Mapping(target = "salutation", expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Membership level, derived from {@link org.springframework.samples.petclinic.rest.function.owner.MembershipPoints
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 595b11e65..08eb5aac3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -47,6 +47,17 @@ public class Owner extends Person {
+     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
+     private String telephone;
+ 
++    @Column(name = "title")
++    private String title;
++
++    public String getTitle() {
++        return this.title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
+     @Column(name = "email")
+     private String email;
+ 
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index abeacda14..65a3c6d9e 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
++  title      VARCHAR(10),
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   birth_date DATE,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 85a9eb819..29917f839 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2009,6 +2009,11 @@ components:
+           maxLength: 30
+           pattern: "^[\\p{L}]+([ '-][\\p{L}]+){0,2}\\.?$"
+           example: Franklin
++        title:
++          title: Title
++          description: "Optional honorific (MR/MRS/MS/DR); when present it is prepended to the salutation."
++          type: string
++          example: 'DR'
+         addressLine1:
+           title: Address line 1
+           description: "Structured address, first line (street). When supplied it is preferred over the flat 'address' field."
+@@ -2101,6 +2106,12 @@ components:
+               items:
+                 $ref: '#/components/schemas/Pet'
+               readOnly: true
++            salutation:
++              title: Salutation
++              description: "The title followed by a space and the last name (e.g. 'DR Franklin'), or just the last name when no title is given."
++              type: string
++              example: 'DR Franklin'
++              readOnly: true
+             displayName:
+               title: Display name
+               description: The owner's name formatted as 'LastName, FirstName'.
