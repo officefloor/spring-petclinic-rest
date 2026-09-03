@@ -1,0 +1,51 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateOwnerCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateOwnerCustomerCode.java
+new file mode 100644
+index 000000000..adcfddc0f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateOwnerCustomerCode.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * De-duplicates the assigned {@code customerCode}. If another owner already holds the
++ * computed code, appends {@code -<n>} with the smallest {@code n >= 2} that is unique.
++ * The owner is not yet saved, so its own code is absent from the store.
++ */
++public class DeduplicateOwnerCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        Set<String> taken = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            taken.add(other.getCustomerCode());
++        }
++        String base = owner.getCustomerCode();
++        String code = base;
++        for (int n = 2; taken.contains(code); n++) {
++            code = base + "-" + n;
++        }
++        owner.setCustomerCode(code);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index fa5a96bbb..0b59c3126 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -39,6 +39,11 @@ ensureDailyLimit:
+ assignCustomerCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignOwnerCustomerCode
+   govern: [ transaction ]
++  next: deduplicateCustomerCode
++
++deduplicateCustomerCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateOwnerCustomerCode
++  govern: [ transaction ]
+   next: save
+ 
+ save:
