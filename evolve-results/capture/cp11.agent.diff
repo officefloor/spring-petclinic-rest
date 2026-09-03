@@ -1,0 +1,150 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 71a621684..36b94a040 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -57,6 +57,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "household_id")
++    private String householdId;
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+@@ -65,6 +68,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public String getHouseholdId() {
++        return this.householdId;
++    }
++
++    public void setHouseholdId(String householdId) {
++        this.householdId = householdId;
++    }
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java
+index 664c9f0f3..7e4631309 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java
+@@ -1,5 +1,7 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
+ import java.util.Collection;
+ 
+ import org.springframework.samples.petclinic.model.Owner;
+@@ -25,6 +27,34 @@ final class HouseholdDuplicates {
+         return existing.stream().anyMatch(other -> key(other).equals(key));
+     }
+ 
++    /**
++     * When {@code candidate} opted in via {@code sharesHousehold} and joins an existing owner's
++     * household (same last name and address), stamps it with the household's stable shared id.
++     */
++    static void assignHousehold(Owner candidate, Collection<Owner> existing, Boolean sharesHousehold) {
++        if (!Boolean.TRUE.equals(sharesHousehold)) {
++            return;
++        }
++        String key = key(candidate);
++        if (existing.stream().anyMatch(other -> key(other).equals(key))) {
++            candidate.setHouseholdId(householdId(key));
++        }
++    }
++
++    private static String householdId(String key) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder();
++            for (int i = 0; i < 8; i++) {
++                sb.append(String.format("%02x", digest[i]));
++            }
++            return sb.toString();
++        }
++        catch (Exception e) {
++            throw new IllegalStateException(e);
++        }
++    }
++
+     private static String key(Owner owner) {
+         return norm(owner.getLastName()) + "\n" + norm(owner.getAddress());
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4fedf00aa..83cd155c4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -107,6 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (telephoneTaken || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
++        HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
+         String last = owner.getLastName();
+         owner.setCustomerCode(last.substring(0, Math.min(3, last.length())).toUpperCase()
+             + String.format("-%04d", existingOwners.size() + 1));
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 8b30d3434..25fb0a163 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..82939cbc2 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  household_id VARCHAR(64)
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 275c62857..88c23d2f3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2087,6 +2087,12 @@ components:
+               type: string
+               example: SMI-0007
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: Stable identifier shared by owners of the same household (same last name and address) that opted in via sharesHousehold.
++              type: string
++              example: 3F2A1B0C
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
