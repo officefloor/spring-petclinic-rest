@@ -21,7 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() != null && owner.getRegistrationDate() != null ? owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100) : null)")
-    @Mapping(target = "membershipLevel", expression = "java(java.lang.Math.min(1 + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0), 3))")
+    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(owner))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(owner.getBirthDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
