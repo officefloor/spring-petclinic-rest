@@ -1,0 +1,41 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Owner;
+
+/**
+ * When the request opts in with {@code sharesHousehold=true}, assigns a stable
+ * {@code householdId} derived from the owner's normalized lastName and address, so every
+ * owner sharing that household resolves to the same identifier. Runs before
+ * {@link SaveOwner}; a no-op otherwise, leaving {@code householdId} absent.
+ */
+public class AssignHouseholdId {
+
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold) {
+        if (!Boolean.TRUE.equals(sharesHousehold)) {
+            return;
+        }
+        String key = CheckUniqueHousehold.normalize(owner.getLastName())
+                + "|" + CheckUniqueHousehold.normalize(owner.getAddress());
+        owner.setHouseholdId(hash(key));
+    }
+
+    /** First 8 bytes of SHA-256({@code key}) as lower-case hex — stable across requests. */
+    static String hash(String key) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+}
