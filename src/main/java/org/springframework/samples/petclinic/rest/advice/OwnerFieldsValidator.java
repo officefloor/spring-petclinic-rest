@@ -46,11 +46,13 @@ public class OwnerFieldsValidator implements Validator {
         }
         OwnerFieldsDto owner = (OwnerFieldsDto) target;
         String telephone = owner.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() == 10) {
-            owner.setTelephone(digits);
+        String raw = telephone == null ? "" : telephone.replaceAll("[\\s\\-()]", "");
+        String e164 = raw.startsWith("+") ? raw
+            : "+61" + (raw.startsWith("0") ? raw.substring(1) : raw);
+        if (e164.substring(1).matches("\\d{8,15}")) {
+            owner.setTelephone(e164);
         } else {
-            errors.rejectValue("telephone", "telephone", "must be exactly 10 digits");
+            errors.rejectValue("telephone", "telephone", "must be a valid E.164 telephone number");
         }
         String email = owner.getEmail();
         if (email != null) {
