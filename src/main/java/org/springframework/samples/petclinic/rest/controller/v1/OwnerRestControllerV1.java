@@ -25,7 +25,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,11 +133,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        if (isDuplicate(owner, sharesHousehold)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+        }
+        if (isDuplicate(owner)) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         if (isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -312,62 +311,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Whether the candidate owner duplicates an owner that already exists, and so must be
-     * rejected with {@code 409 Conflict}. An owner is a duplicate when it reuses an existing
-     * owner's telephone (compared in E.164 form) or email (compared case-insensitively), or —
-     * unless it is explicitly joining a shared household ({@code sharesHousehold}) — when it
-     * matches an existing household by lastName and address. Any single match makes the owner a
-     * duplicate.
+     * rejected with {@code 409 Conflict}. All duplicate detection is consolidated into a single
+     * derived {@link Owner#getIdentityKey() identityKey} — the normalized telephone, email (or
+     * empty) and householdId (or empty) joined with {@code '|'} — and an owner is a duplicate only
+     * when its WHOLE identity key equals that of an existing owner. Because the telephone is part
+     * of the key, two members of the same household with different telephones have different
+     * identity keys and are both allowed; only an exact full-key match is a duplicate.
      */
-    private boolean isDuplicate(Owner owner, boolean sharesHousehold) {
-        return isTelephoneInUse(owner.getTelephone())
-            || isEmailInUse(owner.getEmail())
-            || (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress()));
-    }
-
-    /**
-     * Whether any existing owner already holds the given telephone number. Both the
-     * candidate and each stored number are compared in E.164 form, so the check does not
-     * depend on how each was originally formatted.
-     */
-    private boolean isTelephoneInUse(String telephone) {
+    private boolean isDuplicate(Owner owner) {
+        String identityKey = owner.getIdentityKey();
         return this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(Objects::nonNull)
-            .map(this::toE164)
-            .filter(Objects::nonNull)
-            .anyMatch(telephone::equals);
-    }
-
-    /**
-     * Whether any existing owner already holds the given email address, compared case-insensitively
-     * (by lower-casing both the candidate and each stored value). A null or empty candidate email is
-     * never considered in use, so owners without an email do not collide. When true, the new owner
-     * must be rejected with {@code 409 Conflict}.
-     */
-    private boolean isEmailInUse(String email) {
-        if (email == null || email.isEmpty()) {
-            return false;
-        }
-        String candidate = email.toLowerCase();
-        return this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(Objects::nonNull)
-            .map(String::toLowerCase)
-            .anyMatch(candidate::equals);
-    }
-
-    /**
-     * Whether any existing owner already shares a household with the candidate, i.e. has both
-     * the same lastName and the same address. Both fields are compared case-insensitively and
-     * with internal runs of whitespace collapsed to a single space (and surrounding whitespace
-     * trimmed), so the check does not depend on casing or spacing.
-     */
-    private boolean isHouseholdInUse(String lastName, String address) {
-        String candidateLastName = normalizeName(lastName);
-        String candidateAddress = addressNormalizer.normalize(address);
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeName(existing.getLastName()).equals(candidateLastName)
-                && addressNormalizer.normalize(existing.getAddress()).equals(candidateAddress));
+            .anyMatch(existing -> identityKey.equals(existing.getIdentityKey()));
     }
 
     /**
