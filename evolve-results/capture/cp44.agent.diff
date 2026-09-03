@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e03abf937..0ef455a66 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -42,6 +42,7 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.AgeBand.of(owner))")
+     @Mapping(target = "telephoneDisplay",
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.TelephoneDisplay.of(owner))")
++    @Mapping(target = "addressLine1", source = "address")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java
+index 46c0869b1..fe6359981 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerFieldsValidator.java
+@@ -43,7 +43,7 @@ public class OwnerFieldsValidator implements Validator {
+     @Override
+     public void validate(Object target, Errors errors) {
+         OwnerFieldsDto owner = (OwnerFieldsDto) target;
+-        owner.setAddress(AddressNormalizer.normalize(owner.getAddress()));
++        owner.setAddress(composeAddress(owner));
+         for (String field : REQUIRED_FIELDS) {
+             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
+         }
+@@ -65,6 +65,18 @@ public class OwnerFieldsValidator implements Validator {
+         validateRegistrationDate(owner, errors);
+     }
+ 
++    /** The effective, normalized address: the composed structured lines when a non-blank
++     * addressLine1 is supplied (addressLine2 appended after a single space when present),
++     * otherwise the normalized flat address for backward compatibility. */
++    private String composeAddress(OwnerFieldsDto owner) {
++        String line1 = AddressNormalizer.normalize(owner.getAddressLine1());
++        if (line1.isEmpty()) {
++            return AddressNormalizer.normalize(owner.getAddress());
++        }
++        String line2 = AddressNormalizer.normalize(owner.getAddressLine2());
++        return line2.isEmpty() ? line1 : line1 + " " + line2;
++    }
++
+     /** Rejects a supplied registrationDate later than the current server date. */
+     private void validateRegistrationDate(OwnerFieldsDto owner, Errors errors) {
+         LocalDate registrationDate = owner.getRegistrationDate();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2c7dce8da..750ba820e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,25 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. Accepted for backward compatibility; when
++            structured address fields are supplied it is returned as the composed address.
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: The first line of the structured postal address. Preferred over 'address' when present.
++          type: string
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the structured postal address.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2063,7 +2077,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
