@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -49,6 +46,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HashUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -636,25 +634,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * The SHA-256 digest of {@code input}'s UTF-8 bytes, rendered as an upper-case hexadecimal
-     * string (two hex characters per digest byte, so 64 characters in all). This is the single
-     * place the hashing-and-hex-encoding is performed; callers that need a shorter opaque token
-     * take a prefix of the result (e.g. {@link #householdId} keeps the first 12 characters and
-     * {@link #customerCode} keeps the first 8).
+     * The upper-case rendering of the {@linkplain HashUtils#sha256Hex(String) SHA-256 hex} of
+     * {@code input} (two hex characters per digest byte, so 64 characters in all). Callers that
+     * need a shorter opaque token take a prefix of the result (e.g. {@link #householdId} keeps the
+     * first 12 characters and {@link #customerCode} keeps the first 8). The hashing itself lives in
+     * {@link HashUtils} so the one implementation is shared with the owner's
+     * {@link Owner#getIdentityKey() identity key}.
      */
     private String shaHexUpper(String input) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString().toUpperCase();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return HashUtils.sha256Hex(input).toUpperCase();
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
