@@ -366,19 +366,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Whether the given email is hosted on a {@linkplain #DISPOSABLE_EMAIL_DOMAINS disposable}
      * domain. The email is optional, so a {@code null} or empty email is not disposable; otherwise
-     * the domain (the part after the last {@code '@'}, compared case-insensitively) is matched
+     * its {@linkplain Owner#emailDomainOf(String) domain} (compared case-insensitively) is matched
      * against the blocklist.
      */
     private boolean isDisposableEmail(String email) {
-        if (email == null || email.isEmpty()) {
-            return false;
-        }
-        int at = email.lastIndexOf('@');
-        if (at < 0) {
-            return false;
-        }
-        String domain = email.substring(at + 1).toLowerCase();
-        return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+        String domain = Owner.emailDomainOf(email);
+        return domain != null && DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
 
     /**

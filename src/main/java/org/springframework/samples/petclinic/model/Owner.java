@@ -679,6 +679,23 @@ public class Owner extends Person {
     }
 
     /**
+     * The domain of an email address: the part after the last {@code '@'}, lower-cased, or
+     * {@code null} when the email is {@code null} or carries no {@code '@'} (an empty local part or
+     * empty domain is kept as-is). This is the single place an email's domain is read, shared by
+     * every rule keyed by the email domain so the domain is never re-parsed elsewhere.
+     */
+    public static String emailDomainOf(String email) {
+        if (email == null) {
+            return null;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return null;
+        }
+        return email.substring(at + 1).toLowerCase();
+    }
+
+    /**
      * Whether this owner's name is unique in the clinic: its {@link #getNamesakeCount() namesakeCount}
      * is {@code 0} (no other owner shares the name). A {@code null} namesakeCount, meaning the count is
      * not known, is treated as not unique.
