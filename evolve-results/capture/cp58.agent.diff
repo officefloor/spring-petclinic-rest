@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7d95679d5..5fc0ad004 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -44,6 +44,8 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.TelephoneDisplay.of(owner))")
+     @Mapping(target = "salutation",
+         expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
++    @Mapping(target = "riskFlag",
++        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.RiskFlag.of(owner))")
+     @Mapping(target = "addressLine1", source = "address")
+     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlag.java
+new file mode 100644
+index 000000000..cc19b6d41
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/RiskFlag.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.List;
++import java.util.Locale;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Computes an owner's advisory risk flag. An owner is risky when it is a possible duplicate, when
++ * its email uses a disposable-adjacent domain (a known throwaway-mail domain or a subdomain of one),
++ * or when its city is over its soft capacity (the per-city capacity-warning threshold).
++ */
++public final class RiskFlag {
++
++    private static final List<String> DISPOSABLE_DOMAINS =
++        List.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private RiskFlag() {
++    }
++
++    /** {@code true} when the owner trips any advisory risk condition. */
++    public static boolean of(Owner owner) {
++        return owner.isPossibleDuplicate()
++            || disposableAdjacent(owner.getEmail())
++            || Boolean.TRUE.equals(owner.getCapacityWarning());
++    }
++
++    /** Whether {@code email}'s domain is, or is a subdomain of, a known disposable-mail domain. */
++    private static boolean disposableAdjacent(String email) {
++        int at = email == null ? -1 : email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        return DISPOSABLE_DOMAINS.stream()
++            .anyMatch(d -> domain.equals(d) || domain.endsWith("." + d));
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a0a24fc1c..2d458ab07 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2239,6 +2239,13 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any risk condition holds - the owner is a possible duplicate, its email uses a disposable-adjacent domain (a known throwaway-mail domain or a subdomain of one), or its city is over its soft capacity (40-49 owners) - otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when the owner has been soft-deleted via DELETE, otherwise false. A soft-deleted owner is retained and still readable but is ignored by the create endpoint's duplicate and identity checks.
