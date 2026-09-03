@@ -78,6 +78,9 @@ public class Owner extends Person {
     @Column(name = "title")
     private String title;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
     @Transient
     private boolean bulkSignupWarning;
 
@@ -174,6 +177,14 @@ public class Owner extends Person {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public String getPostcode() {

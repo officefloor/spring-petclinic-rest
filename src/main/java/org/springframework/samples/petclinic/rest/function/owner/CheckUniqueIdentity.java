@@ -19,7 +19,8 @@ public class CheckUniqueIdentity {
             throws DuplicateIdentityException {
         String key = identityKey(owner);
         for (Owner other : ownerRepository.findAll()) {
-            if (!other.getId().equals(owner.getId()) && key.equals(identityKey(other))) {
+            if (!other.isDeleted() && !other.getId().equals(owner.getId())
+                    && key.equals(identityKey(other))) {
                 throw new DuplicateIdentityException(key);
             }
         }

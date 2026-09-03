@@ -20,7 +20,7 @@ public class CheckUniqueHousehold {
         }
         String householdId = owner.getHouseholdId();
         for (Owner other : ownerRepository.findAll()) {
-            if (!other.getId().equals(owner.getId())
+            if (!other.isDeleted() && !other.getId().equals(owner.getId())
                     && householdId.equals(other.getHouseholdId())) {
                 throw new DuplicateHouseholdException(owner.getLastName(), owner.getPostcode());
             }
