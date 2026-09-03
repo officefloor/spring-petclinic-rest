@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 9c74cc5c1..7344e2b14 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -16,6 +16,7 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import jakarta.persistence.*;
+@@ -93,8 +94,9 @@ public class Owner extends Person {
+         return this.address;
+     }
+ 
++    /** Store the address normalized so create persists and returns the canonical form. */
+     public void setAddress(String address) {
+-        this.address = address;
++        this.address = AddressNormalizer.normalize(address);
+     }
+ 
+     public String getCity() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
+index 8c7c41895..b3069cc92 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueHouseholdAdvice.java
+@@ -36,6 +36,7 @@ import org.springframework.http.converter.HttpMessageConverter;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.samples.petclinic.util.AddressNormalizer;
+ import org.springframework.web.bind.annotation.ControllerAdvice;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.ResponseBody;
+@@ -92,14 +93,14 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
+ 
+     /** Stable identifier shared by every owner with the same normalized lastName and address. */
+     private String householdId(String lastName, String address) {
+-        String key = normalize(lastName) + '\n' + normalize(address);
++        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
+         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
+     }
+ 
+     private boolean isHouseholdTaken(String lastName, String address) {
+-        String key = normalize(lastName) + '\n' + normalize(address);
++        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
+         for (Owner existing : clinicService.findAllOwners()) {
+-            if (key.equals(normalize(existing.getLastName()) + '\n' + normalize(existing.getAddress()))) {
++            if (key.equals(normalize(existing.getLastName()) + '\n' + AddressNormalizer.normalize(existing.getAddress()))) {
+                 return true;
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+new file mode 100644
+index 000000000..dede4ad20
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+@@ -0,0 +1,65 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++
++/**
++ * Normalizes postal addresses to a canonical form.
++ *
++ * <p>Surrounding whitespace is trimmed and internal runs collapsed to a single space, the
++ * text is upper-cased, and common street-type abbreviations are expanded (ST-&gt;STREET,
++ * RD-&gt;ROAD, AVE-&gt;AVENUE). A blank input normalizes to the empty string, which callers
++ * treat as a missing required field. Normalization is idempotent, so an already-normalized
++ * value is returned unchanged, letting create and duplicate detection share one form.
++ */
++public final class AddressNormalizer {
++
++    private AddressNormalizer() {
++    }
++
++    /** Return {@code address} in canonical form, or {@code null} when it is {@code null}. */
++    public static String normalize(String address) {
++        if (address == null) {
++            return null;
++        }
++        String collapsed = address.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
++        if (collapsed.isEmpty()) {
++            return "";
++        }
++        StringBuilder result = new StringBuilder(collapsed.length());
++        for (String token : collapsed.split(" ")) {
++            if (result.length() > 0) {
++                result.append(' ');
++            }
++            result.append(expand(token));
++        }
++        return result.toString();
++    }
++
++    private static String expand(String token) {
++        switch (token) {
++            case "ST":
++                return "STREET";
++            case "RD":
++                return "ROAD";
++            case "AVE":
++                return "AVENUE";
++            default:
++                return token;
++        }
++    }
++}
