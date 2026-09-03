@@ -129,6 +129,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!owner.isPostcodeValid()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (owner.getRegistrationDate() != null
+            && owner.getRegistrationDate().isAfter(LocalDate.now())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
