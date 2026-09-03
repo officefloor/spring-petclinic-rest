@@ -234,7 +234,7 @@ public class ClinicServiceImpl implements ClinicService {
     public void saveOwner(Owner owner) throws DataAccessException {
         if (owner.isNew() && owner.getCustomerCode() == null) {
             Collection<Owner> existing = ownerRepository.findAll();
-            owner.assignCustomerCode(existing.size());
+            owner.assignCustomerCode((int) existing.stream().filter(o -> owner.getCity().equalsIgnoreCase(o.getCity())).count());
             owner.assignNamesakeCount(existing);
         }
         ownerRepository.save(owner);

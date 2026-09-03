@@ -96,10 +96,11 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
-    /** Assign the '<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code ownerCount}. */
-    public void assignCustomerCode(int ownerCount) {
-        String prefix = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
-        this.customerCode = String.format("%s-%04d", prefix, ownerCount + 1);
+    /** Assign the '<CITY3>-<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code cityCount}. */
+    public void assignCustomerCode(int cityCount) {
+        String city3 = getCity().substring(0, Math.min(3, getCity().length())).toUpperCase(Locale.ROOT);
+        String last3 = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
+        this.customerCode = String.format("%s-%s-%04d", city3, last3, cityCount + 1);
     }
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
