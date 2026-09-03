@@ -24,8 +24,10 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -51,6 +53,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -65,6 +69,19 @@ import jakarta.transaction.Transactional;
 public class OwnerRestControllerV1 implements OwnersApi {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * The HTTP request header a client may send to make a create idempotent. When a create repeats
+     * with a key already seen, the originally created owner is returned instead of a duplicate.
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers, per {@link #IDEMPOTENCY_KEY_HEADER Idempotency-Key}, the id of the owner that key's
+     * first successful create produced, so a repeat of that create can return the same owner rather
+     * than creating a duplicate.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
 
     /**
      * Fixed public-holiday calendar. A registration date that lands on one of these dates is rolled
@@ -127,7 +144,37 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
-        return createOwner(ownerFieldsDto);
+        String idempotencyKey = currentIdempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
+
+        ResponseEntity<OwnerDto> response = createOwner(ownerFieldsDto);
+
+        if (idempotencyKey != null && response.getStatusCode() == HttpStatus.CREATED
+            && response.getBody() != null && response.getBody().getId() != null) {
+            idempotentCreates.put(idempotencyKey, response.getBody().getId());
+        }
+        return response;
+    }
+
+    /**
+     * The non-blank {@link #IDEMPOTENCY_KEY_HEADER Idempotency-Key} header of the request currently
+     * being handled, or {@code null} when the request carries no such header (or no request is bound
+     * to the current thread). Used to make a repeated create return the originally created owner.
+     */
+    private String currentIdempotencyKey() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+            return null;
+        }
+        String key = attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return (key == null || key.isBlank()) ? null : key;
     }
 
     /**
