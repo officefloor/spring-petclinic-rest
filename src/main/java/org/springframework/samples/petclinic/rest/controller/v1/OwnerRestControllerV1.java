@@ -103,8 +103,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = normalizeTelephone(owner.getTelephone());
-        if (telephone.length() != 10) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
@@ -122,24 +122,46 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalise a raw telephone input to the digits it contains, discarding spaces,
-     * dashes, brackets and any other non-digit characters. A {@code null} input yields
-     * an empty string.
+     * Convert a raw telephone input to its E.164 representation, or {@code null} if it
+     * cannot form a valid E.164 number.
+     *
+     * <p>A leading '+' and country code are kept when present; otherwise country code
+     * '+61' is assumed and a single leading '0' is dropped from the national digits.
+     * Spaces, dashes and brackets (indeed any non-digit) are stripped. The result must
+     * carry 8 to 15 digits after the '+'.
      */
-    private String normalizeTelephone(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    private String toE164(String telephone) {
+        if (telephone == null) {
+            return null;
+        }
+        boolean hasCountryCode = telephone.trim().startsWith("+");
+        String digits = telephone.replaceAll("\\D", "");
+        String e164;
+        if (hasCountryCode) {
+            e164 = digits;
+        } else {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            e164 = "61" + digits;
+        }
+        if (e164.length() < 8 || e164.length() > 15) {
+            return null;
+        }
+        return "+" + e164;
     }
 
     /**
-     * Whether any existing owner already holds the given (normalised) telephone number.
-     * Stored numbers are normalised the same way before comparison, so the check does not
+     * Whether any existing owner already holds the given telephone number. Both the
+     * candidate and each stored number are compared in E.164 form, so the check does not
      * depend on how each was originally formatted.
      */
     private boolean isTelephoneInUse(String telephone) {
         return this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
-            .map(this::normalizeTelephone)
+            .map(this::toE164)
+            .filter(Objects::nonNull)
             .anyMatch(telephone::equals);
     }
 
