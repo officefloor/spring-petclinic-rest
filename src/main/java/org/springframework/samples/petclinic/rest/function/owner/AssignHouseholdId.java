@@ -1,8 +1,5 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,7 +34,7 @@ public class AssignHouseholdId {
         if (household.isEmpty()) {
             return; // no peer at this lastName + address, so no shared household
         }
-        String householdId = deriveHouseholdId(lastName, address);
+        String householdId = OwnerIdentity.deriveHouseholdId(lastName, address);
         owner.setHouseholdId(householdId);
         for (Owner existing : household) {
             if (existing.getHouseholdId() == null || existing.getHouseholdId().isBlank()) {
@@ -47,27 +44,8 @@ public class AssignHouseholdId {
         }
     }
 
-    /** {@code H-} plus the first 12 upper-case hex chars of SHA-256(lastName + '|' + address). */
-    private static String deriveHouseholdId(String lastName, String address) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest((lastName + '|' + address).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("H-");
-            for (int i = 0; i < 6; i++) {
-                sb.append(String.format("%02X", digest[i]));
-            }
-            return sb.toString();
-        }
-        catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 not available", ex);
-        }
-    }
-
     /** Lower-cased, trimmed, with runs of whitespace collapsed to a single space. */
     private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
+        return OwnerIdentity.normalizeName(value);
     }
 }
