@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 88435b2ae..e73ba5d75 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -31,6 +31,7 @@ public interface OwnerMapper {
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.RegionTimezone.of(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
++    @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "addressLine1", source = "address")
+     @Mapping(target = "salutation", expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -48,7 +49,8 @@ public interface OwnerMapper {
+         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
+             return null;
+         }
+-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
++        return String.format("%s-M%02d", owner.getCustomerCode(),
++                org.springframework.samples.petclinic.rest.function.owner.FiscalYear.shortYear(owner.getRegistrationDate()));
+     }
+ 
+     /** Stable identifier for the household an owner belongs to: the first 12 hex characters of SHA-256
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+new file mode 100644
+index 000000000..8324a9535
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FiscalYear.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.time.LocalDate;
++
++/**
++ * Fiscal-year calendar: the fiscal year starts on 1 July and is named by the calendar year
++ * in which it starts. Every value derives from the business-day-adjusted date, so a date that
++ * falls on a weekend or holiday is rolled forward first (see {@link BusinessDay}).
++ */
++public final class FiscalYear {
++
++    private FiscalYear() {
++    }
++
++    /** Calendar year the fiscal year containing {@code date} starts in. */
++    public static int startYearOf(LocalDate date) {
++        LocalDate adjusted = BusinessDay.roll(date);
++        return adjusted.getMonthValue() >= 7 ? adjusted.getYear() : adjusted.getYear() - 1;
++    }
++
++    /** Fiscal-year label 'FY<YY>' for {@code date}. */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", startYearOf(date) % 100);
++    }
++
++    /** Two-digit fiscal year for {@code date}, for use as an identifier segment. */
++    public static int shortYear(LocalDate date) {
++        return startYearOf(date) % 100;
++    }
++
++    /** Whole fiscal years elapsed between {@code date} and today. */
++    public static int elapsedTo(LocalDate date, LocalDate today) {
++        return startYearOf(today) - startYearOf(date);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+index 22a65c1c3..7bb518650 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipPoints.java
+@@ -26,7 +26,7 @@ public final class MembershipPoints {
+             points += 2;
+         }
+         LocalDate registration = owner.getRegistrationDate();
+-        if (registration != null && registration.isBefore(LocalDate.now().minusDays(365))) {
++        if (registration != null && FiscalYear.elapsedTo(registration, LocalDate.now()) >= 1) {
+             points += 3;
+         }
+         return points;
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5731a694a..15ecf9647 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2219,6 +2219,12 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: "Fiscal year of the business-day-adjusted registrationDate, formatted 'FY<YY>'. The fiscal year starts on 1 July and is named by the calendar year it starts in."
++              type: string
++              example: 'FY26'
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: "True when this owner shares an existing owner's last name and postcode but has a different telephone (a soft, non-blocking duplicate)."
