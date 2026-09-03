@@ -1,0 +1,104 @@
+/*
+ * Copyright 2016-2017 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springframework.samples.petclinic.rest.advice;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.util.Map;
+
+import org.springframework.http.HttpInputMessage;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.MethodParameter;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.samples.petclinic.mapper.OwnerMapper;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdvice;
+
+/**
+ * Rejects a create-owner request whose normalized E.164 telephone carries the wrong
+ * number of national digits for its country code ('+61' requires 9, '+1' requires 10),
+ * responding 400 Bad Request. Country codes without a pinned length are left to the
+ * generic E.164 validation. Applies only to the create endpoint.
+ */
+@ControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class OwnerTelephoneLengthAdvice implements RequestBodyAdvice {
+
+    /** Country code (with leading '+') -> required national-number digit count. */
+    private static final Map<String, Integer> NATIONAL_LENGTH = Map.of("+61", 9, "+1", 10);
+
+    private final OwnerMapper ownerMapper;
+
+    public OwnerTelephoneLengthAdvice(OwnerMapper ownerMapper) {
+        this.ownerMapper = ownerMapper;
+    }
+
+    @Override
+    public boolean supports(MethodParameter methodParameter, Type targetType,
+                            Class<? extends HttpMessageConverter<?>> converterType) {
+        Method method = methodParameter.getMethod();
+        return OwnerFieldsDto.class.equals(targetType) && method != null
+            && "addOwner".equals(method.getName());
+    }
+
+    @Override
+    public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+        String telephone = ownerMapper.normalizeTelephone(((OwnerFieldsDto) body).getTelephone());
+        if (telephone != null && hasWrongNationalLength(telephone)) {
+            throw new WrongTelephoneLengthException();
+        }
+        return body;
+    }
+
+    private boolean hasWrongNationalLength(String telephone) {
+        for (Map.Entry<String, Integer> rule : NATIONAL_LENGTH.entrySet()) {
+            if (telephone.startsWith(rule.getKey())) {
+                return telephone.length() - rule.getKey().length() != rule.getValue();
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public Object handleEmptyBody(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                  Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+        return body;
+    }
+
+    @Override
+    public HttpInputMessage beforeBodyRead(HttpInputMessage inputMessage, MethodParameter parameter,
+                                           Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+        return inputMessage;
+    }
+
+    @ExceptionHandler(WrongTelephoneLengthException.class)
+    @ResponseBody
+    public ResponseEntity<Void> handleWrongTelephoneLength(WrongTelephoneLengthException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+    }
+
+    /** Signals that the telephone's national number is the wrong length for its country code. */
+    static class WrongTelephoneLengthException extends RuntimeException {
+    }
+}
