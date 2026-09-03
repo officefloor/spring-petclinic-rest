@@ -6,9 +6,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Records a soft-duplicate match before {@link SaveOwner} runs. The create has already
- * passed {@link CheckUniqueIdentity}, so it is not a hard duplicate. When it still shares
- * an existing owner's lastName (compared case-insensitively with collapsed whitespace)
- * and postcode but carries a different telephone, the matched owner's id is stored on
+ * passed {@link CheckUniqueIdentity}, so it is not a hard duplicate. When its identityKey
+ * still differs from an existing owner's yet its lastName is phonetically equal (same
+ * {@link Soundex} code) and its postcode matches, the matched owner's id is stored on
  * {@code possibleDuplicateOf}, which surfaces as {@code possibleDuplicate}/{@code
  * possibleDuplicateOf} on the response. Left unset (so {@code possibleDuplicate} is false)
  * otherwise, and always for a declared household member ({@code sharesHousehold=true}),
@@ -21,21 +21,17 @@ public class FlagPossibleDuplicate {
         if (postcode == null || Boolean.TRUE.equals(sharesHousehold)) {
             return;
         }
-        String lastName = CheckUniqueHousehold.normalize(owner.getLastName());
+        String soundex = Soundex.code(owner.getLastName());
+        String key = CheckUniqueIdentity.identityKey(owner);
         for (Owner other : ownerRepository.findAll()) {
             if (!other.getId().equals(owner.getId())
                     && postcode.equals(other.getPostcode())
-                    && lastName.equals(CheckUniqueHousehold.normalize(other.getLastName()))
+                    && soundex.equals(Soundex.code(other.getLastName()))
                     && !postcode.isBlank()
-                    && !equalsTelephone(owner, other)) {
+                    && !key.equals(CheckUniqueIdentity.identityKey(other))) {
                 owner.setPossibleDuplicateOf(other.getId());
                 return;
             }
         }
-    }
-
-    private static boolean equalsTelephone(Owner owner, Owner other) {
-        String telephone = owner.getTelephone();
-        return telephone != null && telephone.equals(other.getTelephone());
     }
 }

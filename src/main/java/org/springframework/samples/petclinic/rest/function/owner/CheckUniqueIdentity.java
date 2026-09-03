@@ -1,5 +1,9 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
@@ -26,13 +30,33 @@ public class CheckUniqueIdentity {
         }
     }
 
-    /** Derived duplicate key: normalizedTelephone + '|' + (email or empty) + '|' + householdId. */
+    /** SHA-256 hex over normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName). */
     public static String identityKey(Owner owner) {
-        return blank(owner.getTelephone()) + "|" + blank(owner.getEmail()) + "|"
-                + blank(owner.getHouseholdId());
+        String raw = normalizeTelephone(owner.getTelephone()) + "|" + lower(owner.getEmail())
+                + "|" + Soundex.code(owner.getLastName());
+        return sha256Hex(raw);
     }
 
-    private static String blank(String value) {
-        return value == null ? "" : value;
+    private static String normalizeTelephone(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    private static String lower(String value) {
+        return value == null ? "" : value.toLowerCase();
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
