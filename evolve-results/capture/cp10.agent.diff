@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java
+new file mode 100644
+index 000000000..664c9f0f3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/HouseholdDuplicates.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Detects owners that share a household, i.e. have the same last name and address
++ * (compared case-insensitively with collapsed whitespace).
++ */
++final class HouseholdDuplicates {
++
++    private HouseholdDuplicates() {
++    }
++
++    /**
++     * Returns {@code true} when an existing owner shares {@code candidate}'s household and the
++     * request did not opt in via {@code sharesHousehold}.
++     */
++    static boolean isRejectedDuplicate(Owner candidate, Collection<Owner> existing, Boolean sharesHousehold) {
++        if (Boolean.TRUE.equals(sharesHousehold)) {
++            return false;
++        }
++        String key = key(candidate);
++        return existing.stream().anyMatch(other -> key(other).equals(key));
++    }
++
++    private static String key(Owner owner) {
++        return norm(owner.getLastName()) + "\n" + norm(owner.getAddress());
++    }
++
++    private static String norm(String value) {
++        return value == null ? "" : value.replaceAll("\\s+", " ").trim().toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 4fa51ab36..4fedf00aa 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,7 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         Collection<Owner> existingOwners = this.clinicService.findAllOwners();
+         boolean telephoneTaken = existingOwners.stream()
+             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
+-        if (telephoneTaken) {
++        if (telephoneTaken || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+         String last = owner.getLastName();
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 044407e45..275c62857 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2043,6 +2043,11 @@ components:
+           type: string
+           format: date
+           example: '2020-06-15'
++        sharesHousehold:
++          title: Shares household
++          description: When true, allows creating this owner even if another owner has the same last name and address.
++          type: boolean
++          example: false
+       required:
+         - firstName
+         - lastName
