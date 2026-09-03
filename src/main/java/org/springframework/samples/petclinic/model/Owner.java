@@ -209,6 +209,14 @@ public class Owner extends Person {
         return Math.min(level, 3);
     }
 
+    /**
+     * The owner's preferred contact channel: {@code 'EMAIL'} when an email is present,
+     * otherwise {@code 'PHONE'}.
+     */
+    public String getContactPreference() {
+        return (this.email != null && !this.email.isEmpty()) ? "EMAIL" : "PHONE";
+    }
+
     protected Set<Pet> getPetsInternal() {
         if (this.pets == null) {
             this.pets = new HashSet<>();
