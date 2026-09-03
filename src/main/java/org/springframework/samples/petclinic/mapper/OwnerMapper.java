@@ -33,7 +33,21 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit",
         expression = "java(org.springframework.samples.petclinic.util.CheckDigits.luhn(owner.getCustomerCode()))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Age band derived from birthDate against registrationDate: MINOR (under 18), ADULT (18-64) or SENIOR (65+); null when birthDate is absent. */
+    default String ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        if (birthDate == null || owner.getRegistrationDate() == null) {
+            return null;
+        }
+        int age = java.time.Period.between(birthDate, owner.getRegistrationDate()).getYears();
+        if (age < 18) {
+            return "MINOR";
+        }
+        return age < 65 ? "ADULT" : "SENIOR";
+    }
 
     /** The single duplicate-detection key: normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty). */
     default String identityKey(Owner owner) {

@@ -59,6 +59,17 @@ public class Owner extends Person {
     @Column(name = "registration_date", columnDefinition = "DATE")
     private java.time.LocalDate registrationDate;
 
+    @Column(name = "birth_date", columnDefinition = "DATE")
+    private java.time.LocalDate birthDate;
+
+    public java.time.LocalDate getBirthDate() {
+        return this.birthDate;
+    }
+
+    public void setBirthDate(java.time.LocalDate birthDate) {
+        this.birthDate = birthDate;
+    }
+
     @Column(name = "customer_code")
     private String customerCode;
 
