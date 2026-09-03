@@ -1,0 +1,193 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5e6a2d08d..6b128cc65 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner.getTelephone()))")
+     @Mapping(target = "householdId", expression = "java(householdId(owner))")
+-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), \"\"))")
++    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+     @Mapping(target = "checkDigit", expression = "java(owner.getCustomerCode() == null ? null : org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+index 6dd4e7fb8..af24dce7d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -6,11 +6,11 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ 
+ /**
+- * Soft-match flag: a create that has already cleared the hard duplicate guards but still shares an
+- * existing owner's last name and postcode (compared case-insensitively with collapsed whitespace)
+- * while carrying a different telephone is recorded as a possible duplicate. Sets
+- * {@code possibleDuplicate} true and {@code possibleDuplicateOf} to that owner's id, otherwise false.
+- * A declared household member ({@code sharesHousehold} true) is never a suspected duplicate.
++ * Soft-match flag: a create that has already cleared the hard identity guard but whose
++ * {@code identityKey} still differs from an existing owner sharing its {@code soundex(lastName)}
++ * and postcode is recorded as a possible duplicate. Sets {@code possibleDuplicate} true and
++ * {@code possibleDuplicateOf} to that owner's id, otherwise false. A declared household member
++ * ({@code sharesHousehold} true) is never a suspected duplicate.
+  */
+ public class FlagPossibleDuplicate {
+ 
+@@ -19,12 +19,13 @@ public class FlagPossibleDuplicate {
+             owner.setPossibleDuplicate(false);
+             return;
+         }
+-        String lastName = normalize(owner.getLastName());
++        String soundex = Soundex.of(owner.getLastName());
+         String postcode = normalize(owner.getPostcode());
++        String key = OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
+         for (Owner other : ownerRepository.findAll()) {
+-            if (!postcode.isEmpty() && lastName.equals(normalize(other.getLastName()))
++            if (!postcode.isEmpty() && soundex.equals(Soundex.of(other.getLastName()))
+                     && postcode.equals(normalize(other.getPostcode()))
+-                    && !equalTelephone(owner.getTelephone(), other.getTelephone())) {
++                    && !key.equals(OwnerIdentity.key(other.getTelephone(), other.getEmail(), other.getLastName()))) {
+                 owner.setPossibleDuplicate(true);
+                 owner.setPossibleDuplicateOf(other.getId());
+                 return;
+@@ -33,10 +34,6 @@ public class FlagPossibleDuplicate {
+         owner.setPossibleDuplicate(false);
+     }
+ 
+-    private static boolean equalTelephone(String a, String b) {
+-        return a == null ? b == null : a.equals(b);
+-    }
+-
+     private static String normalize(String value) {
+         return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
+index 8d42c1fb9..d12fc4a7b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerIdentity.java
+@@ -1,22 +1,34 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.HexFormat;
++
+ /**
+  * Derives an owner's {@code identityKey}, the single value all duplicate detection is based on:
+- * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. Two owners are duplicates
+- * only when their WHOLE keys are equal.
++ * the SHA-256 hex digest of {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
++ * Two owners are duplicates only when their whole keys are equal.
+  *
+- * <p>The household segment is empty for an owner not assigned to a shared household, so it never on its
+- * own separates two owners: members of one household with different telephones already differ by the
+- * telephone segment and are both allowed, while owners sharing a telephone and email collide.
++ * <p>Telephone is part of the key, so two owners sharing a last name and postcode but carrying
++ * different telephones have different keys and are not hard duplicates: they are allowed and merely
++ * flagged as a possible (soft) duplicate elsewhere.
+  */
+ public final class OwnerIdentity {
+ 
+     private OwnerIdentity() {
+     }
+ 
+-    public static String key(String telephone, String email, String householdId) {
++    public static String key(String telephone, String email, String lastName) {
+         String tel = telephone == null ? "" : telephone;
+         String mail = email == null ? "" : email.toLowerCase();
+-        return tel + "|" + mail + "|" + (householdId == null ? "" : householdId);
++        String raw = tel + "|" + mail + "|" + Soundex.of(lastName);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
++            return HexFormat.of().formatHex(digest);
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index 9a74abf6b..11523229d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -17,12 +17,12 @@ public class RequireUniqueIdentity {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
+             throws DuplicateOwnerTelephoneException {
+-        String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), "");
++        String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), request.getLastName());
+         for (Owner owner : ownerRepository.findAll()) {
+             if (owner.isDeleted()) {
+                 continue;
+             }
+-            if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), ""))) {
++            if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))) {
+                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
+             }
+         }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+new file mode 100644
+index 000000000..c3a23a427
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+@@ -0,0 +1,44 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * American Soundex of a name: its first letter followed by up to three digits encoding the
++ * remaining consonants, zero-padded to length four. Vowels and {@code H}/{@code W} do not
++ * encode; adjacent letters with the same code collapse to one. Used to group phonetically
++ * similar last names in the owner {@code identityKey} and in soft-duplicate detection. A
++ * null/blank name yields the empty string.
++ */
++public final class Soundex {
++
++    /** Code per letter A-Z; '0' means the letter is not encoded (vowels, H, W, Y). */
++    private static final String CODES = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    public static String of(String value) {
++        String upper = value == null ? "" : value.toUpperCase().replaceAll("[^A-Z]", "");
++        if (upper.isEmpty()) {
++            return "";
++        }
++        StringBuilder out = new StringBuilder().append(upper.charAt(0));
++        char prev = code(upper.charAt(0));
++        for (int i = 1; i < upper.length() && out.length() < 4; i++) {
++            char c = upper.charAt(i);
++            char digit = code(c);
++            if (digit != '0' && digit != prev) {
++                out.append(digit);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = digit;
++            }
++        }
++        while (out.length() < 4) {
++            out.append('0');
++        }
++        return out.toString();
++    }
++
++    private static char code(char letter) {
++        return CODES.charAt(letter - 'A');
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 70f67f1d9..43550e966 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -32,11 +32,6 @@ email:
+ uniqueIdentity:
+   class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueIdentity
+   govern: [ transaction ]
+-  next: uniqueHousehold
+-
+-uniqueHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.RequireUniqueHousehold
+-  govern: [ transaction ]
+   next: capacity
+ 
+ capacity:
