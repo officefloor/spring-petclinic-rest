@@ -70,7 +70,7 @@ public class OwnerDailyLimitAdvice implements RequestBodyAdvice {
     }
 
     private int createdTodayCount() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = org.springframework.samples.petclinic.util.BusinessDays.toBusinessDay(LocalDate.now());
         int count = 0;
         for (Owner existing : clinicService.findAllOwners()) {
             if (today.equals(existing.getRegistrationDate())) {

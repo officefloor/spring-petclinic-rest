@@ -49,9 +49,15 @@ public interface OwnerMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
-    @Mapping(target = "registrationDate", source = "registrationDate",
-        defaultExpression = "java(java.time.LocalDate.now())")
+    @Mapping(target = "registrationDate", expression = "java(effectiveRegistrationDate(ownerDto))")
     Owner toOwner(OwnerFieldsDto ownerDto);
+
+    /** The supplied registration date, or today's date when absent, rolled forward off weekends to a business day. */
+    default java.time.LocalDate effectiveRegistrationDate(OwnerFieldsDto ownerDto) {
+        java.time.LocalDate supplied = ownerDto.getRegistrationDate();
+        return org.springframework.samples.petclinic.util.BusinessDays.toBusinessDay(
+            supplied != null ? supplied : java.time.LocalDate.now());
+    }
 
     /** Normalize to E.164 so the create path stores, and duplicate detection compares, that form. */
     @Named("normalizeTelephone")
