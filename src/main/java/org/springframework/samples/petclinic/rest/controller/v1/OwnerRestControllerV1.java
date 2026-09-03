@@ -134,6 +134,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (isEmailInUse(owner.getEmail())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -294,6 +297,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(this::toE164)
             .filter(Objects::nonNull)
             .anyMatch(telephone::equals);
+    }
+
+    /**
+     * Whether any existing owner already holds the given email address, compared case-insensitively
+     * (by lower-casing both the candidate and each stored value). A null or empty candidate email is
+     * never considered in use, so owners without an email do not collide. When true, the new owner
+     * must be rejected with {@code 409 Conflict}.
+     */
+    private boolean isEmailInUse(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        String candidate = email.toLowerCase();
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(Objects::nonNull)
+            .map(String::toLowerCase)
+            .anyMatch(candidate::equals);
     }
 
     /**
