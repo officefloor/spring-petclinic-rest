@@ -133,7 +133,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -143,15 +143,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a newly created owner, formatted {@code '<LAST3>-<NNNN>'}
-     * where LAST3 is the upper-cased first three letters of {@code lastName} and NNNN is a
-     * global 4-digit zero-padded sequence equal to one more than the current number of owners
-     * (e.g. {@code 'SMI-0007'}).
+     * Build the customer code for a newly created owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
+     * where CITY3 is the upper-cased first three letters of {@code city}, LAST3 the upper-cased first
+     * three letters of {@code lastName} and NNNN a per-city 4-digit zero-padded sequence equal to one
+     * more than the number of owners already in that city (e.g. {@code 'LON-SMI-0007'}).
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**

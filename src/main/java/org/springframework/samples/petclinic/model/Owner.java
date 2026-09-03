@@ -150,7 +150,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registrationDate year, e.g. {@code 'SMI-0007-M26'}.
+     * last two digits of the registrationDate year, e.g. {@code 'LON-SMI-0007-M26'}.
      */
     public String getMembershipNumber() {
         return this.customerCode + "-M" + String.format("%02d", this.registrationDate.getYear() % 100);
