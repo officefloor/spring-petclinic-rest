@@ -24,7 +24,9 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -303,11 +305,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * lastName (e.g. {@code 'NSW-3C1A9F2B'}). This is the single source of the owner's identity:
      * every value built from the customer code (the membership number and its check digit) and the
      * owner's locality are derived from it.
+     *
+     * <p>When the computed code collides with an existing owner's {@code customerCode}, a
+     * {@code '-<n>'} suffix is appended with the smallest {@code n} of 2 or more that makes the code
+     * unique, and the de-duplicated code is returned.
      */
     private String customerCode(Owner owner) {
         String region = owner.getRegion() != null ? owner.getRegion() : Owner.UNKNOWN_REGION;
         String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName()).substring(0, 8);
-        return region + "-" + hash8;
+        String base = region + "-" + hash8;
+
+        Set<String> existingCodes = this.clinicService.findAllOwners().stream()
+            .map(Owner::getCustomerCode)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+        if (!existingCodes.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existingCodes.contains(base + "-" + n)) {
+            n++;
+        }
+        return base + "-" + n;
     }
 
     /**
