@@ -1,6 +1,15 @@
 composition:
   authorize: "hasRole('OWNER_ADMIN')"
 
+# An optional Idempotency-Key header makes create safe to retry: a repeat of an already-seen key
+# short-circuits to the originally created owner (200) instead of creating a duplicate. Runs first,
+# before the duplicate/quota checks, so a retry never 409s.
+checkIdempotency:
+  class: org.springframework.samples.petclinic.rest.function.owner.CheckIdempotency
+  outputs:
+    proceed: validate
+    existing: loadExisting
+
 validate:
   class: org.springframework.samples.petclinic.rest.function.owner.ValidateOwnerFields
   next: ensureUniqueIdentity
@@ -58,8 +67,23 @@ save:
 audit:
   class: org.springframework.samples.petclinic.rest.function.owner.AuditOwnerCreated
   govern: [ transaction ]
+  next: record
+
+record:
+  class: org.springframework.samples.petclinic.rest.function.owner.RecordIdempotency
+  govern: [ transaction ]
   next: respond
 
 respond:
   class: org.springframework.samples.petclinic.rest.function.owner.RespondWithOwnerCreated
   govern: [ transaction ]
+
+# Repeat of an already-seen Idempotency-Key: load and return the originally created owner with 200.
+loadExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.LoadExistingOwner
+  govern: [ readonly-transaction ]
+  next: respondExisting
+
+respondExisting:
+  class: org.springframework.samples.petclinic.rest.function.owner.RespondWithExistingOwner
+  govern: [ readonly-transaction ]
