@@ -110,6 +110,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        String address = addressNormalizer.normalize(owner.getAddress());
+        if (address.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
