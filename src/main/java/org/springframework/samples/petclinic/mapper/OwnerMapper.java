@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints",
             expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipPoints(owner))")
@@ -152,22 +153,45 @@ public interface OwnerMapper {
     }
 
     /**
+     * The fiscal year the {@code date} falls in, as an integer. The fiscal year starts on 1 July and is
+     * named by the calendar year in which it ends, so 1 July 2026 - 30 June 2027 is fiscal year 2027: a
+     * date in July or later belongs to the next calendar year's fiscal year, an earlier date to the
+     * current calendar year's.
+     */
+    static int fiscalYearOf(java.time.LocalDate date) {
+        return date.getMonthValue() >= 7 ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year, formatted {@code FY<YY>} where YY is the last two digits of the fiscal
+     * year the business-day-adjusted registrationDate falls in (fiscal year starting 1 July), e.g.
+     * {@code FY27}. Null when the registration date is absent.
+     */
+    default String fiscalYear(Owner owner) {
+        if (owner.getRegistrationDate() == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYearOf(owner.getRegistrationDate()) % 100);
+    }
+
+    /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the last two
-     * digits of the registrationDate year (e.g. {@code NSW-1A2B3C4D-M26}). Null when either the customer
-     * code or the registration date is absent.
+     * digits of the fiscal year the registrationDate falls in (fiscal year starting 1 July), e.g.
+     * {@code NSW-1A2B3C4D-M27}. Null when either the customer code or the registration date is absent.
      */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
         return String.format("%s-M%02d", owner.getCustomerCode(),
-                owner.getRegistrationDate().getYear() % 100);
+                fiscalYearOf(owner.getRegistrationDate()) % 100);
     }
 
     /**
      * The owner's membership points. Starts at 0; add 2 when an email is present; add 1 when the owner's
      * name was unique on creation (namesakeCount is 0); add 2 for a household of 3 or more members; add 3
-     * for tenure of more than 365 days (days elapsed since the registrationDate).
+     * for tenure of one or more elapsed fiscal years (the current fiscal year differs from the fiscal
+     * year the registrationDate falls in; fiscal year starting 1 July).
      */
     static int membershipPoints(Owner owner) {
         int points = 0;
@@ -184,8 +208,8 @@ public interface OwnerMapper {
             points += 2;
         }
         if (owner.getRegistrationDate() != null
-                && java.time.temporal.ChronoUnit.DAYS.between(
-                        owner.getRegistrationDate(), java.time.LocalDate.now()) > 365) {
+                && fiscalYearOf(java.time.LocalDate.now())
+                        - fiscalYearOf(owner.getRegistrationDate()) >= 1) {
             points += 3;
         }
         return points;
