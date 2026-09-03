@@ -289,6 +289,14 @@ public class Owner extends Person {
     }
 
     /**
+     * The canonical URL path of this owner: {@code '/api/owners/'} followed by the owner's
+     * {@linkplain #getId() id}, e.g. {@code '/api/owners/1'}.
+     */
+    public String getSelfLink() {
+        return "/api/owners/" + this.getId();
+    }
+
+    /**
      * The owner's initials: the upper-cased first letters of firstName and lastName,
      * dot-separated with a trailing dot, e.g. {@code 'J.S.'}.
      */
