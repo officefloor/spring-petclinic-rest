@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java
+new file mode 100644
+index 000000000..325188617
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateException.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.time.LocalDate;
++
++/**
++ * Thrown when an owner request supplies a {@code registrationDate} that is later than the server's
++ * current date. A registration cannot be dated in the future. Handled globally by
++ * {@link FutureRegistrationDateExceptionHandler}, which responds 400.
++ */
++public class FutureRegistrationDateException extends Exception {
++
++    private final LocalDate registrationDate;
++
++    public FutureRegistrationDateException(LocalDate registrationDate) {
++        super("Registration date is later than the server date: " + registrationDate);
++        this.registrationDate = registrationDate;
++    }
++
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+new file mode 100644
+index 000000000..79f2e234e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/FutureRegistrationDateExceptionHandler.java
+@@ -0,0 +1,20 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import java.util.List;
++import java.util.Map;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.ResponseEntity;
++
++/**
++ * Responds 400 when an owner request supplies a {@code registrationDate} that is later than the
++ * server's current date.
++ */
++public class FutureRegistrationDateExceptionHandler {
++
++    public void handle(@Parameter FutureRegistrationDateException ex,
++            ObjectResponse<ResponseEntity<Map<String, List<String>>>> response) {
++        response.send(ResponseEntity.badRequest().body(Map.of("errors", List.of("registrationDate"))));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 6dcec1cae..98553ba58 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -7,15 +7,22 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException;
+ 
+ public class BuildOwner {
+ 
+-    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
++    public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
++            throws FutureRegistrationDateException {
+         Owner owner = ownerMapper.toOwner(request);
+         LocalDate effective = owner.getRegistrationDate();
+         if (effective == null) {
+             effective = LocalDate.now();
+         }
++        // A supplied registration date cannot be in the future; reject a date later than the
++        // server's current date with a 400 before it is rolled onto a business day.
++        else if (effective.isAfter(LocalDate.now())) {
++            throw new FutureRegistrationDateException(effective);
++        }
+         // The effective registration date must fall on a business day, whether supplied in the
+         // request or defaulted to the server date; a weekend rolls forward to the next Monday.
+         owner.setRegistrationDate(BusinessDays.rollForward(effective));
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml
+new file mode 100644
+index 000000000..6a32d7ea8
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.FutureRegistrationDateExceptionHandler
