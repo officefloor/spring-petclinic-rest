@@ -124,6 +124,22 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles {@link RejectedRequestException}, the signal that request handling has rejected a
+     * request with a specific client-error status ({@code 400 Bad Request}, {@code 409 Conflict}
+     * or {@code 429 Too Many Requests}). Returns a response carrying exactly that status.
+     *
+     * @param e The {@link RejectedRequestException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} carrying the status the request was rejected with.
+     */
+    @ExceptionHandler(RejectedRequestException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleRejectedRequestException(RejectedRequestException e, HttpServletRequest request) {
+        HttpStatus status = e.getStatus();
+        return ResponseEntity.status(status).build();
+    }
+
+    /**
      * Handles exception thrown by Bean Validation on controller methods parameters
      *
      * @param e The {@link MethodArgumentNotValidException} to be handled

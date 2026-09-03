@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.RejectedRequestException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -234,28 +235,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * assigned its household} and screened for {@link #checkForConflicts(Owner) conflicts};
      * a surviving owner then has its {@link #assignDerivedAttributes(Owner, boolean) derived
      * attributes} assigned, is persisted and audited. Returns the {@link #created(Owner) 201 Created}
-     * response for the persisted owner, or the {@link HttpStatus} the create must fail with
-     * ({@code 400 Bad Request}, {@code 429 Too Many Requests} or {@code 409 Conflict}) when the owner
-     * cannot be created.
+     * response for the persisted owner, or throws {@link RejectedRequestException} with the status
+     * the create must fail with ({@code 400 Bad Request}, {@code 429 Too Many Requests} or
+     * {@code 409 Conflict}) when the owner cannot be created.
      */
     private ResponseEntity<OwnerDto> createOwner(OwnerFieldsDto ownerFieldsDto) {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
 
-        HttpStatus invalid = normalizeAndValidate(owner);
-        if (invalid != null) {
-            return new ResponseEntity<>(invalid);
-        }
+        normalizeAndValidate(owner);
         if (isDailyLimitReached(owner.getRegistrationDate())) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new RejectedRequestException(HttpStatus.TOO_MANY_REQUESTS);
         }
 
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         assignHousehold(owner);
 
-        HttpStatus conflict = checkForConflicts(owner);
-        if (conflict != null) {
-            return new ResponseEntity<>(conflict);
-        }
+        checkForConflicts(owner);
 
         assignDerivedAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
@@ -293,33 +288,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * is rejected), its telephone is converted to E.164 (an unconvertible number is rejected), its
      * postcode is checked against its city's region, a registration date in the future is rejected,
      * and the effective registration date (the supplied one, or today when none was given) is rolled
-     * onto a business day and stored back on the owner. Returns {@code null} once the owner is valid
-     * and normalized, or the {@link HttpStatus} the create must fail with ({@code 400 Bad Request})
-     * otherwise.
+     * onto a business day and stored back on the owner. Returns once the owner is valid and
+     * normalized, or throws {@link RejectedRequestException} with the status the create must fail
+     * with ({@code 400 Bad Request}) otherwise.
      */
-    private HttpStatus normalizeAndValidate(Owner owner) {
+    private void normalizeAndValidate(Owner owner) {
         if (!normalizeAddress(owner)) {
-            return HttpStatus.BAD_REQUEST;
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         String telephone = toE164(owner.getTelephone());
         if (telephone == null) {
-            return HttpStatus.BAD_REQUEST;
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
         if (isDisposableEmail(owner.getEmail())) {
-            return HttpStatus.BAD_REQUEST;
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         if (!owner.isPostcodeValid()) {
-            return HttpStatus.BAD_REQUEST;
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         if (owner.getRegistrationDate() != null
             && owner.getRegistrationDate().isAfter(LocalDate.now())) {
-            return HttpStatus.BAD_REQUEST;
+            throw new RejectedRequestException(HttpStatus.BAD_REQUEST);
         }
         LocalDate effectiveDate = owner.getRegistrationDate() != null
             ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
-        return null;
     }
 
     /**
@@ -388,22 +382,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
-     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
-     * {@linkplain #isDuplicateIdentity(Owner) duplicates an existing owner's identity key} or when
-     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household (the
-     * same surname sound and postcode) but with a different identity key is not a conflict: such an
-     * owner is admitted and later {@linkplain #findSoftDuplicate(Owner) flagged as a possible
-     * duplicate}. Returns {@code null} when the owner clashes with nothing and may be created.
+     * Screen the owner for a clash with an owner that already exists. An owner is rejected with
+     * {@code 409 Conflict} when it {@linkplain #isDuplicateIdentity(Owner) duplicates an existing
+     * owner's identity key} or when its {@link #isCityAtCapacity(String) city is already at
+     * capacity}. Sharing a household (the same surname sound and postcode) but with a different
+     * identity key is not a conflict: such an owner is admitted and later
+     * {@linkplain #findSoftDuplicate(Owner) flagged as a possible duplicate}. Returns when the owner
+     * clashes with nothing and may be created, or throws {@link RejectedRequestException} with
+     * {@code 409 Conflict} when it clashes.
      */
-    private HttpStatus checkForConflicts(Owner owner) {
+    private void checkForConflicts(Owner owner) {
         if (isDuplicateIdentity(owner)) {
-            return HttpStatus.CONFLICT;
+            throw new RejectedRequestException(HttpStatus.CONFLICT);
         }
         if (isCityAtCapacity(owner.getCity())) {
-            return HttpStatus.CONFLICT;
+            throw new RejectedRequestException(HttpStatus.CONFLICT);
         }
-        return null;
     }
 
     /**
