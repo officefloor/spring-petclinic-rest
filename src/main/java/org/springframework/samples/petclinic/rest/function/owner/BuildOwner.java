@@ -26,7 +26,8 @@ public class BuildOwner {
             throw new FutureRegistrationDateException(effective);
         }
         // The effective registration date must fall on a business day, whether supplied in the
-        // request or defaulted to the server date; a weekend rolls forward to the next Monday.
+        // request or defaulted to the server date; a weekend or public holiday rolls forward to the
+        // next non-holiday business day.
         owner.setRegistrationDate(BusinessDays.rollForward(effective));
         built.set(owner);
     }
