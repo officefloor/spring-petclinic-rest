@@ -6,10 +6,10 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdException;
 
 /**
- * Rejects a create whose lastName and address already belong to another owner (compared
- * case-insensitively with collapsed whitespace), before {@link SaveOwner} runs. Handled
- * with 409 by {@code DuplicateHouseholdHandler}. Skipped when the request opts in with
- * {@code sharesHousehold=true}.
+ * Rejects a create whose computed {@code householdId} (derived from lastName and postcode)
+ * already belongs to another owner, before {@link SaveOwner} runs. Handled with 409 by
+ * {@code DuplicateHouseholdHandler}. Skipped when the request opts in with
+ * {@code sharesHousehold=true}, so a declared household member is created instead.
  */
 public class CheckUniqueHousehold {
 
@@ -18,13 +18,11 @@ public class CheckUniqueHousehold {
         if (Boolean.TRUE.equals(sharesHousehold)) {
             return;
         }
-        String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String householdId = owner.getHouseholdId();
         for (Owner other : ownerRepository.findAll()) {
             if (!other.getId().equals(owner.getId())
-                    && lastName.equals(normalize(other.getLastName()))
-                    && address.equals(normalize(other.getAddress()))) {
-                throw new DuplicateHouseholdException(owner.getLastName(), owner.getAddress());
+                    && householdId.equals(other.getHouseholdId())) {
+                throw new DuplicateHouseholdException(owner.getLastName(), owner.getPostcode());
             }
         }
     }

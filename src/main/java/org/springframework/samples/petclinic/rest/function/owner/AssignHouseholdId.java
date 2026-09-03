@@ -8,28 +8,25 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * When the request opts in with {@code sharesHousehold=true}, assigns a stable
- * {@code householdId} derived from the owner's normalized lastName and address, so every
- * owner sharing that household resolves to the same identifier. Runs before
- * {@link SaveOwner}; a no-op otherwise, leaving {@code householdId} absent.
+ * Assigns a deterministic {@code householdId} derived from the owner's normalized
+ * lastName and postcode, so every owner sharing a lastName and postcode resolves to the
+ * same identifier automatically. Runs before the household and identity checks.
  */
 public class AssignHouseholdId {
 
-    public void service(@Val Owner owner, @Val Boolean sharesHousehold) {
-        if (!Boolean.TRUE.equals(sharesHousehold)) {
-            return;
-        }
+    public void service(@Val Owner owner) {
+        String postcode = owner.getPostcode();
         String key = CheckUniqueHousehold.normalize(owner.getLastName())
-                + "|" + CheckUniqueHousehold.normalize(owner.getAddress());
+                + "|" + (postcode == null ? "" : postcode);
         owner.setHouseholdId(hash(key));
     }
 
-    /** First 8 bytes of SHA-256({@code key}) as lower-case hex — stable across requests. */
+    /** First 6 bytes (12 hex chars) of SHA-256({@code key}) as lower-case hex — stable across requests. */
     static String hash(String key) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02x", digest[i]));
             }
             return sb.toString();

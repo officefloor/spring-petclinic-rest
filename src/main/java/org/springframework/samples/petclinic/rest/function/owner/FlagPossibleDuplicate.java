@@ -11,13 +11,14 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * and postcode but carries a different telephone, the matched owner's id is stored on
  * {@code possibleDuplicateOf}, which surfaces as {@code possibleDuplicate}/{@code
  * possibleDuplicateOf} on the response. Left unset (so {@code possibleDuplicate} is false)
- * otherwise.
+ * otherwise, and always for a declared household member ({@code sharesHousehold=true}),
+ * which is not a suspected duplicate.
  */
 public class FlagPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val Boolean sharesHousehold, OwnerRepository ownerRepository) {
         String postcode = owner.getPostcode();
-        if (postcode == null) {
+        if (postcode == null || Boolean.TRUE.equals(sharesHousehold)) {
             return;
         }
         String lastName = CheckUniqueHousehold.normalize(owner.getLastName());
