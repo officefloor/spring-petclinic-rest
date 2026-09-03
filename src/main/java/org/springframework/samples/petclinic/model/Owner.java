@@ -99,6 +99,7 @@ public class Owner extends Person {
         if (this.registrationDate == null) {
             this.registrationDate = LocalDate.now();
         }
+        this.registrationDate = BusinessDays.roll(this.registrationDate);
     }
 
     public String getEmail() {

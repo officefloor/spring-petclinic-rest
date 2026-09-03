@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.time.LocalDate;
 import java.util.Collection;
 
+import org.springframework.samples.petclinic.model.BusinessDays;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
@@ -21,7 +22,7 @@ final class DailyRegistrationLimit {
      * already registered today, so no further owner may be created today.
      */
     static boolean isReached(Collection<Owner> existing) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessDays.roll(LocalDate.now());
         long createdToday = existing.stream()
             .filter(other -> today.equals(other.getRegistrationDate()))
             .count();
