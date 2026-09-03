@@ -1,0 +1,217 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index c1c16cc30..7d95679d5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,8 +22,6 @@ public interface OwnerMapper {
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials",
+         expression = "java((owner.getFirstName().substring(0, 1) + \".\" + owner.getLastName().substring(0, 1) + \".\").toUpperCase())")
+-    @Mapping(target = "membershipNumber",
+-        expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100))")
+     @Mapping(target = "fiscalYear",
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.label(owner))")
+     @Mapping(target = "membershipPoints",
+@@ -38,8 +36,6 @@ public interface OwnerMapper {
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.OwnerSegment.of(owner))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+-    @Mapping(target = "checkDigit",
+-        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.CheckDigit.of(owner))")
+     @Mapping(target = "identityKey",
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner))")
+     @Mapping(target = "ageBand",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index dbe69d45a..3bd668ce0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -77,8 +77,8 @@ public class Owner extends Person {
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+-    @Column(name = "customer_code")
+-    private String customerCode;
++    @Column(name = "member_id")
++    private String memberId;
+ 
+     @Column(name = "household_id")
+     private String householdId;
+@@ -139,12 +139,12 @@ public class Owner extends Person {
+ 
+     public void setBirthDate(LocalDate birthDate) { this.birthDate = birthDate; }
+ 
+-    public String getCustomerCode() {
+-        return this.customerCode;
++    public String getMemberId() {
++        return this.memberId;
+     }
+ 
+-    public void setCustomerCode(String customerCode) {
+-        this.customerCode = customerCode;
++    public void setMemberId(String memberId) {
++        this.memberId = memberId;
+     }
+ 
+     public String getHouseholdId() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
+index 60d0231ee..d65e09dfb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
+@@ -19,14 +19,12 @@ public class OwnerAuditListener {
+ 
+     @PostPersist
+     void onCreate(Owner owner) {
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
+-            owner.getCustomerCode() + "-M" + String.format("%02d",
+-                org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100));
++        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
++            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner));
+         AUDIT.info(String.format(
+-            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+-            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
++            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
++            SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(),
+             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner)));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CheckDigit.java
+index 13cd31acd..110de57c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CheckDigit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CheckDigit.java
+@@ -1,21 +1,14 @@
+ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+-import org.springframework.samples.petclinic.model.Owner;
+-
+ /**
+- * The single Luhn check digit (0-9) computed over the digits of an owner's customerCode,
+- * so a code can be validated without recomputing how it was built.
++ * The single Luhn check digit (0-9) over the digits of a string, used as the CHK segment
++ * of a memberId so it can be validated without recomputing how it was built.
+  */
+ public final class CheckDigit {
+ 
+     private CheckDigit() {
+     }
+ 
+-    /** The Luhn check digit over the digits contained in {@code owner}'s customerCode. */
+-    public static int of(Owner owner) {
+-        return luhn(owner.getCustomerCode());
+-    }
+-
+     /** The Luhn check digit (0-9) over the digits contained in {@code value}. */
+     static int luhn(String value) {
+         int sum = 0;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCodes.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCodes.java
+index 4e4bee421..2e8a4862f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCodes.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CustomerCodes.java
+@@ -2,32 +2,39 @@ package org.springframework.samples.petclinic.rest.controller.v1;
+ 
+ import java.nio.charset.StandardCharsets;
+ import java.security.MessageDigest;
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.HashSet;
+ import java.util.Set;
+ 
++import org.springframework.samples.petclinic.model.BusinessDays;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Builds an owner's customerCode in the form {@code <REGION>-<HASH8>}: the region derived
+- * from the postcode, then the first 8 upper-case hex characters of SHA-256 over the
+- * owner's normalized telephone and last name.
++ * Builds an owner's memberId in the form {@code <REGION><FY><HASH8><CHK>}: the region derived
++ * from the postcode, the 2-digit fiscal year, the first 8 upper-case hex characters of SHA-256
++ * over the owner's normalized telephone and last name, and a single Luhn check digit over them.
+  */
+ public final class CustomerCodes {
+ 
+     private CustomerCodes() {
+     }
+ 
+-    /** The {@code <REGION>-<HASH8>} identity code for {@code owner}. */
++    /** The {@code <REGION><FY><HASH8><CHK>} memberId for {@code owner}. */
+     static String build(Owner owner, Collection<Owner> existing) {
+-        return deduplicate(region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName()), existing);
++        LocalDate registration = BusinessDays.roll(
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
++        String base = region(owner)
++            + String.format("%02d", FiscalYear.of(registration) % 100)
++            + hash8(owner.getTelephone() + owner.getLastName());
++        return deduplicate(base + CheckDigit.luhn(base), existing);
+     }
+ 
+     /** {@code code}, or the first {@code code-<n>} (n starting at 2) not held by an owner in {@code existing}. */
+     private static String deduplicate(String code, Collection<Owner> existing) {
+         Set<String> used = new HashSet<>();
+         for (Owner owner : existing) {
+-            used.add(owner.getCustomerCode());
++            used.add(owner.getMemberId());
+         }
+         String candidate = code;
+         for (int n = 2; used.contains(candidate); n++) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 48f6ad938..dd3948998 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -114,7 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setPossibleDuplicateOf(
+             PossibleDuplicates.matchId(owner, existingOwners, ownerFieldsDto.getSharesHousehold()));
+         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
+-        owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
++        owner.setMemberId(CustomerCodes.build(owner, existingOwners));
+         owner.setMembershipCap(MembershipCap.of(owner, existingOwners));
+         owner.setCapacityWarning(CityCapacityWarning.isApproaching(owner, existingOwners));
+         this.clinicService.saveOwner(owner);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 652f904cd..36c5444c4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -45,7 +45,7 @@ CREATE TABLE owners (
+   email      VARCHAR(255),
+   postcode   VARCHAR(4),
+   registration_date DATE,
+-  customer_code VARCHAR(20),
++  member_id VARCHAR(32),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   membership_cap INTEGER,
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index a62b84215..a0a24fc1c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2130,26 +2130,11 @@ components:
+               type: string
+               example: '+61 412 345 678'
+               readOnly: true
+-            customerCode:
+-              title: Customer code
+-              description: The owner's customer code formatted '<LAST3>-<NNNN>'.
++            memberId:
++              title: Member ID
++              description: Unified member identifier formatted '<REGION><FY><HASH8><CHK>' - the region code, the 2-digit fiscal year, the first 8 upper-hex characters of SHA-256 over the normalized telephone and last name, and a single Luhn check digit over the preceding characters.
+               type: string
+-              example: SMI-0007
+-              readOnly: true
+-            checkDigit:
+-              title: Check digit
+-              description: Single Luhn check digit computed over the digits of the customerCode.
+-              type: integer
+-              format: int32
+-              minimum: 0
+-              maximum: 9
+-              example: 4
+-              readOnly: true
+-            membershipNumber:
+-              title: Membership number
+-              description: The owner's membership number formatted '<customerCode>-M<YY>', where YY is the last two digits of the registrationDate year.
+-              type: string
+-              example: SMI-0007-M26
++              example: NSW27A1B2C3D40
+               readOnly: true
+             fiscalYear:
+               title: Fiscal year
