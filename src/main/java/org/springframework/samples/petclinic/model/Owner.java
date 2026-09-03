@@ -430,16 +430,42 @@ public class Owner extends Person {
      */
     public Integer getMembershipLevel() {
         int level = 1;
-        if (this.email != null && !this.email.isEmpty()) {
+        if (hasEmail()) {
             level++;
         }
-        if (this.namesakeCount != null && this.namesakeCount == 0) {
+        if (hasNoNamesakes()) {
             level++;
         }
-        if (this.getTenureDays() > 365) {
+        if (hasTenureBeyondOneYear()) {
             level++;
         }
         return level;
+    }
+
+    /**
+     * Whether this owner has an email on record: a non-{@code null}, non-empty {@link #getEmail()
+     * email}. This is the single source of the "has an email" test, shared by every rule keyed by
+     * email presence so the check is never re-derived elsewhere.
+     */
+    private boolean hasEmail() {
+        return this.email != null && !this.email.isEmpty();
+    }
+
+    /**
+     * Whether this owner's name is unique in the clinic: its {@link #getNamesakeCount() namesakeCount}
+     * is {@code 0} (no other owner shares the name). A {@code null} namesakeCount, meaning the count is
+     * not known, is treated as not unique.
+     */
+    private boolean hasNoNamesakes() {
+        return this.namesakeCount != null && this.namesakeCount == 0;
+    }
+
+    /**
+     * Whether this owner's {@linkplain #getTenureDays() tenure} exceeds 365 days. A newly created owner
+     * (zero tenure) does not qualify; the threshold is crossed only once tenure grows beyond one year.
+     */
+    private boolean hasTenureBeyondOneYear() {
+        return this.getTenureDays() > 365;
     }
 
     /**
@@ -459,7 +485,7 @@ public class Owner extends Person {
      * otherwise {@code 'PHONE'}.
      */
     public String getContactPreference() {
-        return (this.email != null && !this.email.isEmpty()) ? "EMAIL" : "PHONE";
+        return hasEmail() ? "EMAIL" : "PHONE";
     }
 
     /**
