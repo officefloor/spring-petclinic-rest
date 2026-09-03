@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.RegionTimezone.of(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+    @Mapping(target = "fiscalYear", expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "addressLine1", source = "address")
     @Mapping(target = "salutation", expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     OwnerDto toOwnerDto(Owner owner);
@@ -48,7 +49,8 @@ public interface OwnerMapper {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+                org.springframework.samples.petclinic.rest.function.owner.FiscalYear.shortYear(owner.getRegistrationDate()));
     }
 
     /** Stable identifier for the household an owner belongs to: the first 12 hex characters of SHA-256

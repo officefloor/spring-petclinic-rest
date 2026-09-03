@@ -26,7 +26,7 @@ public final class MembershipPoints {
             points += 2;
         }
         LocalDate registration = owner.getRegistrationDate();
-        if (registration != null && registration.isBefore(LocalDate.now().minusDays(365))) {
+        if (registration != null && FiscalYear.elapsedTo(registration, LocalDate.now()) >= 1) {
             points += 3;
         }
         return points;
