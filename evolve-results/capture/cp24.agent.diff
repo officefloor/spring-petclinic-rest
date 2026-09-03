@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+new file mode 100644
+index 000000000..f75fb0842
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/MembershipLevel.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives the owner's numeric membership level, from 1 to 3. Starts at 1; adds 1 when an
++ * email is present; adds 1 when the namesake count is 0; capped at 3. Level 4 is reserved
++ * for tenure.
++ */
++public final class MembershipLevel {
++
++    private MembershipLevel() {
++    }
++
++    public static int of(Owner owner, int namesakeCount) {
++        int level = 1;
++        if (owner.getEmail() != null) {
++            level++;
++        }
++        if (namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, 3);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 6689b646a..c1bab9d26 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -14,8 +14,7 @@ public class RespondWithOwner {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
+         dto.setNamesakeCount(namesakeCount);
+-        dto.setMembershipTier(Household.size(owner, ownerRepository) >= 3 ? "GOLD"
+-                : namesakeCount == 0 && owner.getEmail() != null ? "SILVER" : "BRONZE");
++        dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 76fb68ccb..ef21d0f76 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -17,10 +17,13 @@ public class RespondWithOwnerCreated {
+     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+-        dto.setNamesakeCount(Namesakes.countBefore(owner, ownerRepository));
++        int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
++        int membershipLevel = MembershipLevel.of(owner, namesakeCount);
++        dto.setNamesakeCount(namesakeCount);
++        dto.setMembershipLevel(membershipLevel);
+         dto.setBulkSignupWarning(BulkSignup.isWarned(owner, ownerRepository));
+-        LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={}",
+-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5cd6d3fcb..9486801ce 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2108,11 +2108,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "'SILVER' when namesakeCount is 0 and an email is present, otherwise 'BRONZE'."
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: "A numeric membership level from 1 to 3: starts at 1, +1 when an email is present, +1 when namesakeCount is 0, capped at 3."
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
