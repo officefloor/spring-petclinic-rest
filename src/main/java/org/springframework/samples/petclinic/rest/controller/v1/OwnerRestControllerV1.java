@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -118,6 +121,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (!sharesHousehold && isHouseholdInUse(owner.getLastName(), owner.getAddress())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        if (sharesHousehold) {
+            owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -205,6 +211,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * A stable shared identifier for the household formed by a given lastName and address.
+     * Derived deterministically from the normalized (case-insensitive, whitespace-collapsed)
+     * lastName and address, so every owner sharing the same household is assigned the same
+     * value regardless of the order in which they are created. Formatted as the first 12
+     * upper-case hex characters of the SHA-256 of {@code '<lastName>|<address>'}.
+     */
+    private String householdId(String lastName, String address) {
+        String key = normalize(lastName) + "|" + normalize(address);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 12).toUpperCase();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
