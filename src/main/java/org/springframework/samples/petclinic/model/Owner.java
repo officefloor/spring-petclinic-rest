@@ -91,6 +91,15 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) { this.namesakeCount = namesakeCount; }
 
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
+    public Integer getPossibleDuplicateOf() { return this.possibleDuplicateOf; }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) { this.possibleDuplicateOf = possibleDuplicateOf; }
+
+    public boolean isPossibleDuplicate() { return this.possibleDuplicateOf != null; }
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 

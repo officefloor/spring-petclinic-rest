@@ -110,6 +110,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             || CityCapacity.isAtCapacity(owner, existingOwners)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setPossibleDuplicateOf(PossibleDuplicates.matchId(owner, existingOwners));
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
         this.clinicService.saveOwner(owner);
