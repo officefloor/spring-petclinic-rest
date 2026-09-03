@@ -19,6 +19,9 @@ public class RequireUniqueIdentity {
             throws DuplicateOwnerTelephoneException {
         String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), "");
         for (Owner owner : ownerRepository.findAll()) {
+            if (owner.isDeleted()) {
+                continue;
+            }
             if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), ""))) {
                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
             }

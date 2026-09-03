@@ -22,6 +22,9 @@ public class RequireUniqueHousehold {
         }
         String household = HouseholdId.of(request.getLastName(), request.getPostcode());
         for (Owner owner : ownerRepository.findAll()) {
+            if (owner.isDeleted()) {
+                continue;
+            }
             if (household.equals(HouseholdId.of(owner.getLastName(), owner.getPostcode()))) {
                 throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
             }

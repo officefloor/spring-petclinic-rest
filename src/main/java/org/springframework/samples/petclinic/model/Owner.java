@@ -117,6 +117,17 @@ public class Owner extends Person {
         this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
