@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        if (isDailyLimitReached()) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -158,6 +161,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count() + 1;
         return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Whether the per-day owner creation limit has been reached, i.e. 100 or more owners have
+     * already been created today (counted by their {@code registrationDate} matching the current
+     * date). When true, a new owner must be rejected with {@code 429 Too Many Requests}.
+     */
+    private boolean isDailyLimitReached() {
+        LocalDate today = LocalDate.now();
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> today.equals(existing.getRegistrationDate()))
+            .count();
+        return count >= 100;
     }
 
     /**
