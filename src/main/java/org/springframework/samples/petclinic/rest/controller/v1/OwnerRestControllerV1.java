@@ -133,6 +133,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (sharesHousehold) {
             owner.setHouseholdId(householdId(owner.getLastName(), owner.getAddress()));
         }
+        if (isCityAtCapacity(owner.getCity())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -155,6 +158,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
             .count() + 1;
         return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Whether the given city has reached its owner capacity, i.e. it already contains 50 or
+     * more owners. Cities are compared case-insensitively, matching {@link #nextCustomerCode}.
+     */
+    private boolean isCityAtCapacity(String city) {
+        long count = this.clinicService.findAllOwners().stream()
+            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
+            .count();
+        return count >= 50;
     }
 
     /**
