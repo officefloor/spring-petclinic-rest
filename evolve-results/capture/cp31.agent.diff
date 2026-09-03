@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 935934c45..5a6315d46 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,6 +22,7 @@ public interface OwnerMapper {
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
++    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel",
+             expression = "java(org.springframework.samples.petclinic.mapper.OwnerMapper.membershipLevel(owner))")
+@@ -95,6 +96,35 @@ public interface OwnerMapper {
+         return null;
+     }
+ 
++    /**
++     * A single Luhn check digit (0-9) computed over the digits of the owner's {@code customerCode}.
++     * Null when the customer code is absent.
++     */
++    default Integer checkDigit(Owner owner) {
++        if (owner.getCustomerCode() == null) {
++            return null;
++        }
++        String code = owner.getCustomerCode();
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++
+     /**
+      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the last two
+      * digits of the registrationDate year (e.g. {@code SYD-SMI-0007-M26}). Null when either the customer
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 059d4b4c3..7e6146532 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,6 +2115,16 @@ components:
+               type: string
+               example: 'SYD-SMI-0007'
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: >-
++                A single Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
