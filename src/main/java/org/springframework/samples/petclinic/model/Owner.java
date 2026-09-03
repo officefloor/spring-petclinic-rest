@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
 
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.CustomerCodes;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import jakarta.persistence.*;
@@ -118,11 +119,9 @@ public class Owner extends Person {
         this.householdId = householdId;
     }
 
-    /** Assign the '<CITY3>-<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code cityCount}. */
+    /** Assign the '<REGION>-<HASH8>' customer code: region from the postcode, HASH8 from telephone+lastName. */
     public void assignCustomerCode(int cityCount) {
-        String city3 = getCity().substring(0, Math.min(3, getCity().length())).toUpperCase(Locale.ROOT);
-        String last3 = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
-        this.customerCode = String.format("%s-%s-%04d", city3, last3, cityCount + 1);
+        this.customerCode = CustomerCodes.build(getCity(), getPostcode(), getTelephone(), getLastName());
     }
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
