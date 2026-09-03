@@ -91,6 +91,13 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) { this.namesakeCount = namesakeCount; }
 
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    public LocalDate getBirthDate() { return this.birthDate; }
+
+    public void setBirthDate(LocalDate birthDate) { this.birthDate = birthDate; }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
