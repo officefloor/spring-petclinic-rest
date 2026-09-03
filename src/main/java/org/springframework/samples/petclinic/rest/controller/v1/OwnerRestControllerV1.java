@@ -101,11 +101,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        boolean telephoneTaken = this.clinicService.findAllOwners().stream()
+        Collection<Owner> existingOwners = this.clinicService.findAllOwners();
+        boolean telephoneTaken = existingOwners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
         if (telephoneTaken) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        String last = owner.getLastName();
+        owner.setCustomerCode(last.substring(0, Math.min(3, last.length())).toUpperCase()
+            + String.format("-%04d", existingOwners.size() + 1));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
