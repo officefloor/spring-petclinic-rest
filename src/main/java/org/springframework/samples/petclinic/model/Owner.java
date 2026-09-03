@@ -194,17 +194,19 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's membership tier: {@code 'GOLD'} when the owner's household (owners sharing the
-     * same householdId) has 3 or more members after this create; otherwise {@code 'SILVER'} when
-     * namesakeCount is 0 and an email is present, otherwise {@code 'BRONZE'}.
+     * The owner's membership level, a number from 1 to 3 determined on creation: it starts at 1,
+     * gains 1 when an email is present, gains 1 when namesakeCount is 0, and is capped at 3.
+     * Level 4 is reserved for tenure.
      */
-    public String getMembershipTier() {
-        if (this.householdSize != null && this.householdSize >= 3) {
-            return "GOLD";
+    public Integer getMembershipLevel() {
+        int level = 1;
+        if (this.email != null && !this.email.isEmpty()) {
+            level++;
         }
-        boolean unique = this.namesakeCount != null && this.namesakeCount == 0;
-        boolean hasEmail = this.email != null && !this.email.isEmpty();
-        return unique && hasEmail ? "SILVER" : "BRONZE";
+        if (this.namesakeCount != null && this.namesakeCount == 0) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     protected Set<Pet> getPetsInternal() {
