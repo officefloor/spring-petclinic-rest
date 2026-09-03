@@ -72,6 +72,15 @@ public final class OwnerIdentity {
     }
 
     /**
+     * HASH8: the first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone +
+     * lastName}, where the telephone is canonicalized to E.164. This is the hashed component of the
+     * owner's {@code customerCode} ({@code <REGION>-<HASH8>}).
+     */
+    public static String customerHash(String telephone, String lastName) {
+        return sha256Hex(canonicalTelephone(telephone) + (lastName == null ? "" : lastName), 8);
+    }
+
+    /**
      * The first {@code hexChars} upper-case hex characters of SHA-256 over the UTF-8 bytes of
      * {@code input} — the shared primitive behind every hash-derived identity part.
      */

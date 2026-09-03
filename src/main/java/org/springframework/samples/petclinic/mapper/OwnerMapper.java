@@ -53,12 +53,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's locality (region); see
-     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion#locality}.
+     * The owner's locality (region), read from the REGION component of the customerCode
+     * ({@code <REGION>-<HASH8>}); see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion#regionOf}.
      */
     default String locality(Owner owner) {
-        return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.locality(
-                owner.getPostcode(), owner.getCity());
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.regionOf(
+                owner.getCustomerCode());
     }
 
     /**
@@ -92,7 +93,7 @@ public interface OwnerMapper {
 
     /**
      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the last two
-     * digits of the registrationDate year (e.g. {@code SYD-SMI-0007-M26}). Null when either the customer
+     * digits of the registrationDate year (e.g. {@code NSW-1A2B3C4D-M26}). Null when either the customer
      * code or the registration date is absent.
      */
     default String membershipNumber(Owner owner) {

@@ -7,8 +7,9 @@ import java.util.Map;
  * region is a short code (NSW, VIC, QLD) fixed by two lookup tables: the inclusive 4-digit postcode
  * range per region, and the city-to-region fallback used when the postcode yields nothing.
  *
- * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null}); {@link #locality}
- * layers the city fallback on top, matching how a whole owner resolves to a locality.
+ * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null}) and is the source
+ * of the REGION component of an owner's {@code customerCode}; {@link #regionOf} reads that component
+ * back out of a {@code customerCode}, which is how a whole owner resolves to a locality.
  */
 public final class OwnerRegion {
 
@@ -58,15 +59,16 @@ public final class OwnerRegion {
     }
 
     /**
-     * The owner's locality (region), preferring the postcode: the region whose fixed range contains the
-     * postcode, else the fixed city-to-region table (Sydney->NSW, Melbourne->VIC, Brisbane->QLD), else
-     * {@code UNKNOWN} when neither yields a region.
+     * The REGION component of a {@code customerCode} ({@code <REGION>-<HASH8>}) — the owner's locality.
+     * Now that identity is region-and-hash, the locality is read straight off the assigned code rather
+     * than recomputed, so it always matches the code. {@code UNKNOWN} when the code is absent or has no
+     * region component.
      */
-    public static String locality(String postcode, String city) {
-        String fromPostcode = fromPostcode(postcode);
-        if (fromPostcode != null) {
-            return fromPostcode;
+    public static String regionOf(String customerCode) {
+        if (customerCode == null) {
+            return "UNKNOWN";
         }
-        return CITY_REGION.getOrDefault(city, "UNKNOWN");
+        int dash = customerCode.indexOf('-');
+        return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
     }
 }
