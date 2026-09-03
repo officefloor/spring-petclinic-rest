@@ -1,23 +1,44 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
  * Assigns the owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>} where REGION is the
  * region code derived from the postcode (NSW/VIC/QLD, else {@code UNKNOWN}) and HASH8 is the first 8
  * upper-case hex characters of SHA-256 over {@code normalizedTelephone + lastName} (e.g.
- * {@code NSW-1A2B3C4D}). There are no sequence numbers: the code is fully determined by the owner's
- * region and hashed identity.
+ * {@code NSW-1A2B3C4D}). The base code is fully determined by the owner's region and hashed identity.
+ *
+ * <p>When that base code collides with an existing owner's {@code customerCode}, it is de-duplicated
+ * by appending {@code -<n>} with the smallest {@code n} of 2 or more that makes it unique (e.g.
+ * {@code NSW-1A2B3C4D-2}). Runs before {@link SaveOwner}, so {@link OwnerRepository#findAll()} returns
+ * only the owners that predate this create.
  */
 public class AssignCustomerCode {
 
-    public void service(@Val Owner owner) {
+    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String region = OwnerRegion.fromPostcode(owner.getPostcode());
         if (region == null) {
             region = "UNKNOWN";
         }
         String hash8 = OwnerIdentity.customerHash(owner.getTelephone(), owner.getLastName());
-        owner.setCustomerCode(region + "-" + hash8);
+        String base = region + "-" + hash8;
+
+        Set<String> existing = new HashSet<>();
+        for (Owner other : ownerRepository.findAll()) {
+            if (other.getCustomerCode() != null) {
+                existing.add(other.getCustomerCode());
+            }
+        }
+
+        String code = base;
+        for (int n = 2; existing.contains(code); n++) {
+            code = base + "-" + n;
+        }
+        owner.setCustomerCode(code);
     }
 }
