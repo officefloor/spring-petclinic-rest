@@ -1,0 +1,72 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+new file mode 100644
+index 000000000..03777b1fe
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CityCapacity.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * City occupancy relative to the hard capacity limit of {@value #CAPACITY} owners
++ * (compared case-insensitively, matching {@link RequireCityCapacity}). A city is
++ * {@link #approaching} capacity once it already holds between {@value #WARN_FROM} and
++ * {@value #CAPACITY} minus one owners.
++ */
++public final class CityCapacity {
++
++    private static final int CAPACITY = 50;
++
++    private static final int WARN_FROM = 40;
++
++    private CityCapacity() {
++    }
++
++    public static boolean approaching(String city, OwnerRepository ownerRepository) {
++        long count = ownerRepository.findAll().stream()
++                .filter(owner -> city != null && city.equalsIgnoreCase(owner.getCity()))
++                .count();
++        return count >= WARN_FROM && count < CAPACITY;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 75c204b47..eaf9c79c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -4,11 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import net.officefloor.web.ObjectResponse;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ 
+ public class RespondWithOwner {
+ 
+-    public void service(@Val Owner owner, OwnerMapper ownerMapper, ObjectResponse<OwnerDto> response) {
+-        response.send(ownerMapper.toOwnerDto(owner));
++    public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
++            ObjectResponse<OwnerDto> response) {
++        OwnerDto dto = ownerMapper.toOwnerDto(owner);
++        dto.setCapacityWarning(CityCapacity.approaching(owner.getCity(), ownerRepository));
++        response.send(dto);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 19b8eab46..8f34ad620 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2225,6 +2225,13 @@ components:
+               type: string
+               example: 'FY26'
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: "True when the owner's city already holds 40 to 49 owners, approaching the hard capacity limit of 50, otherwise false."
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: "True when this owner shares an existing owner's last name and postcode but has a different telephone (a soft, non-blocking duplicate)."
