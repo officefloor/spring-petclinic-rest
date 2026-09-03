@@ -1,0 +1,67 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableAdjacent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableAdjacent.java
+new file mode 100644
+index 000000000..e31f1b6e7
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DisposableAdjacent.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++
++/**
++ * Tests whether an email address is <em>disposable-adjacent</em>: its domain, or any label of it,
++ * matches the registrable base of a known disposable-mail provider ({@code mailinator},
++ * {@code tempmail}, {@code guerrillamail}). This catches subdomains and alternate TLDs that slip
++ * past the exact-domain blocklist enforced by {@link EnsureOwnerEmailNotDisposable} at create time.
++ */
++public final class DisposableAdjacent {
++
++    private static final Set<String> BASES = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private DisposableAdjacent() {
++    }
++
++    public static boolean matches(String email) {
++        int at = (email == null) ? -1 : email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        for (String label : email.substring(at + 1).toLowerCase(Locale.ROOT).split("\\.")) {
++            if (BASES.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 35e6a15d6..4653343f7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -28,6 +28,7 @@ public class RespondWithOwner {
+                 .filter(other -> owner.getCity() != null && owner.getCity().equalsIgnoreCase(other.getCity()))
+                 .count();
+         dto.setCapacityWarning(cityOwners >= 40 && cityOwners < 50);
++        dto.setRiskFlag(possibleDuplicateOf != null || cityOwners >= 40 || DisposableAdjacent.matches(owner.getEmail()));
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d588656bb..2e94fc3d7 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2222,6 +2222,13 @@ components:
+               format: int32
+               example: 7
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when the owner is a possible duplicate, the email domain is disposable-adjacent, or the city is over its soft capacity, otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             ageBand:
+               title: Age band
+               description: "The owner's age band derived from birthDate against registrationDate: 'MINOR' (under 18), 'ADULT' (18-64) or 'SENIOR' (65+). Absent when birthDate is not supplied."
