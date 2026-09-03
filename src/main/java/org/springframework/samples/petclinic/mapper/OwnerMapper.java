@@ -30,7 +30,17 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** The single duplicate-detection key: normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty). */
+    default String identityKey(Owner owner) {
+        return orEmpty(owner.getTelephone()) + '|' + orEmpty(owner.getEmail()) + '|' + orEmpty(owner.getHouseholdId());
+    }
+
+    default String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
 
     /** Numeric level 1-3: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure). */
     default Integer membershipLevel(Owner owner) {

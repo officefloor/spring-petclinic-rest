@@ -33,6 +33,7 @@ import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -47,22 +48,27 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Rejects a create-owner request whose lastName and address already belong to another owner
- * (compared case-insensitively with whitespace collapsed), responding 409 Conflict. The check
- * is skipped when the request sets {@code sharesHousehold} to true. Because that flag is not a
- * mapped owner field it is read from the raw request body, which is buffered and re-supplied to
- * the downstream converter.
+ * Rejects a create-owner request whose whole identityKey
+ * ({@code normalizedTelephone + '|' + (email or empty) + '|' + (householdId or empty)}) equals an
+ * existing owner's, responding 409 Conflict. This single derived key subsumes the former separate
+ * telephone, email and household duplicate checks: because the telephone is part of the key, two
+ * members of the same household with different telephones have different keys and are both allowed;
+ * only an exact full-key match is a duplicate. The {@code sharesHousehold} flag still assigns a
+ * shared householdId, read from the raw body which is buffered and re-supplied downstream.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
+public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
 
     private final ClinicService clinicService;
 
+    private final OwnerMapper ownerMapper;
+
     private final ObjectMapper objectMapper;
 
-    public OwnerUniqueHouseholdAdvice(ClinicService clinicService, ObjectMapper objectMapper) {
+    public OwnerUniqueIdentityAdvice(ClinicService clinicService, OwnerMapper ownerMapper, ObjectMapper objectMapper) {
         this.clinicService = clinicService;
+        this.ownerMapper = ownerMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -80,35 +86,40 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
             throws IOException {
         byte[] bytes = inputMessage.getBody().readAllBytes();
         JsonNode body = objectMapper.readTree(bytes);
-        String lastName = body.path("lastName").asString("");
-        String address = body.path("address").asString("");
         if (body.path("sharesHousehold").asBoolean(false)) {
-            ((ObjectNode) body).put("householdId", householdId(lastName, address));
+            ((ObjectNode) body).put("householdId",
+                householdId(body.path("lastName").asString(""), body.path("address").asString("")));
             bytes = objectMapper.writeValueAsBytes(body);
-        } else if (isHouseholdTaken(lastName, address)) {
-            throw new DuplicateHouseholdException();
         }
         return buffered(bytes, inputMessage.getHeaders());
     }
 
     /** Stable identifier shared by every owner with the same normalized lastName and address. */
     private String householdId(String lastName, String address) {
-        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
+        String key = name(lastName) + '\n' + AddressNormalizer.normalize(address);
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    private boolean isHouseholdTaken(String lastName, String address) {
-        String key = normalize(lastName) + '\n' + AddressNormalizer.normalize(address);
-        for (Owner existing : clinicService.findAllOwners()) {
-            if (key.equals(normalize(existing.getLastName()) + '\n' + AddressNormalizer.normalize(existing.getAddress()))) {
-                return true;
-            }
-        }
-        return false;
+    private String name(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    @Override
+    public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+        String identityKey = ownerMapper.identityKey(ownerMapper.toOwner((OwnerFieldsDto) body));
+        for (Owner existing : clinicService.findAllOwners()) {
+            if (identityKey.equals(ownerMapper.identityKey(existing))) {
+                throw new DuplicateIdentityException();
+            }
+        }
+        return body;
+    }
+
+    @Override
+    public Object handleEmptyBody(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                  Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+        return body;
     }
 
     private HttpInputMessage buffered(byte[] bytes, HttpHeaders headers) {
@@ -125,25 +136,13 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
         };
     }
 
-    @Override
-    public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
-                                Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
-        return body;
-    }
-
-    @Override
-    public Object handleEmptyBody(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
-                                  Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
-        return body;
-    }
-
-    @ExceptionHandler(DuplicateHouseholdException.class)
+    @ExceptionHandler(DuplicateIdentityException.class)
     @ResponseBody
-    public ResponseEntity<Void> handleDuplicateHousehold(DuplicateHouseholdException e) {
+    public ResponseEntity<Void> handleDuplicateIdentity(DuplicateIdentityException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).build();
     }
 
-    /** Signals that an owner with the same lastName and address already exists. */
-    static class DuplicateHouseholdException extends RuntimeException {
+    /** Signals that an owner with the same whole identityKey already exists. */
+    static class DuplicateIdentityException extends RuntimeException {
     }
 }
