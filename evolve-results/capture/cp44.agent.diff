@@ -1,0 +1,134 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 01b7ff7d4..3cc5b2c5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -39,6 +39,12 @@ public class Owner extends Person {
+     @NotEmpty
+     private String address;
+ 
++    @Transient
++    private String addressLine1;
++
++    @Transient
++    private String addressLine2;
++
+     @Column(name = "city")
+     @NotEmpty
+     private String city;
+@@ -86,6 +92,22 @@ public class Owner extends Person {
+         this.address = address;
+     }
+ 
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = addressLine1;
++    }
++
++    public String getAddressLine2() {
++        return this.addressLine2;
++    }
++
++    public void setAddressLine2(String addressLine2) {
++        this.addressLine2 = addressLine2;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+index ebc0ee8e3..c93cd359f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressNormalizer.java
+@@ -14,6 +14,16 @@ public final class AddressNormalizer {
+     private AddressNormalizer() {
+     }
+ 
++    /**
++     * The composed address from structured lines: the normalized {@code line1}, with a
++     * single space and the normalized {@code line2} appended when {@code line2} is present.
++     */
++    public static String compose(String line1, String line2) {
++        String a = normalize(line1);
++        String b = normalize(line2);
++        return b.isEmpty() ? a : a + " " + b;
++    }
++
+     public static String normalize(String value) {
+         if (value == null) {
+             return "";
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 1e4175b4d..cb53f3a4b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -22,7 +22,11 @@ public class BuildOwner {
+         Map<String, String> required = new LinkedHashMap<>();
+         required.put("firstName", request.getFirstName());
+         required.put("lastName", request.getLastName());
+-        String address = AddressNormalizer.normalize(request.getAddress());
++        String line1 = request.getAddressLine1();
++        boolean structured = line1 != null && !line1.isBlank();
++        String address = structured
++                ? AddressNormalizer.compose(line1, request.getAddressLine2())
++                : AddressNormalizer.normalize(request.getAddress());
+         required.put("address", address);
+         required.put("city", request.getCity());
+         required.put("telephone", request.getTelephone());
+@@ -39,6 +43,11 @@ public class BuildOwner {
+         }
+         owner.setTelephone(telephone);
+         owner.setAddress(address);
++        if (structured) {
++            String line2 = AddressNormalizer.normalize(request.getAddressLine2());
++            owner.setAddressLine1(AddressNormalizer.normalize(line1));
++            owner.setAddressLine2(line2.isEmpty() ? null : line2);
++        }
+         String email = owner.getEmail();
+         if (email != null && !EMAIL.matcher(email).matches()) {
+             throw new MissingOwnerFieldsException(List.of("email"));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 87a3ae047..24a10160b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,30 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. On write, accepted for
++            backward-compatibility when the structured addressLine1 is absent. On
++            read, the composed normalized address (addressLine1, plus a space and
++            addressLine2 when present).
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: >-
++            The first line of the structured postal address. Preferred over the flat
++            'address' when present; an owner is valid with either a non-blank
++            addressLine1 or the flat address, plus a city.
++          type: string
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: The optional second line of the structured postal address.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2065,7 +2084,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
