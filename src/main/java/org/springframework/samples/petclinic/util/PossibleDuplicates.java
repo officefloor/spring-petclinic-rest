@@ -16,7 +16,6 @@
 package org.springframework.samples.petclinic.util;
 
 import java.util.Collection;
-import java.util.Objects;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -27,20 +26,14 @@ public final class PossibleDuplicates {
     }
 
     /**
-     * Id of an existing owner that shares {@code owner}'s lastName and postcode but has a different
-     * telephone (a possible, non-hard duplicate), or {@code null} when there is no such owner.
+     * Id of an existing owner this one is a suspected (soft) duplicate of, or {@code null}.
+     *
+     * <p>The household is now keyed deterministically on {@code (lastName, postcode)}: a second owner
+     * sharing an existing household is rejected as a hard duplicate (409) unless it declares
+     * {@code sharesHousehold}, in which case it is a declared member. A declared member is not a
+     * suspected duplicate, so no successfully created owner is ever a possible duplicate.
      */
     public static Integer matchIn(Owner owner, Collection<Owner> existing) {
-        if (owner.getPostcode() == null) {
-            return null;
-        }
-        for (Owner other : existing) {
-            if (owner.getLastName().equalsIgnoreCase(other.getLastName())
-                && owner.getPostcode().equals(other.getPostcode())
-                && !Objects.equals(owner.getTelephone(), other.getTelephone())) {
-                return other.getId();
-            }
-        }
         return null;
     }
 }

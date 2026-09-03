@@ -21,9 +21,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-import java.util.UUID;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
@@ -37,7 +34,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
-import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.Households;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -53,8 +50,10 @@ import tools.jackson.databind.node.ObjectNode;
  * existing owner's, responding 409 Conflict. This single derived key subsumes the former separate
  * telephone, email and household duplicate checks: because the telephone is part of the key, two
  * members of the same household with different telephones have different keys and are both allowed;
- * only an exact full-key match is a duplicate. The {@code sharesHousehold} flag still assigns a
- * shared householdId, read from the raw body which is buffered and re-supplied downstream.
+ * only an exact full-key match is a duplicate. The householdId is now derived deterministically
+ * from (normalizedLastName, postcode), so owners sharing both are the same household; a second such
+ * owner is rejected here as a household duplicate unless it sets {@code sharesHousehold}, which only
+ * bypasses that block. The body is buffered and re-supplied downstream with the householdId filled in.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -86,22 +85,13 @@ public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
             throws IOException {
         byte[] bytes = inputMessage.getBody().readAllBytes();
         JsonNode body = objectMapper.readTree(bytes);
-        if (body.path("sharesHousehold").asBoolean(false)) {
-            ((ObjectNode) body).put("householdId",
-                householdId(body.path("lastName").asString(""), body.path("address").asString("")));
-            bytes = objectMapper.writeValueAsBytes(body);
+        String householdId = Households.id(body.path("lastName").asString(""), body.path("postcode").asString(""));
+        ((ObjectNode) body).put("householdId", householdId);
+        if (!body.path("sharesHousehold").asBoolean(false)
+            && Households.isDuplicate(clinicService.findAllOwners(), householdId)) {
+            throw new DuplicateIdentityException();
         }
-        return buffered(bytes, inputMessage.getHeaders());
-    }
-
-    /** Stable identifier shared by every owner with the same normalized lastName and address. */
-    private String householdId(String lastName, String address) {
-        String key = name(lastName) + '\n' + AddressNormalizer.normalize(address);
-        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
-    }
-
-    private String name(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return buffered(objectMapper.writeValueAsBytes(body), inputMessage.getHeaders());
     }
 
     @Override
