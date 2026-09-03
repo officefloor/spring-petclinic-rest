@@ -31,7 +31,8 @@ public abstract class OwnerMapper {
 
     /** Membership level derived from the owner's membership points. */
     protected int membershipLevel(Owner owner) {
-        return MembershipLevel.level(membershipPoints(owner));
+        return org.springframework.samples.petclinic.rest.function.owner.HouseholdCeiling.cap(
+            MembershipLevel.level(membershipPoints(owner)), owner, ownerRepository);
     }
 
     @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
