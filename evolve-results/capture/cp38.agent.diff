@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+new file mode 100644
+index 000000000..d9e04fe29
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by {@code EnsureOwnerEmailNotDisposable} when a create request supplies an
++ * email whose domain is on the disposable-domain blocklist. Handled by
++ * {@link DisposableEmailExceptionHandler}, which responds 400.
++ */
++public class DisposableEmailException extends Exception {
++
++    public DisposableEmailException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+new file mode 100644
+index 000000000..cf1f29e1e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DisposableEmailExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class DisposableEmailExceptionHandler {
++
++    public void handle(@Parameter DisposableEmailException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerEmailNotDisposable.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerEmailNotDisposable.java
+new file mode 100644
+index 000000000..3746aa24f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerEmailNotDisposable.java
+@@ -0,0 +1,25 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
++
++/**
++ * Rejects a create when the owner's email domain is on the disposable-domain
++ * blocklist. An owner with no email is accepted unchanged.
++ */
++public class EnsureOwnerEmailNotDisposable {
++
++    private static final Set<String> BLOCKED = Set.of(
++            "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    public void service(@Val Owner owner) throws DisposableEmailException {
++        String email = owner.getEmail();
++        int at = (email == null) ? -1 : email.lastIndexOf('@');
++        if (at >= 0 && BLOCKED.contains(email.substring(at + 1))) {
++            throw new DisposableEmailException("Email domain is not allowed");
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+new file mode 100644
+index 000000000..7f783fc25
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DisposableEmailException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DisposableEmailExceptionHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index e3b5ccf35..fa5a96bbb 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,6 +4,11 @@ composition:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: ensureEmailNotDisposable
++
++ensureEmailNotDisposable:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureOwnerEmailNotDisposable
++  govern: [ transaction ]
+   next: ensurePostcodeWithinRegion
+ 
+ ensurePostcodeWithinRegion:
