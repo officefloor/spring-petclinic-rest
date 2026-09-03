@@ -1,0 +1,130 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+index 041910e4a..96c8fc8b1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/IdentityKey.java
+@@ -1,12 +1,17 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.Locale;
++
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+  * Derives an owner's identity key — the single value all duplicate detection is based on.
+- * It is the normalized telephone, the email (already lower-cased, empty when absent) and the
+- * {@link HouseholdId}, joined by '|'. Two owners are duplicates only when their whole keys
+- * match; a shared telephone, email or household alone is not enough.
++ * It is the SHA-256 hex digest over the normalized telephone, the lower-cased email and the
++ * {@link Soundex} of the last name, joined by '|'. Two owners are duplicates only when their
++ * whole keys match; a shared telephone, email or surname alone is not enough.
+  */
+ public final class IdentityKey {
+ 
+@@ -15,7 +20,19 @@ public final class IdentityKey {
+ 
+     public static String of(Owner owner) {
+         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+-        String email = owner.getEmail() == null ? "" : owner.getEmail();
+-        return telephone + "|" + email + "|" + HouseholdId.of(owner);
++        String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
++        String seed = telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256")
++                    .digest(seed.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(64);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+index dc0f58996..a556cf257 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -5,10 +5,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
+ /**
+  * Finds an existing owner that {@code owner} possibly duplicates: another owner sharing this
+- * one's last name (case-insensitive) and postcode but with a different telephone — a soft match
+- * that is not a hard {@link IdentityKey} duplicate. Owners in the same {@link HouseholdId} are
+- * excluded: a declared household member is not a suspected duplicate. Returns the earliest such
+- * owner's id, or {@code null} when there is none.
++ * one's {@link Soundex} of the last name and postcode but whose {@link IdentityKey} differs — a
++ * soft match that is not a hard identity duplicate (a differing telephone is enough to make the
++ * keys differ). Returns the earliest such owner's id, or {@code null} when there is none.
+  */
+ public final class PossibleDuplicate {
+ 
+@@ -20,13 +19,13 @@ public final class PossibleDuplicate {
+         if (postcode == null || postcode.isBlank()) {
+             return null;
+         }
+-        String householdId = HouseholdId.of(owner);
++        String soundex = Soundex.of(owner.getLastName());
++        String identityKey = IdentityKey.of(owner);
+         return ownerRepository.findAll().stream()
+                 .filter(other -> other.getId() != null && !other.getId().equals(owner.getId()))
+-                .filter(other -> !householdId.equals(HouseholdId.of(other)))
++                .filter(other -> !identityKey.equals(IdentityKey.of(other)))
+                 .filter(other -> postcode.equals(other.getPostcode()))
+-                .filter(other -> other.getLastName().equalsIgnoreCase(owner.getLastName()))
+-                .filter(other -> !owner.getTelephone().equals(other.getTelephone()))
++                .filter(other -> soundex.equals(Soundex.of(other.getLastName())))
+                 .map(Owner::getId)
+                 .min(Integer::compareTo)
+                 .orElse(null);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+new file mode 100644
+index 000000000..befbfe400
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Soundex.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++
++/**
++ * American Soundex encoding of a surname: the first letter followed by three digits
++ * derived from the remaining consonants (vowels, {@code H} and {@code W} are not coded;
++ * adjacent duplicate codes collapse). Empty when the name has no letters. Used so
++ * similar-sounding last names share a phonetic key.
++ */
++final class Soundex {
++
++    /** Soundex code per letter A-Z; '0' marks a letter that is not coded. */
++    private static final String MAP = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    static String of(String name) {
++        String letters = name == null ? "" : name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "";
++        }
++        StringBuilder code = new StringBuilder().append(letters.charAt(0));
++        char prev = MAP.charAt(letters.charAt(0) - 'A');
++        for (int i = 1; i < letters.length() && code.length() < 4; i++) {
++            char c = letters.charAt(i);
++            char d = MAP.charAt(c - 'A');
++            if (d != '0' && d != prev) {
++                code.append(d);
++            }
++            if (c != 'H' && c != 'W') {
++                prev = d;
++            }
++        }
++        while (code.length() < 4) {
++            code.append('0');
++        }
++        return code.toString();
++    }
++}
