@@ -326,7 +326,7 @@ public class Owner extends Person {
      * (business-day-adjusted) registrationDate, e.g. {@code 'NSW-3C1A9F2B-M27'}.
      */
     public String getMembershipNumber() {
-        return this.customerCode + "-M" + String.format("%02d", fiscalYearOf(this.registrationDate) % 100);
+        return this.customerCode + "-M" + fiscalYearCode();
     }
 
     /**
@@ -336,7 +336,19 @@ public class Owner extends Person {
      * labelled by the calendar year in which it ends.
      */
     public String getFiscalYear() {
-        return "FY" + String.format("%02d", fiscalYearOf(this.registrationDate) % 100);
+        return "FY" + fiscalYearCode();
+    }
+
+    /**
+     * The two-digit fiscal-year code {@code '<YY>'}: the last two digits of the
+     * {@linkplain #fiscalYearOf(LocalDate) fiscal year} of the (business-day-adjusted)
+     * {@link #registrationDate}, zero-padded, e.g. {@code '27'}. This is the single source of the
+     * fiscal-year digits, shared by every value that embeds them (the {@linkplain #getFiscalYear()
+     * fiscal year} and the {@linkplain #getMembershipNumber() membership number}) so the derivation
+     * is never repeated.
+     */
+    private String fiscalYearCode() {
+        return String.format("%02d", fiscalYearOf(this.registrationDate) % 100);
     }
 
     /**
