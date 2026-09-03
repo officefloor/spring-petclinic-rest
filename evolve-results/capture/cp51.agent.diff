@@ -1,0 +1,138 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e805f0776..a9c232a93 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -29,7 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipPoints",
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.points(owner))")
+     @Mapping(target = "membershipLevel",
+-        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner))")
++        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.MembershipCap.level(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.CustomerCodes.region(owner))")
+     @Mapping(target = "timezone",
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index bbdc732f5..91ed69659 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -102,6 +102,13 @@ public class Owner extends Person {
+ 
+     public void setNamesakeCount(Integer namesakeCount) { this.namesakeCount = namesakeCount; }
+ 
++    @Column(name = "membership_cap")
++    private Integer membershipCap;
++
++    public Integer getMembershipCap() { return this.membershipCap; }
++
++    public void setMembershipCap(Integer membershipCap) { this.membershipCap = membershipCap; }
++
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/MembershipCap.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/MembershipCap.java
+new file mode 100644
+index 000000000..b427ddc1a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/MembershipCap.java
+@@ -0,0 +1,38 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++import java.util.OptionalInt;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Caps a new owner's membership level relative to their household. A new owner's level cannot
++ * exceed one above the current maximum {@link MembershipLevel} among their existing household
++ * members; with no existing household member no cap applies.
++ */
++public final class MembershipCap {
++
++    private MembershipCap() {
++    }
++
++    /**
++     * The level ceiling for {@code candidate}: one above the highest {@link MembershipLevel} among
++     * {@code existing} owners sharing its household, or {@code null} when it has no household peer.
++     */
++    public static Integer of(Owner candidate, Collection<Owner> existing) {
++        OptionalInt max = existing.stream()
++            .filter(o -> !o.isDeleted())
++            .filter(o -> candidate.getHouseholdId() != null
++                && candidate.getHouseholdId().equals(o.getHouseholdId()))
++            .mapToInt(MembershipLevel::of)
++            .max();
++        return max.isPresent() ? max.getAsInt() + 1 : null;
++    }
++
++    /** The owner's {@link MembershipLevel} limited to its stored {@link Owner#getMembershipCap()}. */
++    public static int level(Owner owner) {
++        int level = MembershipLevel.of(owner);
++        Integer cap = owner.getMembershipCap();
++        return cap == null ? level : Math.min(level, cap);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 2cc4791e2..b00b65480 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -108,7 +108,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
+         if (IdentityKey.isDuplicate(owner, existingOwners)
+-            || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())
+             || CityCapacity.isAtCapacity(owner, existingOwners)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -116,6 +115,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             PossibleDuplicates.matchId(owner, existingOwners, ownerFieldsDto.getSharesHousehold()));
+         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
+         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
++        owner.setMembershipCap(MembershipCap.of(owner, existingOwners));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(BulkSignupWarning.isTriggered(existingOwners));
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 387a98c20..71559a1d5 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index bfdcf8078..692508866 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,6 +48,7 @@ CREATE TABLE owners (
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
++  membership_cap INTEGER,
+   birth_date DATE,
+   possible_duplicate_of INTEGER,
+   title      VARCHAR(10),
