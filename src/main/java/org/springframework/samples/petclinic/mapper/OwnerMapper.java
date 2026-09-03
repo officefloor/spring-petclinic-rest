@@ -61,7 +61,7 @@ public interface OwnerMapper {
         return value == null ? "" : value;
     }
 
-    /** Numeric level 1-3: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure). */
+    /** Numeric level 1-4: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3, then +1 (level 4) only with tenure over 365 days. */
     default Integer membershipLevel(Owner owner) {
         int level = 1;
         if (owner.getEmail() != null) {
@@ -70,7 +70,20 @@ public interface OwnerMapper {
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
             level++;
         }
-        return Math.min(level, 3);
+        level = Math.min(level, 3);
+        if (level == 3 && tenureDays(owner) > 365) {
+            level++;
+        }
+        return level;
+    }
+
+    /** Days of tenure since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
+    default long tenureDays(Owner owner) {
+        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return 0;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
     }
 
     /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate year. */
