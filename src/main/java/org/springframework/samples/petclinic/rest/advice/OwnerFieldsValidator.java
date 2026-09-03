@@ -17,6 +17,7 @@
 package org.springframework.samples.petclinic.rest.advice;
 
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.validation.Errors;
@@ -50,6 +51,10 @@ public class OwnerFieldsValidator implements Validator {
             owner.setTelephone(digits);
         } else {
             errors.rejectValue("telephone", "telephone", "must be exactly 10 digits");
+        }
+        String email = owner.getEmail();
+        if (email != null) {
+            owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
     }
 }
