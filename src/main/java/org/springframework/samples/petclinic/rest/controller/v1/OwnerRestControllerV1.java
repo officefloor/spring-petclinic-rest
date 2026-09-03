@@ -104,7 +104,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         Collection<Owner> existingOwners = this.clinicService.findAllOwners();
         boolean telephoneTaken = existingOwners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
-        if (telephoneTaken) {
+        if (telephoneTaken || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String last = owner.getLastName();
