@@ -127,6 +127,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        return createOwner(ownerFieldsDto);
+    }
+
+    /**
+     * Run the full owner-creation pipeline for a submitted {@link OwnerFieldsDto} and build its
+     * response. The submitted fields are mapped to an {@link Owner}, which is
+     * {@link #normalizeAndValidate(Owner) normalized and validated}, checked against the
+     * {@link #isDailyLimitReached(LocalDate) daily creation limit}, {@link #assignHousehold(Owner)
+     * assigned its household} and screened for {@link #checkForConflicts(Owner, boolean) conflicts};
+     * a surviving owner then has its {@link #assignDerivedAttributes(Owner, boolean) derived
+     * attributes} assigned, is persisted and audited. Returns the {@link #created(Owner) 201 Created}
+     * response for the persisted owner, or the {@link HttpStatus} the create must fail with
+     * ({@code 400 Bad Request}, {@code 429 Too Many Requests} or {@code 409 Conflict}) when the owner
+     * cannot be created.
+     */
+    private ResponseEntity<OwnerDto> createOwner(OwnerFieldsDto ownerFieldsDto) {
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
 
         HttpStatus invalid = normalizeAndValidate(owner);
