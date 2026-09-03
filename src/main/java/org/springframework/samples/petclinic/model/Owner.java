@@ -61,8 +61,31 @@ public class Owner extends Person {
     @Column(name = "household_id")
     private String householdId;
 
+    @Column(name = "namesake_count")
+    private Integer namesakeCount;
+
     public String getCustomerCode() {
         return this.customerCode;
+    }
+
+    public Integer getNamesakeCount() {
+        return this.namesakeCount;
+    }
+
+    public void setNamesakeCount(Integer namesakeCount) {
+        this.namesakeCount = namesakeCount;
+    }
+
+    /** Record how many of {@code existingOwners} share this owner's first and last name, case-insensitively. */
+    public void assignNamesakeCount(Collection<Owner> existingOwners) {
+        int count = 0;
+        for (Owner other : existingOwners) {
+            if (getFirstName().equalsIgnoreCase(other.getFirstName())
+                && getLastName().equalsIgnoreCase(other.getLastName())) {
+                count++;
+            }
+        }
+        this.namesakeCount = count;
     }
 
     public String getHouseholdId() {
