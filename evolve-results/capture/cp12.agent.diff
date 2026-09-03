@@ -1,0 +1,115 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredException.java
+new file mode 100644
+index 000000000..ceff0d0c5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredException.java
+@@ -0,0 +1,13 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown by {@code BuildOwner} when a create request's address is blank once whitespace
++ * is trimmed and collapsed. Handled by {@link AddressRequiredExceptionHandler}, which
++ * responds 400.
++ */
++public class AddressRequiredException extends Exception {
++
++    public AddressRequiredException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredExceptionHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredExceptionHandler.java
+new file mode 100644
+index 000000000..1f75817a8
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/AddressRequiredExceptionHandler.java
+@@ -0,0 +1,16 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ProblemDetail;
++import org.springframework.http.ResponseEntity;
++
++public class AddressRequiredExceptionHandler {
++
++    public void handle(@Parameter AddressRequiredException ex,
++            ObjectResponse<ResponseEntity<ProblemDetail>> response) {
++        ProblemDetail detail = ProblemDetails.build(ex, HttpStatus.BAD_REQUEST, ex.getMessage());
++        response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Address.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Address.java
+new file mode 100644
+index 000000000..76eaca1ff
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/Address.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Map;
++
++import org.springframework.samples.petclinic.rest.escalation.AddressRequiredException;
++
++/**
++ * Normalises a postal address: trim and collapse runs of whitespace to single spaces,
++ * upper-case, and expand common abbreviations token by token (ST->STREET, RD->ROAD,
++ * AVE->AVENUE). A value that is blank once whitespace is collapsed is rejected, so the
++ * required-field check applies to the normalised form.
++ */
++final class Address {
++
++    private static final Map<String, String> ABBREVIATIONS = Map.of(
++            "ST", "STREET", "RD", "ROAD", "AVE", "AVENUE");
++
++    private Address() {
++    }
++
++    static String normalize(String address) throws AddressRequiredException {
++        String collapsed = address == null ? "" : address.trim().replaceAll("\\s+", " ");
++        if (collapsed.isEmpty()) {
++            throw new AddressRequiredException("Address is required");
++        }
++        String[] tokens = collapsed.toUpperCase(Locale.ROOT).split(" ");
++        StringBuilder sb = new StringBuilder(collapsed.length());
++        for (int i = 0; i < tokens.length; i++) {
++            if (i > 0) {
++                sb.append(' ');
++            }
++            sb.append(ABBREVIATIONS.getOrDefault(tokens[i], tokens[i]));
++        }
++        return sb.toString();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index cad80891f..68a7ee272 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -7,6 +7,7 @@ import net.officefloor.plugin.variable.Out;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.AddressRequiredException;
+ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -15,8 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
+ public class BuildOwner {
+ 
+     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
+-            Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
++            Out<Boolean> sharesHousehold) throws InvalidTelephoneException, AddressRequiredException {
+         request.setTelephone(E164.normalize(request.getTelephone()));
++        request.setAddress(Address.normalize(request.getAddress()));
+         Owner owner = ownerMapper.toOwner(request);
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.AddressRequiredException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.AddressRequiredException.yml
+new file mode 100644
+index 000000000..800dd75cb
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.AddressRequiredException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.AddressRequiredExceptionHandler
