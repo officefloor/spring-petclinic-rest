@@ -1,0 +1,100 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3f4bb84d5..9007fd1fe 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -27,7 +27,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+-        expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity(), owner.getPostcode()))")
++        expression = "java(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()))")
+     @Mapping(target = "contactPreference",
+         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 78d17f587..c6353f8fb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.model;
+ 
+ import org.springframework.core.style.ToStringCreator;
+ import org.springframework.samples.petclinic.util.AddressNormalizer;
++import org.springframework.samples.petclinic.util.CustomerCodes;
+ import org.springframework.samples.petclinic.util.TelephoneNormalizer;
+ 
+ import jakarta.persistence.*;
+@@ -118,11 +119,9 @@ public class Owner extends Person {
+         this.householdId = householdId;
+     }
+ 
+-    /** Assign the '<CITY3>-<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code cityCount}. */
++    /** Assign the '<REGION>-<HASH8>' customer code: region from the postcode, HASH8 from telephone+lastName. */
+     public void assignCustomerCode(int cityCount) {
+-        String city3 = getCity().substring(0, Math.min(3, getCity().length())).toUpperCase(Locale.ROOT);
+-        String last3 = getLastName().substring(0, Math.min(3, getLastName().length())).toUpperCase(Locale.ROOT);
+-        this.customerCode = String.format("%s-%s-%04d", city3, last3, cityCount + 1);
++        this.customerCode = CustomerCodes.build(getCity(), getPostcode(), getTelephone(), getLastName());
+     }
+ 
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCodes.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodes.java
+new file mode 100644
+index 000000000..3d02e8af2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCodes.java
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Builds and reads the {@code <REGION>-<HASH8>} owner customer code, where REGION is the
++ * region resolved from the postcode and HASH8 is the first 8 upper-case hex characters of
++ * SHA-256 over (normalizedTelephone + lastName).
++ */
++public final class CustomerCodes {
++
++    private CustomerCodes() {
++    }
++
++    /** Build the {@code <REGION>-<HASH8>} code from the postcode region and the telephone+lastName hash. */
++    public static String build(String city, String postcode, String telephone, String lastName) {
++        return Localities.regionFor(city, postcode) + "-" + hash8(telephone + lastName);
++    }
++
++    /** The region portion of a customer code (the text before the first {@code '-'}), or null when absent. */
++    public static String regionOf(String customerCode) {
++        if (customerCode == null) {
++            return null;
++        }
++        int dash = customerCode.indexOf('-');
++        return dash < 0 ? customerCode : customerCode.substring(0, dash);
++    }
++
++    private static String hash8(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            return String.format("%02X%02X%02X%02X", digest[0], digest[1], digest[2], digest[3]);
++        }
++        catch (NoSuchAlgorithmException ex) {
++            throw new IllegalStateException(ex);
++        }
++    }
++}
