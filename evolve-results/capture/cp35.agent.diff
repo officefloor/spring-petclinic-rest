@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 738816edb..01b7ff7d4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -72,6 +72,9 @@ public class Owner extends Person {
+     @Transient
+     private boolean bulkSignupWarning;
+ 
++    @Transient
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -164,6 +167,19 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
++    /** True when a soft-duplicate match was recorded (see {@code possibleDuplicateOf}). */
++    public boolean isPossibleDuplicate() {
++        return this.possibleDuplicateOf != null;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+new file mode 100644
+index 000000000..93d853f81
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Records a soft-duplicate match before {@link SaveOwner} runs. The create has already
++ * passed {@link CheckUniqueIdentity}, so it is not a hard duplicate. When it still shares
++ * an existing owner's lastName (compared case-insensitively with collapsed whitespace)
++ * and postcode but carries a different telephone, the matched owner's id is stored on
++ * {@code possibleDuplicateOf}, which surfaces as {@code possibleDuplicate}/{@code
++ * possibleDuplicateOf} on the response. Left unset (so {@code possibleDuplicate} is false)
++ * otherwise.
++ */
++public class FlagPossibleDuplicate {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String postcode = owner.getPostcode();
++        if (postcode == null) {
++            return;
++        }
++        String lastName = CheckUniqueHousehold.normalize(owner.getLastName());
++        for (Owner other : ownerRepository.findAll()) {
++            if (!other.getId().equals(owner.getId())
++                    && postcode.equals(other.getPostcode())
++                    && lastName.equals(CheckUniqueHousehold.normalize(other.getLastName()))
++                    && !postcode.isBlank()
++                    && !equalsTelephone(owner, other)) {
++                owner.setPossibleDuplicateOf(other.getId());
++                return;
++            }
++        }
++    }
++
++    private static boolean equalsTelephone(Owner owner, Owner other) {
++        String telephone = owner.getTelephone();
++        return telephone != null && telephone.equals(other.getTelephone());
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index f1d8c452a..fbb7cdf97 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -52,6 +52,11 @@ countNamesakes:
+ flagBulkSignup:
+   class: org.springframework.samples.petclinic.rest.function.owner.FlagBulkSignup
+   govern: [ transaction ]
++  next: flagPossibleDuplicate
++
++flagPossibleDuplicate:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagPossibleDuplicate
++  govern: [ transaction ]
+   next: save
+ 
+ save:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index e5af93fdf..177bd4c0a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2169,6 +2169,20 @@ components:
+               maximum: 9
+               example: 4
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when this owner shares an existing owner's lastName and postcode but has a different telephone (a soft match, still created), otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: The id of the existing owner matched by the soft-duplicate check, when possibleDuplicate is true. Absent otherwise.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
