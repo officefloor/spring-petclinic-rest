@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+new file mode 100644
+index 000000000..f767d67e9
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeduplicateCustomerCode.java
+@@ -0,0 +1,29 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.HashSet;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * De-duplicates the {@code customerCode} assigned by {@link AssignCustomerCode}: when it
++ * already belongs to another owner, append {@code -<n>} with the smallest n of 2 or more
++ * that makes it unique, before {@link SaveOwner} runs.
++ */
++public class DeduplicateCustomerCode {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        Set<String> taken = new HashSet<>();
++        for (Owner other : ownerRepository.findAll()) {
++            taken.add(other.getCustomerCode());
++        }
++        String base = owner.getCustomerCode();
++        String code = base;
++        for (int n = 2; taken.contains(code); n++) {
++            code = base + "-" + n;
++        }
++        owner.setCustomerCode(code);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 3f7049b2d..dd464c245 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -56,6 +56,13 @@ checkDailyLimit:
+ assignCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
++  next: dedupeCode
++
++# De-duplicate the assigned customerCode against existing owners: append '-<n>' with the
++# smallest n >= 2 on collision, before the code is persisted.
++dedupeCode:
++  class: org.springframework.samples.petclinic.rest.function.owner.DeduplicateCustomerCode
++  govern: [ transaction ]
+   next: countNamesakes
+ 
+ countNamesakes:
