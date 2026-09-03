@@ -107,9 +107,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
         private static final String OWNER_CREATED = "OWNER_CREATED";
 
+        /**
+         * Assemble the audit event for a just-persisted owner. Every owner-derived component is read
+         * through a single named accessor ({@link #ownerId(Owner)}, {@link #primaryIdentifier(Owner)},
+         * {@link #membershipLevel(Owner)}), so the event's schema — the fields it carries and how each
+         * one is derived from the persisted owner — is defined in one place and extended there.
+         */
         static OwnerCreatedEvent of(long seq, Owner owner) {
-            return new OwnerCreatedEvent(seq, owner.getId(), primaryIdentifier(owner),
-                owner.getMembershipLevel(), OWNER_CREATED);
+            return new OwnerCreatedEvent(seq, ownerId(owner), primaryIdentifier(owner),
+                membershipLevel(owner), OWNER_CREATED);
+        }
+
+        private static Integer ownerId(Owner owner) {
+            return owner.getId();
         }
 
         /**
@@ -117,6 +127,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
          */
         private static String primaryIdentifier(Owner owner) {
             return owner.getMemberId();
+        }
+
+        private static Integer membershipLevel(Owner owner) {
+            return owner.getMembershipLevel();
         }
     }
 

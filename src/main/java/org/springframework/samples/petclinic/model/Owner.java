@@ -350,13 +350,12 @@ public class Owner extends Person {
      * decimal digits of {@code <REGION><FY><HASH8>}, e.g. {@code 'NSW273C1A9F2B4'}. This is the single
      * source of the owner's identity; the stored {@linkplain #getMemberId() memberId} is this value
      * (with a collision suffix appended only when it clashes with an existing owner's), and the owner's
-     * {@linkplain #getLocality() locality} and {@linkplain #getFiscalYear() fiscal year} are read back
-     * from it.
+     * {@linkplain #getFiscalYear() fiscal year} is read back from it. Its {@code <REGION>} component is
+     * the {@linkplain #regionCode() region code} the identifiers are built from.
      */
     public String computeMemberId() {
-        String region = getRegion() != null ? getRegion() : UNKNOWN_REGION;
         String hash8 = HashUtils.sha256Hex(this.telephone + this.getLastName()).toUpperCase().substring(0, 8);
-        String prefix = region + fiscalYearCode() + hash8;
+        String prefix = regionCode() + fiscalYearCode() + hash8;
         return prefix + luhnCheckDigit(prefix);
     }
 
@@ -364,8 +363,7 @@ public class Owner extends Person {
      * The {@linkplain #getMemberId() memberId} without its collision suffix: the memberId up to the
      * first {@code '-'} (the {@code '-<n>'} suffix appended only to de-duplicate a clashing id), or
      * {@code null} when the owner has no memberId. This is the {@code '<REGION><FY><HASH8><CHK>'} base
-     * from which the {@linkplain #getLocality() locality} and {@linkplain #getFiscalYear() fiscal year}
-     * are read.
+     * from which the {@linkplain #getFiscalYear() fiscal year} is read.
      */
     private String memberIdBase() {
         if (this.memberId == null) {
@@ -462,18 +460,41 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the {@code <REGION>} component of the {@link #getMemberId() memberId} (its
-     * prefix before the trailing {@code <FY><HASH8><CHK>} block), which is the region derived from the
-     * owner's postcode at creation ({@link #UNKNOWN_REGION} when the postcode maps to no known region).
-     * Locality is read from the memberId identity so it never re-derives a region of its own; it is
-     * {@link #UNKNOWN_REGION} for an owner that has no memberId.
+     * The postcode-derived region of this owner, defaulting to {@link #UNKNOWN_REGION} when the
+     * postcode maps to no known region: the {@linkplain #getRegion() region} for the owner's postcode,
+     * or {@link #UNKNOWN_REGION} when there is none. This is the single source of the "region, or
+     * UNKNOWN when unknown" value, shared by the user-facing {@linkplain #getLocality() locality} and
+     * the {@linkplain #regionCode() region code embedded in the identifiers} so the two are derived
+     * from one place.
+     */
+    private String regionOrUnknown() {
+        return getRegion() != null ? getRegion() : UNKNOWN_REGION;
+    }
+
+    /**
+     * The region code embedded in the owner's identifiers: currently the plain
+     * {@linkplain #regionOrUnknown() postcode-derived region}, the {@code <REGION>} component built
+     * into the owner's {@linkplain #computeMemberId() memberId}. It is kept as its own derivation,
+     * separate from the user-facing {@linkplain #getLocality() locality} (which reports the same region
+     * today), so the region code carried inside the identifiers can be derived independently of the
+     * region shown to clients.
+     */
+    private String regionCode() {
+        return regionOrUnknown();
+    }
+
+    /**
+     * The owner's locality: the plain {@code <REGION>} the owner belongs to, i.e. the
+     * {@linkplain #getRegion() region} derived from the owner's postcode, or {@link #UNKNOWN_REGION}
+     * when the postcode maps to no known region. This is the region as shown to clients; it matches the
+     * {@code <REGION>} component the {@linkplain #computeMemberId() memberId} is built from today, but
+     * is derived directly from the owner's region rather than read back from the memberId, so the
+     * {@linkplain #regionCode() region code carried inside the identifiers} can vary without changing
+     * the locality. The owner's {@linkplain #getTimezone() timezone} and
+     * {@linkplain #getOwnerSegment() segment} read this locality.
      */
     public String getLocality() {
-        String base = memberIdBase();
-        if (base == null || base.length() <= MEMBER_ID_TAIL) {
-            return UNKNOWN_REGION;
-        }
-        return base.substring(0, base.length() - MEMBER_ID_TAIL);
+        return regionOrUnknown();
     }
 
     /** Fixed region-to-timezone table, mapping a region to its IANA timezone name. */
@@ -511,11 +532,12 @@ public class Owner extends Person {
     /**
      * The region derived from this owner's postcode alone: the region whose fixed
      * {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the postcode, or {@code null}
-     * when the postcode is absent, not four digits, or in no known range. This is the {@code <REGION>}
-     * component built into the owner's {@linkplain #computeMemberId() memberId} at creation and,
-     * through it, the source of the owner's {@linkplain #getLocality() locality}. It is the single
-     * place a region is read from an
-     * owner's postcode, so every rule keyed by the postcode-derived region shares one derivation.
+     * when the postcode is absent, not four digits, or in no known range. Defaulted to
+     * {@link #UNKNOWN_REGION} by {@link #regionOrUnknown()}, it is the source of both the owner's
+     * user-facing {@linkplain #getLocality() locality} and the {@linkplain #regionCode() region code}
+     * built into the owner's {@linkplain #computeMemberId() memberId}. It is the single place a region
+     * is read from an owner's postcode, so every rule keyed by the postcode-derived region shares one
+     * derivation.
      */
     public String getRegion() {
         return regionOfPostcode(this.postcode);
@@ -782,10 +804,21 @@ public class Owner extends Person {
      * rejected with {@code 409}, only when their whole identity keys are equal.
      */
     public String getIdentityKey() {
+        return HashUtils.sha256Hex(identityKeyMaterial());
+    }
+
+    /**
+     * The material hashed into the owner's {@linkplain #getIdentityKey() identity key}: the normalized
+     * (E.164) telephone, the email (already lower-cased, or the empty string when absent) and the
+     * {@linkplain #soundex(String) soundex} of the lastName, joined with {@code '|'} (e.g.
+     * {@code '+61412345678|jane@example.test|J500'}). Isolating the material keeps the exact set of
+     * fields the identity key is derived from in a single place.
+     */
+    private String identityKeyMaterial() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
         String soundexPart = soundex(this.getLastName());
-        return HashUtils.sha256Hex(telephonePart + "|" + emailPart + "|" + soundexPart);
+        return telephonePart + "|" + emailPart + "|" + soundexPart;
     }
 
     /**
