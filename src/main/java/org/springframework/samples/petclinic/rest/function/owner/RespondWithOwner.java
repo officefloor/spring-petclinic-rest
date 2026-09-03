@@ -16,6 +16,9 @@ public class RespondWithOwner {
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipLevel(MembershipLevel.of(owner, namesakeCount));
         dto.setContactPreference(owner.getEmail() != null ? "EMAIL" : "PHONE");
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         response.send(dto);
     }
 }

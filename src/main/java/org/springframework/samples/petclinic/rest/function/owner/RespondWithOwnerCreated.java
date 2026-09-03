@@ -22,6 +22,9 @@ public class RespondWithOwnerCreated {
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipLevel(membershipLevel);
         dto.setBulkSignupWarning(BulkSignup.isWarned(owner, ownerRepository));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
+        dto.setPossibleDuplicate(possibleDuplicateOf != null);
+        dto.setPossibleDuplicateOf(possibleDuplicateOf);
         LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
