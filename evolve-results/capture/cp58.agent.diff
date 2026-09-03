@@ -1,0 +1,124 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRiskFlagAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRiskFlagAdvice.java
+new file mode 100644
+index 000000000..9b8aec088
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRiskFlagAdvice.java
+@@ -0,0 +1,101 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.core.MethodParameter;
++import org.springframework.http.MediaType;
++import org.springframework.http.converter.HttpMessageConverter;
++import org.springframework.http.server.ServerHttpRequest;
++import org.springframework.http.server.ServerHttpResponse;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.service.ClinicService;
++import org.springframework.web.bind.annotation.ControllerAdvice;
++import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
++
++/**
++ * Flags every owner response with {@code riskFlag}: true when any risk signal holds — the owner is a
++ * possible duplicate, the email domain is disposable-adjacent (a subdomain of a known disposable
++ * domain), or the owner's city is at or over its soft capacity of {@value #SOFT_CAPACITY} owners
++ * (compared case-insensitively with surrounding whitespace trimmed); otherwise false. Purely
++ * informational, so it never rejects a request.
++ */
++@ControllerAdvice
++public class OwnerRiskFlagAdvice implements ResponseBodyAdvice<Object> {
++
++    private static final int SOFT_CAPACITY = 40;
++
++    private static final Set<String> DISPOSABLE_DOMAINS =
++        Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    private final ClinicService clinicService;
++
++    public OwnerRiskFlagAdvice(ClinicService clinicService) {
++        this.clinicService = clinicService;
++    }
++
++    @Override
++    public boolean supports(MethodParameter returnType,
++                            Class<? extends HttpMessageConverter<?>> converterType) {
++        return true;
++    }
++
++    @Override
++    public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType,
++                                  Class<? extends HttpMessageConverter<?>> selectedConverterType,
++                                  ServerHttpRequest request, ServerHttpResponse response) {
++        if (body instanceof OwnerDto owner) {
++            owner.setRiskFlag(Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || disposableAdjacent(owner.getEmail())
++                || cityCount(normalize(owner.getCity())) >= SOFT_CAPACITY);
++        }
++        return body;
++    }
++
++    private boolean disposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        String domain = normalize(email.substring(email.lastIndexOf('@') + 1));
++        for (String disposable : DISPOSABLE_DOMAINS) {
++            if (domain.endsWith("." + disposable)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    private int cityCount(String city) {
++        if (city.isEmpty()) {
++            return 0;
++        }
++        int count = 0;
++        for (Owner existing : clinicService.findAllOwners()) {
++            if (city.equals(normalize(existing.getCity()))) {
++                count++;
++            }
++        }
++        return count;
++    }
++
++    private String normalize(String value) {
++        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 14c7ecd83..e1e8992e3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2229,6 +2229,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: "True when any risk signal holds: the owner is a possible duplicate, the email domain is disposable-adjacent (a subdomain of a disposable domain), or the city is over its soft capacity (40 or more owners); otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: True when the owner has been soft-deleted via DELETE; a newly created owner is false.
