@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 940e3a77b..19798e6c4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,6 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Locality.locality(owner))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity.identityKey(owner))")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.checkDigit(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+new file mode 100644
+index 000000000..12b901cdc
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckDigit.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Computes the single Luhn check digit (0-9) over the digits contained in an owner's
++ * {@code customerCode}. The rightmost digit is doubled, alternating leftwards; each
++ * doubled value above nine has nine subtracted, and the digit that makes the running
++ * sum a multiple of ten is returned.
++ */
++public class CheckDigit {
++
++    public static Integer checkDigit(Owner owner) {
++        String code = owner.getCustomerCode();
++        if (code == null) {
++            return null;
++        }
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = code.length() - 1; i >= 0; i--) {
++            char c = code.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl) {
++                d *= 2;
++                if (d > 9) {
++                    d -= 9;
++                }
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 76d86565e..338cb5858 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2148,6 +2148,15 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            checkDigit:
++              title: Check digit
++              description: A single Luhn check digit (0-9) computed over the digits of the customerCode.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              example: 4
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
