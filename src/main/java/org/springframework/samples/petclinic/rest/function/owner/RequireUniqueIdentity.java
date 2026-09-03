@@ -17,12 +17,12 @@ public class RequireUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerTelephoneException {
-        String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), "");
+        String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner owner : ownerRepository.findAll()) {
             if (owner.isDeleted()) {
                 continue;
             }
-            if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), ""))) {
+            if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName()))) {
                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
             }
         }
