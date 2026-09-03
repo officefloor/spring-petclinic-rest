@@ -59,5 +59,25 @@ public class OwnerFieldsValidator implements Validator {
         if (email != null) {
             owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
+        validatePostcode(owner, errors);
+    }
+
+    /** Rejects a supplied 4-digit postcode that falls outside the range for the city's
+     * region. Absent postcodes and cities with no known region are accepted. */
+    private void validatePostcode(OwnerFieldsDto owner, Errors errors) {
+        String postcode = owner.getPostcode();
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return;
+        }
+        int[] range = switch (owner.getCity() == null ? "" : owner.getCity()) {
+            case "Sydney" -> new int[] {2000, 2099};
+            case "Melbourne" -> new int[] {3000, 3099};
+            case "Brisbane" -> new int[] {4000, 4099};
+            default -> null;
+        };
+        int value = Integer.parseInt(postcode);
+        if (range != null && (value < range[0] || value > range[1])) {
+            errors.rejectValue("postcode", "postcode", "must be valid for the city's region");
+        }
     }
 }
