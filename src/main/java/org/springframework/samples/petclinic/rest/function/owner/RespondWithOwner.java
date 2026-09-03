@@ -16,7 +16,9 @@ public class RespondWithOwner {
         dto.setNamesakeCount(namesakeCount);
         int membershipPoints = MembershipLevel.points(owner, namesakeCount, Household.size(owner, ownerRepository));
         dto.setMembershipPoints(membershipPoints);
-        dto.setMembershipLevel(MembershipCap.apply(owner, MembershipLevel.level(membershipPoints), ownerRepository));
+        int membershipLevel = MembershipCap.apply(owner, MembershipLevel.level(membershipPoints), ownerRepository);
+        dto.setMembershipLevel(membershipLevel);
+        dto.setOwnerSegment(OwnerSegment.of(membershipLevel, owner));
         dto.setContactPreference(owner.getEmail() != null ? "EMAIL" : "PHONE");
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
