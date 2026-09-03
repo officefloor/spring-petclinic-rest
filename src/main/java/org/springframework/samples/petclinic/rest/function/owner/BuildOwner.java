@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -12,6 +13,8 @@ import org.springframework.samples.petclinic.rest.escalation.MissingOwnerFieldsE
 import org.springframework.web.bind.annotation.RequestBody;
 
 public class BuildOwner {
+
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     public void service(@RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
             throws MissingOwnerFieldsException {
@@ -33,6 +36,10 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(List.of("telephone"));
         }
         owner.setTelephone(telephone);
+        String email = owner.getEmail();
+        if (email != null && !EMAIL.matcher(email).matches()) {
+            throw new MissingOwnerFieldsException(List.of("email"));
+        }
         built.set(owner);
     }
 }
