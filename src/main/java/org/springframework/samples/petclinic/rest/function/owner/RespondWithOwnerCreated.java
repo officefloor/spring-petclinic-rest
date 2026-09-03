@@ -19,7 +19,7 @@ public class RespondWithOwnerCreated {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
         int membershipPoints = MembershipLevel.points(owner, namesakeCount, Household.size(owner, ownerRepository));
-        int membershipLevel = MembershipLevel.level(membershipPoints);
+        int membershipLevel = MembershipCap.apply(owner, MembershipLevel.level(membershipPoints), ownerRepository);
         dto.setNamesakeCount(namesakeCount);
         dto.setMembershipPoints(membershipPoints);
         dto.setMembershipLevel(membershipLevel);
