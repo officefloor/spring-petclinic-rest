@@ -1,0 +1,82 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 11868ec80..028203ca4 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -49,10 +49,16 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+-    @Mapping(target = "registrationDate", source = "registrationDate",
+-        defaultExpression = "java(java.time.LocalDate.now())")
++    @Mapping(target = "registrationDate", expression = "java(effectiveRegistrationDate(ownerDto))")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
++    /** The supplied registration date, or today's date when absent, rolled forward off weekends to a business day. */
++    default java.time.LocalDate effectiveRegistrationDate(OwnerFieldsDto ownerDto) {
++        java.time.LocalDate supplied = ownerDto.getRegistrationDate();
++        return org.springframework.samples.petclinic.util.BusinessDays.toBusinessDay(
++            supplied != null ? supplied : java.time.LocalDate.now());
++    }
++
+     /** Normalize to E.164 so the create path stores, and duplicate detection compares, that form. */
+     @Named("normalizeTelephone")
+     default String normalizeTelephone(String telephone) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
+index 0948a7225..8f600d1c3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerDailyLimitAdvice.java
+@@ -70,7 +70,7 @@ public class OwnerDailyLimitAdvice implements RequestBodyAdvice {
+     }
+ 
+     private int createdTodayCount() {
+-        LocalDate today = LocalDate.now();
++        LocalDate today = org.springframework.samples.petclinic.util.BusinessDays.toBusinessDay(LocalDate.now());
+         int count = 0;
+         for (Owner existing : clinicService.findAllOwners()) {
+             if (today.equals(existing.getRegistrationDate())) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+new file mode 100644
+index 000000000..7705bcc70
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDays.java
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Rolls dates forward off the weekend onto a business day.
++ */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Return {@code date} unchanged on a weekday, or the next Monday when it is a Saturday or Sunday. */
++    public static LocalDate toBusinessDay(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
