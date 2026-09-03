@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,6 +159,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return HttpStatus.BAD_REQUEST;
         }
         owner.setTelephone(telephone);
+        if (isDisposableEmail(owner.getEmail())) {
+            return HttpStatus.BAD_REQUEST;
+        }
         if (!owner.isPostcodeValid()) {
             return HttpStatus.BAD_REQUEST;
         }
@@ -169,6 +173,31 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ? owner.getRegistrationDate() : LocalDate.now();
         owner.setRegistrationDate(toBusinessDay(effectiveDate));
         return null;
+    }
+
+    /**
+     * The set of disposable (throwaway) email domains that an owner's email may not use. An owner
+     * whose email is hosted on one of these domains is rejected with {@code 400 Bad Request}.
+     */
+    private static final Set<String> DISPOSABLE_EMAIL_DOMAINS = Set.of(
+        "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    /**
+     * Whether the given email is hosted on a {@linkplain #DISPOSABLE_EMAIL_DOMAINS disposable}
+     * domain. The email is optional, so a {@code null} or empty email is not disposable; otherwise
+     * the domain (the part after the last {@code '@'}, compared case-insensitively) is matched
+     * against the blocklist.
+     */
+    private boolean isDisposableEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase();
+        return DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
 
     /**
