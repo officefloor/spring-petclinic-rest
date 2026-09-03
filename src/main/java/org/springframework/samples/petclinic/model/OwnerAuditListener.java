@@ -19,14 +19,12 @@ public class OwnerAuditListener {
 
     @PostPersist
     void onCreate(Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
-            owner.getCustomerCode() + "-M" + String.format("%02d",
-                org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100));
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner));
         AUDIT.info(String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
+            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+            SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(),
             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner)));
     }
 }

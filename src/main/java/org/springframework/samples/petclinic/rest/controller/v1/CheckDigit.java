@@ -1,19 +1,12 @@
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * The single Luhn check digit (0-9) computed over the digits of an owner's customerCode,
- * so a code can be validated without recomputing how it was built.
+ * The single Luhn check digit (0-9) over the digits of a string, used as the CHK segment
+ * of a memberId so it can be validated without recomputing how it was built.
  */
 public final class CheckDigit {
 
     private CheckDigit() {
-    }
-
-    /** The Luhn check digit over the digits contained in {@code owner}'s customerCode. */
-    public static int of(Owner owner) {
-        return luhn(owner.getCustomerCode());
     }
 
     /** The Luhn check digit (0-9) over the digits contained in {@code value}. */

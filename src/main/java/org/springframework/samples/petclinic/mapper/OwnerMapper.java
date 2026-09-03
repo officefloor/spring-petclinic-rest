@@ -22,8 +22,6 @@ public interface OwnerMapper {
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials",
         expression = "java((owner.getFirstName().substring(0, 1) + \".\" + owner.getLastName().substring(0, 1) + \".\").toUpperCase())")
-    @Mapping(target = "membershipNumber",
-        expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "fiscalYear",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.label(owner))")
     @Mapping(target = "membershipPoints",
@@ -38,8 +36,6 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.OwnerSegment.of(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
-    @Mapping(target = "checkDigit",
-        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.CheckDigit.of(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner))")
     @Mapping(target = "ageBand",

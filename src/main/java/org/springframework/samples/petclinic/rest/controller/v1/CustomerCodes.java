@@ -2,32 +2,39 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.springframework.samples.petclinic.model.BusinessDays;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Builds an owner's customerCode in the form {@code <REGION>-<HASH8>}: the region derived
- * from the postcode, then the first 8 upper-case hex characters of SHA-256 over the
- * owner's normalized telephone and last name.
+ * Builds an owner's memberId in the form {@code <REGION><FY><HASH8><CHK>}: the region derived
+ * from the postcode, the 2-digit fiscal year, the first 8 upper-case hex characters of SHA-256
+ * over the owner's normalized telephone and last name, and a single Luhn check digit over them.
  */
 public final class CustomerCodes {
 
     private CustomerCodes() {
     }
 
-    /** The {@code <REGION>-<HASH8>} identity code for {@code owner}. */
+    /** The {@code <REGION><FY><HASH8><CHK>} memberId for {@code owner}. */
     static String build(Owner owner, Collection<Owner> existing) {
-        return deduplicate(region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName()), existing);
+        LocalDate registration = BusinessDays.roll(
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
+        String base = region(owner)
+            + String.format("%02d", FiscalYear.of(registration) % 100)
+            + hash8(owner.getTelephone() + owner.getLastName());
+        return deduplicate(base + CheckDigit.luhn(base), existing);
     }
 
     /** {@code code}, or the first {@code code-<n>} (n starting at 2) not held by an owner in {@code existing}. */
     private static String deduplicate(String code, Collection<Owner> existing) {
         Set<String> used = new HashSet<>();
         for (Owner owner : existing) {
-            used.add(owner.getCustomerCode());
+            used.add(owner.getMemberId());
         }
         String candidate = code;
         for (int n = 2; used.contains(candidate); n++) {
