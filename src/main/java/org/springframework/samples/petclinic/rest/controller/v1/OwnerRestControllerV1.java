@@ -99,23 +99,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * identifier</em>, the unified {@link Owner#getMemberId() memberId}, so downstream consumers always
      * read the owner's primary identifier from the same event.
      *
-     * <p>The component order matches the serialized field order
-     * {@code {seq, ownerId, memberId, membershipLevel, event}}.
+     * <p>This is schema version 2: it carries a {@code schemaVersion} of {@code 2} and the owner's
+     * {@code ownerSegment}, recomputed from the owner's version-2 identity, alongside the fields the
+     * version-1 event carried. The component order matches the serialized field order
+     * {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, ownerSegment, event}}.
      */
-    private record OwnerCreatedEvent(long seq, Integer ownerId, String memberId,
-                                     Integer membershipLevel, String event) {
+    private record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+                                     Integer membershipLevel, String ownerSegment, String event) {
 
         private static final String OWNER_CREATED = "OWNER_CREATED";
 
         /**
+         * The audit event schema version. Version 2 groups the owner's identity under the response's
+         * {@code identity} object and derives it with the version-2 algorithm; the event records the
+         * version it was emitted under so downstream consumers can tell the schemas apart.
+         */
+        private static final int SCHEMA_VERSION = 2;
+
+        /**
          * Assemble the audit event for a just-persisted owner. Every owner-derived component is read
          * through a single named accessor ({@link #ownerId(Owner)}, {@link #primaryIdentifier(Owner)},
-         * {@link #membershipLevel(Owner)}), so the event's schema — the fields it carries and how each
-         * one is derived from the persisted owner — is defined in one place and extended there.
+         * {@link #membershipLevel(Owner)}, {@link #ownerSegment(Owner)}), so the event's schema — the
+         * fields it carries and how each one is derived from the persisted owner — is defined in one
+         * place and extended there.
          */
         static OwnerCreatedEvent of(long seq, Owner owner) {
-            return new OwnerCreatedEvent(seq, ownerId(owner), primaryIdentifier(owner),
-                membershipLevel(owner), OWNER_CREATED);
+            return new OwnerCreatedEvent(SCHEMA_VERSION, seq, ownerId(owner), primaryIdentifier(owner),
+                membershipLevel(owner), ownerSegment(owner), OWNER_CREATED);
         }
 
         private static Integer ownerId(Owner owner) {
@@ -131,6 +141,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
         private static Integer membershipLevel(Owner owner) {
             return owner.getMembershipLevel();
+        }
+
+        /**
+         * The owner's {@link Owner#getOwnerSegment() segment}, recomputed from the owner's version-2
+         * identity at emit time.
+         */
+        private static String ownerSegment(Owner owner) {
+            return owner.getOwnerSegment();
         }
     }
 
@@ -774,12 +792,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * from its lastName and postcode. The lastName is normalized (case-insensitive,
      * whitespace-collapsed) before hashing, so every owner sharing the same lastName and postcode is
      * assigned the same value regardless of the order in which they are created. Formatted as the
-     * first 12 upper-case hex characters of the SHA-256 of {@code '<normalizedLastName>|<postcode>'}
-     * (an absent postcode contributes the empty string).
+     * first 12 upper-case hex characters of the SHA-256 of
+     * {@code '<V2>|<normalizedLastName>|<postcode>'} (an absent postcode contributes the empty
+     * string), where {@code <V2>} is the fixed {@link Owner#IDENTIFIER_VERSION_TAG version-2 tag}
+     * folded in so the householdId differs from its version-1 value; because the tag is a constant
+     * shared by every owner, owners sharing a lastName and postcode still share a householdId.
      */
     private String householdId(Owner owner) {
         String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
-        String key = normalizeName(owner.getLastName()) + "|" + postcode;
+        String key = Owner.IDENTIFIER_VERSION_TAG + "|" + normalizeName(owner.getLastName()) + "|" + postcode;
         return shaHexUpper(key).substring(0, 12);
     }
 

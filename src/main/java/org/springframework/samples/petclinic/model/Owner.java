@@ -449,6 +449,17 @@ public class Owner extends Person {
     public static final String UNKNOWN_REGION = "UNKNOWN";
 
     /**
+     * The fixed version tag mixed into the owner's version-2 identifiers. It is folded into the
+     * {@linkplain #regionCode() region code} embedded in the {@linkplain #computeMemberId() memberId}
+     * and into the material hashed for the {@linkplain #getIdentityKey() identity key} (and, in the
+     * creation pipeline, the householdId), so every identifier changes from version 1 and no value
+     * produced under version 1 is produced again. The tag lives only inside the identifiers; it never
+     * appears in the user-facing {@linkplain #getLocality() locality}, {@linkplain #getTimezone()
+     * timezone} or {@linkplain #getOwnerSegment() segment}, which read the plain region.
+     */
+    public static final String IDENTIFIER_VERSION_TAG = "V2";
+
+    /**
      * The canonical region for a city, derived from the fixed city-to-region table
      * ({@code Sydney -> NSW}, {@code Melbourne -> VIC}, {@code Brisbane -> QLD}), or
      * {@link #UNKNOWN_REGION} when the city is not in the table. This is the single
@@ -472,15 +483,18 @@ public class Owner extends Person {
     }
 
     /**
-     * The region code embedded in the owner's identifiers: currently the plain
+     * The version-2 region code embedded in the owner's identifiers: the fixed
+     * {@link #IDENTIFIER_VERSION_TAG 'V2' version tag} followed by the plain
      * {@linkplain #regionOrUnknown() postcode-derived region}, the {@code <REGION>} component built
-     * into the owner's {@linkplain #computeMemberId() memberId}. It is kept as its own derivation,
-     * separate from the user-facing {@linkplain #getLocality() locality} (which reports the same region
-     * today), so the region code carried inside the identifiers can be derived independently of the
-     * region shown to clients.
+     * into the owner's {@linkplain #computeMemberId() memberId}. Mixing in the version tag makes the
+     * region code (and so the memberId) differ from its version-1 value, which was the plain region on
+     * its own. It is kept as its own derivation, separate from the user-facing
+     * {@linkplain #getLocality() locality} (which reports the plain region, without the version tag),
+     * so the region code carried inside the identifiers is derived independently of the region shown to
+     * clients.
      */
     private String regionCode() {
-        return regionOrUnknown();
+        return IDENTIFIER_VERSION_TAG + regionOrUnknown();
     }
 
     /**
@@ -797,28 +811,33 @@ public class Owner extends Person {
 
     /**
      * The owner's identity key: the single derived value used for duplicate detection. It is the
-     * lower-case hex SHA-256 (64 characters) of the normalized (E.164) telephone, the email
-     * (already lower-cased, or the empty string when absent) and the {@linkplain #soundex(String)
-     * soundex} of the lastName, joined with {@code '|'} before hashing, e.g. the digest of
-     * {@code '+61412345678|jane@example.test|J500'}. Two owners are duplicates, and the second is
-     * rejected with {@code 409}, only when their whole identity keys are equal.
+     * lower-case hex SHA-256 (64 characters) of the fixed {@link #IDENTIFIER_VERSION_TAG 'V2' version
+     * tag}, the normalized (E.164) telephone, the email (already lower-cased, or the empty string when
+     * absent) and the {@linkplain #soundex(String) soundex} of the lastName, joined with {@code '|'}
+     * before hashing, e.g. the digest of {@code 'V2|+61412345678|jane@example.test|J500'}. Two owners
+     * are duplicates, and the second is rejected with {@code 409}, only when their whole identity keys
+     * are equal.
      */
     public String getIdentityKey() {
         return HashUtils.sha256Hex(identityKeyMaterial());
     }
 
     /**
-     * The material hashed into the owner's {@linkplain #getIdentityKey() identity key}: the normalized
-     * (E.164) telephone, the email (already lower-cased, or the empty string when absent) and the
-     * {@linkplain #soundex(String) soundex} of the lastName, joined with {@code '|'} (e.g.
-     * {@code '+61412345678|jane@example.test|J500'}). Isolating the material keeps the exact set of
-     * fields the identity key is derived from in a single place.
+     * The material hashed into the owner's {@linkplain #getIdentityKey() identity key}: the fixed
+     * {@link #IDENTIFIER_VERSION_TAG 'V2' version tag}, the normalized (E.164) telephone, the email
+     * (already lower-cased, or the empty string when absent) and the {@linkplain #soundex(String)
+     * soundex} of the lastName, joined with {@code '|'} (e.g.
+     * {@code 'V2|+61412345678|jane@example.test|J500'}). The version tag is folded in so the identity
+     * key differs from its version-1 value; because the tag is a constant shared by every owner, two
+     * owners still collide exactly when their remaining material is equal, so duplicate detection is
+     * unchanged. Isolating the material keeps the exact set of fields the identity key is derived from
+     * in a single place.
      */
     private String identityKeyMaterial() {
         String telephonePart = this.telephone == null ? "" : this.telephone;
         String emailPart = this.email == null ? "" : this.email;
         String soundexPart = soundex(this.getLastName());
-        return telephonePart + "|" + emailPart + "|" + soundexPart;
+        return IDENTIFIER_VERSION_TAG + "|" + telephonePart + "|" + emailPart + "|" + soundexPart;
     }
 
     /**
