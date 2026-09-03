@@ -21,6 +21,7 @@ public class RespondWithOwner {
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, ownerRepository);
         dto.setPossibleDuplicate(possibleDuplicateOf != null);
         dto.setPossibleDuplicateOf(possibleDuplicateOf);
+        dto.setSelfLink("/api/owners/" + owner.getId());
         response.send(dto);
     }
 }
