@@ -31,6 +31,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.RegionTimezone.of(org.springframework.samples.petclinic.rest.function.owner.CityLocality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+    @Mapping(target = "addressLine1", source = "address")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Membership level, derived from {@link org.springframework.samples.petclinic.rest.function.owner.MembershipPoints
