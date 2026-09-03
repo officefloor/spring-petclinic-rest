@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
+import java.time.LocalDate;
+
 import jakarta.validation.Valid;
 import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
@@ -20,6 +22,10 @@ public class BuildOwner {
             throw new InvalidTelephoneException("Telephone must be exactly 10 digits");
         }
         request.setTelephone(digits);
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        if (owner.getRegistrationDate() == null) {
+            owner.setRegistrationDate(LocalDate.now());
+        }
+        built.set(owner);
     }
 }
