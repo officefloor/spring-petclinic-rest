@@ -26,6 +26,8 @@ public interface OwnerMapper {
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "locality",
+        expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     /** 'SILVER' when the owner has no namesakes and an email is present, otherwise 'BRONZE'. */
