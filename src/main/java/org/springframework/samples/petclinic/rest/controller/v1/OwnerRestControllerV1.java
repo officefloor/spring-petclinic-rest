@@ -73,6 +73,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated logger for the welcome notification enqueued when an owner is successfully created.
+     * The emitted line carries the owner's id and its unified {@link Owner#getMemberId() memberId} so
+     * downstream notification consumers can address the welcome to the newly registered owner.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Serializes {@link OwnerCreatedEvent structured audit events} to their JSON form. Stateless and
      * thread-safe, so a single shared instance serves every create.
      */
@@ -256,7 +263,17 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             owner.getMembershipLevel());
         emitOwnerCreatedEvent(owner);
+        enqueueWelcomeNotification(owner);
         return created(owner);
+    }
+
+    /**
+     * Enqueue a welcome notification for a just-created owner by emitting a line on the {@code NOTIFY}
+     * logger that carries the owner's id and its unified {@link Owner#getMemberId() memberId}, so a
+     * downstream consumer can address the welcome to the newly registered owner.
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 
     /**
