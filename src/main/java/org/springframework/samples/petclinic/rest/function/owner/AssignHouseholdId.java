@@ -16,7 +16,7 @@ public class AssignHouseholdId {
 
     public void service(@Val Owner owner) {
         String postcode = owner.getPostcode();
-        String key = CheckUniqueHousehold.normalize(owner.getLastName())
+        String key = IdentityRegion.code(owner) + "|" + CheckUniqueHousehold.normalize(owner.getLastName())
                 + "|" + (postcode == null ? "" : postcode);
         owner.setHouseholdId(hash(key));
     }

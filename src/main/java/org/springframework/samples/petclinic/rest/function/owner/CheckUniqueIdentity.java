@@ -30,10 +30,10 @@ public class CheckUniqueIdentity {
         }
     }
 
-    /** SHA-256 hex over normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName). */
+    /** SHA-256 hex over version-2 region + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName). */
     public static String identityKey(Owner owner) {
-        String raw = normalizeTelephone(owner.getTelephone()) + "|" + lower(owner.getEmail())
-                + "|" + Soundex.code(owner.getLastName());
+        String raw = IdentityRegion.code(owner) + "|" + normalizeTelephone(owner.getTelephone())
+                + "|" + lower(owner.getEmail()) + "|" + Soundex.code(owner.getLastName());
         return sha256Hex(raw);
     }
 

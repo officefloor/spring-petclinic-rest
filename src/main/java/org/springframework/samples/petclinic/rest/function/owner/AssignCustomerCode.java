@@ -17,7 +17,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
-        String base = Locality.region(owner)
+        String base = IdentityRegion.code(owner)
                 + String.format("%02d", FiscalYear.endYear(owner.getRegistrationDate()) % 100)
                 + hash8(blank(owner.getTelephone()) + blank(owner.getLastName()));
         owner.setCustomerCode(base + CheckDigit.checkDigit(base));

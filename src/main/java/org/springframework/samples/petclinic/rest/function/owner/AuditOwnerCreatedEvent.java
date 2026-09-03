@@ -25,9 +25,9 @@ public class AuditOwnerCreatedEvent {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         long seq = SEQ.incrementAndGet();
-        int membershipLevel = ownerMapper.toOwnerDto(owner).getMembershipLevel();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-            seq, owner.getId(), identifier(owner), membershipLevel);
+        var dto = ownerMapper.toOwnerDto(owner);
+        AUDIT.info("{\"schemaVersion\":2,\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+            seq, owner.getId(), identifier(owner), dto.getMembershipLevel(), dto.getOwnerSegment());
     }
 
     /** The owner's primary identifier, the unified memberId. */

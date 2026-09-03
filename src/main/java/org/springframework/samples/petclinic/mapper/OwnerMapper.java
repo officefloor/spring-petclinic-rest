@@ -9,6 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
+import org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.rest.function.owner.MembershipLevel;
 
@@ -25,6 +27,14 @@ public abstract class OwnerMapper {
     protected OwnerRepository ownerRepository;
 
     /** Membership points for the owner (see {@link MembershipLevel}). */
+    protected OwnerIdentityDto identity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getCustomerCode());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(CheckUniqueIdentity.identityKey(owner));
+        return identity;
+    }
+
     protected int membershipPoints(Owner owner) {
         return MembershipLevel.points(owner, ownerRepository);
     }
@@ -39,7 +49,8 @@ public abstract class OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(owner.getTitle() == null ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "fiscalYear",expression = "java(owner.getRegistrationDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
@@ -48,7 +59,6 @@ public abstract class OwnerMapper {
     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.rest.function.owner.Timezone.of(org.springframework.samples.petclinic.rest.function.owner.Locality.locality(owner)))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "ageBand", expression = "java(owner.getBirthDate() == null ? null : org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity.identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.display(owner.getTelephone()))")
     @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.rest.function.owner.RiskFlag.of(owner, ownerRepository))")
     public abstract OwnerDto toOwnerDto(Owner owner);
