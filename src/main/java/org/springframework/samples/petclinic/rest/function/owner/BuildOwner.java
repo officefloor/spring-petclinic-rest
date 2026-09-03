@@ -22,7 +22,8 @@ public class BuildOwner {
         Map<String, String> required = new LinkedHashMap<>();
         required.put("firstName", request.getFirstName());
         required.put("lastName", request.getLastName());
-        required.put("address", request.getAddress());
+        String address = AddressNormalizer.normalize(request.getAddress());
+        required.put("address", address);
         required.put("city", request.getCity());
         required.put("telephone", request.getTelephone());
         List<String> missing = required.entrySet().stream()
@@ -37,6 +38,7 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(List.of("telephone"));
         }
         owner.setTelephone(telephone);
+        owner.setAddress(address);
         String email = owner.getEmail();
         if (email != null && !EMAIL.matcher(email).matches()) {
             throw new MissingOwnerFieldsException(List.of("email"));
