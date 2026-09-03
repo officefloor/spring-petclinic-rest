@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index ce982000b..67d2a11ef 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,19 +25,21 @@ public interface OwnerMapper {
+     @Mapping(target = "initials",
+         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+-    /** 'GOLD' for a 3+ member household, else 'SILVER' with no namesakes and an email, otherwise 'BRONZE'. */
+-    default String membershipTier(Owner owner) {
+-        Integer household = owner.getHouseholdMemberCount();
+-        if (household != null && household >= 3) {
+-            return "GOLD";
++    /** Numeric level 1-3: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure). */
++    default Integer membershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null) {
++            level++;
+         }
+-        boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
+-        return silver ? "SILVER" : "BRONZE";
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ 
+     /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate year. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index c655f5bca..0b1dd5d8f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -104,8 +104,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         this.clinicService.saveOwner(owner);
+-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
++        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
++            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
++            ownerMapper.membershipLevel(owner));
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 582d92d94..304b58982 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2094,11 +2094,14 @@ components:
+               type: string
+               example: 'SMI-0007-M26'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "The owner's membership tier: 'SILVER' when they have no namesakes and an email, otherwise 'BRONZE'."
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: "The owner's membership level from 1 to 3: starts at 1, plus 1 when an email is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
