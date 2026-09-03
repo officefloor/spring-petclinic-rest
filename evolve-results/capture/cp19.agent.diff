@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrationLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrationLimit.java
+new file mode 100644
+index 000000000..c5dbec4fb
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/DailyRegistrationLimit.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.time.LocalDate;
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Enforces the per-day create limit: at most {@link #LIMIT} owners may be
++ * registered on any single day (compared by {@code registrationDate}).
++ */
++final class DailyRegistrationLimit {
++
++    static final int LIMIT = 100;
++
++    private DailyRegistrationLimit() {
++    }
++
++    /**
++     * Returns {@code true} when {@link #LIMIT} or more of the {@code existing} owners were
++     * already registered today, so no further owner may be created today.
++     */
++    static boolean isReached(Collection<Owner> existing) {
++        LocalDate today = LocalDate.now();
++        long createdToday = existing.stream()
++            .filter(other -> today.equals(other.getRegistrationDate()))
++            .count();
++        return createdToday >= LIMIT;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 1d453c004..cc2eb4e69 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -102,6 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+         Collection<Owner> existingOwners = this.clinicService.findAllOwners();
++        if (DailyRegistrationLimit.isReached(existingOwners)) {
++            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++        }
+         boolean telephoneTaken = existingOwners.stream()
+             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
+         if (telephoneTaken || CityCapacity.isAtCapacity(owner, existingOwners)
