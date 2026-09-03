@@ -1,0 +1,198 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 84a37adfd..78d17f587 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -52,6 +52,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date", columnDefinition = "DATE")
+     private java.time.LocalDate registrationDate;
+ 
+@@ -159,6 +162,14 @@ public class Owner extends Person {
+         this.telephone = TelephoneNormalizer.toE164(telephone);
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public String getEmail() {
+         return this.email;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeAdvice.java
+new file mode 100644
+index 000000000..87ac4d3a0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerPostcodeAdvice.java
+@@ -0,0 +1,103 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.lang.reflect.Method;
++import java.lang.reflect.Type;
++import java.util.Map;
++
++import org.springframework.core.MethodParameter;
++import org.springframework.core.Ordered;
++import org.springframework.core.annotation.Order;
++import org.springframework.http.HttpInputMessage;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.http.converter.HttpMessageConverter;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.util.Localities;
++import org.springframework.web.bind.annotation.ControllerAdvice;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdvice;
++
++/**
++ * Rejects a create-owner request whose 4-digit postcode falls outside the range pinned for
++ * its city's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099), responding 400 Bad Request.
++ * A city with no known region accepts any 4-digit postcode, and an absent postcode is left
++ * untouched. Malformed postcodes are left to the generic pattern validation. Applies only to
++ * the create endpoint.
++ */
++@ControllerAdvice
++@Order(Ordered.HIGHEST_PRECEDENCE)
++public class OwnerPostcodeAdvice implements RequestBodyAdvice {
++
++    /** Region -> inclusive {low, high} 4-digit postcode range. */
++    private static final Map<String, int[]> REGION_RANGE =
++        Map.of("NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    @Override
++    public boolean supports(MethodParameter methodParameter, Type targetType,
++                            Class<? extends HttpMessageConverter<?>> converterType) {
++        Method method = methodParameter.getMethod();
++        return OwnerFieldsDto.class.equals(targetType) && method != null
++            && "addOwner".equals(method.getName());
++    }
++
++    @Override
++    public Object afterBodyRead(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
++                                Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
++        OwnerFieldsDto owner = (OwnerFieldsDto) body;
++        if (isOutOfRange(owner.getPostcode(), owner.getCity())) {
++            throw new InvalidPostcodeException();
++        }
++        return body;
++    }
++
++    private boolean isOutOfRange(String postcode, String city) {
++        if (postcode == null || !postcode.matches("[0-9]{4}")) {
++            return false;
++        }
++        int[] range = REGION_RANGE.get(Localities.regionFor(city));
++        if (range == null) {
++            return false;
++        }
++        int value = Integer.parseInt(postcode);
++        return value < range[0] || value > range[1];
++    }
++
++    @Override
++    public Object handleEmptyBody(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
++                                  Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
++        return body;
++    }
++
++    @Override
++    public HttpInputMessage beforeBodyRead(HttpInputMessage inputMessage, MethodParameter parameter,
++                                           Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
++        return inputMessage;
++    }
++
++    @ExceptionHandler(InvalidPostcodeException.class)
++    @ResponseBody
++    public ResponseEntity<Void> handleInvalidPostcode(InvalidPostcodeException e) {
++        return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
++    }
++
++    /** Signals that the postcode is out of range for the city's region. */
++    static class InvalidPostcodeException extends RuntimeException {
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index fba63ecfd..8b02f5ea2 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 38791948a..3b557a285 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   household_id VARCHAR(64),
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 5c70ca5dd..57096b723 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2049,6 +2049,12 @@ components:
+           description: Stable shared identifier for owners of the same household (same last name and address), assigned when 'sharesHousehold' is set.
+           type: string
+           example: '2f1b8c0e-0d3a-3b6e-9f4a-1c2d3e4f5a6b'
++        postcode:
++          title: Postcode
++          description: "Optional 4-digit postcode. When present it must be valid for the city's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); a city with no known region accepts any 4-digit postcode."
++          type: string
++          pattern: '^[0-9]{4}$'
++          example: '2000'
+       required:
+         - firstName
+         - lastName
