@@ -2,6 +2,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.concurrent.atomic.AtomicLong;
 
 import net.officefloor.plugin.variable.Val;
 import net.officefloor.web.ObjectResponse;
@@ -15,6 +16,8 @@ public class RespondWithOwnerCreated {
 
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
 
+    private static final AtomicLong SEQ = new AtomicLong();
+
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
@@ -25,6 +28,8 @@ public class RespondWithOwnerCreated {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), dto.getMembershipLevel(),
                 dto.getMembershipNumber());
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), dto.getMembershipLevel());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
