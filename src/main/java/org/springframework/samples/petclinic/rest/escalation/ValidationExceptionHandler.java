@@ -33,6 +33,8 @@ public class ValidationExceptionHandler {
                     })
                     .toList();
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
+                    .map(fieldError -> fieldError.getField()).distinct().toList());
         }
         response.send(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(detail));
     }
