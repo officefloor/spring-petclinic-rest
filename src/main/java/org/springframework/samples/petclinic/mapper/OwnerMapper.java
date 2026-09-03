@@ -25,19 +25,21 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
-    /** 'GOLD' for a 3+ member household, else 'SILVER' with no namesakes and an email, otherwise 'BRONZE'. */
-    default String membershipTier(Owner owner) {
-        Integer household = owner.getHouseholdMemberCount();
-        if (household != null && household >= 3) {
-            return "GOLD";
+    /** Numeric level 1-3: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure). */
+    default Integer membershipLevel(Owner owner) {
+        int level = 1;
+        if (owner.getEmail() != null) {
+            level++;
         }
-        boolean silver = Integer.valueOf(0).equals(owner.getNamesakeCount()) && owner.getEmail() != null;
-        return silver ? "SILVER" : "BRONZE";
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            level++;
+        }
+        return Math.min(level, 3);
     }
 
     /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate year. */
