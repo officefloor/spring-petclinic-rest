@@ -143,8 +143,8 @@ public class Owner extends Person {
     }
 
     /** Assign the '<REGION>-<HASH8>' customer code: region from the postcode, HASH8 from telephone+lastName. */
-    public void assignCustomerCode(int cityCount) {
-        this.customerCode = CustomerCodes.build(getCity(), getPostcode(), getTelephone(), getLastName());
+    public void assignCustomerCode(Collection<Owner> existingOwners) {
+        this.customerCode = CustomerCodes.buildUnique(getCity(), getPostcode(), getTelephone(), getLastName(), existingOwners);
     }
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)

@@ -18,6 +18,11 @@ package org.springframework.samples.petclinic.util;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Builds and reads the {@code <REGION>-<HASH8>} owner customer code, where REGION is the
@@ -32,6 +37,24 @@ public final class CustomerCodes {
     /** Build the {@code <REGION>-<HASH8>} code from the postcode region and the telephone+lastName hash. */
     public static String build(String city, String postcode, String telephone, String lastName) {
         return Localities.regionFor(city, postcode) + "-" + hash8(telephone + lastName);
+    }
+
+    /**
+     * Build the customer code, then de-duplicate it against {@code existingOwners} by appending
+     * {@code -<n>} with the smallest {@code n >= 2} that makes it unique.
+     */
+    public static String buildUnique(String city, String postcode, String telephone, String lastName,
+            Collection<Owner> existingOwners) {
+        String base = build(city, postcode, telephone, lastName);
+        Set<String> taken = new HashSet<>();
+        for (Owner owner : existingOwners) {
+            taken.add(owner.getCustomerCode());
+        }
+        String candidate = base;
+        for (int n = 2; taken.contains(candidate); n++) {
+            candidate = base + "-" + n;
+        }
+        return candidate;
     }
 
     /** The region portion of a customer code (the text before the first {@code '-'}), or null when absent. */
