@@ -1,0 +1,95 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 08eb5aac3..9920d98e8 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -117,6 +117,17 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    @Column(name = "deleted", nullable = false)
++    private boolean deleted;
++
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     public String getCustomerCode() {
+         return this.customerCode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..2954cbac6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -7,6 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+index 985d4d5c2..9a7475448 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueHousehold.java
+@@ -22,6 +22,9 @@ public class RequireUniqueHousehold {
+         }
+         String household = HouseholdId.of(request.getLastName(), request.getPostcode());
+         for (Owner owner : ownerRepository.findAll()) {
++            if (owner.isDeleted()) {
++                continue;
++            }
+             if (household.equals(HouseholdId.of(owner.getLastName(), owner.getPostcode()))) {
+                 throw new DuplicateOwnerHouseholdException(owner.getLastName(), owner.getAddress());
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+index 8d566942d..9a74abf6b 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RequireUniqueIdentity.java
+@@ -19,6 +19,9 @@ public class RequireUniqueIdentity {
+             throws DuplicateOwnerTelephoneException {
+         String key = OwnerIdentity.key(request.getTelephone(), request.getEmail(), "");
+         for (Owner owner : ownerRepository.findAll()) {
++            if (owner.isDeleted()) {
++                continue;
++            }
+             if (key.equals(OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), ""))) {
+                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
+             }
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 65a3c6d9e..09cd91ca9 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -51,7 +51,8 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   household_count INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 29917f839..5731a694a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2234,6 +2234,13 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: "True when the owner has been soft-deleted via DELETE; the record is retained. A newly created owner is false."
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
