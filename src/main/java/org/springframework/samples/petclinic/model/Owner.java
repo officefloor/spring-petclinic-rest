@@ -439,6 +439,21 @@ public class Owner extends Person {
     }
 
     /**
+     * The owner's segment, formatted {@code '<TIER>_<AREA>'}, one of {@code 'PREMIUM_METRO'},
+     * {@code 'PREMIUM_REGIONAL'}, {@code 'STANDARD_METRO'} or {@code 'STANDARD_REGIONAL'}. TIER is
+     * {@code 'PREMIUM'} when {@linkplain #getMembershipLevel() membershipLevel} is 3 or more,
+     * otherwise {@code 'STANDARD'}. AREA is {@code 'METRO'} when the owner's
+     * {@linkplain #getLocality() locality} is a known region (NSW, VIC or QLD), otherwise
+     * {@code 'REGIONAL'}. It reads the locality against the shared region table so it never
+     * re-derives a region of its own.
+     */
+    public String getOwnerSegment() {
+        String tier = getMembershipLevel() >= 3 ? "PREMIUM" : "STANDARD";
+        String area = REGION_TIMEZONE.containsKey(getLocality()) ? "METRO" : "REGIONAL";
+        return tier + "_" + area;
+    }
+
+    /**
      * The region derived from this owner's postcode alone: the region whose fixed
      * {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the postcode, or {@code null}
      * when the postcode is absent, not four digits, or in no known range. This is the {@code <REGION>}
