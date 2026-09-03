@@ -18,7 +18,7 @@ public class CheckDailyLimit {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository)
             throws DailyOwnerLimitException {
-        LocalDate today = LocalDate.now();
+        LocalDate today = owner.getRegistrationDate();
         long count = ownerRepository.findAll().stream()
                 .filter(other -> today.equals(other.getRegistrationDate()))
                 .count();
