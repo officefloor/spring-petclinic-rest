@@ -28,17 +28,18 @@ final class HouseholdDuplicates {
     }
 
     /**
-     * When {@code candidate} opted in via {@code sharesHousehold} and joins an existing owner's
-     * household (same last name and address), stamps it with the household's stable shared id.
+     * When {@code candidate} opted in via {@code sharesHousehold}, stamps it with its household's
+     * stable shared id (derived from last name and address) so every member of the same household
+     * carries the same id, whether it is the first member or joins existing ones.
      */
     static void assignHousehold(Owner candidate, Collection<Owner> existing, Boolean sharesHousehold) {
         if (!Boolean.TRUE.equals(sharesHousehold)) {
             return;
         }
         String key = key(candidate);
-        if (existing.stream().anyMatch(other -> key(other).equals(key))) {
-            candidate.setHouseholdId(householdId(key));
-        }
+        candidate.setHouseholdId(householdId(key));
+        long members = 1 + existing.stream().filter(other -> key(other).equals(key)).count();
+        candidate.setHouseholdSize((int) members);
     }
 
     private static String householdId(String key) {

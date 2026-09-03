@@ -25,7 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber",
         expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipTier",
-        expression = "java(owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null ? \"SILVER\" : \"BRONZE\")")
+        expression = "java(owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3 ? \"GOLD\" : (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null ? \"SILVER\" : \"BRONZE\"))")
     @Mapping(target = "locality",
         expression = "java(switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; })")
     OwnerDto toOwnerDto(Owner owner);

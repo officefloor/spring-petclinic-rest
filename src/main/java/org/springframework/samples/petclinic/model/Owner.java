@@ -61,6 +61,18 @@ public class Owner extends Person {
     @Column(name = "household_id")
     private String householdId;
 
+    @org.hibernate.annotations.Formula(
+        "(select cast(count(*) as integer) from owners hm where hm.household_id = household_id)")
+    private Integer householdSize;
+
+    public Integer getHouseholdSize() {
+        return this.householdSize;
+    }
+
+    public void setHouseholdSize(Integer householdSize) {
+        this.householdSize = householdSize;
+    }
+
     @Column(name = "namesake_count")
     private Integer namesakeCount;
 
