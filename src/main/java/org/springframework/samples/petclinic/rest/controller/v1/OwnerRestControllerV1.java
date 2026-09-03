@@ -105,15 +105,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (DailyRegistrationLimit.isReached(existingOwners)) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        boolean telephoneTaken = existingOwners.stream()
-            .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
-        if (telephoneTaken || DuplicateEmails.isTaken(owner, existingOwners)
-            || CityCapacity.isAtCapacity(owner, existingOwners)
-            || HouseholdDuplicates.isRejectedDuplicate(owner, existingOwners, ownerFieldsDto.getSharesHousehold())) {
+        HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
+        if (IdentityKey.isDuplicate(owner, existingOwners)
+            || CityCapacity.isAtCapacity(owner, existingOwners)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
-        HouseholdDuplicates.assignHousehold(owner, existingOwners, ownerFieldsDto.getSharesHousehold());
         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
