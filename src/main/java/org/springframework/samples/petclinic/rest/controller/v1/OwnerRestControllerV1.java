@@ -103,7 +103,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone().replaceAll("\\D", "");
+        String telephone = normalizeTelephone(owner.getTelephone());
         if (telephone.length() != 10) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
@@ -111,12 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(Objects::nonNull)
-            .map(existing -> existing.replaceAll("\\D", ""))
-            .anyMatch(telephone::equals);
-        if (telephoneInUse) {
+        if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         this.clinicService.saveOwner(owner);
@@ -124,6 +119,28 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Normalise a raw telephone input to the digits it contains, discarding spaces,
+     * dashes, brackets and any other non-digit characters. A {@code null} input yields
+     * an empty string.
+     */
+    private String normalizeTelephone(String telephone) {
+        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Whether any existing owner already holds the given (normalised) telephone number.
+     * Stored numbers are normalised the same way before comparison, so the check does not
+     * depend on how each was originally formatted.
+     */
+    private boolean isTelephoneInUse(String telephone) {
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(Objects::nonNull)
+            .map(this::normalizeTelephone)
+            .anyMatch(telephone::equals);
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
