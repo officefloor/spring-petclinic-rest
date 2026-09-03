@@ -1,24 +1,18 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Computes the single Luhn check digit (0-9) over the digits contained in an owner's
- * {@code customerCode}. The rightmost digit is doubled, alternating leftwards; each
- * doubled value above nine has nine subtracted, and the digit that makes the running
- * sum a multiple of ten is returned.
+ * Computes the single Luhn check digit (0-9) over the digits contained in a value. The
+ * rightmost digit is doubled, alternating leftwards; each doubled value above nine has
+ * nine subtracted, and the digit that makes the running sum a multiple of ten is
+ * returned. Used for the {@code CHK} segment of the memberId.
  */
 public class CheckDigit {
 
-    public static Integer checkDigit(Owner owner) {
-        String code = owner.getCustomerCode();
-        if (code == null) {
-            return null;
-        }
+    public static int checkDigit(String value) {
         int sum = 0;
         boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
+        for (int i = value.length() - 1; i >= 0; i--) {
+            char c = value.charAt(i);
             if (c < '0' || c > '9') {
                 continue;
             }

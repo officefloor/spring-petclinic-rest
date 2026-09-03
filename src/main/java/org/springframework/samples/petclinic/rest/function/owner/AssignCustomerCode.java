@@ -8,15 +8,19 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's {@code customerCode} before {@link SaveOwner} runs, formatted
- * {@code <REGION>-<HASH8>}: the region code derived from the postcode, then the first
- * eight upper-case hex characters of SHA-256 over the normalized telephone followed by
- * the last name. No sequence numbers are used, so the code depends only on the owner.
+ * Assigns the owner's unified {@code memberId} before {@link SaveOwner} runs, formatted
+ * {@code <REGION><FY><HASH8><CHK>}: the region code derived from the postcode, the
+ * 2-digit fiscal year of the registration date, the first eight upper-case hex
+ * characters of SHA-256 over the telephone followed by the last name, and a single Luhn
+ * check digit over the preceding digits. It depends only on the owner.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
-        owner.setCustomerCode(Locality.region(owner) + "-" + hash8(blank(owner.getTelephone()) + blank(owner.getLastName())));
+        String base = Locality.region(owner)
+                + String.format("%02d", FiscalYear.endYear(owner.getRegistrationDate()) % 100)
+                + hash8(blank(owner.getTelephone()) + blank(owner.getLastName()));
+        owner.setCustomerCode(base + CheckDigit.checkDigit(base));
     }
 
     private static String hash8(String input) {

@@ -26,11 +26,11 @@ public class AuditOwnerCreatedEvent {
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         long seq = SEQ.incrementAndGet();
         int membershipLevel = ownerMapper.toOwnerDto(owner).getMembershipLevel();
-        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
+        AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
             seq, owner.getId(), identifier(owner), membershipLevel);
     }
 
-    /** The owner's current primary identifier; unify into the memberId here when it lands. */
+    /** The owner's primary identifier, the unified memberId. */
     private static String identifier(Owner owner) {
         return owner.getCustomerCode();
     }

@@ -9,8 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Emits an audit line to the dedicated {@code AUDIT} logger once the owner has been
- * saved, recording the assigned id, customerCode, registrationDate, membershipLevel
- * and membershipNumber.
+ * saved, recording the assigned id, memberId, registrationDate and membershipLevel.
  */
 public class AuditOwnerCreated {
 
@@ -18,8 +17,8 @@ public class AuditOwnerCreated {
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper) {
         var dto = ownerMapper.toOwnerDto(owner);
-        AUDIT.info("Owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+        AUDIT.info("Owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            dto.getMembershipLevel(), dto.getMembershipNumber());
+            dto.getMembershipLevel());
     }
 }

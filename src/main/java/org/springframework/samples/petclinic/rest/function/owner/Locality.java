@@ -5,9 +5,8 @@ import java.util.Map;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Derives an owner's locality (region code). It is the REGION segment of the owner's
- * {@code customerCode} identity ({@code <REGION>-<HASH8>}); only when no code has been
- * assigned yet does it fall back to {@link #region(Owner)}.
+ * Derives an owner's locality (region code). It is the REGION segment embedded at the
+ * start of the owner's {@code memberId}, which is {@link #region(Owner)}.
  */
 public class Locality {
 
@@ -15,9 +14,7 @@ public class Locality {
             "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
 
     public static String locality(Owner owner) {
-        String code = owner.getCustomerCode();
-        int dash = code == null ? -1 : code.indexOf('-');
-        return dash > 0 ? code.substring(0, dash) : region(owner);
+        return region(owner);
     }
 
     /**
