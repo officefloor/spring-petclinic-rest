@@ -31,10 +31,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 /**
@@ -52,6 +55,21 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
+
+    private final OwnerFieldsValidator ownerFieldsValidator = new OwnerFieldsValidator();
+
+    /**
+     * Registers the {@link OwnerFieldsValidator} for {@link OwnerFieldsDto} request bodies so a
+     * missing or blank required field is reported alongside the schema's own constraints.
+     *
+     * @param binder the data binder for the request body being bound
+     */
+    @InitBinder
+    public void registerOwnerFieldsValidator(WebDataBinder binder) {
+        if (binder.getTarget() instanceof OwnerFieldsDto) {
+            binder.addValidators(ownerFieldsValidator);
+        }
+    }
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -157,6 +175,10 @@ public class ExceptionControllerAdvice {
                 request.getRequestURI(),
                 bindingResult.getFieldErrors());
             detail.setProperty("schemaValidationErrors", schemaValidationErrors);
+            detail.setProperty("errors", bindingResult.getFieldErrors().stream()
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList());
             return ResponseEntity.status(status).body(detail);
         }
         return ResponseEntity.status(status).body(detail);
