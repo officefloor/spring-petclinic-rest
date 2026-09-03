@@ -1,5 +1,7 @@
 package org.springframework.samples.petclinic.model;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +15,8 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final AtomicLong SEQ = new AtomicLong();
+
     @PostPersist
     void onCreate(Owner owner) {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
@@ -20,5 +24,9 @@ public class OwnerAuditListener {
             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
             owner.getCustomerCode() + "-M" + String.format("%02d",
                 org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100));
+        AUDIT.info(String.format(
+            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(),
+            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner)));
     }
 }
