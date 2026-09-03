@@ -28,6 +28,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.Localities.regionFor(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+        expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     OwnerDto toOwnerDto(Owner owner);
 
     /** Numeric level 1-3: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3 (level 4 reserved for tenure). */
