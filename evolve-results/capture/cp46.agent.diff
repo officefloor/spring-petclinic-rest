@@ -1,0 +1,167 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e32638eb3..a1d019860 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -89,6 +89,9 @@ public class Owner extends Person {
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
++    @Column(name = "deleted")
++    private Boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -228,6 +231,14 @@ public class Owner extends Person {
+         this.possibleDuplicateOf = possibleDuplicateOf;
+     }
+ 
++    public Boolean getDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(Boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 98553ba58..2cc909ad2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -14,6 +14,8 @@ public class BuildOwner {
+     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
+             throws FutureRegistrationDateException {
+         Owner owner = ownerMapper.toOwner(request);
++        // A newly created owner is not deleted.
++        owner.setDeleted(false);
+         LocalDate effective = owner.getRegistrationDate();
+         if (effective == null) {
+             effective = LocalDate.now();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..1806fd669 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -4,9 +4,15 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ 
++/**
++ * Soft-deletes an owner for {@code DELETE /api/owners/{id}}. The row is retained; the owner is flagged
++ * {@code deleted} true and saved, so {@code GET /api/owners/{id}} still returns it (with {@code deleted}
++ * true) and the create endpoint's duplicate/identity checks ignore it.
++ */
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureIdentityUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureIdentityUnique.java
+index a4f1f8435..29fe0ad6c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureIdentityUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureIdentityUnique.java
+@@ -28,6 +28,10 @@ public class EnsureIdentityUnique {
+         String householdId = OwnerIdentity.deriveHouseholdId(
+                 OwnerIdentity.normalizeName(request.getLastName()), request.getPostcode());
+         for (Owner existing : ownerRepository.findAll()) {
++            // A soft-deleted owner no longer blocks a create.
++            if (Boolean.TRUE.equals(existing.getDeleted())) {
++                continue;
++            }
+             String existingHousehold = OwnerIdentity.deriveHouseholdId(
+                     OwnerIdentity.normalizeName(existing.getLastName()), existing.getPostcode());
+             if (householdId.equals(existingHousehold)) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+index 8a17a58f4..c868210d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagPossibleDuplicate.java
+@@ -40,6 +40,10 @@ public class FlagPossibleDuplicate {
+ 
+         Owner match = null;
+         for (Owner existing : ownerRepository.findAll()) {
++            // A soft-deleted owner is not a duplicate match.
++            if (Boolean.TRUE.equals(existing.getDeleted())) {
++                continue;
++            }
+             if (!lastName.equals(OwnerIdentity.normalizeName(existing.getLastName()))) {
+                 continue;
+             }
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index d57dacb74..294856b27 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 0114b4e5a..d2470ac05 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+-  possible_duplicate_of INTEGER
++  possible_duplicate_of INTEGER,
++  deleted BOOLEAN
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index 6cc71d998..164d8aad3 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   household_size INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
++  deleted BOOLEAN,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 1c5b024d6..1feee8caf 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INTEGER,
+                                       possible_duplicate BOOLEAN,
+-                                      possible_duplicate_of INTEGER
++                                      possible_duplicate_of INTEGER,
++                                      deleted BOOLEAN
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 563831bd3..c5deb7166 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2285,6 +2285,15 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether the owner has been soft-deleted. A newly created owner is false. DELETE
++                /api/owners/{id} marks the owner deleted (true) while retaining the record, and the
++                create endpoint's duplicate/identity checks ignore owners flagged deleted.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
