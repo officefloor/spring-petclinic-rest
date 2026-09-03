@@ -16,13 +16,9 @@ public class CheckUniqueTelephone {
         String telephone = owner.getTelephone();
         for (Owner other : ownerRepository.findAll()) {
             if (!other.getId().equals(owner.getId())
-                    && telephone.equals(normalize(other.getTelephone()))) {
+                    && telephone.equals(other.getTelephone())) {
                 throw new DuplicateTelephoneException(telephone);
             }
         }
-    }
-
-    private static String normalize(String telephone) {
-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
     }
 }

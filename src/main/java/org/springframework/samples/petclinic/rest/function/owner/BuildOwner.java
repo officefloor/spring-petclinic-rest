@@ -31,8 +31,8 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(missing);
         }
         Owner owner = ownerMapper.toOwner(request);
-        String telephone = owner.getTelephone().replaceAll("\\D", "");
-        if (telephone.length() != 10) {
+        String telephone = toE164(owner.getTelephone());
+        if (telephone == null) {
             throw new MissingOwnerFieldsException(List.of("telephone"));
         }
         owner.setTelephone(telephone);
@@ -41,5 +41,23 @@ public class BuildOwner {
             throw new MissingOwnerFieldsException(List.of("email"));
         }
         built.set(owner);
+    }
+
+    /**
+     * Normalizes a raw telephone to E.164. A leading '+' keeps its country code;
+     * otherwise '+61' is assumed and a single leading '0' is dropped. Spaces, dashes
+     * and brackets are stripped. Returns null when the result is not 8..15 digits.
+     */
+    static String toE164(String raw) {
+        String trimmed = raw.trim();
+        String digits;
+        if (trimmed.startsWith("+")) {
+            digits = trimmed.substring(1).replaceAll("\\D", "");
+        }
+        else {
+            String national = trimmed.replaceAll("\\D", "");
+            digits = "61" + (national.startsWith("0") ? national.substring(1) : national);
+        }
+        return digits.length() >= 8 && digits.length() <= 15 ? "+" + digits : null;
     }
 }
