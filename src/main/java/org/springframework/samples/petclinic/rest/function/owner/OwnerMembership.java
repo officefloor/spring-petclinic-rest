@@ -58,18 +58,31 @@ public final class OwnerMembership {
     /**
      * The owner's membership level, derived by banding {@link #points(Owner)}: level 1 for 0-1 points,
      * level 2 for 2-3, level 3 for 4-5, level 4 for 6 or more.
+     *
+     * <p>When a {@code membershipLevelCap} is recorded (set at creation from the owner's household — see
+     * {@link CapMembershipLevel}), the banded level is capped to it: a new owner's level cannot exceed
+     * one above the current maximum level among their household members. A null cap (no existing
+     * household member) leaves the banded level unchanged.
      */
     public static int level(Owner owner) {
+        int level;
         int points = points(owner);
         if (points >= 6) {
-            return 4;
+            level = 4;
         }
-        if (points >= 4) {
-            return 3;
+        else if (points >= 4) {
+            level = 3;
         }
-        if (points >= 2) {
-            return 2;
+        else if (points >= 2) {
+            level = 2;
         }
-        return 1;
+        else {
+            level = 1;
+        }
+        Integer cap = owner.getMembershipLevelCap();
+        if (cap != null && level > cap) {
+            level = cap;
+        }
+        return level;
     }
 }

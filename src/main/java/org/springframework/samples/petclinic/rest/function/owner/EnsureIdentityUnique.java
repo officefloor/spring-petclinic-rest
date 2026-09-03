@@ -7,13 +7,14 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
 
 /**
- * The duplicate check for {@code POST /api/owners}, keyed on the household. The household id is now
- * deterministic — derived from the normalized lastName and postcode (see
- * {@link OwnerIdentity#deriveHouseholdId}) — so owners that share a lastName and postcode are the same
- * household. A second owner in an existing household is therefore rejected as a household duplicate
- * with 409, <em>unless</em> the request sets {@code sharesHousehold}, which bypasses this block and
- * lets the owner be created as a declared household member. On a match it throws
- * {@link DuplicateIdentityException}, handled globally as 409.
+ * The duplicate check for {@code POST /api/owners}, keyed on the whole {@code identityKey} — the
+ * single source of truth for duplicate detection (see {@link OwnerIdentity}). Two owners are
+ * duplicates only when their <em>whole</em> identityKey
+ * ({@code normalizedTelephone + '|' + email + '|' + householdId}) is equal; because the telephone is
+ * part of the key, two members of the same household (same lastName and postcode) with different
+ * telephones have different identityKeys and are both allowed — which is what lets a household hold
+ * more than one member. On an exact full-key match it throws {@link DuplicateIdentityException},
+ * handled globally as 409. A request that sets {@code sharesHousehold} bypasses the check entirely.
  */
 public class EnsureIdentityUnique {
 
@@ -26,6 +27,7 @@ public class EnsureIdentityUnique {
         }
 
         String householdId = OwnerIdentity.householdIdOf(request.getLastName(), request.getPostcode());
+        String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
         for (Owner existing : ownerRepository.findAll()) {
             // A soft-deleted owner no longer blocks a create.
             if (Boolean.TRUE.equals(existing.getDeleted())) {
@@ -33,8 +35,10 @@ public class EnsureIdentityUnique {
             }
             String existingHousehold = OwnerIdentity.householdIdOf(
                     existing.getLastName(), existing.getPostcode());
-            if (householdId.equals(existingHousehold)) {
-                throw new DuplicateIdentityException(householdId);
+            String existingKey = OwnerIdentity.key(
+                    existing.getTelephone(), existing.getEmail(), existingHousehold);
+            if (identityKey.equals(existingKey)) {
+                throw new DuplicateIdentityException(identityKey);
             }
         }
     }
