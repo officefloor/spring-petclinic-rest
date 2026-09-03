@@ -28,6 +28,8 @@ public interface OwnerMapper {
         expression = "java(Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 ? 1 : 0)))")
     @Mapping(target = "locality",
         expression = "java(switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; })")
+    @Mapping(target = "contactPreference",
+        expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
