@@ -53,6 +53,8 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
 
+    private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -102,6 +104,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
+        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
