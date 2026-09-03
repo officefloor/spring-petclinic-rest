@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 7595a9cf2..bfc60c2c0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -117,6 +117,7 @@ public interface OwnerMapper {
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "registrationDate", expression = "java(effectiveRegistrationDate(ownerDto))")
++    @Mapping(target = "address", expression = "java(org.springframework.samples.petclinic.util.AddressNormalizer.compose(ownerDto.getAddressLine1(), ownerDto.getAddressLine2(), ownerDto.getAddress()))")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /** The supplied registration date, or today's date when absent, rolled forward off weekends to a business day. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index d256b904f..cc700e741 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -158,6 +158,18 @@ public class Owner extends Person {
+         this.registrationDate = registrationDate;
+     }
+ 
++    @Transient
++    private String addressLine1;
++
++    public String getAddressLine1() {
++        return this.addressLine1;
++    }
++
++    /** Store addressLine1 normalized so it is returned in canonical form. */
++    public void setAddressLine1(String addressLine1) {
++        this.addressLine1 = AddressNormalizer.normalize(addressLine1);
++    }
++
+     public String getAddress() {
+         return this.address;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRequiredFieldsAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRequiredFieldsAdvice.java
+index 0faf6898e..642325b89 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRequiredFieldsAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerRequiredFieldsAdvice.java
+@@ -57,7 +57,9 @@ public class OwnerRequiredFieldsAdvice implements RequestBodyAdvice {
+         List<String> missing = new ArrayList<>();
+         addIfBlank(missing, "firstName", owner.getFirstName());
+         addIfBlank(missing, "lastName", owner.getLastName());
+-        addIfBlank(missing, "address", owner.getAddress());
++        if (isBlank(owner.getAddress()) && isBlank(owner.getAddressLine1())) {
++            missing.add("address");
++        }
+         addIfBlank(missing, "city", owner.getCity());
+         addIfBlank(missing, "telephone", owner.getTelephone());
+         if (!missing.isEmpty()) {
+@@ -67,11 +69,15 @@ public class OwnerRequiredFieldsAdvice implements RequestBodyAdvice {
+     }
+ 
+     private void addIfBlank(List<String> missing, String field, String value) {
+-        if (value == null || value.isBlank()) {
++        if (isBlank(value)) {
+             missing.add(field);
+         }
+     }
+ 
++    private boolean isBlank(String value) {
++        return value == null || value.isBlank();
++    }
++
+     @Override
+     public Object handleEmptyBody(Object body, HttpInputMessage inputMessage, MethodParameter parameter,
+                                   Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+index dede4ad20..991a42e82 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/AddressNormalizer.java
+@@ -50,6 +50,21 @@ public final class AddressNormalizer {
+         return result.toString();
+     }
+ 
++    /**
++     * Compose the canonical address from the structured lines, falling back to the flat address.
++     * Returns the normalized {@code addressLine1}, with a single space and the normalized
++     * {@code addressLine2} appended when {@code addressLine2} is present; when {@code addressLine1}
++     * is blank the flat {@code address} is normalized and returned instead.
++     */
++    public static String compose(String addressLine1, String addressLine2, String address) {
++        String line1 = normalize(addressLine1);
++        if (line1 == null || line1.isEmpty()) {
++            return normalize(address);
++        }
++        String line2 = normalize(addressLine2);
++        return (line2 == null || line2.isEmpty()) ? line1 : line1 + " " + line2;
++    }
++
+     private static String expand(String token) {
+         switch (token) {
+             case "ST":
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0c0aa7180..6f2f49cad 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,25 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: The postal address of the pet owner. On create/update it is accepted as a flat value for backward compatibility; when structured lines are supplied it is the composed, normalized address returned in responses.
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: First line of the structured postal address. Preferred over the flat 'address' when present.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: Optional second line of the structured postal address.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2064,7 +2078,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
