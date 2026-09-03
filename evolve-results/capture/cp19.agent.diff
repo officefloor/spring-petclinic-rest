@@ -1,0 +1,34 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 90a3afe5a..116841dec 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -123,6 +123,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner.getRegistrationDate() == null) {
+             owner.setRegistrationDate(LocalDate.now());
+         }
++        if (isDailyLimitReached()) {
++            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
++        }
+         if (isTelephoneInUse(telephone)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -160,6 +163,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return String.format("%s-%s-%04d", city3, last3, sequence);
+     }
+ 
++    /**
++     * Whether the per-day owner creation limit has been reached, i.e. 100 or more owners have
++     * already been created today (counted by their {@code registrationDate} matching the current
++     * date). When true, a new owner must be rejected with {@code 429 Too Many Requests}.
++     */
++    private boolean isDailyLimitReached() {
++        LocalDate today = LocalDate.now();
++        long count = this.clinicService.findAllOwners().stream()
++            .filter(existing -> today.equals(existing.getRegistrationDate()))
++            .count();
++        return count >= 100;
++    }
++
+     /**
+      * Whether the given city has reached its owner capacity, i.e. it already contains 50 or
+      * more owners. Cities are compared case-insensitively, matching {@link #nextCustomerCode}.
