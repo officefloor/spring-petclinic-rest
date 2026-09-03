@@ -57,8 +57,19 @@ public class Owner extends Person {
     @Column(name = "customer_code")
     private String customerCode;
 
+    @Column(name = "household_id")
+    private String householdId;
+
     public String getCustomerCode() {
         return this.customerCode;
+    }
+
+    public String getHouseholdId() {
+        return this.householdId;
+    }
+
+    public void setHouseholdId(String householdId) {
+        this.householdId = householdId;
     }
 
     /** Assign the '<LAST3>-<NNNN>' customer code, where NNNN is one more than {@code ownerCount}. */

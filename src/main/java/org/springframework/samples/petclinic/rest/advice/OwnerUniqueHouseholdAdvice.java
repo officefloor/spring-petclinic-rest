@@ -21,7 +21,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
@@ -41,6 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdvice;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Rejects a create-owner request whose lastName and address already belong to another owner
@@ -76,11 +79,21 @@ public class OwnerUniqueHouseholdAdvice implements RequestBodyAdvice {
             throws IOException {
         byte[] bytes = inputMessage.getBody().readAllBytes();
         JsonNode body = objectMapper.readTree(bytes);
-        if (!body.path("sharesHousehold").asBoolean(false)
-                && isHouseholdTaken(body.path("lastName").asString(""), body.path("address").asString(""))) {
+        String lastName = body.path("lastName").asString("");
+        String address = body.path("address").asString("");
+        if (body.path("sharesHousehold").asBoolean(false)) {
+            ((ObjectNode) body).put("householdId", householdId(lastName, address));
+            bytes = objectMapper.writeValueAsBytes(body);
+        } else if (isHouseholdTaken(lastName, address)) {
             throw new DuplicateHouseholdException();
         }
         return buffered(bytes, inputMessage.getHeaders());
+    }
+
+    /** Stable identifier shared by every owner with the same normalized lastName and address. */
+    private String householdId(String lastName, String address) {
+        String key = normalize(lastName) + '\n' + normalize(address);
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private boolean isHouseholdTaken(String lastName, String address) {
