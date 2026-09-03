@@ -44,6 +44,9 @@ public class Owner extends Person {
     @NotEmpty
     private String city;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "telephone")
     @NotEmpty
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form: a '+' followed by 8 to 15 digits")
@@ -88,6 +91,14 @@ public class Owner extends Person {
 
     public void setCity(String city) {
         this.city = city;
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getTelephone() {
@@ -204,6 +215,38 @@ public class Owner extends Person {
      */
     public String getLocality() {
         return regionOf(this.city);
+    }
+
+    /**
+     * Fixed inclusive 4-digit postcode ranges keyed by region, as {@code {low, high}}:
+     * {@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}. A region not
+     * listed here (i.e. {@link #UNKNOWN_REGION}) accepts any 4-digit postcode.
+     */
+    private static final Map<String, int[]> REGION_POSTCODE_RANGE = Map.of(
+        "NSW", new int[] {2000, 2099},
+        "VIC", new int[] {3000, 3099},
+        "QLD", new int[] {4000, 4099});
+
+    /**
+     * Whether this owner's postcode is acceptable for its city. Postcode is optional, so a
+     * {@code null} postcode is accepted. When present it must be four digits and, for a city
+     * whose {@linkplain #regionOf(String) region} is known, fall within that region's fixed
+     * inclusive range ({@code NSW 2000-2099}, {@code VIC 3000-3099}, {@code QLD 4000-4099}); a
+     * city with no known region accepts any 4-digit postcode.
+     */
+    public boolean isPostcodeValid() {
+        if (this.postcode == null) {
+            return true;
+        }
+        if (!this.postcode.matches("[0-9]{4}")) {
+            return false;
+        }
+        int[] range = REGION_POSTCODE_RANGE.get(regionOf(this.city));
+        if (range == null) {
+            return true;
+        }
+        int value = Integer.parseInt(this.postcode);
+        return value >= range[0] && value <= range[1];
     }
 
     /**
