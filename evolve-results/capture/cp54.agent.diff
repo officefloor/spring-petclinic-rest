@@ -1,0 +1,127 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 91ed69659..dbe69d45a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -109,6 +109,13 @@ public class Owner extends Person {
+ 
+     public void setMembershipCap(Integer membershipCap) { this.membershipCap = membershipCap; }
+ 
++    @Column(name = "capacity_warning")
++    private Boolean capacityWarning;
++
++    public Boolean getCapacityWarning() { return this.capacityWarning; }
++
++    public void setCapacityWarning(Boolean capacityWarning) { this.capacityWarning = capacityWarning; }
++
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacityWarning.java
+new file mode 100644
+index 000000000..8dbadd62d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/CityCapacityWarning.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Flags a city approaching the per-city capacity limit: {@code true} when {@code candidate}'s
++ * city already holds between {@link #WARN_THRESHOLD} and {@link CityCapacity#LIMIT} - 1 owners
++ * (inclusive), so the next one after that is rejected by {@link CityCapacity}.
++ */
++final class CityCapacityWarning {
++
++    static final int WARN_THRESHOLD = 40;
++
++    private CityCapacityWarning() {
++    }
++
++    /**
++     * Returns {@code true} when {@code candidate}'s city already holds at least
++     * {@link #WARN_THRESHOLD} but fewer than {@link CityCapacity#LIMIT} of the
++     * {@code existing} owners (city compared case-insensitively).
++     */
++    static boolean isApproaching(Owner candidate, Collection<Owner> existing) {
++        long inCity = existing.stream()
++            .filter(other -> candidate.getCity().equalsIgnoreCase(other.getCity()))
++            .count();
++        return inCity >= WARN_THRESHOLD && inCity < CityCapacity.LIMIT;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b00b65480..48f6ad938 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -116,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         owner.setNamesakeCount(Namesakes.count(owner, existingOwners));
+         owner.setCustomerCode(CustomerCodes.build(owner, existingOwners));
+         owner.setMembershipCap(MembershipCap.of(owner, existingOwners));
++        owner.setCapacityWarning(CityCapacityWarning.isApproaching(owner, existingOwners));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(BulkSignupWarning.isTriggered(existingOwners));
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 71559a1d5..5134f9c26 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 692508866..652f904cd 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -49,6 +49,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   membership_cap INTEGER,
++  capacity_warning BOOLEAN,
+   birth_date DATE,
+   possible_duplicate_of INTEGER,
+   title      VARCHAR(10),
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 507f14773..229d034c1 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2220,6 +2220,13 @@ components:
+               default: false
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when this owner's city already holds 40-49 owners, approaching the per-city capacity limit of 50, otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
+             identityKey:
+               title: Identity key
+               description: Derived duplicate-detection key formatted 'normalizedTelephone|email|householdId' (email and householdId empty when absent). Two owners are duplicates only when their whole identity keys are equal.
