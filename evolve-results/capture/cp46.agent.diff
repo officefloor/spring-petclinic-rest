@@ -1,0 +1,121 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index dfa65e023..6217cdef4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -69,6 +69,17 @@ public class Owner extends Person {
+         this.title = title;
+     }
+ 
++    @Column(name = "deleted")
++    private boolean deleted;
++
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     public String getPostcode() {
+         return this.postcode;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+index c467081f2..2954cbac6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/DeleteOwner.java
+@@ -7,6 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ public class DeleteOwner {
+ 
+     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java
+index 5ec55ef16..9b1089c5e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerHouseholdUnique.java
+@@ -18,6 +18,7 @@ public class EnsureOwnerHouseholdUnique {
+         }
+         String householdId = HouseholdId.of(owner);
+         boolean clash = ownerRepository.findAll().stream()
++                .filter(other -> !other.isDeleted())
+                 .anyMatch(other -> householdId.equals(HouseholdId.of(other)));
+         if (clash) {
+             throw new DuplicateHouseholdException(
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerIdentityUnique.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerIdentityUnique.java
+index ac69f9225..b51f46757 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerIdentityUnique.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureOwnerIdentityUnique.java
+@@ -16,6 +16,7 @@ public class EnsureOwnerIdentityUnique {
+             throws DuplicateIdentityException {
+         String identityKey = IdentityKey.of(owner);
+         boolean taken = ownerRepository.findAll().stream()
++                .filter(other -> !other.isDeleted())
+                 .anyMatch(other -> identityKey.equals(IdentityKey.of(other)));
+         if (taken) {
+             throw new DuplicateIdentityException("An owner with the same identity already exists");
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index fba63ecfd..8872fa91a 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 19a2cd69c..a885a4ec4 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,8 @@ CREATE TABLE owners (
+   registration_date DATE,
+   birth_date DATE,
+   customer_code VARCHAR(20),
+-  title      VARCHAR(10)
++  title      VARCHAR(10),
++  deleted    BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2d63c4d5a..ee18b0b81 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2103,6 +2103,12 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: Whether the owner has been soft-deleted. A soft-deleted owner is retained and still readable, but is ignored by duplicate/identity checks.
++              type: boolean
++              example: false
++              readOnly: true
+             salutation:
+               title: Salutation
+               description: The owner's title and last name (e.g. 'DR Franklin'), or just the last name when no title is given.
