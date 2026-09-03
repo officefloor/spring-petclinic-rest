@@ -95,6 +95,17 @@ public class Owner extends Person {
         this.householdCount = householdCount;
     }
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
+    }
+
     @Column(name = "possible_duplicate")
     private Boolean possibleDuplicate;
 

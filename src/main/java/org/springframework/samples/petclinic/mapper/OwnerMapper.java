@@ -40,6 +40,9 @@ public interface OwnerMapper {
     /** Membership level, derived from {@link org.springframework.samples.petclinic.rest.function.owner.MembershipPoints
      *  membershipPoints}: 1 (0-1 points), 2 (2-3), 3 (4-5), 4 (6 or more). */
     default Integer membershipLevel(Owner owner) {
+        if (owner.getMembershipLevel() != null) {
+            return owner.getMembershipLevel();
+        }
         return org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.level(
                 org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner));
     }
