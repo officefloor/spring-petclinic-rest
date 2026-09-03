@@ -23,11 +23,11 @@ public class AssignHouseholdId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = OwnerAddress.normalize(owner.getAddress());
         List<Owner> household = new ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(OwnerAddress.normalize(existing.getAddress()))) {
                 household.add(existing);
             }
         }

@@ -8,8 +8,9 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateHouseholdE
 
 /**
  * Rejects a create-owner request when an existing owner already has the same lastName and the same
- * address. Both fields are compared case-insensitively with surrounding and repeated internal
- * whitespace collapsed, so cosmetic differences do not hide a shared household. A request that opts
+ * address. The lastName is compared case-insensitively with whitespace collapsed; the address is
+ * compared using its normalized form (see {@link OwnerAddress}), so cosmetic differences and
+ * abbreviation variants do not hide a shared household. A request that opts
  * in with {@code sharesHousehold: true} bypasses the check. On a match it throws
  * {@link DuplicateHouseholdException}, handled globally as 409.
  */
@@ -21,10 +22,10 @@ public class EnsureHouseholdUnique {
             return;
         }
         String lastName = normalize(request.getLastName());
-        String address = normalize(request.getAddress());
+        String address = OwnerAddress.normalize(request.getAddress());
         for (Owner existing : ownerRepository.findAll()) {
             if (lastName.equals(normalize(existing.getLastName()))
-                    && address.equals(normalize(existing.getAddress()))) {
+                    && address.equals(OwnerAddress.normalize(existing.getAddress()))) {
                 throw new DuplicateHouseholdException(request.getLastName(), request.getAddress());
             }
         }
