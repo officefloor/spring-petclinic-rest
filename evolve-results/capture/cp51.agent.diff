@@ -1,0 +1,242 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e783751f6..82beab25e 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -69,41 +69,13 @@ public interface OwnerMapper {
+ 
+     /** Membership points: +2 for an email, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days. */
+     default int membershipPoints(Owner owner) {
+-        int points = 0;
+-        if (owner.getEmail() != null) {
+-            points += 2;
+-        }
+-        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+-            points += 1;
+-        }
+-        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
+-            points += 2;
+-        }
+-        if (tenureFiscalYears(owner) >= 1) {
+-            points += 3;
+-        }
+-        return points;
++        return org.springframework.samples.petclinic.util.MembershipLevels.points(owner);
+     }
+ 
+-    /** Numeric level derived from membershipPoints: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
++    /** The owner's stored household-capped level when frozen at create, otherwise the level derived from points. */
+     default Integer membershipLevel(Owner owner) {
+-        int points = membershipPoints(owner);
+-        if (points <= 1) {
+-            return 1;
+-        }
+-        if (points <= 3) {
+-            return 2;
+-        }
+-        return points <= 5 ? 3 : 4;
+-    }
+-
+-    /** Fiscal years of tenure elapsed since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
+-    default int tenureFiscalYears(Owner owner) {
+-        java.time.LocalDate registrationDate = owner.getRegistrationDate();
+-        if (registrationDate == null) {
+-            return 0;
+-        }
+-        return org.springframework.samples.petclinic.util.FiscalYears.elapsed(registrationDate, java.time.LocalDate.now());
++        Integer stored = owner.getMembershipLevel();
++        return stored != null ? stored : org.springframework.samples.petclinic.util.MembershipLevels.level(owner);
+     }
+ 
+     /** The 'FY<YY>' fiscal year of the (business-day-adjusted) registrationDate; null when the date is absent. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0679bc647..4b834e0ef 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -82,6 +82,13 @@ public class Owner extends Person {
+     @Column(name = "household_member_count")
+     private Integer householdMemberCount;
+ 
++    @Column(name = "membership_level")
++    private Integer membershipLevel;
++
++    public Integer getMembershipLevel() {
++        return this.membershipLevel;
++    }
++
+     @Column(name = "possible_duplicate_of")
+     private Integer possibleDuplicateOf;
+ 
+@@ -128,6 +135,7 @@ public class Owner extends Person {
+         }
+         this.namesakeCount = count;
+         assignHouseholdMemberCount(existingOwners);
++        this.membershipLevel = org.springframework.samples.petclinic.util.MembershipLevels.cap(this, existingOwners);
+     }
+ 
+     public Integer getHouseholdMemberCount() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+index 57de41651..8c43e875a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/OwnerUniqueIdentityAdvice.java
+@@ -50,10 +50,10 @@ import tools.jackson.databind.node.ObjectNode;
+  * existing owner's, responding 409 Conflict. This single derived key subsumes the former separate
+  * telephone, email and household duplicate checks: because the telephone is part of the key, two
+  * members of the same household with different telephones have different keys and are both allowed;
+- * only an exact full-key match is a duplicate. The householdId is now derived deterministically
+- * from (normalizedLastName, postcode), so owners sharing both are the same household; a second such
+- * owner is rejected here as a household duplicate unless it sets {@code sharesHousehold}, which only
+- * bypasses that block. The body is buffered and re-supplied downstream with the householdId filled in.
++ * only an exact full-key match is a duplicate. The householdId is derived deterministically
++ * from (normalizedLastName, postcode), so owners sharing both are the same household; further
++ * members of an existing household are admitted (their membershipLevel is capped relative to the
++ * household). The body is buffered and re-supplied downstream with the householdId filled in.
+  */
+ @ControllerAdvice
+ @Order(Ordered.HIGHEST_PRECEDENCE)
+@@ -87,11 +87,6 @@ public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
+         JsonNode body = objectMapper.readTree(bytes);
+         String householdId = Households.id(body.path("lastName").asString(""), body.path("postcode").asString(""));
+         ((ObjectNode) body).put("householdId", householdId);
+-        if (!body.path("sharesHousehold").asBoolean(false)
+-            && Households.isDuplicate(
+-                clinicService.findAllOwners().stream().filter(o -> !o.isDeleted()).toList(), householdId)) {
+-            throw new DuplicateIdentityException();
+-        }
+         return buffered(objectMapper.writeValueAsBytes(body), inputMessage.getHeaders());
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java
+new file mode 100644
+index 000000000..e03802850
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/MembershipLevels.java
+@@ -0,0 +1,86 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Membership points/level scoring and the household level ceiling. Kept as small pure functions so
++ * both the owner mapper (for display) and the create path (to freeze a capped level) share one source.
++ */
++public final class MembershipLevels {
++
++    private MembershipLevels() {
++    }
++
++    /** Membership points: +2 for an email, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days. */
++    public static int points(Owner owner) {
++        int points = 0;
++        if (owner.getEmail() != null) {
++            points += 2;
++        }
++        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
++            points += 1;
++        }
++        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
++            points += 2;
++        }
++        if (tenureFiscalYears(owner) >= 1) {
++            points += 3;
++        }
++        return points;
++    }
++
++    /** Numeric level derived from membershipPoints: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
++    public static int level(Owner owner) {
++        int points = points(owner);
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        return points <= 5 ? 3 : 4;
++    }
++
++    /**
++     * The level a new owner may be given: at most one above the maximum level among the existing
++     * (non-deleted) members of their household. With no existing household member no cap applies and
++     * the owner's own level is returned.
++     */
++    public static Integer cap(Owner owner, Collection<Owner> existing) {
++        String householdId = owner.getHouseholdId();
++        int maxOther = Integer.MIN_VALUE;
++        for (Owner other : existing) {
++            if (householdId != null && householdId.equals(other.getHouseholdId()) && !other.isDeleted()) {
++                maxOther = Math.max(maxOther, level(other));
++            }
++        }
++        int own = level(owner);
++        return maxOther == Integer.MIN_VALUE ? own : Math.min(own, maxOther + 1);
++    }
++
++    private static int tenureFiscalYears(Owner owner) {
++        LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate == null) {
++            return 0;
++        }
++        return FiscalYears.elapsed(registrationDate, LocalDate.now());
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index 387a98c20..71559a1d5 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+-INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
++INSERT INTO owners VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 01c0ff39f..2d9b2ca93 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -50,6 +50,7 @@ CREATE TABLE owners (
+   household_id VARCHAR(64),
+   namesake_count INTEGER,
+   household_member_count INTEGER,
++  membership_level INTEGER,
+   possible_duplicate_of INTEGER,
+   deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
