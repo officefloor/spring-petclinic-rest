@@ -3,6 +3,7 @@ package org.springframework.samples.petclinic.rest.function.owner;
 import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
+import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
  * Flags a create as a soft duplicate. Runs before {@link SaveOwner}, so
@@ -13,12 +14,21 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * {@code possibleDuplicateOf} to the matching owner's id (the lowest id when several match); the
  * owner is still created. With no match it sets {@code possibleDuplicate} false and leaves
  * {@code possibleDuplicateOf} null.
+ *
+ * <p>An owner created with {@code sharesHousehold} is a <em>declared</em> household member — it
+ * deliberately joins an existing household — so it is never a suspected duplicate and is left
+ * unflagged.
  */
 public class FlagPossibleDuplicate {
 
-    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
+    public void service(@Val Owner owner, @Val OwnerFieldsDto request, OwnerRepository ownerRepository) {
         owner.setPossibleDuplicate(false);
         owner.setPossibleDuplicateOf(null);
+
+        // A declared household member is not a suspected duplicate.
+        if (Boolean.TRUE.equals(request.getSharesHousehold())) {
+            return;
+        }
 
         String postcode = owner.getPostcode();
         // A soft match keys on a shared postcode; an owner with no postcode cannot share one.

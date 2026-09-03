@@ -17,9 +17,8 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * telephones have different identityKeys and are both allowed; only an exact full-key match is a
  * duplicate.
  *
- * <p>The household component is the deterministic id derived from the normalized lastName and address
- * (see {@link #deriveHouseholdId}); it is the empty string for an owner with no shared household, so
- * two solo owners with the same telephone and email collide.
+ * <p>The household component is the deterministic id derived from the normalized lastName and postcode
+ * (see {@link #deriveHouseholdId}).
  */
 public final class OwnerIdentity {
 
@@ -66,9 +65,14 @@ public final class OwnerIdentity {
         return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
-    /** {@code H-} plus the first 12 upper-case hex chars of SHA-256(lastName + '|' + address). */
-    public static String deriveHouseholdId(String normalizedLastName, String normalizedAddress) {
-        return "H-" + sha256Hex(normalizedLastName + '|' + normalizedAddress, 12);
+    /**
+     * The deterministic household id: the first 12 hex characters of SHA-256 over
+     * {@code normalizedLastName + '|' + postcode}. Owners with the same normalized lastName and
+     * postcode therefore resolve to the same value automatically, so the household is keyed on
+     * (lastName, postcode). A null postcode is treated as the empty string.
+     */
+    public static String deriveHouseholdId(String normalizedLastName, String postcode) {
+        return sha256Hex(normalizedLastName + '|' + (postcode == null ? "" : postcode), 12);
     }
 
     /**
