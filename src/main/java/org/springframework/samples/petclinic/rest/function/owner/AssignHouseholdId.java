@@ -17,7 +17,9 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * identifier derived deterministically from the normalized lastName and address, so every member of
  * the household resolves to the same value regardless of creation order. Existing members that
  * predate the household are back-filled so both sides carry the shared id. An owner with no household
- * peer keeps a null {@code householdId}.
+ * peer keeps a null {@code householdId}. It also records {@code householdSize} — the number of owners
+ * that share the household after this create (the existing peers plus this new owner) — which drives
+ * the GOLD membership tier.
  */
 public class AssignHouseholdId {
 
@@ -31,6 +33,8 @@ public class AssignHouseholdId {
                 household.add(existing);
             }
         }
+        // Record the household size after this create: the existing peers plus this new owner.
+        owner.setHouseholdSize(household.size() + 1);
         if (household.isEmpty()) {
             return; // no peer at this lastName + address, so no shared household
         }

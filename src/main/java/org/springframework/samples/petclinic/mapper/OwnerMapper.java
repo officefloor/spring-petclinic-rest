@@ -57,10 +57,15 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: {@code SILVER} when the owner's name was unique on creation
-     * (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
+     * The owner's membership tier: {@code GOLD} when the owner's household had 3 or more members
+     * after this owner was created; otherwise {@code SILVER} when the owner's name was unique on
+     * creation (namesakeCount is 0) and an email is present, otherwise {@code BRONZE}.
      */
     default OwnerDto.MembershipTierEnum membershipTier(Owner owner) {
+        Integer householdSize = owner.getHouseholdSize();
+        if (householdSize != null && householdSize >= 3) {
+            return OwnerDto.MembershipTierEnum.GOLD;
+        }
         Integer namesakeCount = owner.getNamesakeCount();
         boolean unique = namesakeCount != null && namesakeCount == 0;
         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
