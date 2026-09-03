@@ -47,6 +47,7 @@ public interface OwnerMapper {
     @Mapping(target = "salutation",
         expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "addressLine1", source = "address")
+    @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
