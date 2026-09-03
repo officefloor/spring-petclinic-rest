@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 82166c54b..17baed52f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -30,6 +30,8 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "locality",
+         expression = "java(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()))")
++    @Mapping(target = "ownerSegment",
++        expression = "java(org.springframework.samples.petclinic.util.OwnerSegments.of(membershipLevel(owner), org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode())))")
+     @Mapping(target = "timezone",
+         expression = "java(org.springframework.samples.petclinic.util.Localities.timezoneFor(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode())))")
+     @Mapping(target = "contactPreference",
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerSegments.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegments.java
+new file mode 100644
+index 000000000..1660c1a2a
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerSegments.java
+@@ -0,0 +1,35 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Resolves an owner's '&lt;TIER&gt;_&lt;AREA&gt;' segment from their membership level and region.
++ *
++ * <p>TIER is {@code PREMIUM} at membership level 3 or above, otherwise {@code STANDARD}. AREA is
++ * {@code METRO} for a known region (NSW/VIC/QLD), otherwise {@code REGIONAL}.
++ */
++public final class OwnerSegments {
++
++    private OwnerSegments() {
++    }
++
++    /** Compose the segment from the resolved {@code membershipLevel} and {@code region}. */
++    public static String of(int membershipLevel, String region) {
++        String tier = membershipLevel >= 3 ? "PREMIUM" : "STANDARD";
++        String area = Localities.timezoneFor(region) != null ? "METRO" : "REGIONAL";
++        return tier + "_" + area;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d30f050a4..04653a254 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2165,6 +2165,12 @@ components:
+               type: string
+               example: 'NSW'
+               readOnly: true
++            ownerSegment:
++              title: Owner segment
++              description: "The owner's '<TIER>_<AREA>' segment: TIER is 'PREMIUM' when membershipLevel is 3 or more else 'STANDARD'; AREA is 'METRO' for a known region (NSW/VIC/QLD) else 'REGIONAL'."
++              type: string
++              example: 'STANDARD_METRO'
++              readOnly: true
+             timezone:
+               title: Timezone
+               description: "The owner's IANA timezone derived from their region (NSW->Australia/Sydney, VIC->Australia/Melbourne, QLD->Australia/Brisbane); absent for any other region."
