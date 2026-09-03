@@ -18,6 +18,7 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setNamesakeCount(Namesakes.countBefore(owner, ownerRepository));
+        dto.setBulkSignupWarning(BulkSignup.isWarned(owner, ownerRepository));
         LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
