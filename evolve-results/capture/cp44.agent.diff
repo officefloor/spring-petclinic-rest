@@ -1,0 +1,104 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f08538ea6..e77e9cda9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -18,6 +18,7 @@ import java.util.List;
+ @Mapper(uses = PetMapper.class)
+ public interface OwnerMapper {
+ 
++    @Mapping(target = "addressLine1", source = "address")
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java((owner.getFirstName().charAt(0) + \".\" + owner.getLastName().charAt(0) + \".\").toUpperCase())")
+     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.rest.function.owner.HouseholdId.of(owner))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressForm.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressForm.java
+new file mode 100644
+index 000000000..cef492bc6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AddressForm.java
+@@ -0,0 +1,32 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.AddressRequiredException;
++
++/**
++ * Resolves the request's address into its normalized, stored form. The structured fields
++ * are preferred: when {@code addressLine1} is non-blank the stored {@code address} becomes
++ * the normalized line 1 with the normalized {@code addressLine2} appended after a single
++ * space (when present). Otherwise the flat {@code address} is normalized as before, which
++ * rejects a request that supplies neither form.
++ */
++final class AddressForm {
++
++    private AddressForm() {
++    }
++
++    static void apply(OwnerFieldsDto request) throws AddressRequiredException {
++        String line1 = request.getAddressLine1();
++        if (line1 == null || line1.isBlank()) {
++            request.setAddress(Address.normalize(request.getAddress()));
++            return;
++        }
++        String normalizedLine1 = Address.normalize(line1);
++        String line2 = request.getAddressLine2();
++        boolean hasLine2 = line2 != null && !line2.isBlank();
++        String normalizedLine2 = hasLine2 ? Address.normalize(line2) : null;
++        request.setAddressLine1(normalizedLine1);
++        request.setAddressLine2(normalizedLine2);
++        request.setAddress(hasLine2 ? normalizedLine1 + " " + normalizedLine2 : normalizedLine1);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 4e3148818..99d38a1b7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -20,7 +20,7 @@ public class BuildOwner {
+             Out<Boolean> sharesHousehold)
+             throws InvalidTelephoneException, AddressRequiredException, FutureRegistrationDateException {
+         request.setTelephone(E164.normalize(request.getTelephone()));
+-        request.setAddress(Address.normalize(request.getAddress()));
++        AddressForm.apply(request);
+         Owner owner = ownerMapper.toOwner(request);
+         if (owner.getRegistrationDate() != null && owner.getRegistrationDate().isAfter(LocalDate.now())) {
+             throw new FutureRegistrationDateException("registrationDate must not be later than the current date");
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 1ecdd7b51..1fce317b3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2011,11 +2011,27 @@ components:
+           example: Franklin
+         address:
+           title: Address
+-          description: The postal address of the pet owner.
++          description: >-
++            The postal address of the pet owner. Optional; accepted for backward
++            compatibility. When structured address fields are supplied they take
++            precedence and this value is the composed 'addressLine1 addressLine2'.
+           type: string
+           minLength: 1
+           maxLength: 255
+           example: '110 W. Liberty St.'
++        addressLine1:
++          title: Address line 1
++          description: First line of a structured postal address. Preferred over 'address' when present.
++          type: string
++          minLength: 1
++          maxLength: 255
++          example: '110 W. Liberty St.'
++        addressLine2:
++          title: Address line 2
++          description: Optional second line of a structured postal address.
++          type: string
++          maxLength: 255
++          example: 'Apt 4'
+         city:
+           title: City
+           description: The city of the pet owner.
+@@ -2064,7 +2080,6 @@ components:
+       required:
+         - firstName
+         - lastName
+-        - address
+         - city
+         - telephone
+     Owner:
