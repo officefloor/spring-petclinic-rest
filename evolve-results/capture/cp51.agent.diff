@@ -1,0 +1,132 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7e7c7a176..70d018a53 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -182,7 +182,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * response. The submitted fields are mapped to an {@link Owner}, which is
+      * {@link #normalizeAndValidate(Owner) normalized and validated}, checked against the
+      * {@link #isDailyLimitReached(LocalDate) daily creation limit}, {@link #assignHousehold(Owner)
+-     * assigned its household} and screened for {@link #checkForConflicts(Owner, boolean) conflicts};
++     * assigned its household} and screened for {@link #checkForConflicts(Owner) conflicts};
+      * a surviving owner then has its {@link #assignDerivedAttributes(Owner, boolean) derived
+      * attributes} assigned, is persisted and audited. Returns the {@link #created(Owner) 201 Created}
+      * response for the persisted owner, or the {@link HttpStatus} the create must fail with
+@@ -203,7 +203,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         assignHousehold(owner);
+ 
+-        HttpStatus conflict = checkForConflicts(owner, sharesHousehold);
++        HttpStatus conflict = checkForConflicts(owner);
+         if (conflict != null) {
+             return new ResponseEntity<>(conflict);
+         }
+@@ -315,7 +315,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      * deterministically from the owner's lastName and postcode, so every owner sharing that
+      * lastName and postcode is assigned the same value automatically, independent of whether the
+      * owner declares it shares a household. The link is assigned before the
+-     * {@link #checkForConflicts(Owner, boolean) conflict checks} because it is part of the owner's
++     * {@link #checkForConflicts(Owner) conflict checks} because it is part of the owner's
+      * {@link Owner#getIdentityKey() identity} and feeds its {@link #householdSize(String) household
+      * size}.
+      */
+@@ -325,17 +325,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * Whether the owner clashes with an owner that already exists, and the {@link HttpStatus} the
+-     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} when it
+-     * {@link #isHouseholdDuplicate(Owner) duplicates an existing household} or when its
+-     * {@link #isCityAtCapacity(String) city is already at capacity}. Declaring {@code
+-     * sharesHousehold} bypasses only the household-duplicate block (the owner is then created as a
+-     * declared household member); it does not lift the city-capacity limit. Returns {@code null}
+-     * when the owner clashes with nothing and may be created.
++     * create must fail with when it does. An owner is rejected with {@code 409 Conflict} only when
++     * its {@link #isCityAtCapacity(String) city is already at capacity}. Sharing a household with
++     * existing members is not a conflict: the owner is admitted as a household member and has its
++     * {@linkplain #membershipLevel(Owner) membership level} capped at one above the household
++     * maximum. Returns {@code null} when the owner clashes with nothing and may be created.
+      */
+-    private HttpStatus checkForConflicts(Owner owner, boolean sharesHousehold) {
+-        if (!sharesHousehold && isHouseholdDuplicate(owner)) {
+-            return HttpStatus.CONFLICT;
+-        }
++    private HttpStatus checkForConflicts(Owner owner) {
+         if (isCityAtCapacity(owner.getCity())) {
+             return HttpStatus.CONFLICT;
+         }
+@@ -374,23 +370,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     /**
+      * The membership level to assign a newly created owner and store on it as its
+      * {@link Owner#getMembershipLevel() membershipLevel}: the owner's own
+-     * {@linkplain Owner#getBaseMembershipLevel() base level} derived from its membershipPoints. This
+-     * is the single place the stored membership level is derived; it runs during
+-     * {@link #assignDerivedAttributes(Owner, boolean)}, after the owner has passed the duplicate and
+-     * capacity checks and so has its {@linkplain #householdMembers(String) household members}
++     * {@linkplain Owner#getBaseMembershipLevel() base level} derived from its membershipPoints,
++     * capped so it cannot exceed one above the current maximum membershipLevel among the owner's
++     * existing {@linkplain #householdMembers(String) household members}. With no existing household
++     * member no cap applies and the base level is used as-is. This is the single place the stored
++     * membership level is derived; it runs during {@link #assignDerivedAttributes(Owner, boolean)},
++     * after the owner has passed the duplicate and capacity checks and so has its household members
+      * available to it.
+      */
+     private Integer membershipLevel(Owner owner) {
+-        return owner.getBaseMembershipLevel();
++        int base = owner.getBaseMembershipLevel();
++        Collection<Owner> members = householdMembers(owner.getHouseholdId());
++        if (members.isEmpty()) {
++            return base;
++        }
++        int householdMax = members.stream()
++            .mapToInt(Owner::getMembershipLevel)
++            .max()
++            .getAsInt();
++        return Math.min(base, householdMax + 1);
+     }
+ 
+     /**
+      * Flag a newly created owner as a possible (soft) duplicate. An owner that declares it shares a
+      * household ({@code sharesHousehold}) is a declared household member, not a suspected duplicate,
+-     * so it is never flagged. Otherwise, because this runs after the hard
+-     * {@link #isHouseholdDuplicate(Owner) household-duplicate} check, the owner is not a household
+-     * match; it is flagged only when it is a soft match of an existing owner as determined by
+-     * {@link #findSoftDuplicate(Owner)}. When such an owner exists the new owner is flagged with
++     * so it is never flagged. Otherwise it is flagged only when it is a soft match of an existing
++     * owner as determined by {@link #findSoftDuplicate(Owner)}. When such an owner exists the new owner is flagged with
+      * {@code possibleDuplicate = true} and {@code possibleDuplicateOf} set to that owner's id;
+      * otherwise {@code possibleDuplicate = false} and no matching id is recorded.
+      */
+@@ -402,7 +407,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+ 
+     /**
+      * The owners a newly created owner is checked against by the duplicate and identity rules:
+-     * the {@link #isHouseholdDuplicate(Owner) household-duplicate} and {@link #findSoftDuplicate(Owner)
++     * the {@link #householdMembers(String) household} membership and {@link #findSoftDuplicate(Owner)
+      * soft-duplicate} checks, the {@link #customerCode(Owner) customerCode} de-duplication and the
+      * {@link #namesakeCount(String, String) namesake} count. This is the single place that scope is
+      * defined, so every one of those rules considers exactly the same set of owners; it spans every
+@@ -586,25 +591,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return "+" + e164;
+     }
+ 
+-    /**
+-     * Whether the candidate owner belongs to a household that already exists, and so must be
+-     * rejected with {@code 409 Conflict} unless it declares {@code sharesHousehold}. The household
+-     * is keyed by the deterministic {@link #householdId(Owner) householdId} (derived from lastName
+-     * and postcode), so any existing owner carrying the same householdId means this owner is a
+-     * second member of an already-registered household. Two owners sharing a lastName and postcode
+-     * are therefore the same household: the second is a household duplicate.
+-     */
+-    private boolean isHouseholdDuplicate(Owner owner) {
+-        return !householdMembers(owner.getHouseholdId()).isEmpty();
+-    }
+-
+     /**
+      * The existing owners already registered in the household identified by {@code householdId}: the
+      * {@linkplain #activeOwners() active owners} carrying that same non-null householdId. The owner
+      * being created is not yet persisted, so it is never among them, and a {@code null} householdId
+      * (an owner with no household) yields an empty collection. This is the single source of a
+      * household's existing membership, shared by every rule keyed by an owner's household (the
+-     * {@link #isHouseholdDuplicate(Owner) household-duplicate} check and the
+      * {@link #membershipLevel(Owner) membership-level} derivation) so the set is never re-derived
+      * elsewhere; like the other identity rules it ignores {@linkplain Owner#isDeleted() deleted}
+      * owners.
