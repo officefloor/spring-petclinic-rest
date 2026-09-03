@@ -210,11 +210,34 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality: the {@linkplain #regionOf(String) canonical region} of the
-     * owner's city, or {@link #UNKNOWN_REGION} when the city has no known region.
+     * The owner's locality. The postcode is preferred: when it falls within a known
+     * {@linkplain #REGION_POSTCODE_RANGE region postcode range} that region is returned,
+     * which disambiguates cities that share a name. Only when the postcode is absent or in
+     * no known range does this fall back to the {@linkplain #regionOf(String) city-to-region
+     * table}, yielding {@link #UNKNOWN_REGION} when the city has no known region.
      */
     public String getLocality() {
-        return regionOf(this.city);
+        String byPostcode = regionOfPostcode(this.postcode);
+        return byPostcode != null ? byPostcode : regionOf(this.city);
+    }
+
+    /**
+     * The region whose fixed {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the
+     * given postcode, or {@code null} when the postcode is {@code null}, not four digits, or in
+     * no known range.
+     */
+    private static String regionOfPostcode(String postcode) {
+        if (postcode == null || !postcode.matches("[0-9]{4}")) {
+            return null;
+        }
+        int value = Integer.parseInt(postcode);
+        for (Map.Entry<String, int[]> entry : REGION_POSTCODE_RANGE.entrySet()) {
+            int[] range = entry.getValue();
+            if (value >= range[0] && value <= range[1]) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
