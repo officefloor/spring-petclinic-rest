@@ -18,6 +18,7 @@ public class OwnerAuditListener {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
-            owner.getCustomerCode() + "-M" + String.format("%02d", owner.getRegistrationDate().getYear() % 100));
+            owner.getCustomerCode() + "-M" + String.format("%02d",
+                org.springframework.samples.petclinic.rest.controller.v1.FiscalYear.of(owner.getRegistrationDate()) % 100));
     }
 }
