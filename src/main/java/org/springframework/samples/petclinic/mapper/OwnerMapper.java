@@ -34,6 +34,7 @@ public abstract class OwnerMapper {
         return MembershipLevel.level(membershipPoints(owner));
     }
 
+    @Mapping(target = "selfLink", expression = "java(owner.getId() == null ? null : \"/api/owners/\" + owner.getId())")
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "salutation", expression = "java(owner.getTitle() == null ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
