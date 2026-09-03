@@ -48,6 +48,7 @@ CREATE TABLE owners (
   customer_code VARCHAR(20),
   household_id VARCHAR(64),
   namesake_count INTEGER,
+  membership_cap INTEGER,
   birth_date DATE,
   possible_duplicate_of INTEGER,
   title      VARCHAR(10),

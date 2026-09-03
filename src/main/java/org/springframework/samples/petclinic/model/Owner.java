@@ -102,6 +102,13 @@ public class Owner extends Person {
 
     public void setNamesakeCount(Integer namesakeCount) { this.namesakeCount = namesakeCount; }
 
+    @Column(name = "membership_cap")
+    private Integer membershipCap;
+
+    public Integer getMembershipCap() { return this.membershipCap; }
+
+    public void setMembershipCap(Integer membershipCap) { this.membershipCap = membershipCap; }
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
