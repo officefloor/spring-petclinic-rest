@@ -172,6 +172,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
+        assignPossibleDuplicate(owner);
+    }
+
+    /**
+     * Flag a newly created owner as a possible (soft) duplicate. Because this runs after the hard
+     * {@link #isDuplicate(Owner) duplicate} check, the owner is not an exact identity match; it is a
+     * soft match when an existing owner shares its lastName (compared case-insensitively, with
+     * collapsed whitespace) and its postcode but carries a different telephone. When such an owner
+     * exists the new owner is flagged with {@code possibleDuplicate = true} and
+     * {@code possibleDuplicateOf} set to the matching owner's id (the earliest such owner when more
+     * than one matches); otherwise {@code possibleDuplicate = false} and no matching id is recorded.
+     * A postcode is required for a soft match, so an owner without a postcode is never flagged.
+     */
+    private void assignPossibleDuplicate(Owner owner) {
+        String candidateLastName = normalizeName(owner.getLastName());
+        Owner match = owner.getPostcode() == null ? null
+            : this.clinicService.findAllOwners().stream()
+                .filter(existing -> owner.getPostcode().equals(existing.getPostcode()))
+                .filter(existing -> normalizeName(existing.getLastName()).equals(candidateLastName))
+                .filter(existing -> !owner.getTelephone().equals(existing.getTelephone()))
+                .min(Comparator.comparingInt(Owner::getId))
+                .orElse(null);
+        owner.setPossibleDuplicate(match != null);
+        owner.setPossibleDuplicateOf(match == null ? null : match.getId());
     }
 
     /**

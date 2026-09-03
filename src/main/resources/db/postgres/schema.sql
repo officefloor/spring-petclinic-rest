@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS owners (
                                       household_id TEXT,
                                       namesake_count INTEGER,
                                       bulk_signup_warning BOOLEAN,
-                                      household_size INTEGER
+                                      household_size INTEGER,
+                                      possible_duplicate BOOLEAN,
+                                      possible_duplicate_of INTEGER
 );
 CREATE INDEX ON owners (last_name);
 
