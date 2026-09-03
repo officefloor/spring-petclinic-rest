@@ -17,10 +17,13 @@ public class RespondWithOwnerCreated {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setNamesakeCount(Namesakes.countBefore(owner, ownerRepository));
+        int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
+        int membershipLevel = MembershipLevel.of(owner, namesakeCount);
+        dto.setNamesakeCount(namesakeCount);
+        dto.setMembershipLevel(membershipLevel);
         dto.setBulkSignupWarning(BulkSignup.isWarned(owner, ownerRepository));
-        LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
