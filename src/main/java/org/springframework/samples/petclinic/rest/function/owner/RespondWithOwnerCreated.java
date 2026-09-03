@@ -2,6 +2,8 @@ package org.springframework.samples.petclinic.rest.function.owner;
 
 import java.net.URI;
 
+import org.slf4j.LoggerFactory;
+
 import net.officefloor.plugin.variable.Val;
 import net.officefloor.web.ObjectResponse;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,8 @@ public class RespondWithOwnerCreated {
             ObjectResponse<ResponseEntity<OwnerDto>> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setNamesakeCount(Namesakes.countBefore(owner, ownerRepository));
+        LoggerFactory.getLogger("AUDIT").info("owner created id={} customerCode={} registrationDate={}",
+                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
