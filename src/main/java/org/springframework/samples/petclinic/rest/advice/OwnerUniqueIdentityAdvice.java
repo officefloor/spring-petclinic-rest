@@ -88,7 +88,8 @@ public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
         String householdId = Households.id(body.path("lastName").asString(""), body.path("postcode").asString(""));
         ((ObjectNode) body).put("householdId", householdId);
         if (!body.path("sharesHousehold").asBoolean(false)
-            && Households.isDuplicate(clinicService.findAllOwners(), householdId)) {
+            && Households.isDuplicate(
+                clinicService.findAllOwners().stream().filter(o -> !o.isDeleted()).toList(), householdId)) {
             throw new DuplicateIdentityException();
         }
         return buffered(objectMapper.writeValueAsBytes(body), inputMessage.getHeaders());
@@ -99,7 +100,7 @@ public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
                                 Type targetType, Class<? extends HttpMessageConverter<?>> converterType) {
         String identityKey = ownerMapper.identityKey(ownerMapper.toOwner((OwnerFieldsDto) body));
         for (Owner existing : clinicService.findAllOwners()) {
-            if (identityKey.equals(ownerMapper.identityKey(existing))) {
+            if (!existing.isDeleted() && identityKey.equals(ownerMapper.identityKey(existing))) {
                 throw new DuplicateIdentityException();
             }
         }

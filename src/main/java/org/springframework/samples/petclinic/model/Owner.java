@@ -85,6 +85,17 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
     public Integer getPossibleDuplicateOf() {
         return this.possibleDuplicateOf;
     }
