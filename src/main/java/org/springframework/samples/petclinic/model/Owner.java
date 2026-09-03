@@ -82,6 +82,13 @@ public class Owner extends Person {
     @Column(name = "household_member_count")
     private Integer householdMemberCount;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
@@ -128,6 +135,7 @@ public class Owner extends Person {
         }
         this.namesakeCount = count;
         assignHouseholdMemberCount(existingOwners);
+        this.membershipLevel = org.springframework.samples.petclinic.util.MembershipLevels.cap(this, existingOwners);
     }
 
     public Integer getHouseholdMemberCount() {

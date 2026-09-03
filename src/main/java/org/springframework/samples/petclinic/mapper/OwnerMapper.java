@@ -69,41 +69,13 @@ public interface OwnerMapper {
 
     /** Membership points: +2 for an email, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days. */
     default int membershipPoints(Owner owner) {
-        int points = 0;
-        if (owner.getEmail() != null) {
-            points += 2;
-        }
-        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            points += 1;
-        }
-        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
-            points += 2;
-        }
-        if (tenureFiscalYears(owner) >= 1) {
-            points += 3;
-        }
-        return points;
+        return org.springframework.samples.petclinic.util.MembershipLevels.points(owner);
     }
 
-    /** Numeric level derived from membershipPoints: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    /** The owner's stored household-capped level when frozen at create, otherwise the level derived from points. */
     default Integer membershipLevel(Owner owner) {
-        int points = membershipPoints(owner);
-        if (points <= 1) {
-            return 1;
-        }
-        if (points <= 3) {
-            return 2;
-        }
-        return points <= 5 ? 3 : 4;
-    }
-
-    /** Fiscal years of tenure elapsed since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
-    default int tenureFiscalYears(Owner owner) {
-        java.time.LocalDate registrationDate = owner.getRegistrationDate();
-        if (registrationDate == null) {
-            return 0;
-        }
-        return org.springframework.samples.petclinic.util.FiscalYears.elapsed(registrationDate, java.time.LocalDate.now());
+        Integer stored = owner.getMembershipLevel();
+        return stored != null ? stored : org.springframework.samples.petclinic.util.MembershipLevels.level(owner);
     }
 
     /** The 'FY<YY>' fiscal year of the (business-day-adjusted) registrationDate; null when the date is absent. */

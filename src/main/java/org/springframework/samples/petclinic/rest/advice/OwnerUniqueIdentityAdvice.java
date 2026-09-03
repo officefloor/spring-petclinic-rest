@@ -50,10 +50,10 @@ import tools.jackson.databind.node.ObjectNode;
  * existing owner's, responding 409 Conflict. This single derived key subsumes the former separate
  * telephone, email and household duplicate checks: because the telephone is part of the key, two
  * members of the same household with different telephones have different keys and are both allowed;
- * only an exact full-key match is a duplicate. The householdId is now derived deterministically
- * from (normalizedLastName, postcode), so owners sharing both are the same household; a second such
- * owner is rejected here as a household duplicate unless it sets {@code sharesHousehold}, which only
- * bypasses that block. The body is buffered and re-supplied downstream with the householdId filled in.
+ * only an exact full-key match is a duplicate. The householdId is derived deterministically
+ * from (normalizedLastName, postcode), so owners sharing both are the same household; further
+ * members of an existing household are admitted (their membershipLevel is capped relative to the
+ * household). The body is buffered and re-supplied downstream with the householdId filled in.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -87,11 +87,6 @@ public class OwnerUniqueIdentityAdvice implements RequestBodyAdvice {
         JsonNode body = objectMapper.readTree(bytes);
         String householdId = Households.id(body.path("lastName").asString(""), body.path("postcode").asString(""));
         ((ObjectNode) body).put("householdId", householdId);
-        if (!body.path("sharesHousehold").asBoolean(false)
-            && Households.isDuplicate(
-                clinicService.findAllOwners().stream().filter(o -> !o.isDeleted()).toList(), householdId)) {
-            throw new DuplicateIdentityException();
-        }
         return buffered(objectMapper.writeValueAsBytes(body), inputMessage.getHeaders());
     }
 
