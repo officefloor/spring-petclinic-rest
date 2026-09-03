@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
@@ -76,7 +77,7 @@ public interface OwnerMapper {
         if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
             points += 2;
         }
-        if (tenureDays(owner) > 365) {
+        if (tenureFiscalYears(owner) >= 1) {
             points += 3;
         }
         return points;
@@ -94,21 +95,28 @@ public interface OwnerMapper {
         return points <= 5 ? 3 : 4;
     }
 
-    /** Days of tenure since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
-    default long tenureDays(Owner owner) {
+    /** Fiscal years of tenure elapsed since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
+    default int tenureFiscalYears(Owner owner) {
         java.time.LocalDate registrationDate = owner.getRegistrationDate();
         if (registrationDate == null) {
             return 0;
         }
-        return java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now());
+        return org.springframework.samples.petclinic.util.FiscalYears.elapsed(registrationDate, java.time.LocalDate.now());
     }
 
-    /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate year. */
+    /** The 'FY<YY>' fiscal year of the (business-day-adjusted) registrationDate; null when the date is absent. */
+    default String fiscalYear(Owner owner) {
+        return owner.getRegistrationDate() == null ? null
+            : org.springframework.samples.petclinic.util.FiscalYears.label(owner.getRegistrationDate());
+    }
+
+    /** Derive the '<customerCode>-M<YY>' membership number, where YY is the last two digits of the registrationDate fiscal year. */
     default String membershipNumber(Owner owner) {
         if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("%s-M%02d", owner.getCustomerCode(), owner.getRegistrationDate().getYear() % 100);
+        return String.format("%s-M%02d", owner.getCustomerCode(),
+            org.springframework.samples.petclinic.util.FiscalYears.startYear(owner.getRegistrationDate()) % 100);
     }
 
     Owner toOwner(OwnerDto ownerDto);
