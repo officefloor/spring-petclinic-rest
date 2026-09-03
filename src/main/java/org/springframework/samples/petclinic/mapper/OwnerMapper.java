@@ -30,6 +30,8 @@ public interface OwnerMapper {
         expression = "java(switch (owner.getPostcode() != null && owner.getPostcode().matches(\"[0-9]{4}\") ? owner.getPostcode().substring(0, 2) : \"\") { case \"20\" -> \"NSW\"; case \"30\" -> \"VIC\"; case \"40\" -> \"QLD\"; default -> switch (owner.getCity()) { case \"Sydney\" -> \"NSW\"; case \"Melbourne\" -> \"VIC\"; case \"Brisbane\" -> \"QLD\"; default -> \"UNKNOWN\"; }; })")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "checkDigit",
+        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.CheckDigit.of(owner))")
     @Mapping(target = "identityKey",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
