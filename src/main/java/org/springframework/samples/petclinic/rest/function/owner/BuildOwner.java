@@ -7,6 +7,7 @@ import net.officefloor.plugin.variable.Out;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.escalation.AddressRequiredException;
 import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,8 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built,
-            Out<Boolean> sharesHousehold) throws InvalidTelephoneException {
+            Out<Boolean> sharesHousehold) throws InvalidTelephoneException, AddressRequiredException {
         request.setTelephone(E164.normalize(request.getTelephone()));
+        request.setAddress(Address.normalize(request.getAddress()));
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
