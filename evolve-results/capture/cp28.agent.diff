@@ -1,0 +1,163 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index f5c037f43..502138023 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,6 +24,7 @@ public interface OwnerMapper {
+     @Mapping(target = "membershipLevel", expression = "java(java.lang.Math.min(1 + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0) + (java.lang.Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0), 3))")
+     @Mapping(target = "locality", expression = "java(\"Sydney\".equals(owner.getCity()) ? \"NSW\" : \"Melbourne\".equals(owner.getCity()) ? \"VIC\" : \"Brisbane\".equals(owner.getCity()) ? \"QLD\" : \"UNKNOWN\")")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isEmpty() ? \"EMAIL\" : \"PHONE\")")
++    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity.identityKey(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+new file mode 100644
+index 000000000..a761ea39b
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityException.java
+@@ -0,0 +1,12 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++/**
++ * Thrown when creating an owner whose whole identityKey is already used by another owner.
++ * Handled by {@link DuplicateIdentityHandler}, which responds 409.
++ */
++public class DuplicateIdentityException extends Exception {
++
++    public DuplicateIdentityException(String identityKey) {
++        super("Owner already exists with identity: " + identityKey);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityHandler.java b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityHandler.java
+new file mode 100644
+index 000000000..cc5add59f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/escalation/DuplicateIdentityHandler.java
+@@ -0,0 +1,14 @@
++package org.springframework.samples.petclinic.rest.escalation;
++
++import net.officefloor.plugin.section.clazz.Parameter;
++import net.officefloor.web.ObjectResponse;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++
++public class DuplicateIdentityHandler {
++
++    public void handle(@Parameter DuplicateIdentityException ex,
++            ObjectResponse<ResponseEntity<String>> response) {
++        response.send(new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT));
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueIdentity.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueIdentity.java
+new file mode 100644
+index 000000000..e8daae476
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueIdentity.java
+@@ -0,0 +1,37 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException;
++
++/**
++ * Rejects a create whose whole {@code identityKey} already belongs to another owner,
++ * before {@link SaveOwner} runs. Consolidates the former telephone, email and household
++ * duplicate checks: only an exact full-key match is a duplicate, so two members of the
++ * same household with different telephones are both allowed. Handled with 409 by
++ * {@code DuplicateIdentityHandler}. Runs after {@link AssignHouseholdId} so the key can
++ * include the household part.
++ */
++public class CheckUniqueIdentity {
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository)
++            throws DuplicateIdentityException {
++        String key = identityKey(owner);
++        for (Owner other : ownerRepository.findAll()) {
++            if (!other.getId().equals(owner.getId()) && key.equals(identityKey(other))) {
++                throw new DuplicateIdentityException(key);
++            }
++        }
++    }
++
++    /** Derived duplicate key: normalizedTelephone + '|' + (email or empty) + '|' + householdId. */
++    public static String identityKey(Owner owner) {
++        return blank(owner.getTelephone()) + "|" + blank(owner.getEmail()) + "|"
++                + blank(owner.getHouseholdId());
++    }
++
++    private static String blank(String value) {
++        return value == null ? "" : value;
++    }
++}
+diff --git a/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml
+new file mode 100644
+index 000000000..121fbd484
+--- /dev/null
++++ b/src/main/resources/officefloor/escalation/org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityException.yml
+@@ -0,0 +1,2 @@
++handle:
++  class: org.springframework.samples.petclinic.rest.escalation.DuplicateIdentityHandler
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 296c0bd41..6c13307db 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -4,20 +4,17 @@ composition:
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
+-  next: checkTelephone
+-
+-checkTelephone:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueTelephone
+-  govern: [ transaction ]
+-  next: checkEmail
++  next: assignHousehold
+ 
+-checkEmail:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueEmail
++# Assign householdId before the identity check so it forms part of the key.
++assignHousehold:
++  class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId
+   govern: [ transaction ]
+-  next: checkHousehold
++  next: checkIdentity
+ 
+-checkHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueHousehold
++checkIdentity:
++  class: org.springframework.samples.petclinic.rest.function.owner.CheckUniqueIdentity
++  method: service
+   govern: [ transaction ]
+   next: checkCityCapacity
+ 
+@@ -39,11 +36,6 @@ checkDailyLimit:
+ assignCode:
+   class: org.springframework.samples.petclinic.rest.function.owner.AssignCustomerCode
+   govern: [ transaction ]
+-  next: assignHousehold
+-
+-assignHousehold:
+-  class: org.springframework.samples.petclinic.rest.function.owner.AssignHouseholdId
+-  govern: [ transaction ]
+   next: countNamesakes
+ 
+ countNamesakes:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3cc413034..d83cbb2be 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2101,6 +2101,12 @@ components:
+               type: string
+               example: 'a1b2c3d4e5f6a7b8'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: "Derived duplicate key: normalizedTelephone + '|' + (email or empty) + '|' + householdId. Two owners are duplicates only when their whole identityKey matches."
++              type: string
++              example: '+61412345678||a1b2c3d4e5f6a7b8'
++              readOnly: true
+             namesakeCount:
+               title: Namesake count
+               description: Number of existing owners sharing the same firstName and lastName (case-insensitively) at the moment this owner was created.
