@@ -19,7 +19,7 @@ public final class IdentityKey {
 
     /** The derived identity key of {@code owner}; telephone is already E.164-normalized upstream. */
     public static String of(Owner owner) {
-        String raw = blank(owner.getTelephone()) + "|" + lower(owner.getEmail()) + "|"
+        String raw = "V2|" + blank(owner.getTelephone()) + "|" + lower(owner.getEmail()) + "|"
             + Soundex.code(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));

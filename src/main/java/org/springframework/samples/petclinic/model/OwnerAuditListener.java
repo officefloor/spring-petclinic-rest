@@ -25,9 +25,11 @@ public class OwnerAuditListener {
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner));
         AUDIT.info(String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+            "{\"schemaVersion\":2,\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,"
+                + "\"ownerSegment\":\"%s\",\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(),
-            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner)));
+            org.springframework.samples.petclinic.rest.controller.v1.MembershipLevel.of(owner),
+            org.springframework.samples.petclinic.rest.controller.v1.OwnerSegment.of(owner)));
         NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getMemberId());
     }
 }

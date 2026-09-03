@@ -39,7 +39,7 @@ final class HouseholdDuplicates {
 
     /** First 12 hex characters of SHA-256 over {@code normalizedLastName + '|' + postcode}. */
     static String householdId(Owner owner) {
-        String key = norm(owner.getLastName()) + "|" + blank(owner.getPostcode());
+        String key = "V2|" + norm(owner.getLastName()) + "|" + blank(owner.getPostcode());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();

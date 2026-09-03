@@ -24,7 +24,7 @@ public final class CustomerCodes {
     static String build(Owner owner, Collection<Owner> existing) {
         LocalDate registration = BusinessDays.roll(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
-        String base = region(owner)
+        String base = regionV2(owner)
             + String.format("%02d", FiscalYear.of(registration) % 100)
             + hash8(owner.getTelephone() + owner.getLastName());
         return deduplicate(base + CheckDigit.luhn(base), existing);
@@ -41,6 +41,15 @@ public final class CustomerCodes {
             candidate = code + "-" + n;
         }
         return candidate;
+    }
+
+    /**
+     * The version-2 region code used inside identifiers: the plain {@link #region} with the fixed
+     * {@code V2} version tag mixed in, so version-2 identifiers never repeat a version-1 value while
+     * the user-facing locality keeps the plain region code.
+     */
+    static String regionV2(Owner owner) {
+        return region(owner) + "V2";
     }
 
     /** The region code derived from {@code owner}'s postcode, falling back to its city, else {@code UNKNOWN}. */

@@ -36,8 +36,8 @@ public interface OwnerMapper {
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.OwnerSegment.of(owner))")
     @Mapping(target = "contactPreference",
         expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
-    @Mapping(target = "identityKey",
-        expression = "java(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand",
         expression = "java(org.springframework.samples.petclinic.rest.controller.v1.AgeBand.of(owner))")
     @Mapping(target = "telephoneDisplay",
@@ -49,6 +49,16 @@ public interface OwnerMapper {
     @Mapping(target = "addressLine1", source = "address")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);
+
+    /** Groups the owner's version-2 derived identifiers into the nested identity object. */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(org.springframework.samples.petclinic.rest.controller.v1.IdentityKey.of(owner));
+        return identity;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
