@@ -4,23 +4,49 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.repository.OwnerRepository;
 
 /**
- * Derives an owner's membership level. The pre-tenure factors — an email and a zero
- * namesake count — lift the base level of 1 up to 3, so a brand-new owner never exceeds
- * level 3. Level 4 additionally requires tenure of more than 365 days since registration.
+ * Derives an owner's membership standing as points, then a level. Points accrue from an
+ * email (+2), a zero namesake count (+1), a household of three or more (+2) and tenure of
+ * more than 365 days since registration (+3). The points map to a level: 1 (0-1), 2 (2-3),
+ * 3 (4-5), 4 (6 or more).
  */
 public final class MembershipLevel {
 
     private MembershipLevel() {
     }
 
-    public static int of(Owner owner) {
-        int base = 1
-                + (owner.getEmail() != null && !owner.getEmail().isEmpty() ? 1 : 0)
-                + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0);
-        int level = Math.min(base, 3);
-        return level == 3 && tenureDays(owner) > 365 ? 4 : level;
+    /** Membership points for the owner (see class doc). */
+    public static int points(Owner owner, OwnerRepository ownerRepository) {
+        int points = 0;
+        if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+            points += 2;
+        }
+        if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
+            points += 1;
+        }
+        if (HouseholdTier.isGold(owner, ownerRepository)) {
+            points += 2;
+        }
+        if (tenureDays(owner) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /** Membership level for a points total: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    public static int level(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
     }
 
     private static long tenureDays(Owner owner) {
