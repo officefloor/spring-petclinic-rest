@@ -43,5 +43,13 @@ public class OwnerFieldsValidator implements Validator {
         for (String field : REQUIRED_FIELDS) {
             ValidationUtils.rejectIfEmptyOrWhitespace(errors, field, "required", "must not be blank");
         }
+        OwnerFieldsDto owner = (OwnerFieldsDto) target;
+        String telephone = owner.getTelephone();
+        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
+        if (digits.length() == 10) {
+            owner.setTelephone(digits);
+        } else {
+            errors.rejectValue("telephone", "telephone", "must be exactly 10 digits");
+        }
     }
 }
