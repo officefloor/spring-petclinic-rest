@@ -102,6 +102,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> existingOwners = this.clinicService.findAllOwners();
+        if (DailyRegistrationLimit.isReached(existingOwners)) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         boolean telephoneTaken = existingOwners.stream()
             .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()));
         if (telephoneTaken || CityCapacity.isAtCapacity(owner, existingOwners)
