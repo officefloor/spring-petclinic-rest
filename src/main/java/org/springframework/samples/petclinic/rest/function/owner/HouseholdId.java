@@ -9,7 +9,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Derives the stable identifier shared by every owner in the same household. A household
- * is the set of owners with the same last name at the same address (compared
+ * is the set of owners with the same last name and postcode: the first 12 hex characters of
+ * SHA-256 over {@code normalizedLastName + '|' + postcode} (last name normalized
  * case-insensitively with collapsed whitespace, matching {@link EnsureOwnerHouseholdUnique}),
  * so joiners created with {@code sharesHousehold} always resolve to the same value.
  */
@@ -19,12 +20,13 @@ public final class HouseholdId {
     }
 
     public static String of(Owner owner) {
-        String seed = key(owner.getLastName()) + "\n" + key(owner.getAddress());
+        String postcode = owner.getPostcode() == null ? "" : owner.getPostcode();
+        String seed = key(owner.getLastName()) + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
                 sb.append(String.format("%02X", digest[i]));
             }
             return sb.toString();
