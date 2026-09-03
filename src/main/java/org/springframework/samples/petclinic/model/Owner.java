@@ -52,6 +52,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date", columnDefinition = "DATE")
     private java.time.LocalDate registrationDate;
 
@@ -157,6 +160,14 @@ public class Owner extends Person {
     /** Store the telephone in E.164 form so create and update persist and return it normalized. */
     public void setTelephone(String telephone) {
         this.telephone = TelephoneNormalizer.toE164(telephone);
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getEmail() {
