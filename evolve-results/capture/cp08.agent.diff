@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index b37000230..4bc2ec6f9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -45,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index 9e8469d64..b8494bf8d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -31,8 +31,8 @@ public class BuildOwner {
+             throw new MissingOwnerFieldsException(missing);
+         }
+         Owner owner = ownerMapper.toOwner(request);
+-        String telephone = owner.getTelephone().replaceAll("\\D", "");
+-        if (telephone.length() != 10) {
++        String telephone = toE164(owner.getTelephone());
++        if (telephone == null) {
+             throw new MissingOwnerFieldsException(List.of("telephone"));
+         }
+         owner.setTelephone(telephone);
+@@ -42,4 +42,22 @@ public class BuildOwner {
+         }
+         built.set(owner);
+     }
++
++    /**
++     * Normalizes a raw telephone to E.164. A leading '+' keeps its country code;
++     * otherwise '+61' is assumed and a single leading '0' is dropped. Spaces, dashes
++     * and brackets are stripped. Returns null when the result is not 8..15 digits.
++     */
++    static String toE164(String raw) {
++        String trimmed = raw.trim();
++        String digits;
++        if (trimmed.startsWith("+")) {
++            digits = trimmed.substring(1).replaceAll("\\D", "");
++        }
++        else {
++            String national = trimmed.replaceAll("\\D", "");
++            digits = "61" + (national.startsWith("0") ? national.substring(1) : national);
++        }
++        return digits.length() >= 8 && digits.length() <= 15 ? "+" + digits : null;
++    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueTelephone.java
+index e05b7c05d..b59349f55 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CheckUniqueTelephone.java
+@@ -16,13 +16,9 @@ public class CheckUniqueTelephone {
+         String telephone = owner.getTelephone();
+         for (Owner other : ownerRepository.findAll()) {
+             if (!other.getId().equals(owner.getId())
+-                    && telephone.equals(normalize(other.getTelephone()))) {
++                    && telephone.equals(other.getTelephone())) {
+                 throw new DuplicateTelephoneException(telephone);
+             }
+         }
+     }
+-
+-    private static String normalize(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+-    }
+ }
