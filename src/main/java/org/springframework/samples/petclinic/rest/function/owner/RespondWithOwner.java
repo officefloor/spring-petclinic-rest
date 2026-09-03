@@ -12,7 +12,9 @@ public class RespondWithOwner {
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
-        dto.setNamesakeCount(Namesakes.countBefore(owner, ownerRepository));
+        int namesakeCount = Namesakes.countBefore(owner, ownerRepository);
+        dto.setNamesakeCount(namesakeCount);
+        dto.setMembershipTier(namesakeCount == 0 && owner.getEmail() != null ? "SILVER" : "BRONZE");
         response.send(dto);
     }
 }
