@@ -27,6 +27,12 @@ public class BuildOwner {
         if (!missing.isEmpty()) {
             throw new MissingOwnerFieldsException(missing);
         }
-        built.set(ownerMapper.toOwner(request));
+        Owner owner = ownerMapper.toOwner(request);
+        String telephone = owner.getTelephone().replaceAll("\\D", "");
+        if (telephone.length() != 10) {
+            throw new MissingOwnerFieldsException(List.of("telephone"));
+        }
+        owner.setTelephone(telephone);
+        built.set(owner);
     }
 }
