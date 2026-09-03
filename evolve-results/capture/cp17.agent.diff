@@ -1,0 +1,50 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fea7c83df..1a1099389 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,6 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName",
+             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
++    @Mapping(target = "locality", expression = "java(locality(owner))")
+     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+@@ -30,6 +31,18 @@ public interface OwnerMapper {
+                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+     }
+ 
++    /** City -> canonical region, from the fixed city-to-region table. */
++    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
++            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
++
++    /**
++     * The owner's locality (region), derived from city via the fixed city-to-region table
++     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); {@code UNKNOWN} for any other city.
++     */
++    default String locality(Owner owner) {
++        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
++    }
++
+     /**
+      * The owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the last two
+      * digits of the registrationDate year (e.g. {@code SYD-SMI-0007-M26}). Null when either the customer
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f893fd222..3887cc89a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2089,6 +2089,14 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
++            locality:
++              title: Locality
++              description: >-
++                The owner's locality (region) derived from city via a fixed table
++                (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); 'UNKNOWN' for any other city.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             customerCode:
+               title: Customer code
+               description: >-
