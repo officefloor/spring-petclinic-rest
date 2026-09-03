@@ -26,6 +26,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
+    @Mapping(target = "registrationDate", expression = "java(ownerDto.getRegistrationDate() != null ? ownerDto.getRegistrationDate() : java.time.LocalDate.now())")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
