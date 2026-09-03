@@ -1,0 +1,93 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 0c419e08f..02a6d0ad0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -84,6 +84,9 @@ public class Owner extends Person {
+     @Transient
+     private boolean bulkSignupWarning;
+ 
++    @Transient
++    private boolean capacityWarning;
++
+     @Transient
+     private Integer possibleDuplicateOf;
+ 
+@@ -211,6 +214,14 @@ public class Owner extends Person {
+         this.bulkSignupWarning = bulkSignupWarning;
+     }
+ 
++    public boolean isCapacityWarning() {
++        return this.capacityWarning;
++    }
++
++    public void setCapacityWarning(boolean capacityWarning) {
++        this.capacityWarning = capacityWarning;
++    }
++
+     public Integer getPossibleDuplicateOf() {
+         return this.possibleDuplicateOf;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java
+new file mode 100644
+index 000000000..59e146eac
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/FlagCapacityWarning.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Flags the response with {@code capacityWarning} when the owner's city already holds
++ * 40-49 owners (approaching the hard limit of 50 enforced by {@link CheckCityCapacity}),
++ * before {@link SaveOwner} runs so the count excludes this owner.
++ */
++public class FlagCapacityWarning {
++
++    static final int WARN_THRESHOLD = 40;
++
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) {
++        String city = CheckCityCapacity.normalize(owner.getCity());
++        long count = ownerRepository.findAll().stream()
++                .filter(other -> !other.getId().equals(owner.getId()))
++                .filter(other -> city.equals(CheckCityCapacity.normalize(other.getCity())))
++                .count();
++        owner.setCapacityWarning(count >= WARN_THRESHOLD && count < CheckCityCapacity.CAPACITY);
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 90b8b8d21..212d5f4bc 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -41,6 +41,12 @@ checkIdentity:
+ checkCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.CheckCityCapacity
+   govern: [ transaction ]
++  next: flagCapacityWarning
++
++# Warn (does not reject) when the city already holds 40-49 owners, approaching the hard 50 limit.
++flagCapacityWarning:
++  class: org.springframework.samples.petclinic.rest.function.owner.FlagCapacityWarning
++  govern: [ transaction ]
+   next: adjustDate
+ 
+ adjustDate:
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 3178657ca..a9fc134e0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2221,6 +2221,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: True when the owner's city already held 40-49 owners (approaching the hard limit of 50) at the moment this owner was created, otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             checkDigit:
+               title: Check digit
+               description: A single Luhn check digit (0-9) computed over the digits of the customerCode.
