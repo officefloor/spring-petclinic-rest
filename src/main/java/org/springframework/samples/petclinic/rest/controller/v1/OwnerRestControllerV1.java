@@ -136,8 +136,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
         assignDerivedAttributes(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
-        AUDIT.info("owner created id={} customerCode={} registrationDate={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+            owner.getMembershipLevel(), owner.getMembershipNumber());
         return created(owner);
     }
 
