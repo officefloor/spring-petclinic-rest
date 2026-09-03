@@ -114,11 +114,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isTelephoneInUse(telephone)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Build the customer code for a newly created owner, formatted {@code '<LAST3>-<NNNN>'}
+     * where LAST3 is the upper-cased first three letters of {@code lastName} and NNNN is a
+     * global 4-digit zero-padded sequence equal to one more than the current number of owners
+     * (e.g. {@code 'SMI-0007'}).
+     */
+    private String nextCustomerCode(String lastName) {
+        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+        int sequence = this.clinicService.findAllOwners().size() + 1;
+        return String.format("%s-%04d", last3, sequence);
     }
 
     /**
