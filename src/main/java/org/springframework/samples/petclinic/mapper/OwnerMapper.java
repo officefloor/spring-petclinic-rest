@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 
 import java.util.Collection;
 import java.util.List;
@@ -34,10 +35,10 @@ public interface OwnerMapper {
         defaultExpression = "java(java.time.LocalDate.now())")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** Strip every non-digit character so the create path stores the bare 10-digit telephone. */
+    /** Normalize to E.164 so the create path stores, and duplicate detection compares, that form. */
     @Named("normalizeTelephone")
     default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+        return TelephoneNormalizer.toE164(telephone);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
