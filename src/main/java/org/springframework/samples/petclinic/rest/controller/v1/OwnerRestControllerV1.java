@@ -145,7 +145,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (isCityAtCapacity(owner.getCity())) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
+        owner.setCustomerCode(customerCode(owner));
         owner.setNamesakeCount(namesakeCount(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(isBulkSignup(owner.getRegistrationDate()));
         owner.setHouseholdSize(householdSize(owner.getHouseholdId()));
@@ -159,18 +159,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code for a newly created owner, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}
-     * where CITY3 is the upper-cased first three letters of {@code city}, LAST3 the upper-cased first
-     * three letters of {@code lastName} and NNNN a per-city 4-digit zero-padded sequence equal to one
-     * more than the number of owners already in that city (e.g. {@code 'LON-SMI-0007'}).
+     * Build the customer code for a newly created owner, formatted {@code '<REGION>-<HASH8>'}
+     * where REGION is the region derived from the owner's postcode (or {@link Owner#UNKNOWN_REGION}
+     * when the postcode is absent or maps to no known region) and HASH8 is the first 8 upper-case
+     * hex characters of the SHA-256 of the normalized (E.164) telephone concatenated with the
+     * lastName (e.g. {@code 'NSW-3C1A9F2B'}). This is the single source of the owner's identity:
+     * every value built from the customer code (the membership number and its check digit) and the
+     * owner's locality are derived from it.
      */
-    private String nextCustomerCode(String city, String lastName) {
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase();
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> existing.getCity() != null && existing.getCity().equalsIgnoreCase(city))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+    private String customerCode(Owner owner) {
+        String region = owner.getRegion() != null ? owner.getRegion() : Owner.UNKNOWN_REGION;
+        String hash8 = shaHexUpper(owner.getTelephone() + owner.getLastName()).substring(0, 8);
+        return region + "-" + hash8;
     }
 
     /**
@@ -213,7 +213,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Whether the given city has reached its owner capacity, i.e. it already contains 50 or
-     * more owners. Cities are compared case-insensitively, matching {@link #nextCustomerCode}.
+     * more owners. Cities are compared case-insensitively.
      */
     private boolean isCityAtCapacity(String city) {
         long count = this.clinicService.findAllOwners().stream()
@@ -354,7 +354,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * The SHA-256 digest of {@code input}'s UTF-8 bytes, rendered as an upper-case hexadecimal
      * string (two hex characters per digest byte, so 64 characters in all). This is the single
      * place the hashing-and-hex-encoding is performed; callers that need a shorter opaque token
-     * take a prefix of the result (e.g. {@link #householdId} keeps the first 12 characters).
+     * take a prefix of the result (e.g. {@link #householdId} keeps the first 12 characters and
+     * {@link #customerCode} keeps the first 8).
      */
     private String shaHexUpper(String input) {
         try {

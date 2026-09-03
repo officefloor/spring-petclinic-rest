@@ -183,7 +183,7 @@ public class Owner extends Person {
 
     /**
      * The owner's membership number, formatted {@code '<customerCode>-M<YY>'} where YY is the
-     * last two digits of the registrationDate year, e.g. {@code 'LON-SMI-0007-M26'}.
+     * last two digits of the registrationDate year, e.g. {@code 'NSW-3C1A9F2B-M26'}.
      */
     public String getMembershipNumber() {
         return this.customerCode + "-M" + String.format("%02d", this.registrationDate.getYear() % 100);
@@ -247,23 +247,27 @@ public class Owner extends Person {
     }
 
     /**
-     * The owner's locality. The postcode is preferred: when it falls within a known
-     * {@linkplain #REGION_POSTCODE_RANGE region postcode range} that region is returned,
-     * which disambiguates cities that share a name. Only when the postcode is absent or in
-     * no known range does this fall back to the {@linkplain #regionOf(String) city-to-region
-     * table}, yielding {@link #UNKNOWN_REGION} when the city has no known region.
+     * The owner's locality: the {@code <REGION>} component of the {@link #getCustomerCode()
+     * customerCode} (its prefix up to the first {@code '-'}), which is the region derived from
+     * the owner's postcode at creation ({@link #UNKNOWN_REGION} when the postcode maps to no
+     * known region). Locality is read from the region-and-hash identity so it never re-derives
+     * a region of its own; it is {@link #UNKNOWN_REGION} for an owner that has no customerCode.
      */
     public String getLocality() {
-        String byPostcode = getRegion();
-        return byPostcode != null ? byPostcode : regionOf(this.city);
+        if (this.customerCode == null) {
+            return UNKNOWN_REGION;
+        }
+        int dash = this.customerCode.indexOf('-');
+        return dash < 0 ? this.customerCode : this.customerCode.substring(0, dash);
     }
 
     /**
      * The region derived from this owner's postcode alone: the region whose fixed
      * {@linkplain #REGION_POSTCODE_RANGE postcode range} contains the postcode, or {@code null}
-     * when the postcode is absent, not four digits, or in no known range. This is the postcode
-     * half of {@link #getLocality()} and the single place a region is read from an owner's
-     * postcode, so every rule keyed by the postcode-derived region shares one derivation.
+     * when the postcode is absent, not four digits, or in no known range. This is the {@code <REGION>}
+     * component built into the owner's customer code at creation and, through it, the source of the
+     * owner's {@linkplain #getLocality() locality}. It is the single place a region is read from an
+     * owner's postcode, so every rule keyed by the postcode-derived region shares one derivation.
      */
     public String getRegion() {
         return regionOfPostcode(this.postcode);
