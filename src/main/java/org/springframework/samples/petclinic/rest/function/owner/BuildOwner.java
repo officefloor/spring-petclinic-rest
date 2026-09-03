@@ -16,12 +16,7 @@ public class BuildOwner {
 
     public void service(@Valid @RequestBody OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built)
             throws InvalidTelephoneException {
-        String telephone = request.getTelephone();
-        String digits = telephone == null ? "" : telephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidTelephoneException("Telephone must be exactly 10 digits");
-        }
-        request.setTelephone(digits);
+        request.setTelephone(E164.normalize(request.getTelephone()));
         Owner owner = ownerMapper.toOwner(request);
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
