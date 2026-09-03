@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName",
             expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
+    @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
     OwnerDto toOwnerDto(Owner owner);
@@ -28,6 +29,18 @@ public interface OwnerMapper {
     default String initials(Owner owner) {
         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
                 + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+    }
+
+    /** City -> canonical region, from the fixed city-to-region table. */
+    java.util.Map<String, String> CITY_REGION = java.util.Map.of(
+            "Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+
+    /**
+     * The owner's locality (region), derived from city via the fixed city-to-region table
+     * (Sydney->NSW, Melbourne->VIC, Brisbane->QLD); {@code UNKNOWN} for any other city.
+     */
+    default String locality(Owner owner) {
+        return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
     }
 
     /**
