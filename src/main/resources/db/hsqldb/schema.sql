@@ -50,7 +50,8 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   birth_date DATE,
   possible_duplicate_of INTEGER,
-  title      VARCHAR(10)
+  title      VARCHAR(10),
+  deleted    BOOLEAN DEFAULT FALSE NOT NULL
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

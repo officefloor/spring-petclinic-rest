@@ -111,6 +111,13 @@ public class Owner extends Person {
 
     public boolean isPossibleDuplicate() { return this.possibleDuplicateOf != null; }
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
+    public boolean isDeleted() { return this.deleted; }
+
+    public void setDeleted(boolean deleted) { this.deleted = deleted; }
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 

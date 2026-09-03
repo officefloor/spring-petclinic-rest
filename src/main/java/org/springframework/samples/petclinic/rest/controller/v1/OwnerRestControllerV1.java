@@ -101,7 +101,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        Collection<Owner> existingOwners = this.clinicService.findAllOwners();
+        Collection<Owner> existingOwners = this.clinicService.findAllOwners().stream()
+            .filter(o -> !o.isDeleted()).toList();
         if (DailyRegistrationLimit.isReached(existingOwners)) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -147,7 +148,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
