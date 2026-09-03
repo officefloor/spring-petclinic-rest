@@ -25,6 +25,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
         expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
+    @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality",
         expression = "java(org.springframework.samples.petclinic.util.CustomerCodes.regionOf(owner.getCustomerCode()))")
@@ -61,20 +62,34 @@ public interface OwnerMapper {
         return value == null ? "" : value;
     }
 
-    /** Numeric level 1-4: starts at 1, +1 for an email, +1 when namesakeCount is 0, capped at 3, then +1 (level 4) only with tenure over 365 days. */
-    default Integer membershipLevel(Owner owner) {
-        int level = 1;
+    /** Membership points: +2 for an email, +1 when namesakeCount is 0, +2 for a household of 3 or more, +3 for tenure over 365 days. */
+    default int membershipPoints(Owner owner) {
+        int points = 0;
         if (owner.getEmail() != null) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(owner.getNamesakeCount())) {
-            level++;
+            points += 1;
         }
-        level = Math.min(level, 3);
-        if (level == 3 && tenureDays(owner) > 365) {
-            level++;
+        if (owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3) {
+            points += 2;
         }
-        return level;
+        if (tenureDays(owner) > 365) {
+            points += 3;
+        }
+        return points;
+    }
+
+    /** Numeric level derived from membershipPoints: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6 or more). */
+    default Integer membershipLevel(Owner owner) {
+        int points = membershipPoints(owner);
+        if (points <= 1) {
+            return 1;
+        }
+        if (points <= 3) {
+            return 2;
+        }
+        return points <= 5 ? 3 : 4;
     }
 
     /** Days of tenure since registrationDate; 0 when the date is absent (a new owner has zero tenure). */
