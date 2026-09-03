@@ -16,6 +16,8 @@ public class RespondWithOwnerCreated {
 
     private static final org.slf4j.Logger AUDIT = org.slf4j.LoggerFactory.getLogger("AUDIT");
 
+    private static final org.slf4j.Logger NOTIFY = org.slf4j.LoggerFactory.getLogger("NOTIFY");
+
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner, OwnerMapper ownerMapper, OwnerRepository ownerRepository,
@@ -29,6 +31,7 @@ public class RespondWithOwnerCreated {
                 owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), dto.getMembershipLevel());
         AUDIT.info("{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
                 SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), dto.getMembershipLevel());
+        NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), owner.getMemberId());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
