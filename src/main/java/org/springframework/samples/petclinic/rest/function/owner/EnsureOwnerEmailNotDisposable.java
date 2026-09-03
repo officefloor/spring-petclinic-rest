@@ -1,0 +1,25 @@
+package org.springframework.samples.petclinic.rest.function.owner;
+
+import java.util.Set;
+
+import net.officefloor.plugin.variable.Val;
+import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.escalation.DisposableEmailException;
+
+/**
+ * Rejects a create when the owner's email domain is on the disposable-domain
+ * blocklist. An owner with no email is accepted unchanged.
+ */
+public class EnsureOwnerEmailNotDisposable {
+
+    private static final Set<String> BLOCKED = Set.of(
+            "mailinator.com", "tempmail.com", "guerrillamail.com");
+
+    public void service(@Val Owner owner) throws DisposableEmailException {
+        String email = owner.getEmail();
+        int at = (email == null) ? -1 : email.lastIndexOf('@');
+        if (at >= 0 && BLOCKED.contains(email.substring(at + 1))) {
+            throw new DisposableEmailException("Email domain is not allowed");
+        }
+    }
+}
