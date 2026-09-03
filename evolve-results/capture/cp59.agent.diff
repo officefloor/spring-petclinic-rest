@@ -1,0 +1,87 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java
+new file mode 100644
+index 000000000..65dc546ed
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ProblemDetailResponseFilter.java
+@@ -0,0 +1,81 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.advice;
++
++import java.io.IOException;
++import java.util.Map;
++import java.util.Set;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++import org.springframework.web.util.ContentCachingResponseWrapper;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import tools.jackson.databind.ObjectMapper;
++
++/**
++ * Guarantees that every rejection (400, 409, 429) leaves the server as an RFC7807
++ * {@code application/problem+json} body carrying {@code type}, {@code title},
++ * {@code status} and {@code detail}.
++ * <p>
++ * Rejections that already carry a problem body (for example the bean-validation 400
++ * produced by {@link ExceptionControllerAdvice}) are passed through untouched; only
++ * status-only rejections returned straight from a controller are given a body here.
++ */
++@Component
++public class ProblemDetailResponseFilter extends OncePerRequestFilter {
++
++    private static final Set<Integer> REJECTIONS = Set.of(
++        HttpStatus.BAD_REQUEST.value(),
++        HttpStatus.CONFLICT.value(),
++        HttpStatus.TOO_MANY_REQUESTS.value());
++
++    private final ObjectMapper objectMapper;
++
++    public ProblemDetailResponseFilter(ObjectMapper objectMapper) {
++        this.objectMapper = objectMapper;
++    }
++
++    @Override
++    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
++                                    FilterChain chain) throws ServletException, IOException {
++        ContentCachingResponseWrapper caching = new ContentCachingResponseWrapper(response);
++        chain.doFilter(request, caching);
++        if (REJECTIONS.contains(caching.getStatus()) && caching.getContentSize() == 0) {
++            writeProblem(caching);
++        }
++        caching.copyBodyToResponse();
++    }
++
++    private void writeProblem(ContentCachingResponseWrapper response) throws IOException {
++        HttpStatus status = HttpStatus.valueOf(response.getStatus());
++        byte[] body = objectMapper.writeValueAsBytes(Map.of(
++            "type", "about:blank",
++            "title", status.getReasonPhrase(),
++            "status", status.value(),
++            "detail", status.getReasonPhrase()));
++        response.resetBuffer();
++        response.setStatus(status.value());
++        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
++        response.getOutputStream().write(body);
++    }
++}
