@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -375,15 +376,30 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count();
     }
 
+    /** Fixed list of public holidays that a registration date must roll past. */
+    private static final Set<LocalDate> PUBLIC_HOLIDAYS = Set.of(
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 26),
+        LocalDate.of(2026, 4, 25),
+        LocalDate.of(2026, 12, 25),
+        LocalDate.of(2026, 12, 28));
+
     /**
-     * Roll a registration date forward to the next business day: a Saturday or Sunday
-     * advances to the following Monday, and a weekday is returned unchanged.
+     * Roll a registration date forward to the next business day: a Saturday, Sunday
+     * or listed public holiday advances one day at a time until it lands on a weekday
+     * that is not a public holiday. A plain weekday is returned unchanged.
      */
     private static LocalDate toBusinessDay(LocalDate date) {
+        while (isWeekend(date) || PUBLIC_HOLIDAYS.contains(date)) {
+            date = date.plusDays(1);
+        }
+        return date;
+    }
+
+    private static boolean isWeekend(LocalDate date) {
         return switch (date.getDayOfWeek()) {
-            case SATURDAY -> date.plusDays(2);
-            case SUNDAY -> date.plusDays(1);
-            default -> date;
+            case SATURDAY, SUNDAY -> true;
+            default -> false;
         };
     }
 
