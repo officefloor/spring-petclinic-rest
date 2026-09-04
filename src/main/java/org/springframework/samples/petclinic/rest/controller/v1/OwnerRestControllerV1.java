@@ -127,6 +127,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -148,6 +149,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
         normalizeEmail(ownerFieldsDto);
         currentOwner.setEmail(ownerFieldsDto.getEmail());
+        currentOwner.setHouseholdId(
+            HouseholdNormalizer.toHouseholdId(currentOwner.getLastName(), currentOwner.getAddress()));
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }

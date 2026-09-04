@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
 /**
@@ -52,6 +55,21 @@ public abstract class HouseholdNormalizer {
     }
 
     /**
+     * A stable, shared identifier for the household an owner belongs to. It is a pure function of the
+     * {@linkplain #toComparisonKey(String, String) comparison key}, so every owner with the same
+     * {@code lastName} and {@code address} (compared case-insensitively with collapsed whitespace)
+     * derives the same identifier without any coordination or stored state, and the identifier stays
+     * the same across restarts. The value is the hex SHA-256 of the comparison key.
+     *
+     * @param lastName the owner's last name (non-null)
+     * @param address  the owner's postal address (non-null)
+     * @return the household's stable shared identifier
+     */
+    public static String toHouseholdId(String lastName, String address) {
+        return sha256Hex(toComparisonKey(lastName, address));
+    }
+
+    /**
      * Reduce a single household field to its comparison form: trimmed, every run of whitespace
      * collapsed to a single space, and lower-cased.
      *
@@ -60,6 +78,23 @@ public abstract class HouseholdNormalizer {
      */
     private static String normalizeField(String field) {
         return field.trim().replaceAll(WHITESPACE_RUN, " ").toLowerCase(Locale.ROOT);
+    }
+
+    /** The lower-case hex SHA-256 of the UTF-8 bytes of {@code value}. */
+    private static String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        }
+        catch (NoSuchAlgorithmException ex) {
+            // SHA-256 is a standard algorithm required to be present on every JVM.
+            throw new IllegalStateException("SHA-256 not available", ex);
+        }
     }
 
 }
