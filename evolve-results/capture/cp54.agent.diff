@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+new file mode 100644
+index 000000000..63e411d12
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/CapacityWarning.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++
++/**
++ * Capacity warning: an owner carries a warning once its city (compared case-insensitively) already
++ * holds between {@value #WARN_FLOOR} and {@value #WARN_CEILING} owners, approaching the hard limit
++ * of 50 enforced by {@link EnsureCityCapacity}. Mirrors that rule's case-insensitive city count.
++ */
++public final class CapacityWarning {
++
++    private static final int WARN_FLOOR = 40;
++
++    private static final int WARN_CEILING = 49;
++
++    private CapacityWarning() {
++    }
++
++    public static boolean warned(Owner owner, OwnerRepository ownerRepository) {
++        String city = owner.getCity();
++        long inCity = ownerRepository.findAll().stream()
++            .filter(other -> city != null && city.equalsIgnoreCase(other.getCity()))
++            .count();
++        return inCity >= WARN_FLOOR && inCity <= WARN_CEILING;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 24267d69a..4e08374fd 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,6 +13,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
+         Membership.mark(dto, owner, ownerRepository);
+         response.send(dto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index c9dae77aa..86407f9f4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,6 +16,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        dto.setCapacityWarning(CapacityWarning.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
+         Membership.mark(dto, owner, ownerRepository);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b75353dfa..de455b33a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2201,6 +2201,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            capacityWarning:
++              title: Capacity warning
++              description: "True when the owner's city already holds between 40 and 49 owners, approaching the hard capacity limit of 50, otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: "True when another owner shares this owner's last name and postcode but has a different telephone, otherwise false."
