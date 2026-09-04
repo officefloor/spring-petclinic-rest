@@ -50,6 +50,7 @@ CREATE TABLE owners (
   postcode   VARCHAR(4),
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
+  deleted    BOOLEAN DEFAULT FALSE,
   address_line1 VARCHAR(255),
   address_line2 VARCHAR(255),
   title      VARCHAR(10)

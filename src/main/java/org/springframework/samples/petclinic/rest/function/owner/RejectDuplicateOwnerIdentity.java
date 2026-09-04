@@ -20,6 +20,9 @@ public class RejectDuplicateOwnerIdentity {
             throws DuplicateOwnerTelephoneException {
         String key = IdentityKey.of(request.getTelephone(), request.getEmail());
         for (Owner existing : ownerRepository.findAll()) {
+            if (Boolean.TRUE.equals(existing.getDeleted())) {
+                continue;
+            }
             if (key.equals(IdentityKey.of(existing.getTelephone(), existing.getEmail()))) {
                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
             }
