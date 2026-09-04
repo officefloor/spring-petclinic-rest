@@ -1,0 +1,77 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLength.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLength.java
+new file mode 100644
+index 000000000..72bac9e0f
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLength.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Validates that an E.164 telephone carries the national-number length its country code requires
++ * (e.g. '+61' => 9 national digits, '+1' => 10). Country codes with no known rule are accepted.
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = E164NationalLengthValidator.class)
++@Documented
++public @interface E164NationalLength {
++
++    String message() default "Telephone national-number length is wrong for its country code";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLengthValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLengthValidator.java
+new file mode 100644
+index 000000000..7102b10ac
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/E164NationalLengthValidator.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Map;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++import org.springframework.samples.petclinic.model.PhoneNumbers;
++
++/**
++ * Checks the national-number length of a telephone once normalised to E.164, per country code.
++ */
++public class E164NationalLengthValidator implements ConstraintValidator<E164NationalLength, String> {
++
++    /** Country code (with leading '+') to the number of national digits it requires. */
++    private static final Map<String, Integer> NATIONAL_DIGITS = Map.of("+61", 9, "+1", 10);
++
++    @Override
++    public boolean isValid(String raw, ConstraintValidatorContext context) {
++        if (raw == null || raw.isBlank()) {
++            return true;
++        }
++        String e164 = PhoneNumbers.toE164(raw);
++        for (Map.Entry<String, Integer> rule : NATIONAL_DIGITS.entrySet()) {
++            if (e164.startsWith(rule.getKey())) {
++                return e164.length() - rule.getKey().length() == rule.getValue();
++            }
++        }
++        return true;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index b6262ca35..84ed76bb2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2033,6 +2033,7 @@ components:
+           maxLength: 20
+           pattern: '^[ \-()]*(\+[ \-()]*(\d[ \-()]*){8,15}|0[ \-()]*(\d[ \-()]*){6,13}|[1-9][ \-()]*(\d[ \-()]*){5,12})$'
+           example: '0412 345 678'
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.E164NationalLength"
+         email:
+           title: Email
+           description: The email address of the pet owner.
