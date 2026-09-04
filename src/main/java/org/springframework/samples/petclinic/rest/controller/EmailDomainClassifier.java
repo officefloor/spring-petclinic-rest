@@ -69,4 +69,39 @@ public class EmailDomainClassifier {
         String domain = domainOf(email);
         return domain != null && DISPOSABLE_EMAIL_DOMAINS.contains(domain);
     }
+
+    /**
+     * Whether an email's {@link #domainOf domain} is <em>disposable-adjacent</em>: it shares its
+     * registrable domain label (the label immediately before the final top-level domain) with a
+     * known disposable domain, without necessarily being one of them. This catches the near
+     * neighbours of the disposable domains — the same provider under a different top-level domain
+     * (e.g. {@code mailinator.net}) or a subdomain of one (e.g. {@code inbox.mailinator.com}) —
+     * which the exact-match {@link #isDisposable disposable} check does not reject on create.
+     *
+     * @param email an email address, expected to carry a single '@'
+     * @return {@code true} if the email's domain shares a registrable label with a known disposable
+     *         domain, {@code false} otherwise (including when the email has no domain)
+     */
+    public boolean isDisposableAdjacent(String email) {
+        String label = registrableLabel(domainOf(email));
+        if (label == null) {
+            return false;
+        }
+        return DISPOSABLE_EMAIL_DOMAINS.stream()
+            .map(EmailDomainClassifier::registrableLabel)
+            .anyMatch(label::equals);
+    }
+
+    /**
+     * The registrable label of a domain: the dot-delimited component immediately before its final
+     * top-level domain (e.g. 'mailinator' for both 'mailinator.com' and 'inbox.mailinator.co.uk').
+     * Returns {@code null} when {@code domain} is {@code null} or has no such component.
+     */
+    private static String registrableLabel(String domain) {
+        if (domain == null) {
+            return null;
+        }
+        String[] parts = domain.split("\\.");
+        return parts.length < 2 ? null : parts[parts.length - 2];
+    }
 }

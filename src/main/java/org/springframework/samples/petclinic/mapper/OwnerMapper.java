@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.controller.CityRegionResolver;
+import org.springframework.samples.petclinic.rest.controller.EmailDomainClassifier;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -41,6 +42,14 @@ public abstract class OwnerMapper {
     @Autowired
     protected TelephoneNormalizer telephoneNormalizer;
 
+    /** Single source of truth for classifying an owner's email domain. */
+    @Autowired
+    protected EmailDomainClassifier emailDomainClassifier;
+
+    /** A city holding more than this many owners is over its soft capacity (the hard per-city
+     *  limit, rejected on create, is 50). */
+    private static final long CITY_SOFT_CAPACITY = 40;
+
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
@@ -56,7 +65,34 @@ public abstract class OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's risk flag: {@code true} when any of the three risk signals holds, {@code false}
+     * otherwise. The signals are that the owner is a possible duplicate (its stored
+     * {@code possibleDuplicate} is true), that its email domain is
+     * {@link EmailDomainClassifier#isDisposableAdjacent disposable-adjacent}, or that its city is
+     * {@link #cityOverSoftCapacity over its soft capacity}.
+     */
+    boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+            || emailDomainClassifier.isDisposableAdjacent(owner.getEmail())
+            || cityOverSoftCapacity(owner);
+    }
+
+    /**
+     * Whether the owner's city currently holds more than its soft capacity of
+     * {@value #CITY_SOFT_CAPACITY} owners. Cities are compared on their normalized identity, the
+     * same key the create endpoint's per-city capacity rule uses, so the same owners are counted.
+     */
+    boolean cityOverSoftCapacity(Owner owner) {
+        String cityKey = IdentityUtils.normalizeIdentity(owner.getCity());
+        long ownersInCity = clinicService.findAllOwners().stream()
+            .filter(existing -> IdentityUtils.normalizeIdentity(existing.getCity()).equals(cityKey))
+            .count();
+        return ownersInCity > CITY_SOFT_CAPACITY;
+    }
 
     /**
      * The owner's self link: '/api/owners/' followed by the owner's id, or null when the
