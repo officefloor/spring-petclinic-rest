@@ -1,0 +1,81 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5405a4e57..fe7c0fb81 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,6 +35,7 @@ public interface OwnerMapper {
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplay.of(owner.getTelephone()))")
+     @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
++    @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.util.RiskFlag.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java
+new file mode 100644
+index 000000000..3d7e67350
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/RiskFlag.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code riskFlag}: {@code true} when the owner is a possible duplicate,
++ * their email domain is disposable-adjacent, or their city is over its soft capacity;
++ * {@code false} otherwise.
++ *
++ * <p>A domain is <em>disposable-adjacent</em> when its registrable label (the label immediately
++ * before the top-level domain) matches a known disposable provider ({@code mailinator},
++ * {@code tempmail}, {@code guerrillamail}) — this catches sibling TLDs and subdomains that slip
++ * past the exact-match block applied at creation.
++ */
++public final class RiskFlag {
++
++    private static final Set<String> DISPOSABLE_BASES = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private RiskFlag() {
++    }
++
++    /** Whether {@code owner} should be flagged as risky. */
++    public static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || Boolean.TRUE.equals(owner.getCapacityWarning())
++            || disposableAdjacent(owner.getEmail());
++    }
++
++    private static boolean disposableAdjacent(String email) {
++        if (email == null) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String[] labels = email.substring(at + 1).trim().toLowerCase(Locale.ROOT).split("\\.");
++        return labels.length >= 2 && DISPOSABLE_BASES.contains(labels[labels.length - 2]);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d71caba82..8ae46e7a4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2299,6 +2299,15 @@ components:
+               format: int32
+               readOnly: true
+               example: 7
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when the owner is a possible duplicate, their email domain is
++                disposable-adjacent, or their city is over its soft capacity.
++              type: boolean
++              default: false
++              readOnly: true
++              example: false
+             deleted:
+               title: Deleted
+               description: >-
