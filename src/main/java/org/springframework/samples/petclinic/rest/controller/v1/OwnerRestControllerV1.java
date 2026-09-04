@@ -19,6 +19,7 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -103,6 +105,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         rejectBlankOwnerFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
+        rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -249,5 +252,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         ownerFieldsDto.setTelephone(digits);
+    }
+
+    /**
+     * Rejects creating an owner whose normalized telephone is already used by any other owner.
+     * Every existing owner's stored telephone is normalized the same way (all non-digit characters
+     * stripped) before comparison, so equality is judged on digits alone. A match is reported as a
+     * {@code 409 Conflict}.
+     *
+     * @param normalizedTelephone the submitted telephone, already reduced to its 10 digits by
+     *                            {@link #normalizeTelephone}
+     * @throws DuplicateOwnerTelephoneException if another owner already uses the same telephone
+     */
+    private void rejectDuplicateTelephone(String normalizedTelephone) {
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getTelephone)
+            .filter(Objects::nonNull)
+            .map(telephone -> telephone.replaceAll("\\D", ""))
+            .anyMatch(normalizedTelephone::equals);
+        if (inUse) {
+            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
     }
 }
