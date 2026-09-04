@@ -37,6 +37,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected TelephoneNormalizer telephoneNormalizer;
 
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
@@ -216,6 +217,18 @@ public abstract class OwnerMapper {
         return (int) clinicService.findAllOwners().stream()
             .filter(existing -> householdId.equals(existing.getHouseholdId()))
             .count();
+    }
+
+    /**
+     * The owner's salutation: the {@code title} and last name separated by a single space
+     * (e.g. 'DR who'), or just the last name when no title has been supplied.
+     */
+    String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     /**
