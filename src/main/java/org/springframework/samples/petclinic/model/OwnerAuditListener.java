@@ -32,6 +32,8 @@ public class OwnerAuditListener {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     /** Monotonically increasing sequence stamped on each structured create event. */
     private static final AtomicLong SEQ = new AtomicLong();
 
@@ -44,5 +46,6 @@ public class OwnerAuditListener {
         AUDIT.info("{}", String.format(
             "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), membershipLevel));
+        NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), owner.getMemberId());
     }
 }
