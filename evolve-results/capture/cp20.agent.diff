@@ -1,0 +1,88 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+index a2c866a5b..56e5c5cf9 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/BuildOwner.java
+@@ -1,5 +1,9 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.temporal.TemporalAdjusters;
++
+ import net.officefloor.plugin.variable.Out;
+ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+@@ -10,9 +14,11 @@ public class BuildOwner {
+ 
+     public void service(@Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
+         Owner owner = ownerMapper.toOwner(request);
+-        if (owner.getRegistrationDate() == null) {
+-            owner.setRegistrationDate(java.time.LocalDate.now());
++        LocalDate date = owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now();
++        if (date.getDayOfWeek().getValue() > 5) { // Saturday or Sunday: roll forward to Monday
++            date = date.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+         }
++        owner.setRegistrationDate(date);
+         built.set(owner);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+index 8eb79ce47..4949646c1 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureDailyLimit.java
+@@ -2,22 +2,24 @@ package org.springframework.samples.petclinic.rest.function.owner;
+ 
+ import java.time.LocalDate;
+ 
++import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.escalation.DailyLimitExceededException;
+ 
+ /**
+- * Rejects a create request once {@value #DAILY_LIMIT} or more owners already carry today's
+- * registrationDate, so exceeding the daily cap is a 429 via {@link DailyLimitExceededException}.
++ * Rejects a create request once {@value #DAILY_LIMIT} or more owners already carry the new owner's
++ * (adjusted business-day) registrationDate, so exceeding the daily cap is a 429 via
++ * {@link DailyLimitExceededException}.
+  */
+ public class EnsureDailyLimit {
+ 
+     private static final int DAILY_LIMIT = 100;
+ 
+-    public void service(OwnerRepository ownerRepository) throws DailyLimitExceededException {
+-        LocalDate today = LocalDate.now();
++    public void service(@Val Owner owner, OwnerRepository ownerRepository) throws DailyLimitExceededException {
++        LocalDate day = owner.getRegistrationDate();
+         long registeredToday = ownerRepository.findAll().stream()
+-            .filter(owner -> today.equals(owner.getRegistrationDate()))
++            .filter(existing -> day.equals(existing.getRegistrationDate()))
+             .count();
+         if (registeredToday >= DAILY_LIMIT) {
+             throw new DailyLimitExceededException(registeredToday);
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 39d87f03c..41efbbc0f 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -34,16 +34,16 @@ ensureUniqueHousehold:
+ ensureCityCapacity:
+   class: org.springframework.samples.petclinic.rest.function.owner.EnsureCityCapacity
+   govern: [ transaction ]
+-  next: ensureDailyLimit
+-
+-ensureDailyLimit:
+-  class: org.springframework.samples.petclinic.rest.function.owner.EnsureDailyLimit
+-  govern: [ transaction ]
+   next: build
+ 
+ build:
+   class: org.springframework.samples.petclinic.rest.function.owner.BuildOwner
+   govern: [ transaction ]
++  next: ensureDailyLimit
++
++ensureDailyLimit:
++  class: org.springframework.samples.petclinic.rest.function.owner.EnsureDailyLimit
++  govern: [ transaction ]
+   next: assignCustomerCode
+ 
+ assignCustomerCode:
