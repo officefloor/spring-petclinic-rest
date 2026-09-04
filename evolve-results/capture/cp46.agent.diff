@@ -1,0 +1,146 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 04fc07589..bc1ba036e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -92,6 +92,9 @@ public class Owner extends Person {
+     @Column(name = "title")
+     private String title;
+ 
++    @Column(name = "deleted", nullable = false)
++    private boolean deleted = false;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -231,6 +234,14 @@ public class Owner extends Person {
+         this.title = title;
+     }
+ 
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 3b3cfb0f6..4022a0c48 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -432,6 +432,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
+         String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
+         boolean inUse = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.isDeleted())
+             .map(Owner::getTelephone)
+             .filter(Objects::nonNull)
+             .map(TelephoneNormalizer::toComparisonKey)
+@@ -524,6 +525,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             return;
+         }
+         boolean householdExists = this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.isDeleted())
+             .map(Owner::getHouseholdId)
+             .anyMatch(householdId::equals);
+         if (householdExists) {
+@@ -551,6 +553,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         }
+         String telephoneKey = TelephoneNormalizer.toComparisonKey(owner.getTelephone());
+         return this.clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.isDeleted())
+             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+             .filter(existing -> postcode.equals(existing.getPostcode()))
+             .filter(existing -> existing.getTelephone() != null
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 91ac01ff9..2936c19a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -144,7 +144,8 @@ public class ClinicServiceImpl implements ClinicService {
+     @Override
+     @Transactional
+     public void deleteOwner(Owner owner) throws DataAccessException {
+-        ownerRepository.delete(owner);
++        owner.setDeleted(true);
++        ownerRepository.save(owner);
+     }
+ 
+     @Override
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index ee37ff831..e718550f7 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+-  title VARCHAR(10)
++  title VARCHAR(10),
++  deleted BOOLEAN NOT NULL DEFAULT FALSE
+ );
+ 
+ CREATE INDEX idx_owners_last_name ON owners(last_name);
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 8806001bd..e85a76f63 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -55,7 +55,8 @@ CREATE TABLE owners (
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+-  title VARCHAR(10)
++  title VARCHAR(10),
++  deleted BOOLEAN DEFAULT FALSE NOT NULL
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c31db03b3..cd6b23d07 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   possible_duplicate_of INTEGER,
+   birth_date DATE,
+   title VARCHAR(10),
++  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+   INDEX(last_name)
+ ) engine=InnoDB;
+ 
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index 3b9e6be19..c7b7a13e7 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INTEGER,
+                                       birth_date DATE,
+-                                      title TEXT
++                                      title TEXT,
++                                      deleted BOOLEAN NOT NULL DEFAULT FALSE
+ );
+ CREATE INDEX ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2103bb97b..bd7f06d7a 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2325,6 +2325,16 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            deleted:
++              title: Deleted
++              description: >-
++                Whether this owner has been soft-deleted. A newly created owner is false;
++                DELETE /api/owners/{id} marks it true while retaining the record. Owners
++                flagged deleted are ignored by the create endpoint's duplicate and identity
++                checks.
++              type: boolean
++              example: false
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
