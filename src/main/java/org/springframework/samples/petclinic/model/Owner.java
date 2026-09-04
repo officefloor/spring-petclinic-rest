@@ -93,6 +93,12 @@ public class Owner extends Person {
         this.customerCode = customerCode;
     }
 
+    /** Membership number formatted {@code <customerCode>-M<YY>}, e.g. {@code SMI-0007-M26}. */
+    @Transient
+    public String getMembershipNumber() {
+        return MembershipNumber.of(this.customerCode, this.registrationDate);
+    }
+
     public Integer getNamesakeCount() {
         return this.namesakeCount;
     }
