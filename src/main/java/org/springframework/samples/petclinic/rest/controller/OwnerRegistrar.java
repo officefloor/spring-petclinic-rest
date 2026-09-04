@@ -26,6 +26,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.rest.advice.OwnerRegistrationException;
+import org.springframework.samples.petclinic.rest.advice.OwnerRegistrationException.Reason;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
@@ -108,13 +110,15 @@ public class OwnerRegistrar {
 
     /**
      * Validate, normalize, enrich and persist a new owner from the submitted fields, and
-     * report the outcome as the response the create endpoint returns: {@code 201 Created}
-     * (with a {@code Location} header and the created owner) on success, or the appropriate
-     * rejection status ({@code 400}, {@code 409} or {@code 429}) when a create rule refuses
-     * the request. No owner is persisted unless every rule passes.
+     * report success as the response the create endpoint returns: {@code 201 Created} (with a
+     * {@code Location} header and the created owner). When a create rule refuses the request the
+     * method throws {@link OwnerRegistrationException}, whose {@link OwnerRegistrationException.Reason}
+     * carries the rejection status ({@code 400}, {@code 409} or {@code 429}); no owner is persisted
+     * unless every rule passes.
      *
      * @param ownerFieldsDto the submitted owner fields
-     * @return the create outcome as an HTTP response
+     * @return the created owner as a {@code 201 Created} response
+     * @throws OwnerRegistrationException when a create rule refuses the request
      */
     public ResponseEntity<OwnerDto> register(OwnerFieldsDto ownerFieldsDto) {
         return register(ownerFieldsDto, null);
@@ -129,7 +133,8 @@ public class OwnerRegistrar {
      *
      * @param ownerFieldsDto the submitted owner fields
      * @param idempotencyKey the request's {@code Idempotency-Key} header, or {@code null} when absent
-     * @return the create outcome as an HTTP response
+     * @return the created (or previously created) owner as a {@code 201 Created} or {@code 200 OK} response
+     * @throws OwnerRegistrationException when a create rule refuses the request
      */
     public ResponseEntity<OwnerDto> register(OwnerFieldsDto ownerFieldsDto, String idempotencyKey) {
         String key = (idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey.trim();
@@ -151,7 +156,7 @@ public class OwnerRegistrar {
         }
         // A supplied registration date may not be later than the server's current date.
         if (owner.getRegistrationDate().isAfter(LocalDate.now())) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new OwnerRegistrationException(Reason.REGISTRATION_DATE_IN_FUTURE);
         }
         owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
         LocalDate registrationDate = owner.getRegistrationDate();
@@ -160,29 +165,29 @@ public class OwnerRegistrar {
             .filter(registrationDate::equals)
             .count();
         if (ownersCreatedThatDay >= 100) {
-            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+            throw new OwnerRegistrationException(Reason.DAILY_CREATE_LIMIT_REACHED);
         }
         String address = normalizedAddress(owner);
         if (address == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new OwnerRegistrationException(Reason.ADDRESS_MISSING);
         }
         owner.setAddress(address);
         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (telephone == null) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new OwnerRegistrationException(Reason.TELEPHONE_INVALID);
         }
         if (!telephoneNormalizer.hasValidNationalNumberLength(telephone)) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            throw new OwnerRegistrationException(Reason.TELEPHONE_INVALID);
         }
         owner.setTelephone(telephone);
         String email = owner.getEmail();
         if (email != null) {
             email = email.trim();
             if (!EMAIL_PATTERN.matcher(email).matches()) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new OwnerRegistrationException(Reason.EMAIL_INVALID);
             }
             if (emailDomainClassifier.isDisposable(email)) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new OwnerRegistrationException(Reason.EMAIL_DISPOSABLE);
             }
             owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
@@ -193,7 +198,7 @@ public class OwnerRegistrar {
         if (postcode != null) {
             if (!POSTCODE_PATTERN.matcher(postcode).matches()
                     || !cityRegionResolver.isPostcodeValidForCity(owner.getCity(), postcode)) {
-                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+                throw new OwnerRegistrationException(Reason.POSTCODE_INVALID);
             }
         }
         // The owner's telephone and email are now in their canonical, stored form.
@@ -208,14 +213,14 @@ public class OwnerRegistrar {
         // telephones therefore derive different keys and are both admitted; the second is instead
         // flagged as a possible duplicate by the soft-match rule below.
         if (isDuplicateOwner(owner)) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new OwnerRegistrationException(Reason.DUPLICATE_OWNER);
         }
         String cityKey = IdentityUtils.normalizeIdentity(owner.getCity());
         long ownersInCity = this.clinicService.findAllOwners().stream()
             .filter(existing -> IdentityUtils.normalizeIdentity(existing.getCity()).equals(cityKey))
             .count();
         if (ownersInCity >= 50) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+            throw new OwnerRegistrationException(Reason.CITY_CAPACITY_REACHED);
         }
         // Approaching-capacity warning: the city already holds 40-49 owners (the hard limit is 50,
         // rejected above). ownersInCity counts the existing owners the candidate is joining.

@@ -102,6 +102,25 @@ public class ExceptionControllerAdvice {
     }
 
     /**
+     * Handles a {@link OwnerRegistrationException} raised when a create rule refuses to register an
+     * owner, reporting the HTTP status the rejected rule maps to ({@code 400}, {@code 409} or
+     * {@code 429}). This is the single place the owner-create rejections are turned into a response.
+     *
+     * @param e The {@link OwnerRegistrationException} to be handled
+     * @param request {@link HttpServletRequest} object referring to the current request.
+     * @return A {@link ResponseEntity} carrying the rejection's HTTP status
+     */
+    @ExceptionHandler(OwnerRegistrationException.class)
+    @ResponseBody
+    public ResponseEntity<Void> handleOwnerRegistrationException(OwnerRegistrationException e, HttpServletRequest request) {
+        logger.warn("Owner registration rejected at {} {}: {}",
+            request.getMethod(),
+            request.getRequestURI(),
+            e.getReason());
+        return ResponseEntity.status(e.getStatus()).build();
+    }
+
+    /**
      * Handles {@link DataIntegrityViolationException} which typically indicates database constraint violations. This
      * method returns a 404 Not Found status if an entity does not exist.
      *
