@@ -1,0 +1,237 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index fe7c0fb81..d8ac04210 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -1,8 +1,10 @@
+ package org.springframework.samples.petclinic.mapper;
+ 
+ import org.jspecify.annotations.NonNull;
++import org.mapstruct.AfterMapping;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.mapstruct.MappingTarget;
+ import org.mapstruct.Named;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+@@ -22,22 +24,32 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+-    @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner))")
++    @Mapping(target = "apiVersion", constant = "2")
++    @Mapping(target = "identity", ignore = true)
+     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
+-    @Mapping(target = "memberId", expression = "java(owner.getMemberId())")
+     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.util.Membership.points(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "timezone", expression = "java(org.springframework.samples.petclinic.util.Timezone.of(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.util.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKey.of(owner))")
+     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplay.of(owner.getTelephone()))")
+-    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
++    @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.CustomerCode.plainRegion(org.springframework.samples.petclinic.util.CustomerCode.region(owner))))")
+     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
+     @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.util.RiskFlag.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
++    /** Group the version-2 identifiers under the response's nested {@code identity} object. */
++    @AfterMapping
++    default void fillIdentity(Owner owner, @MappingTarget OwnerDto ownerDto) {
++        org.springframework.samples.petclinic.rest.dto.IdentityDto identity =
++            new org.springframework.samples.petclinic.rest.dto.IdentityDto();
++        identity.setMemberId(owner.getMemberId());
++        identity.setIdentityKey(org.springframework.samples.petclinic.util.IdentityKey.of(owner));
++        identity.setHouseholdId(org.springframework.samples.petclinic.util.Household.idFor(owner));
++        ownerDto.setIdentity(identity);
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+index 38a1f7aa1..2ccb165ba 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/CustomerCode.java
+@@ -15,13 +15,20 @@ import org.springframework.samples.petclinic.model.Owner;
+  */
+ public final class CustomerCode {
+ 
++    /** Fixed identity-algorithm version tag mixed into every version-2 identifier. */
++    public static final String VERSION_TAG = "V2";
++
+     private CustomerCode() {
+     }
+ 
+     /** The owner's {@code <REGION>-<HASH8>} customer code. */
+     public static String assign(Owner owner) {
+-        return Locality.of(owner.getCity(), owner.getPostcode())
+-            + "-" + hash8(owner.getTelephone() + owner.getLastName());
++        return region(owner) + "-" + hash8(owner.getTelephone() + owner.getLastName());
++    }
++
++    /** The version-2 REGION code inside the owner's identifiers: the plain region prefixed with the 'V2' tag. */
++    public static String region(Owner owner) {
++        return VERSION_TAG + Locality.of(owner.getCity(), owner.getPostcode());
+     }
+ 
+     /** The REGION component of a {@code <REGION>-<HASH8>} customer code. */
+@@ -29,6 +36,11 @@ public final class CustomerCode {
+         return customerCode.substring(0, customerCode.indexOf('-'));
+     }
+ 
++    /** The plain region with the 'V2' version tag stripped, for user-facing derivations like the owner segment. */
++    public static String plainRegion(String region) {
++        return region.startsWith(VERSION_TAG) ? region.substring(VERSION_TAG.length()) : region;
++    }
++
+     /** First 8 upper-case hex characters of SHA-256 over {@code value}. */
+     private static String hash8(String value) {
+         byte[] digest = sha256(value);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Household.java b/src/main/java/org/springframework/samples/petclinic/util/Household.java
+index 1969c9311..6b328a20f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Household.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Household.java
+@@ -20,7 +20,8 @@ public final class Household {
+ 
+     /** The 12 upper-case hex chars of SHA-256 over {@code normalizedLastName + '|' + postcode}. */
+     public static String idFor(Owner owner) {
+-        String key = normalize(owner.getLastName()) + "|" + (owner.getPostcode() == null ? "" : owner.getPostcode());
++        String key = CustomerCode.VERSION_TAG + "|" + normalize(owner.getLastName()) + "|"
++            + (owner.getPostcode() == null ? "" : owner.getPostcode());
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder sb = new StringBuilder(12);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+index bdac2c95e..e246a5919 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+@@ -41,8 +41,8 @@ public final class IdentityKey {
+      * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+      */
+     public static String of(Owner owner) {
+-        String raw = telephone(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|"
+-                + Soundex.of(owner.getLastName());
++        String raw = CustomerCode.VERSION_TAG + "|" + telephone(owner.getTelephone()) + "|" + email(owner.getEmail())
++                + "|" + Soundex.of(owner.getLastName());
+         return sha256Hex(raw);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java
+index b28f566af..2de3c793c 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java
+@@ -26,10 +26,10 @@ public final class OwnerCreatedEvent {
+         return owner.getMemberId();
+     }
+ 
+-    /** Emits {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. */
++    /** Emits {@code {seq, schemaVersion:2, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. */
+     public static void emit(Owner owner, Object membershipLevel) {
+         LoggerFactory.getLogger("AUDIT").info(
+-            "{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
++            "{\"seq\":{},\"schemaVersion\":2,\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+             SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel);
+         LoggerFactory.getLogger("NOTIFY").info(
+             "welcome owner id={} memberId={}", owner.getId(), primaryIdentifier(owner));
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8ae46e7a4..f8f719b4e 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2161,24 +2161,17 @@ components:
+               type: string
+               readOnly: true
+               example: '+61 412 345 678'
+-            memberId:
+-              title: Member ID
++            apiVersion:
++              title: API version
+               description: >-
+-                Unified member identifier formatted '<REGION><FY><HASH8><CHK>': the region code,
+-                the 2-digit fiscal year of the registration date, the first 8 upper-case hex
+-                characters of SHA-256 over (normalized telephone + last name), and a single Luhn
+-                check digit computed over the digits of '<REGION><FY><HASH8>'.
+-              type: string
+-              readOnly: true
+-              example: 'NSW26A1B2C3D49'
+-            householdId:
+-              title: Household ID
+-              description: >-
+-                Stable identifier shared by every owner in the same household (same last name
+-                and address, compared case-insensitively with collapsed whitespace).
+-              type: string
++                The integer version of the owner identity API. Version 2 groups the derived
++                identifiers under a nested 'identity' object.
++              type: integer
++              format: int32
+               readOnly: true
+-              example: 'A1B2C3D4E5F6'
++              example: 2
++            identity:
++              $ref: '#/components/schemas/Identity'
+             namesakeCount:
+               title: Namesake count
+               description: >-
+@@ -2272,15 +2265,6 @@ components:
+               default: false
+               readOnly: true
+               example: false
+-            identityKey:
+-              title: Identity key
+-              description: >-
+-                Derived duplicate-detection key formatted 'normalizedTelephone|email|householdId':
+-                the telephone reduced to its digits, the lower-cased email (empty when absent), and
+-                the household id. Two owners are the same registration only when these keys match.
+-              type: string
+-              readOnly: true
+-              example: '61412345678|george.franklin@example.com|A1B2C3D4E5F6'
+             possibleDuplicate:
+               title: Possible duplicate
+               description: >-
+@@ -2336,6 +2320,45 @@ components:
+               example: '/api/owners/1'
+           required:
+             - pets
++    Identity:
++      title: Owner identity
++      description: >-
++        The owner's version-2 identity. Every identifier is rederived under a fixed 'V2'
++        version tag, so no value produced under version 1 is produced again.
++      type: object
++      properties:
++        memberId:
++          title: Member ID
++          description: >-
++            Unified member identifier formatted '<REGION><FY><HASH8><CHK>', where REGION is the
++            version-2 region code (the region prefixed with the 'V2' tag), FY is the 2-digit fiscal
++            year of the registration date, HASH8 is the first 8 upper-case hex characters of SHA-256
++            over (normalized telephone + last name), and CHK is a single Luhn check digit over the
++            digits of '<REGION><FY><HASH8>'.
++          type: string
++          readOnly: true
++          example: 'V2NSW26A1B2C3D49'
++        identityKey:
++          title: Identity key
++          description: >-
++            Derived duplicate-detection key: the lower-case SHA-256 hex over the 'V2' version tag,
++            the normalized telephone, the lower-cased email and the soundex of the last name. Two
++            owners are the same registration only when these keys match.
++          type: string
++          readOnly: true
++          example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
++        householdId:
++          title: Household ID
++          description: >-
++            Stable identifier shared by every owner in the same household (same last name and
++            postcode), rederived under the 'V2' version tag.
++          type: string
++          readOnly: true
++          example: 'A1B2C3D4E5F6'
++      required:
++        - memberId
++        - identityKey
++        - householdId
+     OwnerPage:
+       title: Owner page
+       description: A page of pet owners.
