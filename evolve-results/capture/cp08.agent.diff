@@ -1,0 +1,248 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 899b1bec1..0586a3a90 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,7 +18,6 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.Email;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+@@ -47,8 +46,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be in E.164 form with 8 to 15 digits after the '+'")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+index 3dde66174..2a1649859 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/TelephoneNormalizer.java
+@@ -23,39 +23,59 @@ import java.util.Optional;
+  * and the {@code Owner} model so the rules for shaping and comparing a telephone live in one place,
+  * as pure functions with no web or persistence dependencies.
+  *
+- * <p>A submitted telephone is reduced to the canonical form that is stored and returned by removing
+- * every non-digit character; the result is accepted only when it is exactly ten digits. Two
+- * telephones denote the same number when their {@linkplain #toComparisonKey(String) comparison keys}
+- * are equal.
++ * <p>A submitted telephone is reduced to its canonical <a href="https://en.wikipedia.org/wiki/E.164">E.164</a>
++ * form, which is the value stored and returned. Spaces, dashes and brackets are stripped; a leading
++ * {@code '+'} and its country code are kept when present, otherwise the country code {@code '+61'} is
++ * assumed and a single leading {@code '0'} is dropped from the national digits. The result is accepted
++ * only when 8 to 15 digits follow the {@code '+'}. Two telephones denote the same number when their
++ * {@linkplain #toComparisonKey(String) comparison keys} — their E.164 forms — are equal.
+  */
+ public abstract class TelephoneNormalizer {
+ 
++    /** Characters stripped from a submitted telephone: spaces, dashes and brackets. */
++    private static final String SEPARATORS = "[\\s()\\[\\]-]";
++
++    private static final int MIN_E164_DIGITS = 8;
++
++    private static final int MAX_E164_DIGITS = 15;
++
+     /**
+-     * Reduce a submitted telephone to the canonical form to be stored and returned: every non-digit
+-     * character is removed, and the result is accepted only when exactly ten digits remain.
++     * Reduce a submitted telephone to its canonical E.164 form, which is the value to be stored and
++     * returned. Spaces, dashes and brackets are removed; when the number carries a leading {@code '+'}
++     * its country code is kept, otherwise country code {@code 61} is assumed and a single leading
++     * {@code '0'} is dropped from the national digits. The result is accepted only when 8 to 15 digits
++     * follow the {@code '+'}.
+      *
+      * @param rawTelephone the submitted telephone (non-null)
+-     * @return the canonical telephone, or {@link Optional#empty()} if {@code rawTelephone} does not
+-     *         reduce to a valid telephone
++     * @return the canonical E.164 telephone (e.g. {@code +61412345678}), or {@link Optional#empty()}
++     *         if {@code rawTelephone} cannot form a valid E.164 number
+      */
+     public static Optional<String> normalize(String rawTelephone) {
+-        String digits = rawTelephone.replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        String cleaned = rawTelephone.replaceAll(SEPARATORS, "");
++        String digits;
++        if (cleaned.startsWith("+")) {
++            digits = cleaned.substring(1);
++        }
++        else {
++            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
++            digits = "61" + national;
++        }
++        if (!digits.matches("\\d+") || digits.length() < MIN_E164_DIGITS || digits.length() > MAX_E164_DIGITS) {
+             return Optional.empty();
+         }
+-        return Optional.of(digits);
++        return Optional.of("+" + digits);
+     }
+ 
+     /**
+-     * The key used to decide whether two telephones denote the same number. Every non-digit
+-     * character is stripped so that telephones stored in different textual shapes still compare
+-     * equal on their digits alone.
++     * The key used to decide whether two telephones denote the same number: the telephone's canonical
++     * E.164 form, so telephones stored in different textual shapes still compare equal. A value that
++     * does not form a valid E.164 number (e.g. legacy data) falls back to its separator-stripped form.
+      *
+      * @param telephone a stored or already-normalized telephone (non-null)
+      * @return the comparison key
+      */
+     public static String toComparisonKey(String telephone) {
+-        return telephone.replaceAll("\\D", "");
++        return normalize(telephone).orElseGet(() -> telephone.replaceAll(SEPARATORS, ""));
+     }
+ 
+ }
+diff --git a/src/main/resources/db/h2/data.sql b/src/main/resources/db/h2/data.sql
+index 9eb9aa1a7..74997b144 100644
+--- a/src/main/resources/db/h2/data.sql
++++ b/src/main/resources/db/h2/data.sql
+@@ -32,16 +32,16 @@ INSERT INTO types (name) VALUES
+ 
+ -- Insert Owners
+ INSERT INTO owners (first_name, last_name, address, city, telephone) VALUES 
+-('George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023'),
+-('Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749'),
+-('Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763'),
+-('Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198'),
+-('Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765'),
+-('Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654'),
+-('Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387'),
+-('Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683'),
+-('David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435'),
+-('Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++('George', 'Franklin', '110 W. Liberty St.', 'Madison', '+16085551023'),
++('Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '+16085551749'),
++('Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '+16085558763'),
++('Harold', 'Davis', '563 Friendly St.', 'Windsor', '+16085553198'),
++('Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '+16085552765'),
++('Jean', 'Coleman', '105 N. Lake St.', 'Monona', '+16085552654'),
++('Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '+16085555387'),
++('Maria', 'Escobito', '345 Maple St.', 'Madison', '+16085557683'),
++('David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '+16085559435'),
++('Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '+16085555487');
+ 
+ -- Insert Pets
+ INSERT INTO pets (name, birth_date, type_id, owner_id) VALUES 
+diff --git a/src/main/resources/db/hsqldb/data.sql b/src/main/resources/db/hsqldb/data.sql
+index c61e6fe0f..2782466f1 100644
+--- a/src/main/resources/db/hsqldb/data.sql
++++ b/src/main/resources/db/hsqldb/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types VALUES (4, 'snake');
+ INSERT INTO types VALUES (5, 'bird');
+ INSERT INTO types VALUES (6, 'hamster');
+ 
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '+16085551023');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '+16085551749');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '+16085558763');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '+16085553198');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '+16085552765');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '+16085552654');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '+16085555387');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '+16085557683');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '+16085559435');
++INSERT INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '+16085555487');
+ 
+ INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1, 1);
+ INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 6, 2);
+diff --git a/src/main/resources/db/mysql/data.sql b/src/main/resources/db/mysql/data.sql
+index ae323801d..378946c55 100644
+--- a/src/main/resources/db/mysql/data.sql
++++ b/src/main/resources/db/mysql/data.sql
+@@ -22,16 +22,16 @@ INSERT IGNORE INTO types VALUES (4, 'snake');
+ INSERT IGNORE INTO types VALUES (5, 'bird');
+ INSERT IGNORE INTO types VALUES (6, 'hamster');
+ 
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435');
+-INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '+16085551023');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '+16085551749');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '+16085558763');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (4, 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '+16085553198');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (5, 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '+16085552765');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (6, 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '+16085552654');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (7, 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '+16085555387');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (8, 'Maria', 'Escobito', '345 Maple St.', 'Madison', '+16085557683');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (9, 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '+16085559435');
++INSERT IGNORE INTO owners (id, first_name, last_name, address, city, telephone) VALUES (10, 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '+16085555487');
+ 
+ INSERT IGNORE INTO pets VALUES (1, 'Leo', '2000-09-07', 1, 1);
+ INSERT IGNORE INTO pets VALUES (2, 'Basil', '2002-08-06', 6, 2);
+diff --git a/src/main/resources/db/postgres/data.sql b/src/main/resources/db/postgres/data.sql
+index ace8e6876..b94c4776e 100644
+--- a/src/main/resources/db/postgres/data.sql
++++ b/src/main/resources/db/postgres/data.sql
+@@ -22,16 +22,16 @@ INSERT INTO types (name) SELECT 'snake' WHERE NOT EXISTS (SELECT * FROM types WH
+ INSERT INTO types (name) SELECT 'bird' WHERE NOT EXISTS (SELECT * FROM types WHERE name='bird');
+ INSERT INTO types (name) SELECT 'hamster' WHERE NOT EXISTS (SELECT * FROM types WHERE name='hamster');
+ 
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=1);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=2);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=3);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '6085553198' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=4);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '6085552765' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=5);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '6085552654' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=6);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '6085555387' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=7);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Maria', 'Escobito', '345 Maple St.', 'Madison', '6085557683' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=8);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '6085559435' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=9);
+-INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '6085555487' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=10);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '+16085551023' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=1);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '+16085551749' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=2);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '+16085558763' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=3);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Harold', 'Davis', '563 Friendly St.', 'Windsor', '+16085553198' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=4);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Peter', 'McTavish', '2387 S. Fair Way', 'Madison', '+16085552765' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=5);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Jean', 'Coleman', '105 N. Lake St.', 'Monona', '+16085552654' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=6);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Jeff', 'Black', '1450 Oak Blvd.', 'Monona', '+16085555387' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=7);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Maria', 'Escobito', '345 Maple St.', 'Madison', '+16085557683' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=8);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'David', 'Schroeder', '2749 Blackhawk Trail', 'Madison', '+16085559435' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=9);
++INSERT INTO owners (first_name, last_name, address, city, telephone) SELECT 'Carlos', 'Estaban', '2335 Independence La.', 'Waunakee', '+16085555487' WHERE NOT EXISTS (SELECT * FROM owners WHERE id=10);
+ 
+ INSERT INTO pets (name, birth_date, type_id, owner_id) SELECT 'Leo', '2000-09-07', 1, 1 WHERE NOT EXISTS (SELECT * FROM pets WHERE id=1);
+ INSERT INTO pets (name, birth_date, type_id, owner_id) SELECT 'Basil', '2002-08-06', 6, 2 WHERE NOT EXISTS (SELECT * FROM pets WHERE id=2);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index f00ea673e..d455d86e9 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,12 +2027,15 @@ components:
+           title: Telephone number
+           description: >-
+             The telephone number of the pet owner. On create the value is
+-            normalized by removing every non-digit character and must contain
+-            exactly 10 digits after stripping.
++            normalized to E.164 form: spaces, dashes and brackets are stripped;
++            a leading '+' and country code are kept when present, otherwise
++            country code '+61' is assumed and a single leading '0' is dropped
++            from the national digits. The stored value must have 8 to 15 digits
++            after the '+' (e.g. '0412 345 678' is stored as '+61412345678').
+           type: string
+           minLength: 1
+           maxLength: 20
+-          example: '6085551023'
++          example: '+61412345678'
+         email:
+           title: Email address
+           description: >-
