@@ -1,0 +1,73 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailErrorFilter.java b/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailErrorFilter.java
+new file mode 100644
+index 000000000..88e479f75
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/ProblemDetailErrorFilter.java
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest;
++
++import java.io.IOException;
++import java.nio.charset.StandardCharsets;
++import java.util.Set;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.http.MediaType;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++import org.springframework.web.util.ContentCachingResponseWrapper;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++
++/**
++ * Guarantees every rejection response carries an RFC 7807 {@code application/problem+json}
++ * body. Controllers that reject a request with a bare status and no body (e.g. a 400 for an
++ * out-of-range postcode) are given a minimal problem document here, while responses that
++ * already supply one (the {@code ExceptionControllerAdvice} problem details) pass through
++ * untouched. Kept as a standalone filter so the rejecting endpoints stay unchanged.
++ */
++@Component
++public class ProblemDetailErrorFilter extends OncePerRequestFilter {
++
++    /** Rejection statuses that must always answer with a problem document. */
++    private static final Set<Integer> REJECTION_STATUSES = Set.of(400, 409, 429);
++
++    @Override
++    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
++                                    FilterChain chain) throws ServletException, IOException {
++        ContentCachingResponseWrapper captured = new ContentCachingResponseWrapper(response);
++        chain.doFilter(request, captured);
++        if (REJECTION_STATUSES.contains(captured.getStatus()) && captured.getContentSize() == 0) {
++            writeProblem(captured);
++        }
++        captured.copyBodyToResponse();
++    }
++
++    /** Writes a minimal {type, title, status, detail} problem document for the captured status. */
++    private void writeProblem(ContentCachingResponseWrapper response) throws IOException {
++        HttpStatus status = HttpStatus.valueOf(response.getStatus());
++        String reason = status.getReasonPhrase();
++        byte[] body = ("{\"type\":\"about:blank\",\"title\":\"" + reason + "\",\"status\":" + status.value()
++            + ",\"detail\":\"" + reason + "\"}").getBytes(StandardCharsets.UTF_8);
++        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
++        response.getOutputStream().write(body);
++    }
++}
