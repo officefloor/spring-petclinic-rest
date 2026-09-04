@@ -79,6 +79,9 @@ public class Owner extends Person {
     @Column(name = "household_gold")
     private Boolean householdGold;
 
+    @Column(name = "capacity_warning")
+    private Boolean capacityWarning;
+
     @Column(name = "deleted")
     private boolean deleted;
 
@@ -199,6 +202,14 @@ public class Owner extends Person {
 
     public void setHouseholdGold(Boolean householdGold) {
         this.householdGold = householdGold;
+    }
+
+    public Boolean getCapacityWarning() {
+        return this.capacityWarning;
+    }
+
+    public void setCapacityWarning(Boolean capacityWarning) {
+        this.capacityWarning = capacityWarning;
     }
 
     public boolean isDeleted() {

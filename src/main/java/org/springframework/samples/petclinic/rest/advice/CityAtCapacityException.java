@@ -30,6 +30,9 @@ public class CityAtCapacityException extends RuntimeException {
     /** Maximum owners allowed per city; the next owner in a full city is rejected. */
     private static final int CITY_CAPACITY = 50;
 
+    /** At or above this count (but below capacity) a city is flagged as approaching its limit. */
+    private static final int CITY_WARNING_THRESHOLD = 40;
+
     public CityAtCapacityException(String city) {
         super("City already at capacity: " + city);
     }
@@ -51,5 +54,17 @@ public class CityAtCapacityException extends RuntimeException {
         if (count >= CITY_CAPACITY) {
             throw new CityAtCapacityException(city);
         }
+    }
+
+    /**
+     * Whether {@code city} already holds between {@value #CITY_WARNING_THRESHOLD} and
+     * {@code CITY_CAPACITY - 1} owners, i.e. it is approaching but not yet at capacity.
+     */
+    public static boolean isApproachingCapacity(String city, Collection<Owner> existingOwners) {
+        String candidate = normalize(city);
+        long count = existingOwners.stream()
+            .filter(owner -> candidate.equals(normalize(owner.getCity())))
+            .count();
+        return count >= CITY_WARNING_THRESHOLD && count < CITY_CAPACITY;
     }
 }

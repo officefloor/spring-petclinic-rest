@@ -120,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
+        owner.setCapacityWarning(CityAtCapacityException.isApproachingCapacity(owner.getCity(), this.clinicService.findAllOwners()));
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
         owner.setCustomerCode(UniqueCustomerCode.assign(owner, this.clinicService.findAllOwners()));
