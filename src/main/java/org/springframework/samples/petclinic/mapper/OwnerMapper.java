@@ -29,6 +29,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.yearOf(owner.getRegistrationDate()) % 100))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
@@ -126,6 +127,20 @@ public interface OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * Derives the owner's {@code ownerSegment}, formatted {@code '<TIER>_<AREA>'}. TIER is
+     * {@code PREMIUM} when {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise
+     * {@code STANDARD}. AREA is {@code METRO} when the owner's locality is a known region
+     * ({@code NSW}, {@code VIC} or {@code QLD}), otherwise {@code REGIONAL}.
+     */
+    default OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        String region = org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode());
+        boolean metro = "NSW".equals(region) || "VIC".equals(region) || "QLD".equals(region);
+        String area = metro ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**
