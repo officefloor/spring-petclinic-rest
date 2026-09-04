@@ -35,6 +35,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.util.OwnerSegment.of(org.springframework.samples.petclinic.util.Membership.level(org.springframework.samples.petclinic.util.Membership.points(owner)), org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
+    @Mapping(target = "riskFlag", expression = "java(org.springframework.samples.petclinic.util.RiskFlag.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
