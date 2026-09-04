@@ -1,0 +1,112 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 9d88fd7a9..4919d5625 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -3,11 +3,13 @@ package org.springframework.samples.petclinic.mapper;
+ import org.jspecify.annotations.NonNull;
+ import org.mapstruct.Mapper;
+ import org.mapstruct.Mapping;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
++import org.springframework.samples.petclinic.service.ClinicService;
+ 
+ import java.util.Collection;
+ import java.util.List;
+@@ -17,17 +19,21 @@ import java.util.Map;
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+ @Mapper(uses = PetMapper.class)
+-public interface OwnerMapper {
++public abstract class OwnerMapper {
++
++    /** Used to count the members of an owner's household when deriving the membership tier. */
++    @Autowired
++    protected ClinicService clinicService;
+ 
+     @Mapping(target = "displayName",
+         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(initials(owner))")
+     @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+     @Mapping(target = "locality", expression = "java(locality(owner))")
+-    OwnerDto toOwnerDto(Owner owner);
++    public abstract OwnerDto toOwnerDto(Owner owner);
+ 
+     /** Fixed city-to-region table used to derive an owner's locality. */
+-    Map<String, String> CITY_REGION = Map.of(
++    static final Map<String, String> CITY_REGION = Map.of(
+         "Sydney", "NSW",
+         "Melbourne", "VIC",
+         "Brisbane", "QLD");
+@@ -36,40 +42,58 @@ public interface OwnerMapper {
+      * The canonical region derived from the owner's city using the fixed
+      * {@link #CITY_REGION} table, or 'UNKNOWN' when the city is not listed.
+      */
+-    default String locality(Owner owner) {
++    String locality(Owner owner) {
+         return CITY_REGION.getOrDefault(owner.getCity(), "UNKNOWN");
+     }
+ 
+     /**
+-     * The owner's membership tier: 'SILVER' when namesakeCount is 0 and an email
+-     * address is present, otherwise 'BRONZE'.
++     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
++     * same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0
++     * and an email address is present, and 'BRONZE' in all remaining cases.
+      */
+-    default String membershipTier(Owner owner) {
++    String membershipTier(Owner owner) {
++        if (householdSize(owner) >= 3) {
++            return "GOLD";
++        }
+         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
+         boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+         return uniqueName && hasEmail ? "SILVER" : "BRONZE";
+     }
+ 
++    /**
++     * The number of owners belonging to the same household as {@code owner}, i.e. those
++     * sharing its {@code householdId}. Returns 0 when the owner has no householdId.
++     */
++    private long householdSize(Owner owner) {
++        String householdId = owner.getHouseholdId();
++        if (householdId == null) {
++            return 0;
++        }
++        return clinicService.findAllOwners().stream()
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .count();
++    }
++
+     /**
+      * The upper-cased first letters of firstName and lastName, dot-separated with a
+      * trailing dot, e.g. 'J.S.'.
+      */
+-    default String initials(Owner owner) {
++    String initials(Owner owner) {
+         return Character.toUpperCase(owner.getFirstName().charAt(0)) + "."
+             + Character.toUpperCase(owner.getLastName().charAt(0)) + ".";
+     }
+ 
+-    Owner toOwner(OwnerDto ownerDto);
++    public abstract Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    Owner toOwner(OwnerFieldsDto ownerDto);
++    public abstract Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
++    public abstract List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+-    Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
++    public abstract Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+ 
+-    default OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
++    public OwnerPageDto toOwnerPageDto(@NonNull Page<Owner> ownerPage) {
+         OwnerPageDto ownerPageDto = new OwnerPageDto();
+         ownerPageDto.setContent(toOwnerDtoCollection(ownerPage.getContent()));
+         ownerPageDto.setPage(ownerPage.getNumber());
