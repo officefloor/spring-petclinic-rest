@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
@@ -70,6 +71,22 @@ public class ExceptionControllerAdvice {
         problemDetail.setProperty("timestamp", Instant.now());
         problemDetail.setProperty("schemaValidationErrors", List.<ValidationMessageDto>of());
         return problemDetail;
+    }
+
+    /**
+     * Wraps a {@link ProblemDetail} in a {@link ResponseEntity} whose {@code Content-Type} is
+     * explicitly set to {@code application/problem+json} (RFC 7807). Every rejection response is
+     * emitted through this method so the media type is guaranteed rather than left to framework
+     * content negotiation.
+     *
+     * @param status the HTTP status of the response
+     * @param detail the RFC 7807 body carrying {@code type}, {@code title}, {@code status} and {@code detail}
+     * @return a {@link ResponseEntity} with the {@code application/problem+json} content type
+     */
+    private ResponseEntity<ProblemDetail> problemResponse(HttpStatus status, ProblemDetail detail) {
+        return ResponseEntity.status(status)
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(detail);
     }
 
     /**
@@ -162,10 +179,10 @@ public class ExceptionControllerAdvice {
                 .map(FieldError::getField)
                 .distinct()
                 .toList());
-            return ResponseEntity.status(status).body(detail);
+            return problemResponse(status, detail);
         }
         detail.setProperty("errors", List.<String>of());
-        return ResponseEntity.status(status).body(detail);
+        return problemResponse(status, detail);
     }
 
     /**
@@ -187,7 +204,7 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getFields());
-        return ResponseEntity.status(status).body(detail);
+        return problemResponse(status, detail);
     }
 
     /**
@@ -211,7 +228,7 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        return ResponseEntity.status(status).body(detail);
+        return problemResponse(status, detail);
     }
 
     /**
@@ -233,7 +250,7 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        return ResponseEntity.status(status).body(detail);
+        return problemResponse(status, detail);
     }
 
     /**
@@ -256,7 +273,7 @@ public class ExceptionControllerAdvice {
             request.getMethod(),
             request.getRequestURI(),
             e.getMessage());
-        return ResponseEntity.status(status).body(detail);
+        return problemResponse(status, detail);
     }
 
 }
