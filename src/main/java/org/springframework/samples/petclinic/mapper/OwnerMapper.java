@@ -24,9 +24,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
-    @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
-    @Mapping(target = "membershipNumber", expression = "java(membershipNumber(owner))")
     @Mapping(target = "membershipPoints",
             expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerMembership.points(owner))")
     @Mapping(target = "membershipLevel",
@@ -128,13 +126,13 @@ public interface OwnerMapper {
     }
 
     /**
-     * The owner's locality (region), read from the REGION component of the customerCode
-     * ({@code <REGION>-<HASH8>}); see
+     * The owner's locality (region), read from the REGION prefix of the memberId
+     * ({@code <REGION><FY><HASH8><CHK>}); see
      * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerRegion#regionOf}.
      */
     default String locality(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.regionOf(
-                owner.getCustomerCode());
+                owner.getMemberId());
     }
 
     /**
@@ -145,47 +143,18 @@ public interface OwnerMapper {
      */
     default String timezone(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerRegion.timezoneOf(
-                owner.getCustomerCode());
+                owner.getMemberId());
     }
 
     /**
-     * A single Luhn check digit (0-9) computed over the digits of the owner's {@code customerCode};
-     * see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity#luhnCheckDigit}.
-     * Null when the customer code is absent.
-     */
-    default Integer checkDigit(Owner owner) {
-        if (owner.getCustomerCode() == null) {
-            return null;
-        }
-        return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity
-                .luhnCheckDigit(owner.getCustomerCode());
-    }
-
-    /**
-     * The owner's fiscal year, formatted {@code FY<YY>} where YY is the last two digits of the fiscal
-     * year the business-day-adjusted registrationDate falls in (fiscal year starting 1 July), e.g.
-     * {@code FY27}. Null when the registration date is absent.
+     * The owner's fiscal year, formatted {@code FY<YY>} where YY is the two-digit FY segment of the
+     * owner's {@code memberId} — the fiscal year the business-day-adjusted registrationDate falls in
+     * (fiscal year starting 1 July), e.g. {@code FY27}. Null when the memberId is absent.
      */
     default String fiscalYear(Owner owner) {
-        if (owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return "FY" + org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
-                .fiscalYearCode(owner.getRegistrationDate());
-    }
-
-    /**
-     * The owner's membership number, formatted {@code <customerCode>-M<YY>} where YY is the last two
-     * digits of the fiscal year the registrationDate falls in (fiscal year starting 1 July), e.g.
-     * {@code NSW-1A2B3C4D-M27}. Null when either the customer code or the registration date is absent.
-     */
-    default String membershipNumber(Owner owner) {
-        if (owner.getCustomerCode() == null || owner.getRegistrationDate() == null) {
-            return null;
-        }
-        return String.format("%s-M%02d", owner.getCustomerCode(),
-                org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
-                        .fiscalYearOf(owner.getRegistrationDate()) % 100);
+        String fiscalYearCode = org.springframework.samples.petclinic.rest.function.owner.MemberId
+                .fiscalYearCodeOf(owner.getMemberId());
+        return fiscalYearCode == null ? null : "FY" + fiscalYearCode;
     }
 
     Owner toOwner(OwnerDto ownerDto);

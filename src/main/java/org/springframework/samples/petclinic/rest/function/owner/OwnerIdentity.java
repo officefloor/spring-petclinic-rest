@@ -91,7 +91,7 @@ public final class OwnerIdentity {
     /**
      * HASH8: the first 8 upper-case hex characters of SHA-256 over {@code normalizedTelephone +
      * lastName}, where the telephone is canonicalized to E.164. This is the hashed component of the
-     * owner's {@code customerCode} ({@code <REGION>-<HASH8>}).
+     * owner's {@code memberId} ({@code <REGION><FY><HASH8><CHK>}).
      */
     public static String customerHash(String telephone, String lastName) {
         return sha256Hex(canonicalTelephone(telephone) + (lastName == null ? "" : lastName), 8);
@@ -99,8 +99,8 @@ public final class OwnerIdentity {
 
     /**
      * The Luhn check digit (0-9) over the decimal digits contained in {@code source}; any non-digit
-     * character is skipped. This is the check-digit primitive an owner's code carries — computed today
-     * over the {@code customerCode}.
+     * character is skipped. This is the check-digit primitive the owner's {@code memberId} carries as
+     * its CHK segment — computed over {@code <REGION><FY><HASH8>}.
      */
     public static int luhnCheckDigit(String source) {
         int sum = 0;

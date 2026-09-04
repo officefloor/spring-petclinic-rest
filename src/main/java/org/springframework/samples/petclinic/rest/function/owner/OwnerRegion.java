@@ -8,8 +8,8 @@ import java.util.Map;
  * range per region, and the city-to-region fallback used when the postcode yields nothing.
  *
  * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null}) and is the source
- * of the REGION component of an owner's {@code customerCode}; {@link #regionOf} reads that component
- * back out of a {@code customerCode}, which is how a whole owner resolves to a locality.
+ * of the REGION prefix of an owner's {@code memberId}; {@link #regionOf} reads that prefix back out of
+ * a {@code memberId}, which is how a whole owner resolves to a locality.
  */
 public final class OwnerRegion {
 
@@ -31,6 +31,11 @@ public final class OwnerRegion {
     /** The canonical region for {@code city} from the fixed city-to-region table, or {@code null}. */
     static String regionForCity(String city) {
         return city == null ? null : CITY_REGION.get(city);
+    }
+
+    /** The known region codes (NSW, VIC, QLD) — the prefixes a memberId's REGION segment can take. */
+    static Iterable<String> knownRegions() {
+        return REGION_TIMEZONE.keySet();
     }
 
     /** The inclusive 4-digit postcode range {low, high} for {@code region}, or {@code null}. */
@@ -63,26 +68,22 @@ public final class OwnerRegion {
     }
 
     /**
-     * The REGION component of a {@code customerCode} ({@code <REGION>-<HASH8>}) — the owner's locality.
-     * Now that identity is region-and-hash, the locality is read straight off the assigned code rather
-     * than recomputed, so it always matches the code. {@code UNKNOWN} when the code is absent or has no
-     * region component.
+     * The REGION prefix of a {@code memberId} ({@code <REGION><FY><HASH8><CHK>}) — the owner's locality.
+     * Now that identity is region-and-hash, the locality is read straight off the assigned memberId
+     * rather than recomputed, so it always matches the id. {@code UNKNOWN} when the id is absent or has
+     * no known region prefix.
      */
-    public static String regionOf(String customerCode) {
-        if (customerCode == null) {
-            return "UNKNOWN";
-        }
-        int dash = customerCode.indexOf('-');
-        return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
+    public static String regionOf(String memberId) {
+        return MemberId.regionOf(memberId);
     }
 
     /**
-     * The IANA timezone name for the owner's region, resolved from the REGION component of the
-     * {@code customerCode} through the fixed region-to-timezone table (NSW -> Australia/Sydney,
+     * The IANA timezone name for the owner's region, resolved from the REGION prefix of the
+     * {@code memberId} through the fixed region-to-timezone table (NSW -> Australia/Sydney,
      * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). {@code null} when the region is
      * absent or unknown.
      */
-    public static String timezoneOf(String customerCode) {
-        return REGION_TIMEZONE.get(regionOf(customerCode));
+    public static String timezoneOf(String memberId) {
+        return REGION_TIMEZONE.get(regionOf(memberId));
     }
 }

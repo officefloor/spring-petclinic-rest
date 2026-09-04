@@ -10,8 +10,9 @@ import org.springframework.samples.petclinic.model.Owner;
  * both the scoring's tenure rule and the owner's fiscal/membership-number formatting share.
  *
  * <p>These are pure functions of an owner's already-stored fields; {@link OwnerMapper} delegates its
- * {@code membershipPoints}, {@code membershipLevel}, {@code fiscalYear} and {@code membershipNumber}
- * derivations here, mirroring how it delegates to {@link OwnerIdentity} and {@link OwnerRegion}.
+ * {@code membershipPoints} and {@code membershipLevel} derivations here, mirroring how it delegates to
+ * {@link OwnerIdentity} and {@link OwnerRegion}. The fiscal-year primitive also feeds the FY segment of
+ * an owner's {@code memberId} (see {@link MemberId} and {@link AssignMemberId}).
  */
 public final class OwnerMembership {
 
@@ -30,9 +31,9 @@ public final class OwnerMembership {
 
     /**
      * The two-digit fiscal-year code for {@code date}: the {@link #fiscalYearOf(LocalDate) fiscal year}
-     * it falls in taken mod 100 and zero-padded to two digits (e.g. {@code 27}). This is the shared
-     * fiscal-year segment behind the mapper's {@code fiscalYear} ({@code FY27}) and
-     * {@code membershipNumber} ({@code ...-M27}).
+     * it falls in taken mod 100 and zero-padded to two digits (e.g. {@code 27}). This is the FY segment
+     * of an owner's {@code memberId} ({@code <REGION>27<HASH8><CHK>}), from which the mapper's
+     * {@code fiscalYear} ({@code FY27}) is read back.
      */
     public static String fiscalYearCode(LocalDate date) {
         return String.format("%02d", fiscalYearOf(date) % 100);
