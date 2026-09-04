@@ -108,7 +108,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         DuplicateTelephoneException.rejectIfDuplicate(owner.getTelephone(), this.clinicService.findAllOwners());
         DuplicateHouseholdException.rejectIfDuplicate(owner,
             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), this.clinicService.findAllOwners());
-        owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), this.clinicService.findAllOwners().size()));
+        owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), owner.getCity(), this.clinicService.findAllOwners()));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
