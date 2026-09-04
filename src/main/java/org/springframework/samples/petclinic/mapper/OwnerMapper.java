@@ -26,7 +26,29 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's {@code ageBand} from its {@code birthDate}, measured against its
+     * {@code registrationDate}: {@code MINOR} when under 18, {@code ADULT} from 18 to 64 and
+     * {@code SENIOR} at 65 or older. Returns {@code null} when no birth date is present.
+     */
+    default OwnerDto.AgeBandEnum ageBand(Owner owner) {
+        java.time.LocalDate birthDate = owner.getBirthDate();
+        java.time.LocalDate asOf = owner.getRegistrationDate();
+        if (birthDate == null || asOf == null) {
+            return null;
+        }
+        int years = java.time.Period.between(birthDate, asOf).getYears();
+        if (years < 18) {
+            return OwnerDto.AgeBandEnum.MINOR;
+        }
+        if (years < 65) {
+            return OwnerDto.AgeBandEnum.ADULT;
+        }
+        return OwnerDto.AgeBandEnum.SENIOR;
+    }
 
     Owner toOwner(OwnerDto ownerDto);
 
