@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+new file mode 100644
+index 000000000..a271c92f3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RejectDisposableEmail.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.List;
++import java.util.Locale;
++import java.util.Set;
++
++import net.officefloor.plugin.variable.Val;
++import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
++import org.springframework.samples.petclinic.rest.escalation.MissingFieldsException;
++
++/**
++ * Rejects a create request whose email domain is on the disposable-domain blocklist, so such an
++ * address is a 400 via {@link MissingFieldsException}. Runs after {@link NormalizeEmail}, so the
++ * email is already syntactically valid and lower-cased. An absent or blank email passes through.
++ */
++public class RejectDisposableEmail {
++
++    private static final Set<String> BLOCKED =
++            Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    public void service(@Val OwnerFieldsDto request) throws MissingFieldsException {
++        String email = request.getEmail();
++        if (email == null || email.isBlank()) {
++            return;
++        }
++        String domain = email.substring(email.indexOf('@') + 1).toLowerCase(Locale.ROOT);
++        if (BLOCKED.contains(domain)) {
++            throw new MissingFieldsException(List.of("email"));
++        }
++    }
++}
+diff --git a/src/main/resources/officefloor/rest/api/owners.POST.yml b/src/main/resources/officefloor/rest/api/owners.POST.yml
+index 963ff22d1..42ae8aa61 100644
+--- a/src/main/resources/officefloor/rest/api/owners.POST.yml
++++ b/src/main/resources/officefloor/rest/api/owners.POST.yml
+@@ -19,6 +19,11 @@ normalizeTelephone:
+ normalizeEmail:
+   class: org.springframework.samples.petclinic.rest.function.owner.NormalizeEmail
+   govern: [ transaction ]
++  next: rejectDisposableEmail
++
++rejectDisposableEmail:
++  class: org.springframework.samples.petclinic.rest.function.owner.RejectDisposableEmail
++  govern: [ transaction ]
+   next: normalizeAddress
+ 
+ normalizeAddress:
