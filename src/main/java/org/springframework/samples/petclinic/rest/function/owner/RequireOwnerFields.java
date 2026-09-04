@@ -19,7 +19,7 @@ public class RequireOwnerFields {
         List<String> missing = new ArrayList<>();
         require("firstName", request.getFirstName(), missing);
         require("lastName", request.getLastName(), missing);
-        require("address", request.getAddress(), missing);
+        requireAddress(request, missing);
         require("city", request.getCity(), missing);
         require("telephone", request.getTelephone(), missing);
         if (!missing.isEmpty()) {
@@ -31,6 +31,15 @@ public class RequireOwnerFields {
     private static void require(String name, String value, List<String> missing) {
         if (value == null || value.isBlank()) {
             missing.add(name);
+        }
+    }
+
+    /** An address is supplied in either form: a non-blank structured addressLine1, or the flat address. */
+    private static void requireAddress(OwnerFieldsDto request, List<String> missing) {
+        boolean structured = request.getAddressLine1() != null && !request.getAddressLine1().isBlank();
+        boolean flat = request.getAddress() != null && !request.getAddress().isBlank();
+        if (!structured && !flat) {
+            missing.add("address");
         }
     }
 }
