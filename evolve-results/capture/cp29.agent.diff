@@ -1,0 +1,125 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index c075f4c27..189522619 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -50,6 +50,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "postcode")
++    private String postcode;
++
+     @Column(name = "registration_date")
+     private LocalDate registrationDate;
+ 
+@@ -78,6 +81,14 @@ public class Owner extends Person {
+         this.address = AddressNormalizer.normalize(address);
+     }
+ 
++    public String getPostcode() {
++        return this.postcode;
++    }
++
++    public void setPostcode(String postcode) {
++        this.postcode = postcode;
++    }
++
+     public String getCity() {
+         return this.city;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index cc3a118bc..097d932d3 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.util.BulkSignup;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.Namesakes;
++import org.springframework.samples.petclinic.util.Postcode;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -108,6 +109,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        if (!Postcode.isValidForCity(owner.getCity(), owner.getPostcode())) {
++            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
++        }
+         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
+         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
+         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Postcode.java b/src/main/java/org/springframework/samples/petclinic/util/Postcode.java
+new file mode 100644
+index 000000000..119af435d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Postcode.java
+@@ -0,0 +1,36 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Map;
++
++/**
++ * Validates an owner's optional 4-digit {@code postcode} against the inclusive range
++ * fixed for the owner's city region (see {@link Locality}): NSW 2000-2099, VIC
++ * 3000-3099, QLD 4000-4099. A city with no known region accepts any 4-digit postcode,
++ * and an absent postcode is always accepted.
++ */
++public final class Postcode {
++
++    /** Region -> inclusive {low, high} 4-digit postcode range. */
++    private static final Map<String, int[]> REGION_RANGES = Map.of(
++        "NSW", new int[] {2000, 2099}, "VIC", new int[] {3000, 3099}, "QLD", new int[] {4000, 4099});
++
++    private Postcode() {
++    }
++
++    /**
++     * True when {@code postcode} is absent, the city's region is unknown, or the postcode
++     * falls within that region's inclusive range. Assumes a non-null postcode is already
++     * validated as four digits.
++     */
++    public static boolean isValidForCity(String city, String postcode) {
++        if (postcode == null) {
++            return true;
++        }
++        int[] range = REGION_RANGES.get(Locality.of(city));
++        if (range == null) {
++            return true;
++        }
++        int value = Integer.parseInt(postcode);
++        return value >= range[0] && value <= range[1];
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 6e617f644..d7650b720 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -43,6 +43,7 @@ CREATE TABLE owners (
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
++  postcode   VARCHAR(4),
+   registration_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 15bcb14d0..d941c7134 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2025,6 +2025,15 @@ components:
+           maxLength: 80
+           pattern: '.*\S.*'
+           example: Madison
++        postcode:
++          title: Postcode
++          description: >-
++            The owner's 4-digit postcode. Optional; when present it must be valid for the
++            city's region (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099). A city with no
++            known region accepts any 4-digit postcode. Stored and returned as given.
++          type: string
++          pattern: '^\d{4}$'
++          example: '2000'
+         telephone:
+           title: Telephone number
+           description: >-
