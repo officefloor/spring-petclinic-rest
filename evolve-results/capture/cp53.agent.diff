@@ -1,0 +1,94 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+index f59f9808a..ab83691f6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AuditOwnerCreated.java
+@@ -1,24 +1,55 @@
+ package org.springframework.samples.petclinic.rest.function.owner;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import net.officefloor.plugin.variable.Val;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
++import tools.jackson.databind.json.JsonMapper;
++
+ /**
+- * Emits an audit line on the dedicated {@code AUDIT} logger recording the newly
+- * created owner's id, customerCode, registrationDate, membershipLevel and
+- * membershipNumber. Runs after the owner has been saved so its id is available.
++ * Emits, on the dedicated {@code AUDIT} logger, the record of a newly created owner. Runs after the
++ * owner has been saved so its id is available. Two things are emitted:
++ *
++ * <ol>
++ * <li>a human-readable audit line (id, customerCode, registrationDate, membershipLevel,
++ * membershipNumber); and</li>
++ * <li>an immutable structured {@link OwnerCreatedEvent} serialised to JSON, so audit consumers have a
++ * machine-parseable, ordered event to react to.</li>
++ * </ol>
+  */
+ public class AuditOwnerCreated {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    private static final JsonMapper JSON = JsonMapper.builder().build();
++
++    /** Monotonically increasing sequence stamped onto each event, shared across all creates. */
++    private static final AtomicLong SEQUENCE = new AtomicLong();
++
+     public void service(@Val Owner owner, OwnerMapper mapper) {
++        int membershipLevel = OwnerMembership.level(owner);
++
+         AUDIT.info(
+                 "Created owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-                OwnerMembership.level(owner), mapper.membershipNumber(owner));
++                membershipLevel, mapper.membershipNumber(owner));
++
++        OwnerCreatedEvent event = new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
++                primaryIdentifier(owner), membershipLevel);
++        AUDIT.info(JSON.writeValueAsString(event));
++    }
++
++    /**
++     * The owner's current primary identifier carried by the {@link OwnerCreatedEvent}. Today that is the
++     * {@code customerCode}; when the customerCode is unified into the memberId, return the memberId here
++     * and the event will carry it instead. This single method is the one place the event's identity
++     * source is defined, so that later switch is a one-line change.
++     */
++    private static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..c8616c7fe
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerCreatedEvent.java
+@@ -0,0 +1,24 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++/**
++ * Immutable structured audit event emitted on the dedicated {@code AUDIT} logger when an owner is
++ * created. Serialised to JSON as {@code {seq, ownerId, customerCode, membershipLevel, event}}.
++ *
++ * <p>{@code seq} is a monotonically increasing sequence stamped across all creates, so events can be
++ * totally ordered. {@code customerCode} carries the owner's <em>current primary identifier</em>: it is
++ * the customerCode today and whatever replaces it later — see {@link AuditOwnerCreated#primaryIdentifier}
++ * — so the event contract survives the identifier being unified into the memberId.
++ *
++ * <p>Being a record, every field is final and the event cannot be mutated after it is emitted.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel,
++        String event) {
++
++    /** The marker naming this kind of event. */
++    public static final String OWNER_CREATED = "OWNER_CREATED";
++
++    /** Builds an {@link #OWNER_CREATED} event; the {@code event} marker is fixed. */
++    public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, int membershipLevel) {
++        this(seq, ownerId, customerCode, membershipLevel, OWNER_CREATED);
++    }
++}
