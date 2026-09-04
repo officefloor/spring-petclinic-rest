@@ -21,7 +21,7 @@ public class ValidPostcodeValidator implements ConstraintValidator<ValidPostcode
     @Override
     public boolean isValid(OwnerFieldsDto owner, ConstraintValidatorContext context) {
         String postcode = owner == null ? null : owner.getPostcode();
-        if (postcode == null || postcode.isBlank()) {
+        if (postcode == null || postcode.isBlank() || owner.getCity() == null) {
             return true;
         }
         int[] range = REGION_RANGE.get(Locality.of(owner.getCity()));
