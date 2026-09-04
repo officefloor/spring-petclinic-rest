@@ -30,6 +30,7 @@ import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -113,6 +114,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
         DuplicateTelephoneException.rejectIfDuplicate(owner.getTelephone(), this.clinicService.findAllOwners());
+        DuplicateEmailException.rejectIfDuplicate(owner.getEmail(), this.clinicService.findAllOwners());
         DuplicateHouseholdException.rejectIfDuplicate(owner,
             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), this.clinicService.findAllOwners());
         owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), owner.getCity(), this.clinicService.findAllOwners()));
