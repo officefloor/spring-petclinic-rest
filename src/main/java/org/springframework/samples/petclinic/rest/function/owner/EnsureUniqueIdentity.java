@@ -22,7 +22,8 @@ public class EnsureUniqueIdentity {
         String telephone = request.getTelephone();
         String email = normalizeEmail(request.getEmail());
         for (Owner owner : ownerRepository.findAll()) {
-            if (telephone.equals(owner.getTelephone()) && email.equals(normalizeEmail(owner.getEmail()))) {
+            if (!owner.isDeleted() && telephone.equals(owner.getTelephone())
+                    && email.equals(normalizeEmail(owner.getEmail()))) {
                 throw new DuplicateIdentityException(telephone + "|" + email);
             }
         }
