@@ -41,6 +41,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BulkSignup;
 import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.DisposableEmail;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Namesakes;
 import org.springframework.samples.petclinic.util.PossibleDuplicate;
@@ -112,6 +113,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         if (!Postcode.isValidForCity(owner.getCity(), owner.getPostcode())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (DisposableEmail.isBlocked(owner.getEmail())) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
