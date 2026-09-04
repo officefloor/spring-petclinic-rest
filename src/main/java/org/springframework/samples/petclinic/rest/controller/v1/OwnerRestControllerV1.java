@@ -126,6 +126,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         DuplicateHouseholdException.rejectIfDuplicate(owner, sharesHousehold, this.clinicService.findAllOwners());
         owner.setCustomerCode(CustomerCode.assign(owner));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
+        owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
         this.clinicService.saveOwner(owner);
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());

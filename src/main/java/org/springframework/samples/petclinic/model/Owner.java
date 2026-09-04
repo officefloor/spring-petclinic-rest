@@ -71,6 +71,9 @@ public class Owner extends Person {
     @Column(name = "possible_duplicate_of")
     private Integer possibleDuplicateOf;
 
+    @Column(name = "household_gold")
+    private Boolean householdGold;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -160,6 +163,14 @@ public class Owner extends Person {
 
     public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
         this.possibleDuplicateOf = possibleDuplicateOf;
+    }
+
+    public Boolean getHouseholdGold() {
+        return this.householdGold;
+    }
+
+    public void setHouseholdGold(Boolean householdGold) {
+        this.householdGold = householdGold;
     }
 
     protected Set<Pet> getPetsInternal() {
