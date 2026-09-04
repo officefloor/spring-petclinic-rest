@@ -245,10 +245,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * The owner's postal address in the single canonical form under which it is stored, or
-     * {@code null} when the owner supplies no usable address. The raw address is reduced to its
-     * canonical form by {@link AddressNormalizer}; a blank result (a missing or whitespace-only
-     * address) has no canonical form and is reported as {@code null} so the caller can reject the
-     * request with 400.
+     * {@code null} when the owner supplies no usable address. An owner may supply its address
+     * in EITHER form: the structured {@code addressLine1} (with an optional {@code addressLine2})
+     * is preferred, and the flat {@code address} remains accepted for backward compatibility.
+     *
+     * <p>Normalization by {@link AddressNormalizer} is applied to whichever fields are supplied.
+     * When a non-blank {@code addressLine1} is present the owner's structured fields are replaced
+     * with their normalized values (a blank or absent {@code addressLine2} is cleared to
+     * {@code null}) and the returned address is composed as the normalized {@code addressLine1},
+     * with a single space and the normalized {@code addressLine2} appended when present. Otherwise
+     * the flat {@code address} is normalized and the structured fields are cleared. A blank result
+     * (no usable address in either form) has no canonical form and is reported as {@code null} so
+     * the caller can reject the request with 400.
      *
      * <p>This is the single point at which an owner's address is resolved and normalized on
      * create, so every rule keyed on the stored address reads the one value produced here.
@@ -257,6 +265,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the canonical stored address, or {@code null} when the owner supplies none
      */
     private String normalizedAddress(Owner owner) {
+        String rawLine1 = owner.getAddressLine1();
+        if (rawLine1 != null && !rawLine1.isBlank()) {
+            String line1 = addressNormalizer.normalize(rawLine1);
+            String line2 = addressNormalizer.normalize(owner.getAddressLine2());
+            owner.setAddressLine1(line1);
+            owner.setAddressLine2(line2.isBlank() ? null : line2);
+            return line2.isBlank() ? line1 : line1 + " " + line2;
+        }
+        owner.setAddressLine1(null);
+        owner.setAddressLine2(null);
         String address = addressNormalizer.normalize(owner.getAddress());
         return address.isBlank() ? null : address;
     }
