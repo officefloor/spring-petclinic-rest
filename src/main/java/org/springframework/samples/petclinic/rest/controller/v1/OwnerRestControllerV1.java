@@ -107,7 +107,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         LocalDate registrationDate = BusinessDay.adjust(
             owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
         owner.setRegistrationDate(registrationDate);
-        Collection<Owner> owners = this.clinicService.findAllOwners();
+        Collection<Owner> owners = this.clinicService.findAllOwners().stream().filter(existing -> !existing.isDeleted()).toList();
         if (owners.stream().filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -166,7 +166,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
