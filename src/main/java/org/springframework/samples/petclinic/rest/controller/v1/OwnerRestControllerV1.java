@@ -36,6 +36,7 @@ import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
+import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -76,16 +77,20 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final TelephoneNormalizer telephoneNormalizer;
 
+    private final AddressNormalizer addressNormalizer;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
-                                 TelephoneNormalizer telephoneNormalizer) {
+                                 TelephoneNormalizer telephoneNormalizer,
+                                 AddressNormalizer addressNormalizer) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
         this.visitMapper = visitMapper;
         this.telephoneNormalizer = telephoneNormalizer;
+        this.addressNormalizer = addressNormalizer;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -121,6 +126,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        String address = addressNormalizer.normalize(owner.getAddress());
+        if (address.isBlank()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        owner.setAddress(address);
         String telephone = telephoneNormalizer.normalize(owner.getTelephone());
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
@@ -143,11 +153,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String lastNameKey = normalizeIdentity(owner.getLastName());
-        String addressKey = normalizeIdentity(owner.getAddress());
+        String addressKey = addressNormalizer.normalize(owner.getAddress());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             boolean householdDuplicate = this.clinicService.findAllOwners().stream()
                 .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
-                    && normalizeIdentity(existing.getAddress()).equals(addressKey));
+                    && addressNormalizer.normalize(existing.getAddress()).equals(addressKey));
             if (householdDuplicate) {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
