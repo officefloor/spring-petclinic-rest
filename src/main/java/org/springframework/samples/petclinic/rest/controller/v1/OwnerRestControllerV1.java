@@ -43,6 +43,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -254,21 +255,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Normalizes the submitted {@code telephone} on create by removing every non-digit character,
-     * then requires exactly 10 digits to remain. The stripped 10-digit value is written back onto
-     * the request so it is the value stored and returned. Any input that does not reduce to exactly
-     * 10 digits is rejected with a {@code 400 Bad Request}.
+     * Normalizes the submitted {@code telephone} on create to its canonical form (see
+     * {@link TelephoneNormalizer#normalize}) and writes it back onto the request so it is the value
+     * stored and returned. Any input that does not reduce to a valid telephone is rejected with a
+     * {@code 400 Bad Request}.
      *
      * @param ownerFieldsDto the submitted owner fields (its {@code telephone} is non-blank here,
      *                       {@link #rejectBlankOwnerFields} having already run)
-     * @throws InvalidOwnerFieldsException if the telephone is not exactly 10 digits after stripping
+     * @throws InvalidOwnerFieldsException if the telephone cannot be normalized to a valid value
      */
     private void normalizeTelephone(OwnerFieldsDto ownerFieldsDto) {
-        String digits = ownerFieldsDto.getTelephone().replaceAll("\\D", "");
-        if (digits.length() != 10) {
-            throw new InvalidOwnerFieldsException(List.of("telephone"));
-        }
-        ownerFieldsDto.setTelephone(digits);
+        String normalized = TelephoneNormalizer.normalize(ownerFieldsDto.getTelephone())
+            .orElseThrow(() -> new InvalidOwnerFieldsException(List.of("telephone")));
+        ownerFieldsDto.setTelephone(normalized);
     }
 
     /**
@@ -294,20 +293,21 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner whose normalized telephone is already used by any other owner.
-     * Every existing owner's stored telephone is normalized the same way (all non-digit characters
-     * stripped) before comparison, so equality is judged on digits alone. A match is reported as a
-     * {@code 409 Conflict}.
+     * Both the submitted telephone and every existing owner's stored telephone are reduced to their
+     * {@linkplain TelephoneNormalizer#toComparisonKey comparison key} before comparison, so equality
+     * is judged on that key alone. A match is reported as a {@code 409 Conflict}.
      *
-     * @param normalizedTelephone the submitted telephone, already reduced to its 10 digits by
+     * @param normalizedTelephone the submitted telephone, already reduced to its canonical form by
      *                            {@link #normalizeTelephone}
      * @throws DuplicateOwnerTelephoneException if another owner already uses the same telephone
      */
     private void rejectDuplicateTelephone(String normalizedTelephone) {
+        String comparisonKey = TelephoneNormalizer.toComparisonKey(normalizedTelephone);
         boolean inUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
-            .map(telephone -> telephone.replaceAll("\\D", ""))
-            .anyMatch(normalizedTelephone::equals);
+            .map(TelephoneNormalizer::toComparisonKey)
+            .anyMatch(comparisonKey::equals);
         if (inUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
         }
