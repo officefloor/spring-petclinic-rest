@@ -40,7 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.BulkSignup;
-import org.springframework.samples.petclinic.util.CustomerCode;
+import org.springframework.samples.petclinic.util.UniqueCustomerCode;
 import org.springframework.samples.petclinic.util.DisposableEmail;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Namesakes;
@@ -124,7 +124,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
         DuplicateHouseholdException.rejectIfDuplicate(owner, sharesHousehold, this.clinicService.findAllOwners());
-        owner.setCustomerCode(CustomerCode.assign(owner));
+        owner.setCustomerCode(UniqueCustomerCode.assign(owner, this.clinicService.findAllOwners()));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
         owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
