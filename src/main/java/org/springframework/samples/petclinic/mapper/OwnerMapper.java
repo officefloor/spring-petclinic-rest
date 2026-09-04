@@ -32,6 +32,7 @@ public interface OwnerMapper {
     @Mapping(target = "timezone", expression = "java(Timezone.of(owner.getCustomerCode() != null ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getPostcode(), owner.getCity())))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner.getEmail()))")
     @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
+    @Mapping(target = "fiscalYear", expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
