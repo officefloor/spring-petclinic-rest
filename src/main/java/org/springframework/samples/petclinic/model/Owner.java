@@ -79,6 +79,9 @@ public class Owner extends Person {
     @Column(name = "household_gold")
     private Boolean householdGold;
 
+    @Column(name = "deleted")
+    private boolean deleted;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -196,6 +199,14 @@ public class Owner extends Person {
 
     public void setHouseholdGold(Boolean householdGold) {
         this.householdGold = householdGold;
+    }
+
+    public boolean isDeleted() {
+        return this.deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     protected Set<Pet> getPetsInternal() {

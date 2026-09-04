@@ -45,6 +45,9 @@ public final class IdentityKey {
     public static void rejectIfDuplicate(Owner candidate, Collection<Owner> existingOwners) {
         String key = of(candidate);
         for (Owner owner : existingOwners) {
+            if (owner.isDeleted()) {
+                continue;
+            }
             if (key.equals(of(owner))) {
                 throw new DuplicateTelephoneException(key);
             }

@@ -53,7 +53,8 @@ CREATE TABLE owners (
   namesake_count INTEGER,
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
-  household_gold BOOLEAN
+  household_gold BOOLEAN,
+  deleted BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX owners_last_name ON owners (last_name);
 

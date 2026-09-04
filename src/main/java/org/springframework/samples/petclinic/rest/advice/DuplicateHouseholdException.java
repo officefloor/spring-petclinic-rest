@@ -42,6 +42,9 @@ public class DuplicateHouseholdException extends RuntimeException {
         }
         String household = Household.idFor(candidate);
         for (Owner owner : existingOwners) {
+            if (owner.isDeleted()) {
+                continue;
+            }
             if (household.equals(Household.idFor(owner))) {
                 throw new DuplicateHouseholdException(candidate.getLastName(), candidate.getPostcode());
             }
