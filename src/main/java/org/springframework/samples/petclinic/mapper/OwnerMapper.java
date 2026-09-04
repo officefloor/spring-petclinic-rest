@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.service.ClinicService;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -146,9 +147,10 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's numeric membership level from 1 to 3: starting at 1, plus 1 when an
-     * email address is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is
-     * reserved for tenure).
+     * The owner's numeric membership level from 1 to 4: starting at 1, plus 1 when an
+     * email address is present, plus 1 when namesakeCount is 0, plus 1 when the owner's
+     * tenure is more than 365 days, capped at 4. Because a newly created owner has zero
+     * tenure, a new owner never exceeds level 3.
      */
     public int membershipLevel(Owner owner) {
         int level = 1;
@@ -160,7 +162,13 @@ public abstract class OwnerMapper {
         if (uniqueName) {
             level++;
         }
-        return Math.min(level, 3);
+        LocalDate registrationDate = owner.getRegistrationDate();
+        boolean tenured = registrationDate != null
+            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+        if (tenured) {
+            level++;
+        }
+        return Math.min(level, 4);
     }
 
     /**
