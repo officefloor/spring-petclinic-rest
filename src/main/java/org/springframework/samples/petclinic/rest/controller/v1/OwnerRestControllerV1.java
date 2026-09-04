@@ -129,8 +129,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
         this.clinicService.saveOwner(owner);
-        org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
         ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
