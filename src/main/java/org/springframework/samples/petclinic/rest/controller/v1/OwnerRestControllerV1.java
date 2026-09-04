@@ -72,6 +72,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /** A postcode, when supplied, must be exactly four digits before its region range is checked. */
     private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
 
+    /** Disposable email domains that are rejected: an owner whose email domain matches one of
+     *  these (case-insensitively) is refused with 400. */
+    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
+        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
+
     /** Dedicated audit logger; emits an audit line on successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
@@ -172,6 +177,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email != null) {
             email = email.trim();
             if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            String domain = email.substring(email.indexOf('@') + 1).toLowerCase(Locale.ROOT);
+            if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email.toLowerCase(Locale.ROOT));
