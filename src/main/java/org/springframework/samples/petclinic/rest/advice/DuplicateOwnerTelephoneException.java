@@ -16,17 +16,21 @@
 
 package org.springframework.samples.petclinic.rest.advice;
 
+import java.util.List;
+
 /**
  * Thrown when a request to create an owner carries a normalized telephone that is already used by
  * another owner. Carries the offending (normalized) telephone so the {@link ExceptionControllerAdvice}
  * can report it back to the client in a {@code 409 Conflict} response.
  */
-public class DuplicateOwnerTelephoneException extends RuntimeException {
+public class DuplicateOwnerTelephoneException extends DuplicateOwnerException {
+
+    private static final String DETAIL = "An owner with the given telephone already exists";
 
     private final String telephone;
 
     public DuplicateOwnerTelephoneException(String telephone) {
-        super("Telephone already in use by another owner: " + telephone);
+        super("Telephone already in use by another owner: " + telephone, DETAIL, List.of("telephone"));
         this.telephone = telephone;
     }
 

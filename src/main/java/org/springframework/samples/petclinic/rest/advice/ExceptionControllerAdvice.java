@@ -53,7 +53,6 @@ public class ExceptionControllerAdvice {
     private static final String ERROR_UNEXPECTED = "An unexpected error occurred while processing your request";
     private static final String ERROR_DATA_INTEGRITY = "The requested resource could not be processed due to a data constraint violation";
     private static final String ERROR_INVALID_REQUEST = "The request contains invalid or missing parameters";
-    private static final String ERROR_DUPLICATE_TELEPHONE = "An owner with the given telephone already exists";
 
     /**
      * Private method for constructing the {@link ProblemDetail} object passing the name and details of the exception
@@ -192,24 +191,26 @@ public class ExceptionControllerAdvice {
     }
 
     /**
-     * Handles {@link DuplicateOwnerTelephoneException}, thrown when an owner create request carries a
-     * normalized telephone that is already used by another owner. Returns a 409 Conflict whose
-     * {@code errors} array names the {@code telephone} field.
+     * Handles {@link DuplicateOwnerException} and its subtypes, each thrown when an owner create
+     * request would duplicate an existing owner under some uniqueness rule (telephone, household,
+     * ...). Returns a 409 Conflict carrying the exception's own client-facing detail and the names of
+     * the offending request fields in the {@code errors} array, so a new uniqueness rule needs only a
+     * new subtype rather than another handler here.
      *
-     * @param e The {@link DuplicateOwnerTelephoneException} to be handled
+     * @param e The {@link DuplicateOwnerException} to be handled
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status.
      */
-    @ExceptionHandler(DuplicateOwnerTelephoneException.class)
+    @ExceptionHandler(DuplicateOwnerException.class)
     @ResponseBody
-    public ResponseEntity<ProblemDetail> handleDuplicateOwnerTelephoneException(DuplicateOwnerTelephoneException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleDuplicateOwnerException(DuplicateOwnerException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.CONFLICT;
-        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), ERROR_DUPLICATE_TELEPHONE);
-        detail.setProperty("errors", List.of("telephone"));
-        logger.debug("Duplicate owner telephone at {} {}: {}",
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getDetail());
+        detail.setProperty("errors", e.getErrorFields());
+        logger.debug("Duplicate owner at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
-            e.getTelephone());
+            e.getMessage());
         return ResponseEntity.status(status).body(detail);
     }
 
