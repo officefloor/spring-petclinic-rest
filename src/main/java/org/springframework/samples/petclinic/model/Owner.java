@@ -100,6 +100,16 @@ public class Owner extends Person {
         this.registrationDate = registrationDate;
     }
 
+    /**
+     * Stable identifier for the household an owner belongs to, derived from last name and
+     * address. Owners who share a household (same last name and address) share this value.
+     */
+    @Transient
+    public String getHouseholdId() {
+        String key = (this.lastName + "|" + this.address).toLowerCase();
+        return String.format("H-%08X", key.hashCode());
+    }
+
     public String getCustomerCode() {
         return this.customerCode;
     }
