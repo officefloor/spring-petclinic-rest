@@ -32,7 +32,28 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.toDisplay(owner.getTelephone()))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's {@code riskFlag}, a single review signal that is {@code true} when any of the
+     * following hold and {@code false} otherwise: the owner is a possible duplicate
+     * ({@code possibleDuplicate}); the owner's email domain is disposable-adjacent (see
+     * {@link org.springframework.samples.petclinic.util.EmailNormalizer#hasDisposableAdjacentDomain});
+     * or the owner's city is over its soft capacity ({@code capacityWarning}). The three underlying
+     * flags may be {@code null} on legacy owners, which are treated as not set.
+     */
+    default boolean riskFlag(Owner owner) {
+        if (Boolean.TRUE.equals(owner.getPossibleDuplicate())) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(owner.getCapacityWarning())) {
+            return true;
+        }
+        String email = owner.getEmail();
+        return email != null && !email.isBlank()
+            && org.springframework.samples.petclinic.util.EmailNormalizer.hasDisposableAdjacentDomain(email);
+    }
 
     /**
      * The owner's locality (region), the single value every region-derived field is built from: the

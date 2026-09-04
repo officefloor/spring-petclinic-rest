@@ -96,4 +96,52 @@ public abstract class EmailNormalizer {
         return DISPOSABLE_DOMAINS.contains(domain);
     }
 
+    /**
+     * Whether the given email's domain is <em>disposable-adjacent</em>: not itself on the
+     * {@linkplain #DISPOSABLE_DOMAINS disposable blocklist} (those are rejected outright and never
+     * persist), but closely related to a blocked provider — either a subdomain of a blocked domain
+     * (e.g. {@code x.mailinator.com}) or a sibling domain sharing a blocked provider's second-level
+     * label under a different top-level domain (e.g. {@code mailinator.net}). Such addresses slip past
+     * the exact-match blocklist yet still look throwaway, so they are surfaced as a soft review signal
+     * rather than rejected. The domain is the part after the last {@code '@'}, compared
+     * case-insensitively; a value with no {@code '@'} has no disposable-adjacent domain.
+     *
+     * @param email a submitted or already-normalized email (non-null)
+     * @return {@code true} if the email's domain is disposable-adjacent
+     */
+    public static boolean hasDisposableAdjacentDomain(String email) {
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        if (DISPOSABLE_DOMAINS.contains(domain)) {
+            return false;
+        }
+        for (String blocked : DISPOSABLE_DOMAINS) {
+            // Subdomain of a blocked domain, e.g. "x.mailinator.com".
+            if (domain.endsWith("." + blocked)) {
+                return true;
+            }
+            // Sibling under a different TLD, e.g. blocked "mailinator.com" -> "mailinator.net".
+            if (secondLevelLabel(domain).equals(secondLevelLabel(blocked))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The registrable second-level label of a dotted domain: the label immediately before the final
+     * (top-level) label. For {@code mailinator.com} this is {@code mailinator}, and for
+     * {@code x.mailinator.net} it is likewise {@code mailinator}. A domain with no dot yields itself.
+     */
+    private static String secondLevelLabel(String domain) {
+        String[] labels = domain.split("\\.");
+        if (labels.length < 2) {
+            return domain;
+        }
+        return labels[labels.length - 2];
+    }
+
 }
