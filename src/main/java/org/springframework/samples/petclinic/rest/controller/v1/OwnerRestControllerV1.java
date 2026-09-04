@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.util.BulkSignup;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Namesakes;
+import org.springframework.samples.petclinic.util.PossibleDuplicate;
 import org.springframework.samples.petclinic.util.Postcode;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -118,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
         owner.setCustomerCode(CustomerCode.assign(owner));
         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
+        PossibleDuplicate.assign(owner, this.clinicService.findAllOwners());
         this.clinicService.saveOwner(owner);
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
