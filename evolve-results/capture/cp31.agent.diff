@@ -1,0 +1,71 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 91f7fba5f..a35cbade9 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,6 +28,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKey.of(owner))")
++    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.CheckDigit.luhn(owner.getCustomerCode()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+new file mode 100644
+index 000000000..e90133551
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/CheckDigit.java
+@@ -0,0 +1,31 @@
++package org.springframework.samples.petclinic.util;
++
++/**
++ * Computes the single Luhn check digit (0-9) over the decimal digits contained in a value,
++ * ignoring any non-digit characters. Used to derive an owner's {@code checkDigit} from its
++ * {@code customerCode}.
++ */
++public final class CheckDigit {
++
++    private CheckDigit() {
++    }
++
++    /** The Luhn check digit over the digits of {@code value}. */
++    public static int luhn(String value) {
++        int sum = 0;
++        boolean dbl = true;
++        for (int i = value.length() - 1; i >= 0; i--) {
++            char c = value.charAt(i);
++            if (c < '0' || c > '9') {
++                continue;
++            }
++            int d = c - '0';
++            if (dbl && (d *= 2) > 9) {
++                d -= 9;
++            }
++            sum += d;
++            dbl = !dbl;
++        }
++        return (10 - (sum % 10)) % 10;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d941c7134..8b0360652 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2188,6 +2188,17 @@ components:
+               type: string
+               readOnly: true
+               example: '61412345678|george.franklin@example.com|A1B2C3D4E5F6'
++            checkDigit:
++              title: Check digit
++              description: >-
++                The single Luhn check digit (0-9) computed over the decimal digits of the
++                customer code.
++              type: integer
++              format: int32
++              minimum: 0
++              maximum: 9
++              readOnly: true
++              example: 7
+           required:
+             - pets
+     OwnerPage:
