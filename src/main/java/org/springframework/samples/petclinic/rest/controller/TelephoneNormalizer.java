@@ -93,13 +93,42 @@ public class TelephoneNormalizer {
         if (e164Telephone == null || !e164Telephone.startsWith("+")) {
             return false;
         }
+        String countryCode = countryCodeOf(e164Telephone);
+        if (countryCode == null) {
+            return true;
+        }
+        return nationalNumberOf(e164Telephone, countryCode).length() == NATIONAL_NUMBER_LENGTHS.get(countryCode);
+    }
+
+    /**
+     * The listed country code (a key of {@link #NATIONAL_NUMBER_LENGTHS}) that a canonical E.164
+     * telephone carries, i.e. the one its digits begin with, or {@code null} when the number's
+     * digits begin with no listed country code.
+     *
+     * @param e164Telephone a canonical E.164 telephone (a '+' followed by digits), as produced by
+     *                      {@link #normalize(String)}
+     * @return the listed country code the number begins with, or {@code null} when none is listed
+     */
+    private static String countryCodeOf(String e164Telephone) {
         String digits = e164Telephone.substring(1);
-        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
-            String countryCode = entry.getKey();
+        for (String countryCode : NATIONAL_NUMBER_LENGTHS.keySet()) {
             if (digits.startsWith(countryCode)) {
-                return digits.length() - countryCode.length() == entry.getValue();
+                return countryCode;
             }
         }
-        return true;
+        return null;
+    }
+
+    /**
+     * The national number of a canonical E.164 telephone: the digits that follow the '+' and the
+     * given country code.
+     *
+     * @param e164Telephone a canonical E.164 telephone (a '+' followed by digits)
+     * @param countryCode   the country code the number carries, as returned by
+     *                      {@link #countryCodeOf(String)}
+     * @return the national-number digits (the digits after the country code)
+     */
+    private static String nationalNumberOf(String e164Telephone, String countryCode) {
+        return e164Telephone.substring(1 + countryCode.length());
     }
 }
