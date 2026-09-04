@@ -36,6 +36,9 @@ public class Person extends BaseEntity {
     @NotEmpty
     protected String lastName;
 
+    @Column(name = "title")
+    protected String title;
+
     public String getFirstName() {
         return this.firstName;
     }
@@ -52,5 +55,17 @@ public class Person extends BaseEntity {
         this.lastName = lastName;
     }
 
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /** Title followed by the last name, or just the last name when no title is set. */
+    public String getSalutation() {
+        return this.title == null ? this.lastName : this.title + " " + this.lastName;
+    }
 
 }
