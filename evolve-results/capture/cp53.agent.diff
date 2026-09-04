@@ -1,0 +1,43 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java b/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
+index 5f5fec12b..7c070a3eb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/OwnerAuditListener.java
+@@ -15,6 +15,8 @@
+  */
+ package org.springframework.samples.petclinic.model;
+ 
++import java.util.concurrent.atomic.AtomicLong;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -23,18 +25,25 @@ import jakarta.persistence.PostPersist;
+ /**
+  * Emits an audit trail entry to the dedicated {@code AUDIT} logger whenever an
+  * owner is first persisted, recording the assigned id, customer code and
+- * registration date.
++ * registration date. It also emits an immutable structured {@code OWNER_CREATED}
++ * JSON event carrying the owner's current primary identifier (the customer code).
+  */
+ public class OwnerAuditListener {
+ 
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /** Monotonically increasing sequence stamped on each structured create event. */
++    private static final AtomicLong SEQ = new AtomicLong();
++
+     @PostPersist
+     void onCreate(Owner owner) {
++        int membershipLevel = MembershipLevel.of(MembershipLevel.points(owner.getNamesakeCount(),
++            owner.getEmail(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()));
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+-            MembershipLevel.of(MembershipLevel.points(owner.getNamesakeCount(), owner.getEmail(),
+-                owner.getHouseholdMemberCount(), owner.getRegistrationDate())),
+-            owner.getMembershipNumber());
++            membershipLevel, owner.getMembershipNumber());
++        AUDIT.info("{}", String.format(
++            "{\"seq\":%d,\"ownerId\":%d,\"customerCode\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
++            SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), membershipLevel));
+     }
+ }
