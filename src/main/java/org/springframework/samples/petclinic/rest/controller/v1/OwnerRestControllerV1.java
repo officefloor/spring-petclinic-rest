@@ -44,6 +44,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -117,6 +118,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
@@ -258,6 +260,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (value == null || value.isBlank()) {
             missing.add(fieldName);
         }
+    }
+
+    /**
+     * Normalizes the submitted {@code address} on create to its canonical form (see
+     * {@link AddressNormalizer#normalize}) and writes it back onto the request so it is the value
+     * stored and returned, and the form every later address comparison (the required-field check,
+     * household duplicate detection and the shared household id) is judged on. A null address is left
+     * untouched so {@link #rejectBlankOwnerFields} still reports it as missing; a value that is blank
+     * after normalization likewise reduces to the empty string and is rejected there.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     */
+    private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
+        String address = ownerFieldsDto.getAddress();
+        if (address == null) {
+            return;
+        }
+        ownerFieldsDto.setAddress(AddressNormalizer.normalize(address));
     }
 
     /**
