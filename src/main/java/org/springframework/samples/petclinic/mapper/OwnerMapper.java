@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.CustomerCode.regionOf(owner.getCustomerCode()))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+    @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.model.AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
