@@ -130,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             owner.setRegistrationDate(LocalDate.now());
         }
         owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
+        owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
@@ -352,6 +353,23 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @throws DuplicateOwnerHouseholdException if another owner already shares the household and the
      *                                          request did not opt in with {@code sharesHousehold}
      */
+    /**
+     * Counts the existing owners (before this create) whose {@code firstName} and {@code lastName}
+     * both match the submitted values, compared case-insensitively. The count reflects only owners
+     * already persisted at the time of the create, so the owner being created is never included.
+     *
+     * @param firstName the submitted first name (non-blank here, {@link #rejectBlankOwnerFields}
+     *                  having already run)
+     * @param lastName  the submitted last name (non-blank here)
+     * @return the number of existing owners sharing the same first and last name
+     */
+    private int countNamesakes(String firstName, String lastName) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(owner -> firstName.equalsIgnoreCase(owner.getFirstName())
+                && lastName.equalsIgnoreCase(owner.getLastName()))
+            .count();
+    }
+
     private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
             return;
