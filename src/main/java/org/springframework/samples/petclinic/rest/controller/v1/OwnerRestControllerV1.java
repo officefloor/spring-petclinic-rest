@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.util.BulkSignup;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.IdentityKey;
 import org.springframework.samples.petclinic.util.Namesakes;
+import org.springframework.samples.petclinic.util.Postcode;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -108,6 +109,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        if (!Postcode.isValidForCity(owner.getCity(), owner.getPostcode())) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
         boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
