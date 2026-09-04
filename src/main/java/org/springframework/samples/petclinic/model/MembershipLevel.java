@@ -19,16 +19,17 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Derives an owner's numeric {@code membershipLevel} assigned on creation: starts at
- * {@code 1}, adds {@code 1} each for a present email, a {@code namesakeCount} of
- * {@code 0} and a household of at least three members. These pre-tenure factors are
- * capped at {@code 3}; level {@code 4} is reached only once the owner's tenure exceeds
- * {@code 365} days, so a newly created (zero-tenure) owner never exceeds {@code 3}.
+ * Derives an owner's membership standing assigned on creation. {@code points} start at
+ * {@code 0} and add {@code 2} for a present email, {@code 1} for a {@code namesakeCount}
+ * of {@code 0}, {@code 2} for a household of at least three members and {@code 3} once the
+ * owner's tenure exceeds {@code 365} days. Those points map to a {@code level} of
+ * {@code 1} ({@code 0-1}), {@code 2} ({@code 2-3}), {@code 3} ({@code 4-5}) or {@code 4}
+ * ({@code 6} or more).
  */
 public final class MembershipLevel {
 
-    /** Days of tenure required before an owner may reach level {@code 4}. */
-    private static final long LEVEL_4_TENURE_DAYS = 365;
+    /** Days of tenure required before the tenure points are awarded. */
+    private static final long TENURE_POINTS_DAYS = 365;
 
     private MembershipLevel() {
     }
@@ -38,28 +39,45 @@ public final class MembershipLevel {
      * @param email                the owner's email, if any
      * @param householdMemberCount number of members in the owner's household
      * @param registrationDate     the date the owner was registered, used to derive tenure
-     * @return the membership level from {@code 1} to {@code 4}
+     * @return the membership points, {@code 0} or more
      */
-    public static int of(Integer namesakeCount, String email, Integer householdMemberCount,
+    public static int points(Integer namesakeCount, String email, Integer householdMemberCount,
             LocalDate registrationDate) {
-        int level = 1;
+        int points = 0;
         if (email != null && !email.isBlank()) {
-            level++;
+            points += 2;
         }
         if (Integer.valueOf(0).equals(namesakeCount)) {
-            level++;
+            points += 1;
         }
         if (householdMemberCount != null && householdMemberCount >= 3) {
-            level++;
+            points += 2;
         }
-        if (level >= 4 && exceedsLevel4Tenure(registrationDate)) {
-            return 4;
+        if (exceedsTenure(registrationDate)) {
+            points += 3;
         }
-        return Math.min(level, 3);
+        return points;
     }
 
-    private static boolean exceedsLevel4Tenure(LocalDate registrationDate) {
+    /**
+     * @param points the membership points
+     * @return the membership level from {@code 1} to {@code 4}
+     */
+    public static int of(int points) {
+        if (points >= 6) {
+            return 4;
+        }
+        if (points >= 4) {
+            return 3;
+        }
+        if (points >= 2) {
+            return 2;
+        }
+        return 1;
+    }
+
+    private static boolean exceedsTenure(LocalDate registrationDate) {
         return registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > LEVEL_4_TENURE_DAYS;
+            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_POINTS_DAYS;
     }
 }
