@@ -14,11 +14,16 @@ import org.springframework.web.bind.annotation.RequestBody;
  * reported as an {@code errors} array (via {@link MissingOwnerFieldsException}) rather than as
  * bean-validation schema errors. This is the only step that binds the body; it republishes it
  * for {@link BuildOwner} to consume.
+ *
+ * <p>The address is normalized in place first (see {@link AddressNormalizer}), so the required-field
+ * check rejects an address that is blank after normalization, and the stored/returned value and every
+ * later address comparison see the normalized form.
  */
 public class ValidateOwnerRequiredFields {
 
     public void service(@RequestBody OwnerFieldsDto request, Out<OwnerFieldsDto> validated)
             throws MissingOwnerFieldsException {
+        request.setAddress(AddressNormalizer.normalize(request.getAddress()));
         List<String> missing = new ArrayList<>();
         if (isBlank(request.getFirstName())) {
             missing.add("firstName");

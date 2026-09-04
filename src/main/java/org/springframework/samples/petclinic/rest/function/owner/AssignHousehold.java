@@ -15,8 +15,9 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
  * is discoverable. The id is a stable identifier derived from the normalized last name and address
  * (upper-case hex prefix of their SHA-256), so every member of a household computes the same value.
  *
- * <p>Last name and address are compared case-insensitively with collapsed whitespace, matching
- * {@link EnsureUniqueHousehold}. Runs after {@link BuildOwner} within the create transaction: it sets
+ * <p>Last name is compared case-insensitively with collapsed whitespace and address in its normalized
+ * form (see {@link AddressNormalizer}), matching {@link EnsureUniqueHousehold}, and the id is derived
+ * from those same normalized values. Runs after {@link BuildOwner} within the create transaction: it sets
  * the id on the new owner (persisted by {@link SaveOwner}) and saves any existing members that did not
  * yet carry it. A request without {@code sharesHousehold}, or one with no matching owner, is left
  * untouched.
@@ -28,11 +29,11 @@ public class AssignHousehold {
             return;
         }
         String lastName = normalize(owner.getLastName());
-        String address = normalize(owner.getAddress());
+        String address = AddressNormalizer.normalize(owner.getAddress());
         java.util.List<Owner> household = new java.util.ArrayList<>();
         for (Owner existing : ownerRepository.findAll()) {
             if (normalize(existing.getLastName()).equals(lastName)
-                    && normalize(existing.getAddress()).equals(address)) {
+                    && AddressNormalizer.normalize(existing.getAddress()).equals(address)) {
                 household.add(existing);
             }
         }
