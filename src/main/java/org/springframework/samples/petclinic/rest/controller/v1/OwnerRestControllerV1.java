@@ -405,11 +405,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the membership number assigned on create, formatted
-     * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the
-     * {@code registrationDate} year (e.g. 'NSW-1A2B3C4D-M26').
+     * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the fiscal year of the
+     * business-day-adjusted {@code registrationDate} (the fiscal year starts on 1 July), e.g.
+     * 'NSW-1A2B3C4D-M26'.
      */
     private static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", registrationDate.getYear() % 100);
+        String yy = String.format("%02d", OwnerMapper.fiscalYear(registrationDate) % 100);
         return customerCode + "-M" + yy;
     }
 

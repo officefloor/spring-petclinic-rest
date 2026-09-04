@@ -14,8 +14,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
@@ -50,7 +50,31 @@ public abstract class OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The fiscal year (starting 1 July) that {@code date} falls in, identified by the
+     * calendar year in which the fiscal year ends: a date in July–December belongs to the
+     * fiscal year ending the following calendar year, while January–June belongs to the one
+     * ending that same calendar year.
+     */
+    public static int fiscalYear(LocalDate date) {
+        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
+    }
+
+    /**
+     * The owner's fiscal year formatted 'FY<YY>', where YY is the last two digits of the
+     * fiscal year of the (business-day-adjusted) {@code registrationDate} and the fiscal year
+     * starts on 1 July. Returns null when no registrationDate has been assigned.
+     */
+    String fiscalYear(Owner owner) {
+        LocalDate registrationDate = owner.getRegistrationDate();
+        if (registrationDate == null) {
+            return null;
+        }
+        return String.format("FY%02d", fiscalYear(registrationDate) % 100);
+    }
 
     /**
      * The owner's age band derived from {@code birthDate} relative to the
@@ -161,7 +185,7 @@ public abstract class OwnerMapper {
     /**
      * The owner's membership points: starting at 0, plus 2 when an email address is present,
      * plus 1 when namesakeCount is 0, plus 2 for a household of 3 or more members, plus 3 when
-     * the owner's tenure is more than 365 days.
+     * the owner's tenure is more than one fiscal year.
      */
     public int membershipPoints(Owner owner) {
         int points = 0;
@@ -178,7 +202,7 @@ public abstract class OwnerMapper {
         }
         LocalDate registrationDate = owner.getRegistrationDate();
         boolean tenured = registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > 365;
+            && fiscalYear(LocalDate.now()) - fiscalYear(registrationDate) > 1;
         if (tenured) {
             points += 3;
         }
