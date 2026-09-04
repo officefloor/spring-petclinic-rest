@@ -38,41 +38,49 @@ public class OwnerRegistrationException extends RuntimeException {
     public enum Reason {
 
         /** A supplied registration date is later than the server's current date. */
-        REGISTRATION_DATE_IN_FUTURE(HttpStatus.BAD_REQUEST),
+        REGISTRATION_DATE_IN_FUTURE(HttpStatus.BAD_REQUEST, "The supplied registration date is in the future"),
 
         /** The per-day create quota for the registration date has already been reached. */
-        DAILY_CREATE_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS),
+        DAILY_CREATE_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS, "The daily create limit for this registration date has been reached"),
 
         /** The owner supplies no usable address in either the structured or the flat form. */
-        ADDRESS_MISSING(HttpStatus.BAD_REQUEST),
+        ADDRESS_MISSING(HttpStatus.BAD_REQUEST, "The owner has no usable address"),
 
         /** The telephone cannot be normalized or has an invalid national number length. */
-        TELEPHONE_INVALID(HttpStatus.BAD_REQUEST),
+        TELEPHONE_INVALID(HttpStatus.BAD_REQUEST, "The supplied telephone number is invalid"),
 
         /** A supplied email is not a syntactically valid address. */
-        EMAIL_INVALID(HttpStatus.BAD_REQUEST),
+        EMAIL_INVALID(HttpStatus.BAD_REQUEST, "The supplied email address is not valid"),
 
         /** A supplied email belongs to a disposable-address domain. */
-        EMAIL_DISPOSABLE(HttpStatus.BAD_REQUEST),
+        EMAIL_DISPOSABLE(HttpStatus.BAD_REQUEST, "The supplied email address belongs to a disposable-address domain"),
 
         /** A supplied postcode is malformed or out of range for the owner's city. */
-        POSTCODE_INVALID(HttpStatus.BAD_REQUEST),
+        POSTCODE_INVALID(HttpStatus.BAD_REQUEST, "The supplied postcode is malformed or out of range for the owner's city"),
 
         /** The candidate collides with an existing owner under the identity rule. */
-        DUPLICATE_OWNER(HttpStatus.CONFLICT),
+        DUPLICATE_OWNER(HttpStatus.CONFLICT, "An owner with the same identity already exists"),
 
         /** The owner's city has already reached its capacity ceiling. */
-        CITY_CAPACITY_REACHED(HttpStatus.CONFLICT);
+        CITY_CAPACITY_REACHED(HttpStatus.CONFLICT, "The owner's city has reached its capacity ceiling");
 
         private final HttpStatus status;
 
-        Reason(HttpStatus status) {
+        private final String detail;
+
+        Reason(HttpStatus status, String detail) {
             this.status = status;
+            this.detail = detail;
         }
 
         /** The HTTP status the endpoint reports for this rejection. */
         public HttpStatus getStatus() {
             return status;
+        }
+
+        /** A human-readable explanation of this rejection, used as the problem detail. */
+        public String getDetail() {
+            return detail;
         }
     }
 

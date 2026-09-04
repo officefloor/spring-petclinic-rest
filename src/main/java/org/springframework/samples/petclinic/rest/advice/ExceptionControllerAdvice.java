@@ -112,12 +112,14 @@ public class ExceptionControllerAdvice {
      */
     @ExceptionHandler(OwnerRegistrationException.class)
     @ResponseBody
-    public ResponseEntity<Void> handleOwnerRegistrationException(OwnerRegistrationException e, HttpServletRequest request) {
+    public ResponseEntity<ProblemDetail> handleOwnerRegistrationException(OwnerRegistrationException e, HttpServletRequest request) {
         logger.warn("Owner registration rejected at {} {}: {}",
             request.getMethod(),
             request.getRequestURI(),
             e.getReason());
-        return ResponseEntity.status(e.getStatus()).build();
+        HttpStatus status = e.getStatus();
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getReason().getDetail());
+        return ResponseEntity.status(status).body(detail);
     }
 
     /**
