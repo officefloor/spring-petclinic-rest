@@ -1,0 +1,116 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 84d96bf40..c075f4c27 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -56,6 +56,9 @@ public class Owner extends Person {
+     @Column(name = "customer_code")
+     private String customerCode;
+ 
++    @Column(name = "namesake_count")
++    private Integer namesakeCount;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -107,6 +110,14 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    public Integer getNamesakeCount() {
++        return this.namesakeCount;
++    }
++
++    public void setNamesakeCount(Integer namesakeCount) {
++        this.namesakeCount = namesakeCount;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index a8611f4f0..16294b7bb 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -39,6 +39,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
+ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
+ import org.springframework.samples.petclinic.service.ClinicService;
+ import org.springframework.samples.petclinic.util.CustomerCode;
++import org.springframework.samples.petclinic.util.Namesakes;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -108,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         DuplicateHouseholdException.rejectIfDuplicate(owner,
+             Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()), this.clinicService.findAllOwners());
+         owner.setCustomerCode(CustomerCode.assign(owner.getLastName(), this.clinicService.findAllOwners().size()));
++        owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Namesakes.java b/src/main/java/org/springframework/samples/petclinic/util/Namesakes.java
+new file mode 100644
+index 000000000..dc0b7eaa5
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Namesakes.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Counts how many existing owners share a candidate owner's first and last name,
++ * compared case-insensitively (the {@code namesakeCount}).
++ */
++public final class Namesakes {
++
++    private Namesakes() {
++    }
++
++    public static int count(Owner candidate, Collection<Owner> existing) {
++        int namesakes = 0;
++        for (Owner other : existing) {
++            if (candidate.getFirstName().equalsIgnoreCase(other.getFirstName())
++                && candidate.getLastName().equalsIgnoreCase(other.getLastName())) {
++                namesakes++;
++            }
++        }
++        return namesakes;
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 70fd8db41..6e617f644 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -44,7 +44,8 @@ CREATE TABLE owners (
+   telephone  VARCHAR(20),
+   email      VARCHAR(255),
+   registration_date DATE,
+-  customer_code VARCHAR(20)
++  customer_code VARCHAR(20),
++  namesake_count INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2fb90ece2..8da13ca07 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2115,6 +2115,16 @@ components:
+               type: string
+               readOnly: true
+               example: 'A1B2C3D4E5F6'
++            namesakeCount:
++              title: Namesake count
++              description: >-
++                The number of existing owners sharing this owner's first and last name
++                (compared case-insensitively) at the time this owner was created.
++              type: integer
++              format: int32
++              minimum: 0
++              readOnly: true
++              example: 1
+           required:
+             - pets
+     OwnerPage:
