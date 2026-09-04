@@ -17,12 +17,15 @@ public class LogAuditOnCreate {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
     private static final AtomicLong SEQUENCE = new AtomicLong();
 
     public void service(@Val Owner owner) {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             MembershipLevel.of(MembershipPoints.of(owner)));
+        NOTIFY.info("welcome owner id={} memberId={}", owner.getId(), owner.getCustomerCode());
         AUDIT.info(new OwnerCreatedEvent(SEQUENCE.incrementAndGet(), owner.getId(),
             owner.getCustomerCode(), MembershipLevel.of(MembershipPoints.of(owner))).toJson());
     }
