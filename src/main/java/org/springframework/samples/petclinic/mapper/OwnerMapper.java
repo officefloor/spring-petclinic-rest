@@ -20,7 +20,7 @@ public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(owner.getInitials())")
-    @Mapping(target = "membershipTier", expression = "java(org.springframework.samples.petclinic.model.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
+    @Mapping(target = "membershipTier", expression = "java(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 ? \"GOLD\" : org.springframework.samples.petclinic.model.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
