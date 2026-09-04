@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -139,9 +142,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        String lastNameKey = normalizeIdentity(owner.getLastName());
+        String addressKey = normalizeIdentity(owner.getAddress());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            String lastNameKey = normalizeIdentity(owner.getLastName());
-            String addressKey = normalizeIdentity(owner.getAddress());
             boolean householdDuplicate = this.clinicService.findAllOwners().stream()
                 .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
                     && normalizeIdentity(existing.getAddress()).equals(addressKey));
@@ -149,6 +152,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 return new ResponseEntity<>(HttpStatus.CONFLICT);
             }
         }
+        owner.setHouseholdId(householdId(lastNameKey, addressKey));
         owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
@@ -167,6 +171,29 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return "";
         }
         return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Build the stable, shared household identifier for an owner, formatted
+     * {@code 'HH-<HEX12>'} where HEX12 is the first twelve upper-case hex characters
+     * of the SHA-256 digest of the normalized lastName and address joined by '|'.
+     * Owners in the same household (same normalized lastName and address) therefore
+     * derive an identical householdId.
+     */
+    private static String householdId(String lastNameKey, String addressKey) {
+        String source = lastNameKey + "|" + addressKey;
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(source.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return "HH-" + sb.substring(0, 12).toUpperCase(Locale.ROOT);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     /**
