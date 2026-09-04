@@ -1,0 +1,70 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java
+new file mode 100644
+index 000000000..566f9e052
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++/**
++ * Derives the stable household identifier shared by owners at the same household,
++ * i.e. having the same last name and address (compared case-insensitively with
++ * collapsed whitespace). The value is a pure function of those two fields, so every
++ * owner in one household resolves to the same id without any stored state.
++ */
++public final class HouseholdId {
++
++    private HouseholdId() {
++    }
++
++    public static String of(String lastName, String address) {
++        String key = normalize(lastName) + "|" + normalize(address);
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder("H-");
++            for (int i = 0; i < 6; i++) {
++                sb.append(String.format("%02x", digest[i]));
++            }
++            return sb.toString();
++        } catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 824cafc62..bf199a26c 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,6 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
++    @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 73071082a..5794f2c9c 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2087,6 +2087,12 @@ components:
+               type: string
+               example: 'FRA-0007'
+               readOnly: true
++            householdId:
++              title: Household ID
++              description: Stable identifier shared by owners at the same household (same last name and address).
++              type: string
++              example: 'H-3f9a2b7c1e5d'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
