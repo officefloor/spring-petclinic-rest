@@ -299,6 +299,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private boolean isDuplicateOwner(Owner candidate) {
         String identityKey = OwnerMapper.identityKey(candidate);
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .map(OwnerMapper::identityKey)
             .anyMatch(identityKey::equals);
     }
@@ -321,7 +322,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String lastNameKey = IdentityUtils.normalizeIdentity(candidate.getLastName());
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> IdentityUtils.normalizeIdentity(existing.getLastName()).equals(lastNameKey)
+            .filter(existing -> !existing.isDeleted()
+                && IdentityUtils.normalizeIdentity(existing.getLastName()).equals(lastNameKey)
                 && postcode.equals(existing.getPostcode())
                 && !postcode.isBlank()
                 && !java.util.Objects.equals(candidate.getTelephone(), existing.getTelephone()))
@@ -419,7 +421,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        this.clinicService.deleteOwner(owner);
+        // Soft-delete: flag the owner deleted and retain the row rather than removing it, so it
+        // is still readable via GET while being ignored by the create duplicate/identity checks.
+        owner.setDeleted(true);
+        this.clinicService.saveOwner(owner);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 

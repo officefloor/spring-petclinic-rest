@@ -70,6 +70,7 @@ public class HouseholdResolver {
     public boolean householdExists(Owner owner) {
         String householdId = householdId(owner);
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .anyMatch(existing -> householdId.equals(householdId(existing)));
     }
 }
