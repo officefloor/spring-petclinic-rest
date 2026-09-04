@@ -1,0 +1,97 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+new file mode 100644
+index 000000000..0847c00a3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipLevel.java
+@@ -0,0 +1,27 @@
++package org.springframework.samples.petclinic.mapper;
++
++/**
++ * Derives the owner's membership level: a number from 1 to 3 fixed at creation. It
++ * starts at 1, gains 1 when an email is on file, gains 1 when the owner had no
++ * namesakes at creation (namesakeCount is 0), and is capped at 3 (level 4 is reserved
++ * for tenure). The value is a pure function of those two fields, so it needs no stored
++ * state.
++ */
++public final class MembershipLevel {
++
++    private static final int MAX = 3;
++
++    private MembershipLevel() {
++    }
++
++    public static int of(Integer namesakeCount, String email) {
++        int level = 1;
++        if (email != null && !email.isBlank()) {
++            level++;
++        }
++        if (namesakeCount != null && namesakeCount == 0) {
++            level++;
++        }
++        return Math.min(level, MAX);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 069085a8f..93051d6a0 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,7 +22,7 @@ public interface OwnerMapper {
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+-    @Mapping(target = "membershipTier", expression = "java(MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
++    @Mapping(target = "membershipLevel", expression = "java(MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 61fdb642d..01f23069a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,9 +13,6 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warns(ownerRepository));
+-        if (HouseholdTier.isGold(owner, ownerRepository)) {
+-            dto.setMembershipTier("GOLD");
+-        }
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 9c0306886..ecdf8e4a5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,9 +16,6 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warns(ownerRepository));
+-        if (HouseholdTier.isGold(owner, ownerRepository)) {
+-            dto.setMembershipTier("GOLD");
+-        }
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index dd3c1ce63..6e7a31233 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2099,11 +2099,13 @@ components:
+               type: string
+               example: 'H-3f9a2b7c1e5d'
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: The owner's membership tier - 'SILVER' when the owner had no namesakes at creation and has an email on file, otherwise 'BRONZE'.
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: The owner's membership level, a number from 1 to 3 fixed at creation - starting at 1, plus 1 when an email is on file, plus 1 when the owner had no namesakes at creation, capped at 3 (level 4 is reserved for tenure).
++              type: integer
++              format: int32
++              minimum: 1
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
