@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.util;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -27,7 +29,9 @@ import java.util.Optional;
  * form, which is the value stored and returned. Spaces, dashes and brackets are stripped; a leading
  * {@code '+'} and its country code are kept when present, otherwise the country code {@code '+61'} is
  * assumed and a single leading {@code '0'} is dropped from the national digits. The result is accepted
- * only when 8 to 15 digits follow the {@code '+'}. Two telephones denote the same number when their
+ * only when 8 to 15 digits follow the {@code '+'} and, for a recognised country code, exactly as many
+ * national digits follow the code as that country requires ({@code +61} requires 9, {@code +1} requires
+ * 10). Two telephones denote the same number when their
  * {@linkplain #toComparisonKey(String) comparison keys} — their E.164 forms — are equal.
  */
 public abstract class TelephoneNormalizer {
@@ -38,6 +42,19 @@ public abstract class TelephoneNormalizer {
     private static final int MIN_E164_DIGITS = 8;
 
     private static final int MAX_E164_DIGITS = 15;
+
+    /**
+     * The exact number of national (subscriber) digits required after each known country code.
+     * A telephone whose country code appears here is accepted only when precisely this many
+     * digits follow the code (e.g. {@code +61} requires 9 national digits, {@code +1} requires 10).
+     * Ordered longest-prefix-first so the country code is matched greedily.
+     */
+    private static final Map<String, Integer> NATIONAL_LENGTH_BY_COUNTRY_CODE = new LinkedHashMap<>();
+
+    static {
+        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("61", 9);
+        NATIONAL_LENGTH_BY_COUNTRY_CODE.put("1", 10);
+    }
 
     /**
      * Reduce a submitted telephone to its canonical E.164 form, which is the value to be stored and
@@ -63,7 +80,30 @@ public abstract class TelephoneNormalizer {
         if (!digits.matches("\\d+") || digits.length() < MIN_E164_DIGITS || digits.length() > MAX_E164_DIGITS) {
             return Optional.empty();
         }
+        if (!hasValidNationalLength(digits)) {
+            return Optional.empty();
+        }
         return Optional.of("+" + digits);
+    }
+
+    /**
+     * Checks the national (subscriber) portion of an all-digit E.164 number against the length its
+     * country code requires. When the leading country code is one we recognise (see
+     * {@link #NATIONAL_LENGTH_BY_COUNTRY_CODE}), the remaining digits must number exactly the value
+     * mapped for that code; an unrecognised country code is left to the generic 8-to-15-digit bound.
+     *
+     * @param digits the E.164 number without its leading {@code '+'} (digits only)
+     * @return {@code true} if the national-number length is valid for the country code
+     */
+    private static boolean hasValidNationalLength(String digits) {
+        for (Map.Entry<String, Integer> entry : NATIONAL_LENGTH_BY_COUNTRY_CODE.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                int nationalLength = digits.length() - countryCode.length();
+                return nationalLength == entry.getValue();
+            }
+        }
+        return true;
     }
 
     /**
