@@ -14,10 +14,9 @@ import tools.jackson.databind.ObjectMapper;
  * Emits, on successful create, two things via the dedicated {@code AUDIT} logger:
  * <ol>
  * <li>the human-readable audit line, carrying the newly assigned owner id together
- * with its {@code customerCode}, {@code registrationDate}, {@code membershipLevel} and
- * {@code membershipNumber}; and</li>
+ * with its {@code memberId}, {@code registrationDate} and {@code membershipLevel}; and</li>
  * <li>an immutable structured event —
- * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}} — where
+ * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} — where
  * {@code seq} is a monotonically increasing integer across creates.</li>
  * </ol>
  * Runs after the owner has been saved so the id is set.
@@ -32,9 +31,9 @@ public class AuditOwnerCreated {
     private static final AtomicLong SEQ = new AtomicLong();
 
     public void service(@Val Owner owner) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-                owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-                owner.getMembershipLevel(), owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
+                owner.getMembershipLevel());
 
         OwnerCreatedEvent event = new OwnerCreatedEvent(SEQ.incrementAndGet(), owner.getId(),
                 primaryIdentifier(owner), owner.getMembershipLevel());
@@ -42,23 +41,21 @@ public class AuditOwnerCreated {
     }
 
     /**
-     * The owner's current primary identifier. Today that is the {@code customerCode};
-     * when the customerCode is later unified into the {@code memberId}, this is the single
-     * place to switch so the event carries the memberId instead.
+     * The owner's primary identifier — the unified {@code memberId}.
      */
     private static String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 
     /**
      * Immutable structured audit event for a created owner. Field order matches the
-     * documented shape {@code {seq, ownerId, customerCode, membershipLevel, event}}; the
+     * documented shape {@code {seq, ownerId, memberId, membershipLevel, event}}; the
      * {@code event} marker is fixed at {@code OWNER_CREATED}.
      */
-    public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel,
+    public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
             String event) {
-        public OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
-            this(seq, ownerId, customerCode, membershipLevel, "OWNER_CREATED");
+        public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+            this(seq, ownerId, memberId, membershipLevel, "OWNER_CREATED");
         }
     }
 }

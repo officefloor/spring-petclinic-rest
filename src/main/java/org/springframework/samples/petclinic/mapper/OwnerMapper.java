@@ -6,8 +6,7 @@ import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
-import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit;
-import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeRegion;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.LocalityTimezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
@@ -23,7 +22,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, CustomerCodeCheckDigit.class, CustomerCodeRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class})
+@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, OwnerRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -35,15 +34,13 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
-            expression = "java(CustomerCodeRegion.of(owner))")
+            expression = "java(OwnerRegion.of(owner))")
     @Mapping(target = "timezone",
             expression = "java(LocalityTimezone.of(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
     @Mapping(target = "identityKey",
             expression = "java(OwnerIdentityKey.of(owner))")
-    @Mapping(target = "checkDigit",
-            expression = "java(CustomerCodeCheckDigit.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBand.of(owner))")
     @Mapping(target = "ownerSegment",
