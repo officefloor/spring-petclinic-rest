@@ -18,47 +18,59 @@ package org.springframework.samples.petclinic.model;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <REGION>-<HASH8>}: the
- * region derived from the owner's postcode, and the first 8 upper-case hex
- * characters of {@code SHA-256(normalizedTelephone + lastName)}, e.g.
- * {@code NSW-1A2B3C4D}.
+ * Builds an owner's unified {@code memberId}, formatted
+ * {@code <REGION><FY><HASH8><CHK>}: the region derived from the owner's postcode,
+ * the 2-digit fiscal year of the registration date, the first 8 upper-case hex
+ * characters of {@code SHA-256(normalizedTelephone + lastName)} and a single Luhn
+ * check digit over the digits of {@code <REGION><FY><HASH8>}, e.g.
+ * {@code NSW261A2B3C4D5}.
  */
-public final class CustomerCode {
+public final class MemberId {
 
-    private CustomerCode() {
+    private MemberId() {
     }
 
     /**
-     * @param owner          the owner being coded (its postcode, telephone and last name are used)
-     * @param existingOwners the current owners (unused; identity no longer depends on other owners)
-     * @return the formatted customer code, e.g. {@code NSW-1A2B3C4D}
+     * @param owner          the owner being coded (postcode, telephone, last name and
+     *                       registration date are used)
+     * @param existingOwners the current owners, used only for collision handling
+     * @return the formatted member id, e.g. {@code NSW261A2B3C4D5}
      */
     public static String of(Owner owner, Collection<Owner> existingOwners) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
-        String base = region + "-" + hash8(owner.getTelephone() + owner.getLastName());
-        return deduplicate(base, existingOwners);
+        String base = region + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100)
+            + hash8(owner.getTelephone() + owner.getLastName());
+        return deduplicate(base + CheckDigit.of(base), existingOwners);
+    }
+
+    /** The leading {@code <REGION>} letters of a member id, or {@code "UNKNOWN"} when absent. */
+    public static String regionOf(String memberId) {
+        if (memberId == null) {
+            return "UNKNOWN";
+        }
+        int i = 0;
+        while (i < memberId.length() && Character.isLetter(memberId.charAt(i))) {
+            i++;
+        }
+        return i == 0 ? "UNKNOWN" : memberId.substring(0, i);
     }
 
     /** Appends {@code -<n>} with the smallest {@code n >= 2} that avoids any existing
-     *  owner's customer code, or returns {@code base} unchanged when already unique. */
+     *  owner's member id, or returns {@code base} unchanged when already unique. */
     private static String deduplicate(String base, Collection<Owner> existingOwners) {
-        java.util.Set<String> taken = new java.util.HashSet<>();
+        Set<String> taken = new HashSet<>();
         for (Owner existing : existingOwners) {
-            taken.add(existing.getCustomerCode());
+            taken.add(existing.getMemberId());
         }
         String unique = base;
         for (int n = 2; taken.contains(unique); n++) {
             unique = base + "-" + n;
         }
         return unique;
-    }
-
-    /** The {@code <REGION>} component of a customer code, or {@code "UNKNOWN"} when absent. */
-    public static String regionOf(String customerCode) {
-        int dash = customerCode == null ? -1 : customerCode.indexOf('-');
-        return dash < 0 ? "UNKNOWN" : customerCode.substring(0, dash);
     }
 
     private static String hash8(String value) {

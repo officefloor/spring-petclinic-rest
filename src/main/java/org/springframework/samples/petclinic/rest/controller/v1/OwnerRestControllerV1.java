@@ -27,7 +27,7 @@ import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.BusinessDay;
-import org.springframework.samples.petclinic.model.CustomerCode;
+import org.springframework.samples.petclinic.model.MemberId;
 import org.springframework.samples.petclinic.model.MembershipLevel;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
@@ -122,7 +122,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 && existing.getLastName().equalsIgnoreCase(owner.getLastName()))
             .count());
         owner.setHouseholdMemberCount(1 + (int) owners.stream().filter(existing -> sameHousehold(existing, owner)).count());
-        owner.setCustomerCode(CustomerCode.of(owner, owners));
+        owner.setMemberId(MemberId.of(owner, owners));
         Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);

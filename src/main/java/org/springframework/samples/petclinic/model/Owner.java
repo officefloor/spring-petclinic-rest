@@ -71,7 +71,7 @@ public class Owner extends Person {
     private LocalDate birthDate;
 
     @Column(name = "customer_code")
-    private String customerCode;
+    private String memberId;
 
     @Column(name = "namesake_count")
     private Integer namesakeCount;
@@ -118,8 +118,9 @@ public class Owner extends Person {
         this.birthDate = birthDate;
     }
 
-    public String getCustomerCode() {
-        return this.customerCode;
+    /** Unified member identifier formatted {@code <REGION><FY><HASH8><CHK>} (see {@link MemberId}). */
+    public String getMemberId() {
+        return this.memberId;
     }
 
     /** Stable identifier shared by owners of the same household (matching last name and postcode). */
@@ -128,8 +129,8 @@ public class Owner extends Person {
         return HouseholdId.of(getLastName(), this.postcode);
     }
 
-    public void setCustomerCode(String customerCode) {
-        this.customerCode = customerCode;
+    public void setMemberId(String memberId) {
+        this.memberId = memberId;
     }
 
     /** Derived duplicate-detection key: the SHA-256 hex over the normalized telephone, lower-case
@@ -138,18 +139,6 @@ public class Owner extends Person {
     @Transient
     public String getIdentityKey() {
         return IdentityKey.of(this.telephone, this.email, getLastName());
-    }
-
-    /** Membership number formatted {@code <customerCode>-M<YY>}, e.g. {@code SMI-0007-M26}. */
-    @Transient
-    public String getMembershipNumber() {
-        return MembershipNumber.of(this.customerCode, this.registrationDate);
-    }
-
-    /** Luhn check digit over the digits of the {@code customerCode}. */
-    @Transient
-    public Integer getCheckDigit() {
-        return CheckDigit.of(this.customerCode);
     }
 
     public Integer getNamesakeCount() {
