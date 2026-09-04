@@ -160,8 +160,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersCreatedThatDay >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
-        String address = addressNormalizer.normalize(owner.getAddress());
-        if (address.isBlank()) {
+        String address = normalizedAddress(owner);
+        if (address == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setAddress(address);
@@ -241,6 +241,24 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * The owner's postal address in the single canonical form under which it is stored, or
+     * {@code null} when the owner supplies no usable address. The raw address is reduced to its
+     * canonical form by {@link AddressNormalizer}; a blank result (a missing or whitespace-only
+     * address) has no canonical form and is reported as {@code null} so the caller can reject the
+     * request with 400.
+     *
+     * <p>This is the single point at which an owner's address is resolved and normalized on
+     * create, so every rule keyed on the stored address reads the one value produced here.
+     *
+     * @param owner the owner about to be created
+     * @return the canonical stored address, or {@code null} when the owner supplies none
+     */
+    private String normalizedAddress(Owner owner) {
+        String address = addressNormalizer.normalize(owner.getAddress());
+        return address.isBlank() ? null : address;
     }
 
     /**
