@@ -16,9 +16,6 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -39,6 +36,7 @@ import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
 import org.springframework.samples.petclinic.rest.controller.AddressNormalizer;
 import org.springframework.samples.petclinic.rest.controller.CityRegionResolver;
+import org.springframework.samples.petclinic.rest.controller.HouseholdResolver;
 import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
@@ -47,6 +45,8 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HashUtils;
+import org.springframework.samples.petclinic.util.IdentityUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -89,13 +89,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     private final CityRegionResolver cityRegionResolver;
 
+    private final HouseholdResolver householdResolver;
+
     public OwnerRestControllerV1(ClinicService clinicService,
                                  OwnerMapper ownerMapper,
                                  PetMapper petMapper,
                                  VisitMapper visitMapper,
                                  TelephoneNormalizer telephoneNormalizer,
                                  AddressNormalizer addressNormalizer,
-                                 CityRegionResolver cityRegionResolver) {
+                                 CityRegionResolver cityRegionResolver,
+                                 HouseholdResolver householdResolver) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.petMapper = petMapper;
@@ -103,6 +106,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.cityRegionResolver = cityRegionResolver;
+        this.householdResolver = householdResolver;
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
@@ -188,18 +192,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
         // deliberately shares an existing household (same normalized last name and address)
         // is assigned that household's shared id; a plain new owner has no household id, so
         // its identity key is decided by telephone and email alone.
-        String lastNameKey = normalizeIdentity(owner.getLastName());
-        String addressKey = addressNormalizer.normalize(owner.getAddress());
         if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())
-                && householdExists(lastNameKey, addressKey)) {
-            owner.setHouseholdId(householdId(lastNameKey, addressKey));
+                && householdResolver.householdExists(owner)) {
+            owner.setHouseholdId(householdResolver.householdId(owner));
         }
         if (isDuplicateOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        String cityKey = normalizeIdentity(owner.getCity());
+        String cityKey = IdentityUtils.normalizeIdentity(owner.getCity());
         long ownersInCity = this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
+            .filter(existing -> IdentityUtils.normalizeIdentity(existing.getCity()).equals(cityKey))
             .count();
         if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
@@ -265,9 +267,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null) {
             return null;
         }
-        String lastNameKey = normalizeIdentity(candidate.getLastName());
+        String lastNameKey = IdentityUtils.normalizeIdentity(candidate.getLastName());
         return this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
+            .filter(existing -> IdentityUtils.normalizeIdentity(existing.getLastName()).equals(lastNameKey)
                 && postcode.equals(existing.getPostcode())
                 && !postcode.isBlank()
                 && !java.util.Objects.equals(candidate.getTelephone(), existing.getTelephone()))
@@ -275,60 +277,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(java.util.Objects::nonNull)
             .min(Integer::compareTo)
             .orElse(null);
-    }
-
-    /**
-     * Whether an existing owner already belongs to the household identified by the given
-     * normalized last name and address, so a new owner flagged {@code sharesHousehold} has a
-     * household to join.
-     */
-    private boolean householdExists(String lastNameKey, String addressKey) {
-        return this.clinicService.findAllOwners().stream()
-            .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
-                && addressNormalizer.normalize(existing.getAddress()).equals(addressKey));
-    }
-
-    /**
-     * Normalize a value for household-identity comparison: null becomes an empty
-     * string, surrounding whitespace is trimmed, internal whitespace runs collapse
-     * to a single space, and the result is lower-cased.
-     */
-    private static String normalizeIdentity(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Build the stable, shared household identifier for an owner, formatted
-     * {@code 'HH-<HEX12>'} where HEX12 is the first twelve upper-case hex characters
-     * of the SHA-256 digest of the normalized lastName and address joined by '|'.
-     * Owners in the same household (same normalized lastName and address) therefore
-     * derive an identical householdId.
-     */
-    private static String householdId(String lastNameKey, String addressKey) {
-        return "HH-" + sha256HexPrefix(lastNameKey + "|" + addressKey, 12);
-    }
-
-    /**
-     * The first {@code length} upper-case hex characters of the SHA-256 digest of the UTF-8
-     * bytes of {@code source}. This is the single place the SHA-256 hex derivation lives, so
-     * every identity value built from a truncated hex digest reads the same computation.
-     */
-    private static String sha256HexPrefix(String source, int length) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(source.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.substring(0, length).toUpperCase(Locale.ROOT);
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     /**
@@ -340,7 +288,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private String customerCode(Owner owner) {
         String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
-        String hash8 = sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+        String hash8 = HashUtils.sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
         return region + "-" + hash8;
     }
 
