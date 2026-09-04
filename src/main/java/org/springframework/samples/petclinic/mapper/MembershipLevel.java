@@ -1,35 +1,25 @@
 package org.springframework.samples.petclinic.mapper;
 
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-
 /**
- * Derives the owner's membership level: a number from 1 to 4. It starts at 1, gains 1
- * when an email is on file, gains 1 when the owner had no namesakes at creation
- * (namesakeCount is 0), and gains 1 when the owner's tenure exceeds 365 days. A newly
- * created owner has zero tenure, so a new owner never exceeds level 3.
+ * Maps a membership points score to the owner's membership level: 1 for 0-1 points,
+ * 2 for 2-3, 3 for 4-5 and 4 for 6 or more. The points are computed by
+ * {@link MembershipPoints}.
  */
 public final class MembershipLevel {
-
-    private static final int MAX = 4;
-
-    private static final long TENURE_DAYS = 365;
 
     private MembershipLevel() {
     }
 
-    public static int of(Integer namesakeCount, String email, LocalDate registrationDate) {
-        int level = 1;
-        if (email != null && !email.isBlank()) {
-            level++;
+    public static int of(int points) {
+        if (points <= 1) {
+            return 1;
         }
-        if (namesakeCount != null && namesakeCount == 0) {
-            level++;
+        if (points <= 3) {
+            return 2;
         }
-        if (registrationDate != null
-                && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_DAYS) {
-            level++;
+        if (points <= 5) {
+            return 3;
         }
-        return Math.min(level, MAX);
+        return 4;
     }
 }
