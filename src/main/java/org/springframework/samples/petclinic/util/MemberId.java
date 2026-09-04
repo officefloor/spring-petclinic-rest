@@ -68,9 +68,24 @@ public abstract class MemberId {
      * @return the eight-character upper-case hex HASH8
      */
     public static String hash8(String telephone, String lastName) {
+        return Sha256.hex(hashInput(telephone, lastName)).substring(0, HASH_LENGTH).toUpperCase();
+    }
+
+    /**
+     * The exact value the {@linkplain #hash8 HASH8} digest is taken over: the owner's normalized
+     * telephone concatenated with the last name, each part treated as the empty string when absent.
+     * Composing the hashed value through this single method keeps the one place that decides what the
+     * HASH8 digest covers explicit, mirroring how {@link HouseholdNormalizer#toComparisonKey} composes
+     * the value its household id is hashed from.
+     *
+     * @param telephone the owner's normalized telephone, or null
+     * @param lastName  the owner's last name, or null
+     * @return the value hashed into the HASH8 component
+     */
+    private static String hashInput(String telephone, String lastName) {
         String telephonePart = telephone == null ? "" : telephone;
         String lastNamePart = lastName == null ? "" : lastName;
-        return Sha256.hex(telephonePart + lastNamePart).substring(0, HASH_LENGTH).toUpperCase();
+        return telephonePart + lastNamePart;
     }
 
     /**

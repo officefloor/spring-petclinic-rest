@@ -56,10 +56,28 @@ public abstract class OwnerIdentity {
      * @return the owner's identity key, a 64-character lower-case hex SHA-256 digest
      */
     public static String identityKey(String telephone, String email, String lastName) {
+        return Sha256.hex(hashInput(telephone, email, lastName));
+    }
+
+    /**
+     * The exact value the identity key digest is taken over: the telephone and email reduced to their
+     * {@linkplain TelephoneNormalizer#toComparisonKey comparison} /
+     * {@linkplain EmailNormalizer#toComparisonKey comparison} forms and the last name to its
+     * {@linkplain Soundex#soundex Soundex} code, joined with {@code '|'} separators. Composing the
+     * hashed value through this single method keeps the one place that decides what the identity key
+     * covers explicit, mirroring how {@link HouseholdNormalizer#toComparisonKey} composes the value its
+     * household id is hashed from.
+     *
+     * @param telephone the owner's telephone (normalized on create), or null
+     * @param email     the owner's email (lower-cased on create), or null/blank when absent
+     * @param lastName  the owner's last name, or null
+     * @return the value hashed into the identity key
+     */
+    private static String hashInput(String telephone, String email, String lastName) {
         String telephonePart = telephone == null ? "" : TelephoneNormalizer.toComparisonKey(telephone);
         String emailPart = (email == null || email.isBlank()) ? "" : EmailNormalizer.toComparisonKey(email);
         String lastNamePart = Soundex.soundex(lastName);
-        return Sha256.hex(telephonePart + SEPARATOR + emailPart + SEPARATOR + lastNamePart);
+        return telephonePart + SEPARATOR + emailPart + SEPARATOR + lastNamePart;
     }
 
     /**

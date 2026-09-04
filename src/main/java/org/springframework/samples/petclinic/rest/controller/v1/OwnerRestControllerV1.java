@@ -344,9 +344,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(),
             ownerDto.getMembershipLevel());
-        OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
+        AUDIT.info(ownerCreatedEvent(owner, ownerDto).toJson());
+    }
+
+    /**
+     * Builds the structured {@link OwnerCreatedEvent} published for a freshly created owner. The
+     * event's payload is composed here in one place: its {@code seq} by bumping {@link #EVENT_SEQ}
+     * exactly once, its primary identifier through {@link #primaryIdentifier}, and its
+     * {@code membershipLevel} from the mapped DTO. Keeping the event's shape behind this single builder
+     * lets the audit event's payload change in one spot, mirroring {@link #primaryIdentifier}'s single
+     * accessor for the owner's identity.
+     *
+     * @param owner    the freshly created and persisted owner, already stamped with its identity
+     * @param ownerDto the owner's mapped DTO, the source of the derived {@code membershipLevel} carried
+     *                 on the event
+     * @return the structured audit event to publish
+     */
+    private OwnerCreatedEvent ownerCreatedEvent(Owner owner, OwnerDto ownerDto) {
+        return new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
-        AUDIT.info(event.toJson());
     }
 
     /**
