@@ -1,0 +1,199 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0796c5bb5..ac5300704 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -28,16 +28,9 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+-    @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
+     @Mapping(target = "registrationDate", source = "registrationDate", qualifiedByName = "defaultRegistrationDate")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    /** Normalize a telephone to its digits only; validation guarantees exactly 10. */
+-    @Named("normalizeTelephone")
+-    default String normalizeTelephone(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+-    }
+-
+     /** Default a missing registration date to the server's current date. */
+     @Named("defaultRegistrationDate")
+     default LocalDate defaultRegistrationDate(LocalDate registrationDate) {
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/E164.java b/src/main/java/org/springframework/samples/petclinic/model/E164.java
+new file mode 100644
+index 000000000..efe3c6601
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/E164.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.model;
++
++import java.util.regex.Pattern;
++
++/**
++ * Converts free-form telephone input into E.164 form: keep a leading '+' and country
++ * code when present, otherwise assume '+61' and drop a single leading '0' from the
++ * national digits. Spaces, dashes and brackets are stripped and 8 to 15 digits must
++ * remain after the '+', or an {@link InvalidTelephoneException} is thrown.
++ */
++public final class E164 {
++
++    private static final Pattern SEPARATORS = Pattern.compile("[\\s()\\-]");
++
++    private static final Pattern EIGHT_TO_FIFTEEN_DIGITS = Pattern.compile("\\d{8,15}");
++
++    private E164() {
++    }
++
++    public static String toE164(String raw) {
++        if (raw == null) {
++            throw new InvalidTelephoneException(null);
++        }
++        String trimmed = raw.trim();
++        boolean explicit = trimmed.startsWith("+");
++        String digits = SEPARATORS.matcher(explicit ? trimmed.substring(1) : trimmed).replaceAll("");
++        if (!explicit) {
++            if (digits.startsWith("0")) {
++                digits = digits.substring(1);
++            }
++            digits = "61" + digits;
++        }
++        if (!EIGHT_TO_FIFTEEN_DIGITS.matcher(digits).matches()) {
++            throw new InvalidTelephoneException(raw);
++        }
++        return "+" + digits;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/InvalidTelephoneException.java b/src/main/java/org/springframework/samples/petclinic/model/InvalidTelephoneException.java
+new file mode 100644
+index 000000000..01b3e8650
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/InvalidTelephoneException.java
+@@ -0,0 +1,28 @@
++/*
++ * Copyright 2016 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.model;
++
++/**
++ * Signals that a telephone value cannot be reduced to a valid E.164 number.
++ * Mapped to HTTP 400 Bad Request by the REST exception advice.
++ */
++public class InvalidTelephoneException extends RuntimeException {
++
++    public InvalidTelephoneException(String telephone) {
++        super("Telephone is not a valid E.164 number: " + telephone);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7640af204..bb155e507 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -18,9 +18,7 @@ package org.springframework.samples.petclinic.model;
+ import org.springframework.core.style.ToStringCreator;
+ 
+ import jakarta.persistence.*;
+-import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+-import jakarta.validation.constraints.Pattern;
+ 
+ import java.time.LocalDate;
+ import java.util.*;
+@@ -46,8 +44,6 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+     private String telephone;
+ 
+     @Column(name = "email")
+@@ -88,7 +84,7 @@ public class Owner extends Person {
+     }
+ 
+     public void setTelephone(String telephone) {
+-        this.telephone = telephone;
++        this.telephone = E164.toE164(telephone);
+     }
+ 
+     public LocalDate getRegistrationDate() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+index edb7d1da3..1c7b69148 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/ExceptionControllerAdvice.java
+@@ -28,6 +28,7 @@ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ProblemDetail;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.samples.petclinic.model.InvalidTelephoneException;
+ import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
+ import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
+ import org.springframework.security.access.AccessDeniedException;
+@@ -130,6 +131,14 @@ public class ExceptionControllerAdvice {
+      * @param request {@link HttpServletRequest} object referring to the current request.
+      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
+      */
++    @ExceptionHandler(InvalidTelephoneException.class)
++    @ResponseBody
++    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
++        HttpStatus status = HttpStatus.BAD_REQUEST;
++        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
++        return ResponseEntity.status(status).body(detail);
++    }
++
+     @ExceptionHandler(DuplicateTelephoneException.class)
+     @ResponseBody
+     public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 8c71ffc2f..6f9d8df12 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2027,12 +2027,17 @@ components:
+           example: Madison
+         telephone:
+           title: Telephone number
+-          description: The telephone number of the pet owner.
++          description: >-
++            The telephone number of the pet owner. Stored and returned in E.164 form:
++            a leading '+' and country code are kept when present, otherwise '+61' is
++            assumed and a single leading '0' is dropped from the national digits;
++            spaces, dashes and brackets are ignored. Rejected unless 8 to 15 digits
++            remain after the '+'.
+           type: string
+           minLength: 1
+           maxLength: 20
+-          pattern: "^\\D*(\\d\\D*){10}$"
+-          example: '6085551023'
++          pattern: "^[-+()\\d ]+$"
++          example: '0412 345 678'
+         email:
+           title: Email address
+           description: The email address of the pet owner. Stored and returned lower-cased.
