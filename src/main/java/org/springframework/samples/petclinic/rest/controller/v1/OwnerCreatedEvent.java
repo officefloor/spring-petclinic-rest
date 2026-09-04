@@ -22,27 +22,33 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Immutable structured audit event emitted (alongside the human-readable audit line) on each
- * successful owner create. It serializes to the JSON object
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}.
+ * successful owner create. Under schema version 2 it serializes to the JSON object
+ * {@code {seq, ownerId, memberId, membershipLevel, ownerSegment, schemaVersion, event:'OWNER_CREATED'}}.
  *
  * <p>{@code seq} is a monotonically increasing integer across creates, letting a consumer order and
  * de-duplicate events. {@code memberId} carries the owner's primary identifier, the unified member id
- * (the controller derives the value through a single accessor, {@code primaryIdentifier}).
+ * (the controller derives the value through a single accessor, {@code primaryIdentifier}), now produced
+ * by the version-2 identity algorithm. {@code ownerSegment} is recomputed from that version-2 identity,
+ * and {@code schemaVersion} carries the fixed value {@code 2} identifying this schema.
  *
  * <p>The event is a record, so it is immutable once constructed: its fields cannot be mutated after
  * the create that produced it, which is the guarantee an audit trail depends on.
  */
-public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
+public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
+                                String ownerSegment) {
 
     /** Fixed discriminator identifying this kind of audit event. */
     static final String EVENT_TYPE = "OWNER_CREATED";
+
+    /** Fixed schema version of this audit event under the version-2 owner identity release. */
+    static final int SCHEMA_VERSION = 2;
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
     /**
      * Renders this event as its canonical JSON representation, with fields in the documented order
-     * {@code {seq, ownerId, memberId, membershipLevel, event}}. This is the exact string published to
-     * the {@code AUDIT} logger.
+     * {@code {seq, ownerId, memberId, membershipLevel, ownerSegment, schemaVersion, event}}. This is
+     * the exact string published to the {@code AUDIT} logger.
      *
      * @return the event as a single-line JSON object
      */
@@ -52,6 +58,8 @@ public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Inte
         node.put("ownerId", this.ownerId);
         node.put("memberId", this.memberId);
         node.put("membershipLevel", this.membershipLevel);
+        node.put("ownerSegment", this.ownerSegment);
+        node.put("schemaVersion", SCHEMA_VERSION);
         node.put("event", EVENT_TYPE);
         return MAPPER.writeValueAsString(node);
     }

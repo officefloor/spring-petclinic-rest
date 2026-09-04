@@ -361,8 +361,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * @return the structured audit event to publish
      */
     private OwnerCreatedEvent ownerCreatedEvent(Owner owner, OwnerDto ownerDto) {
+        OwnerDto.OwnerSegmentEnum ownerSegment = ownerDto.getOwnerSegment();
         return new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
-            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
+            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel(),
+            ownerSegment == null ? null : ownerSegment.getValue());
     }
 
     /**

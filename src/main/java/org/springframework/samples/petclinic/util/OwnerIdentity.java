@@ -42,6 +42,14 @@ public abstract class OwnerIdentity {
     private static final String SEPARATOR = "|";
 
     /**
+     * Fixed version tag mixed into the hashed identity key under the version-2 identity algorithm, so
+     * every key differs from the value the version-1 algorithm produced. Two owners are still the same
+     * exactly when their whole keys are equal; the tag only shifts the derived key, not the rule for
+     * when two owners collide.
+     */
+    private static final String VERSION_TAG = "V2";
+
+    /**
      * Builds the identity key from an owner's raw parts. The telephone and email are reduced to
      * their {@linkplain TelephoneNormalizer#toComparisonKey comparison} /
      * {@linkplain EmailNormalizer#toComparisonKey comparison} forms and the last name to its
@@ -77,7 +85,7 @@ public abstract class OwnerIdentity {
         String telephonePart = telephone == null ? "" : TelephoneNormalizer.toComparisonKey(telephone);
         String emailPart = (email == null || email.isBlank()) ? "" : EmailNormalizer.toComparisonKey(email);
         String lastNamePart = Soundex.soundex(lastName);
-        return telephonePart + SEPARATOR + emailPart + SEPARATOR + lastNamePart;
+        return VERSION_TAG + SEPARATOR + telephonePart + SEPARATOR + emailPart + SEPARATOR + lastNamePart;
     }
 
     /**

@@ -43,6 +43,14 @@ public abstract class HouseholdNormalizer {
     private static final int HOUSEHOLD_ID_LENGTH = 12;
 
     /**
+     * Fixed version tag mixed into the hashed household id under the version-2 identity algorithm, so
+     * every household id differs from the value the version-1 algorithm produced. Two owners still
+     * share a household exactly when their {@linkplain #toComparisonKey comparison keys} are equal; the
+     * tag only shifts the derived identifier, not the rule for when two owners match.
+     */
+    private static final String VERSION_TAG = "V2";
+
+    /**
      * The key used to decide whether two owners belong to the same household: their normalized
      * {@code lastName} and {@code postcode} joined together, so households stored in different letter
      * cases or with incidental whitespace still compare equal.
@@ -61,14 +69,14 @@ public abstract class HouseholdNormalizer {
      * {@code lastName} (compared case-insensitively with collapsed whitespace) and {@code postcode}
      * derives the same identifier without any coordination or stored state, and the identifier stays
      * the same across restarts. The value is the first {@value #HOUSEHOLD_ID_LENGTH} hex characters
-     * of the SHA-256 of the comparison key.
+     * of the SHA-256 of the fixed {@code 'V2'} version tag followed by the comparison key.
      *
      * @param lastName the owner's last name (non-null)
      * @param postcode the owner's postcode, or null when absent
      * @return the household's stable shared identifier
      */
     public static String toHouseholdId(String lastName, String postcode) {
-        return Sha256.hex(toComparisonKey(lastName, postcode)).substring(0, HOUSEHOLD_ID_LENGTH);
+        return Sha256.hex(VERSION_TAG + toComparisonKey(lastName, postcode)).substring(0, HOUSEHOLD_ID_LENGTH);
     }
 
     /**

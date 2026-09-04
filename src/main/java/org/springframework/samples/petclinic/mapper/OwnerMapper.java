@@ -29,7 +29,8 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
-    @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.toDisplay(owner.getTelephone()))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
@@ -194,6 +195,24 @@ public interface OwnerMapper {
             return owner.getLastName();
         }
         return title + " " + owner.getLastName();
+    }
+
+    /**
+     * Groups the owner's version-2 identity values under the nested {@code identity} object: the
+     * unified {@code memberId} and {@code householdId} stamped on the owner, and the derived
+     * {@code identityKey} (see
+     * {@link org.springframework.samples.petclinic.util.OwnerIdentity#identityKey}). All three are
+     * produced by the version-2 identity algorithm; keeping them behind this single builder is the one
+     * place the response's identity object is composed.
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+            new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(
+            org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner));
+        return identity;
     }
 
     Owner toOwner(OwnerDto ownerDto);

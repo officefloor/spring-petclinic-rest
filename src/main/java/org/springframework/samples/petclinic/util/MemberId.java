@@ -40,6 +40,14 @@ public abstract class MemberId {
     /** Number of leading hex characters of the SHA-256 digest kept as the HASH8 component. */
     private static final int HASH_LENGTH = 8;
 
+    /**
+     * Fixed version tag mixed into the HASH8 digest under the version-2 identity algorithm, so
+     * every member id differs from the value the version-1 algorithm produced. It is only ever
+     * mixed into the hashed identifier; the {@linkplain #region plain region} that leads the id
+     * (and hence the owner's locality) never carries it.
+     */
+    private static final String VERSION_TAG = "V2";
+
     /** Number of digits in the fiscal-year (FY) component. */
     private static final int FY_LENGTH = 2;
 
@@ -54,38 +62,43 @@ public abstract class MemberId {
      * @return the member id
      */
     public static String of(String region, LocalDate registrationDate, String telephone, String lastName) {
-        String base = region + fyDigits(registrationDate) + hash8(telephone, lastName);
+        String base = region + fyDigits(registrationDate) + hash8(region, telephone, lastName);
         return base + LuhnCheckDigit.of(base);
     }
 
     /**
      * The HASH8 component alone: the first eight upper-case hex characters of the SHA-256 digest of the
-     * owner's normalized telephone concatenated with the last name, each part treated as the empty
-     * string when absent. This is the region-and-hash identity's hash component.
+     * fixed {@code 'V2'} version tag, the region and the owner's normalized telephone concatenated with
+     * the last name, each part treated as the empty string when absent. This is the version-2
+     * region-and-hash identity's hash component; mixing the version tag in makes it differ from the
+     * value the version-1 algorithm produced, so no version-1 member id is produced again.
      *
+     * @param region    the region code the id is built from (e.g. {@code NSW}, or {@code UNKNOWN})
      * @param telephone the owner's normalized telephone, or null
      * @param lastName  the owner's last name, or null
      * @return the eight-character upper-case hex HASH8
      */
-    public static String hash8(String telephone, String lastName) {
-        return Sha256.hex(hashInput(telephone, lastName)).substring(0, HASH_LENGTH).toUpperCase();
+    public static String hash8(String region, String telephone, String lastName) {
+        return Sha256.hex(hashInput(region, telephone, lastName)).substring(0, HASH_LENGTH).toUpperCase();
     }
 
     /**
-     * The exact value the {@linkplain #hash8 HASH8} digest is taken over: the owner's normalized
-     * telephone concatenated with the last name, each part treated as the empty string when absent.
-     * Composing the hashed value through this single method keeps the one place that decides what the
-     * HASH8 digest covers explicit, mirroring how {@link HouseholdNormalizer#toComparisonKey} composes
-     * the value its household id is hashed from.
+     * The exact value the {@linkplain #hash8 HASH8} digest is taken over: the fixed {@code 'V2'} version
+     * tag, the region and the owner's normalized telephone concatenated with the last name, each part
+     * treated as the empty string when absent. Composing the hashed value through this single method
+     * keeps the one place that decides what the HASH8 digest covers explicit, mirroring how
+     * {@link HouseholdNormalizer#toComparisonKey} composes the value its household id is hashed from.
      *
+     * @param region    the region code the id is built from, or null
      * @param telephone the owner's normalized telephone, or null
      * @param lastName  the owner's last name, or null
      * @return the value hashed into the HASH8 component
      */
-    private static String hashInput(String telephone, String lastName) {
+    private static String hashInput(String region, String telephone, String lastName) {
+        String regionPart = region == null ? "" : region;
         String telephonePart = telephone == null ? "" : telephone;
         String lastNamePart = lastName == null ? "" : lastName;
-        return telephonePart + lastNamePart;
+        return VERSION_TAG + regionPart + telephonePart + lastNamePart;
     }
 
     /**
