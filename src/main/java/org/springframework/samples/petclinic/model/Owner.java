@@ -74,6 +74,12 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "possible_duplicate")
+    private Boolean possibleDuplicate;
+
+    @Column(name = "possible_duplicate_of")
+    private Integer possibleDuplicateOf;
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
@@ -166,6 +172,22 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    public Boolean getPossibleDuplicate() {
+        return this.possibleDuplicate;
+    }
+
+    public void setPossibleDuplicate(Boolean possibleDuplicate) {
+        this.possibleDuplicate = possibleDuplicate;
+    }
+
+    public Integer getPossibleDuplicateOf() {
+        return this.possibleDuplicateOf;
+    }
+
+    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
+        this.possibleDuplicateOf = possibleDuplicateOf;
     }
 
     public LocalDate getBirthDate() {

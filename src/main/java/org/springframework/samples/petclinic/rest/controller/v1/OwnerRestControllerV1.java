@@ -161,6 +161,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
+        Integer possibleDuplicateOf = findPossibleDuplicate(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -432,6 +435,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(Owner::getHouseholdId)
             .filter(householdId::equals)
             .count();
+    }
+
+    /**
+     * Finds an existing owner that the owner being created soft-matches on, or {@code null} when there
+     * is none. The create has already cleared the hard-duplicate identity check
+     * ({@link #rejectDuplicateIdentity}), so it is not an exact match of any existing owner; it is a
+     * <em>possible</em> duplicate when it nevertheless shares an existing owner's {@code lastName}
+     * (compared case-insensitively) and {@code postcode} while carrying a different normalized
+     * telephone. The oldest such owner (the earliest persisted) is returned so the flag points at the
+     * original record; owners with no postcode never match, since a shared postcode is required.
+     *
+     * @param owner the owner being created, with telephone already normalized and lastName/postcode set
+     * @return the id of the matching existing owner, or {@code null} when the owner is not a possible
+     *         duplicate
+     */
+    private Integer findPossibleDuplicate(Owner owner) {
+        String postcode = owner.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        String telephoneKey = TelephoneNormalizer.toComparisonKey(owner.getTelephone());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> postcode.equals(existing.getPostcode()))
+            .filter(existing -> existing.getTelephone() != null
+                && !telephoneKey.equals(TelephoneNormalizer.toComparisonKey(existing.getTelephone())))
+            .map(Owner::getId)
+            .filter(Objects::nonNull)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**
