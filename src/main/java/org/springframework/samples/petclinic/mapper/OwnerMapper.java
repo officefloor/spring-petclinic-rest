@@ -23,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials",
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "membershipTier",
-            expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty()) ? \"SILVER\" : \"BRONZE\")")
+            expression = "java((owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) ? \"GOLD\" : ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty()) ? \"SILVER\" : \"BRONZE\"))")
     @Mapping(target = "locality",
             expression = "java(LocalityLookup.regionOf(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
