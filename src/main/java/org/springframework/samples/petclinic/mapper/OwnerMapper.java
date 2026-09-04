@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
     @Mapping(target = "membershipTier", expression = "java(MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
+    @Mapping(target = "locality", expression = "java(Locality.of(owner.getCity()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
