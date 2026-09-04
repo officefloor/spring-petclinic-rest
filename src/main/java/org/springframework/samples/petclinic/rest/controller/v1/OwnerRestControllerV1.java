@@ -163,7 +163,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         owner.setHouseholdId(householdId(lastNameKey, addressKey));
-        owner.setCustomerCode(nextCustomerCode(owner.getLastName()));
+        owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         int namesakeCount = (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName())
                 && owner.getLastName().equalsIgnoreCase(existing.getLastName()))
@@ -213,21 +213,26 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Build the customer code assigned on create, formatted {@code '<LAST3>-<NNNN>'}:
-     * LAST3 is the upper-cased first three letters of {@code lastName} and NNNN is a
-     * global 4-digit zero-padded sequence equal to one more than the current number of
-     * owners (e.g. 'SMI-0007').
+     * Build the customer code assigned on create, formatted {@code '<CITY3>-<LAST3>-<NNNN>'}:
+     * CITY3 is the upper-cased first three letters of {@code city}, LAST3 is the upper-cased
+     * first three letters of {@code lastName} and NNNN is a per-city 4-digit zero-padded
+     * sequence equal to one more than the number of owners already in that city
+     * (e.g. 'LON-SMI-0007').
      */
-    private String nextCustomerCode(String lastName) {
+    private String nextCustomerCode(String city, String lastName) {
+        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
         String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        int sequence = this.clinicService.findAllOwners().size() + 1;
-        return String.format("%s-%04d", last3, sequence);
+        String cityKey = normalizeIdentity(city);
+        int sequence = (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
+            .count() + 1;
+        return String.format("%s-%s-%04d", city3, last3, sequence);
     }
 
     /**
      * Build the membership number assigned on create, formatted
      * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the
-     * {@code registrationDate} year (e.g. 'SMI-0007-M26').
+     * {@code registrationDate} year (e.g. 'LON-SMI-0007-M26').
      */
     private static String membershipNumber(String customerCode, LocalDate registrationDate) {
         String yy = String.format("%02d", registrationDate.getYear() % 100);
