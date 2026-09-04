@@ -8,8 +8,8 @@ import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerExcep
 
 /**
  * The duplicate check for creating owners. A household — {@code (normalizedLastName, postcode)}
- * expressed as a deterministic {@code householdId} (see {@link OwnerIdentityKey#householdId(String,
- * String)}) — may legitimately have several members (their membership levels are capped relative to
+ * expressed as a deterministic {@code householdId} (see {@link HouseholdId#derive(String, String)}) —
+ * may legitimately have several members (their membership levels are capped relative to
  * each other by {@link CapMembershipLevel}), so sharing a household is no longer a duplicate on its own.
  * Only a <em>true</em> duplicate is rejected with 409 via {@link DuplicateOwnerException}: an existing
  * non-deleted owner in the same household with the same (E.164) telephone — i.e. the same person.
@@ -25,13 +25,13 @@ public class EnsureUniqueIdentity {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
             return; // declared household member — bypass the household duplicate block
         }
-        String householdId = OwnerIdentityKey.householdIdOf(request);
+        String householdId = HouseholdId.of(request);
         String telephone = E164Telephone.toE164OrNull(request.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner no longer blocks a duplicate
             }
-            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))
+            if (householdId.equals(HouseholdId.of(existing))
                     && telephone != null
                     && telephone.equals(E164Telephone.toE164OrNull(existing.getTelephone()))) {
                 throw new DuplicateOwnerException(householdId);

@@ -34,7 +34,7 @@ public class AssignPossibleDuplicate {
         if (postcode == null) {
             return; // no postcode means it cannot share a postcode with anyone
         }
-        String lastName = OwnerIdentityKey.normalizeName(owner.getLastName());
+        String lastName = HouseholdId.normalizeName(owner.getLastName());
         String telephone = E164Telephone.toE164OrNull(owner.getTelephone());
 
         for (Owner existing : ownerRepository.findAll()) {
@@ -44,7 +44,7 @@ public class AssignPossibleDuplicate {
             if (!postcode.equals(normalizePostcode(existing.getPostcode()))) {
                 continue;
             }
-            if (!lastName.equals(OwnerIdentityKey.normalizeName(existing.getLastName()))) {
+            if (!lastName.equals(HouseholdId.normalizeName(existing.getLastName()))) {
                 continue;
             }
             String existingTelephone = E164Telephone.toE164OrNull(existing.getTelephone());

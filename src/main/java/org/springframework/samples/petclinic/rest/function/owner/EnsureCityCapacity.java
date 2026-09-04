@@ -18,22 +18,15 @@ public class EnsureCityCapacity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws CityAtCapacityException {
-        String city = normalize(request.getCity());
+        String city = ComparisonText.of(request.getCity());
         int count = 0;
         for (Owner existing : ownerRepository.findAll()) {
-            if (normalize(existing.getCity()).equals(city)) {
+            if (ComparisonText.of(existing.getCity()).equals(city)) {
                 count++;
             }
         }
         if (count >= CITY_CAPACITY) {
             throw new CityAtCapacityException(request.getCity());
         }
-    }
-
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }

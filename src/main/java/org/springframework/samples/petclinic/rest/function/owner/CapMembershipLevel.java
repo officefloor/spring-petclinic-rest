@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Caps, on the owner being created, its {@code membershipLevel} so it cannot exceed one above the
  * current maximum {@code membershipLevel} among the existing members of its household — the owners
- * already saved that share the same deterministic {@code householdId} (see {@link OwnerIdentityKey}).
+ * already saved that share the same deterministic {@code householdId} (see {@link HouseholdId}).
  * With no existing household member no cap applies and the level assigned by
  * {@link AssignMembershipLevel} stands.
  *
@@ -24,7 +24,7 @@ public class CapMembershipLevel {
         String householdId = owner.getHouseholdId();
         Integer maxExisting = null;
         for (Owner existing : ownerRepository.findAll()) {
-            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))
+            if (householdId.equals(HouseholdId.of(existing))
                     && existing.getMembershipLevel() != null
                     && (maxExisting == null || existing.getMembershipLevel() > maxExisting)) {
                 maxExisting = existing.getMembershipLevel();
