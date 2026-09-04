@@ -8,6 +8,11 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  * '0' is dropped from the national digits. The result must carry 8 to 15 digits after the '+',
  * else it is rejected with {@link InvalidTelephoneException} (a 400). So {@code '0412 345 678'}
  * becomes {@code '+61412345678'} and {@code '+64 21 123 456'} becomes {@code '+6421123456'}.
+ *
+ * <p>The national-number length is additionally checked against known country codes: {@code '+61'}
+ * requires exactly 9 national digits and {@code '+1'} requires exactly 10. A number whose national
+ * length is wrong for its country is rejected with {@link InvalidTelephoneException} (a 400). Other
+ * country codes are only bound by the general 8-to-15 total-digit rule.
  */
 final class E164Telephone {
 
@@ -27,6 +32,17 @@ final class E164Telephone {
         }
         if (!digits.matches("\\d{8,15}")) {
             throw new InvalidTelephoneException(raw);
+        }
+        // National-number length must match the country code.
+        if (digits.startsWith("61")) {
+            if (digits.length() - 2 != 9) {
+                throw new InvalidTelephoneException(raw);
+            }
+        }
+        else if (digits.startsWith("1")) {
+            if (digits.length() - 1 != 10) {
+                throw new InvalidTelephoneException(raw);
+            }
         }
         return "+" + digits;
     }
