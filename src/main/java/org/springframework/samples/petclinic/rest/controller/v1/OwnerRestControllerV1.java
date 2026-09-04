@@ -33,6 +33,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -43,6 +44,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -118,6 +120,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectBlankOwnerFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        rejectDuplicateHousehold(ownerFieldsDto);
         normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
@@ -310,6 +313,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(comparisonKey::equals);
         if (inUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
+    }
+
+    /**
+     * Rejects creating an owner who shares a household with any existing owner, unless the request
+     * opts in with {@code sharesHousehold} set to {@code true}. Two owners share a household when they
+     * have the same {@code lastName} and {@code address}, compared case-insensitively and with runs of
+     * whitespace collapsed (see {@link HouseholdNormalizer}); the submitted fields and every existing
+     * owner's stored fields are reduced to their {@linkplain HouseholdNormalizer#toComparisonKey
+     * comparison key} before comparison. A match is reported as a {@code 409 Conflict}.
+     *
+     * @param ownerFieldsDto the submitted owner fields (its {@code lastName} and {@code address} are
+     *                       non-blank here, {@link #rejectBlankOwnerFields} having already run)
+     * @throws DuplicateOwnerHouseholdException if another owner already shares the household and the
+     *                                          request did not opt in with {@code sharesHousehold}
+     */
+    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
+        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return;
+        }
+        String comparisonKey = HouseholdNormalizer.toComparisonKey(
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(owner -> owner.getLastName() != null && owner.getAddress() != null)
+            .map(owner -> HouseholdNormalizer.toComparisonKey(owner.getLastName(), owner.getAddress()))
+            .anyMatch(comparisonKey::equals);
+        if (inUse) {
+            throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
         }
     }
 }
