@@ -72,6 +72,9 @@ public class Owner extends Person {
     @Column(name = "postcode")
     private String postcode;
 
+    @Column(name = "title")
+    private String title;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
 
@@ -170,6 +173,24 @@ public class Owner extends Person {
 
     public void setPostcode(String postcode) {
         this.postcode = postcode;
+    }
+
+    public String getTitle() {
+        return this.title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * The owner's salutation: title and last name when a title is present
+     * (e.g. 'DR Franklin'), otherwise just the last name.
+     */
+    @Transient
+    public String getSalutation() {
+        return (this.title == null || this.title.isBlank())
+            ? this.lastName : this.title + " " + this.lastName;
     }
 
     protected Set<Pet> getPetsInternal() {
