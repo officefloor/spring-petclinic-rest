@@ -20,7 +20,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,6 +59,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.transaction.Transactional;
@@ -95,6 +99,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * have already been created for the day, the new owner's {@code bulkSignupWarning} is {@code true}.
      */
     private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
+    /**
+     * Request header carrying the client-supplied idempotency key for a create. When a create repeats
+     * with a key already seen, the originally created owner is returned with {@code 200 OK} instead of
+     * creating a duplicate (see {@link #addOwner}).
+     */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * Remembers, per seen {@code Idempotency-Key}, the id of the owner that create originally produced,
+     * so a repeated create carrying the same key replays that owner rather than creating a duplicate.
+     */
+    private final Map<String, Integer> idempotentCreates = new ConcurrentHashMap<>();
 
     private final ClinicService clinicService;
 
@@ -142,6 +159,16 @@ public class OwnerRestControllerV1 implements OwnersApi {
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
     @Override
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+        String idempotencyKey = idempotencyKey();
+        if (idempotencyKey != null) {
+            Integer existingId = this.idempotentCreates.get(idempotencyKey);
+            if (existingId != null) {
+                Owner existing = this.clinicService.findOwnerById(existingId);
+                if (existing != null) {
+                    return new ResponseEntity<>(ownerMapper.toOwnerDto(existing), HttpStatus.OK);
+                }
+            }
+        }
         normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
         rejectInvalidPostcode(ownerFieldsDto);
@@ -165,6 +192,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
         markPossibleDuplicate(owner, sharesHousehold);
         this.clinicService.saveOwner(owner);
+        if (idempotencyKey != null) {
+            this.idempotentCreates.put(idempotencyKey, owner.getId());
+        }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -271,6 +301,22 @@ public class OwnerRestControllerV1 implements OwnersApi {
             }
         }
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Reads the optional {@code Idempotency-Key} header from the current request. The generated
+     * {@code addOwner} signature carries only the request body, so the header is pulled from the
+     * request bound to the current thread. Returns the trimmed key, or {@code null} when the header is
+     * absent or blank (in which case the create proceeds normally, without idempotent replay).
+     *
+     * @return the non-blank idempotency key, or {@code null} when none was supplied
+     */
+    private String idempotencyKey() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+            return null;
+        }
+        String key = attributes.getRequest().getHeader(IDEMPOTENCY_KEY_HEADER);
+        return isBlank(key) ? null : key.trim();
     }
 
     /**
