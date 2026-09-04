@@ -30,7 +30,17 @@ public abstract class OwnerMapper {
     @Mapping(target = "initials", expression = "java(initials(owner))")
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
+    @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's preferred contact channel: 'EMAIL' when an email address is
+     * present, otherwise 'PHONE'.
+     */
+    String contactPreference(Owner owner) {
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        return hasEmail ? "EMAIL" : "PHONE";
+    }
 
     /** Fixed city-to-region table used to derive an owner's locality. */
     static final Map<String, String> CITY_REGION = Map.of(
