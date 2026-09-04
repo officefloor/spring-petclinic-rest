@@ -1,0 +1,68 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 051fa96de..7c34917e5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -30,7 +30,6 @@ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.advice.CityAtCapacityException;
+ import org.springframework.samples.petclinic.rest.advice.DailyOwnerLimitException;
+-import org.springframework.samples.petclinic.rest.advice.DuplicateHouseholdException;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -123,13 +122,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
+-        DuplicateHouseholdException.rejectIfDuplicate(owner, sharesHousehold, this.clinicService.findAllOwners());
+         owner.setCustomerCode(UniqueCustomerCode.assign(owner, this.clinicService.findAllOwners()));
+         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
+         owner.setHouseholdGold(org.springframework.samples.petclinic.util.GoldTier.qualifies(owner, this.clinicService.findAllOwners()));
+         PossibleDuplicate.assign(owner, sharesHousehold, this.clinicService.findAllOwners());
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
++        ownerDto.setMembershipLevel(org.springframework.samples.petclinic.util.LevelCeiling.cap(ownerDto.getMembershipLevel(), owner, this.clinicService.findAllOwners()));
+         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
+         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/LevelCeiling.java b/src/main/java/org/springframework/samples/petclinic/util/LevelCeiling.java
+new file mode 100644
+index 000000000..5296b6ffa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/LevelCeiling.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Caps a new owner's membership level at one above the highest level currently held
++ * by any other member of their household (owners sharing the same {@link Household}
++ * id). With no existing household member, no ceiling applies.
++ */
++public final class LevelCeiling {
++
++    private LevelCeiling() {
++    }
++
++    /**
++     * {@code level} reduced to at most one above the maximum membership level among
++     * {@code owner}'s existing household members in {@code allOwners} (excluding the
++     * owner itself and soft-deleted records). Returns {@code level} unchanged when
++     * the household has no other member.
++     */
++    public static int cap(int level, Owner owner, Collection<Owner> allOwners) {
++        String household = Household.idFor(owner);
++        int max = -1;
++        for (Owner other : allOwners) {
++            boolean self = other.getId() != null && other.getId().equals(owner.getId());
++            if (self || other.isDeleted() || !household.equals(Household.idFor(other))) {
++                continue;
++            }
++            max = Math.max(max, Membership.level(Membership.points(other)));
++        }
++        return max < 0 ? level : Math.min(level, max + 1);
++    }
++}
