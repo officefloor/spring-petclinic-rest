@@ -1,0 +1,99 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+new file mode 100644
+index 000000000..3be10bad3
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/PossibleDuplicate.java
+@@ -0,0 +1,45 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Objects;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.repository.OwnerRepository;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Soft-match rule: an owner that is not a hard duplicate but shares another owner's last name and
++ * postcode with a different telephone is flagged {@code possibleDuplicate}, with
++ * {@code possibleDuplicateOf} set to that owner's id. Mirrors the response-time derivation used for
++ * {@link BulkSignup}, so both the create and fetch responders report the same value.
++ */
++public final class PossibleDuplicate {
++
++    private PossibleDuplicate() {
++    }
++
++    public static void mark(OwnerDto dto, Owner owner, OwnerRepository ownerRepository) {
++        Integer matchId = matchingOwnerId(owner, ownerRepository);
++        dto.setPossibleDuplicate(matchId != null);
++        dto.setPossibleDuplicateOf(matchId);
++    }
++
++    private static Integer matchingOwnerId(Owner owner, OwnerRepository ownerRepository) {
++        if (owner.getPostcode() == null) {
++            return null;
++        }
++        String lastName = normalize(owner.getLastName());
++        for (Owner other : ownerRepository.findAll()) {
++            if (!Objects.equals(other.getId(), owner.getId())
++                    && lastName.equals(normalize(other.getLastName()))
++                    && owner.getPostcode().equals(other.getPostcode())
++                    && !Objects.equals(owner.getTelephone(), other.getTelephone())) {
++                return other.getId();
++            }
++        }
++        return null;
++    }
++
++    private static String normalize(String value) {
++        return value == null ? "" : value.trim().toLowerCase();
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index fe83cf8af..1259d94d7 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -13,6 +13,7 @@ public class RespondWithOwner {
+             ObjectResponse<OwnerDto> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        PossibleDuplicate.mark(dto, owner, ownerRepository);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 1f1067ffe..10c2b6907 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -16,6 +16,7 @@ public class RespondWithOwnerCreated {
+             ObjectResponse<ResponseEntity<OwnerDto>> response) {
+         OwnerDto dto = ownerMapper.toOwnerDto(owner);
+         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
++        PossibleDuplicate.mark(dto, owner, ownerRepository);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6e7454421..8b18f5987 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2157,6 +2157,19 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: "True when another owner shares this owner's last name and postcode but has a different telephone, otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: "The id of the owner this one soft-matches (same last name and postcode, different telephone), or absent when there is none."
++              type: integer
++              format: int32
++              example: 7
++              readOnly: true
+             contactPreference:
+               title: Contact preference
+               description: "'EMAIL' when the owner has an email address, otherwise 'PHONE'."
