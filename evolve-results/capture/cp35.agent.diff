@@ -1,0 +1,142 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 2872c9db2..7dffa68b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -70,6 +70,12 @@ public class Owner extends Person {
+     @Column(name = "household_member_count")
+     private Integer householdMemberCount;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -150,6 +156,25 @@ public class Owner extends Person {
+         this.householdMemberCount = householdMemberCount;
+     }
+ 
++    /** True when this owner, at creation, shared an existing owner's last name and postcode
++     *  but had a different telephone (a soft, non-hard duplicate). */
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    /** Id of the existing owner this owner possibly duplicates, when {@link #getPossibleDuplicate()}. */
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     public String getEmail() {
+         return this.email;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/model/PossibleDuplicate.java
+new file mode 100644
+index 000000000..3026d55a1
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/PossibleDuplicate.java
+@@ -0,0 +1,30 @@
++package org.springframework.samples.petclinic.model;
++
++import java.util.Collection;
++
++/**
++ * Soft-duplicate detection for new owners. A new owner that is not a hard (identity-key)
++ * duplicate is nevertheless a <em>possible</em> duplicate when it shares an existing owner's
++ * last name and postcode but has a different telephone.
++ */
++public final class PossibleDuplicate {
++
++    private PossibleDuplicate() {
++    }
++
++    /** Id of the first existing owner the given owner possibly duplicates, or {@code null} if none. */
++    public static Integer of(Owner owner, Collection<Owner> existing) {
++        return existing.stream()
++            .filter(other -> matches(owner, other))
++            .map(Owner::getId)
++            .findFirst()
++            .orElse(null);
++    }
++
++    private static boolean matches(Owner owner, Owner other) {
++        return owner.getPostcode() != null
++            && owner.getPostcode().equalsIgnoreCase(other.getPostcode())
++            && owner.getLastName().equalsIgnoreCase(other.getLastName())
++            && !owner.getTelephone().equals(other.getTelephone());
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index e480d3db0..9a00765b4 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
+ import org.springframework.samples.petclinic.model.BusinessDay;
+ import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.model.PossibleDuplicate;
+ import org.springframework.samples.petclinic.model.Pet;
+ import org.springframework.samples.petclinic.model.Visit;
+ import org.springframework.samples.petclinic.rest.api.OwnersApi;
+@@ -121,6 +122,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+             .count());
+         owner.setHouseholdMemberCount(1 + (int) owners.stream().filter(existing -> sameHousehold(existing, owner)).count());
+         owner.setCustomerCode(CustomerCode.of(owner, owners));
++        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
++        owner.setPossibleDuplicate(possibleDuplicateOf != null);
++        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         this.clinicService.saveOwner(owner);
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setBulkSignupWarning(owners.stream()
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index badfc12a9..0cfa72db1 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -48,7 +48,9 @@ CREATE TABLE owners (
+   birth_date DATE,
+   customer_code VARCHAR(20),
+   namesake_count INTEGER,
+-  household_member_count INTEGER
++  household_member_count INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6e531eefd..0bdd1dc2f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2183,6 +2183,21 @@ components:
+               type: string
+               example: 'ADULT'
+               readOnly: true
++            possibleDuplicate:
++              title: Possible duplicate
++              description: True when, at creation, this owner shared an existing owner's last name and postcode but had a different telephone; otherwise false.
++              type: boolean
++              default: false
++              example: false
++              readOnly: true
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: Id of the existing owner this owner possibly duplicates (matching last name and postcode, different telephone), when possibleDuplicate is true.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 1
++              readOnly: true
+           required:
+             - pets
+     OwnerPage:
