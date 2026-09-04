@@ -1,0 +1,130 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index d5ad349e2..7af5b2b92 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.controller.CityRegionResolver;
++import org.springframework.samples.petclinic.rest.controller.EmailDomainClassifier;
+ import org.springframework.samples.petclinic.rest.controller.TelephoneNormalizer;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+@@ -41,6 +42,14 @@ public abstract class OwnerMapper {
+     @Autowired
+     protected TelephoneNormalizer telephoneNormalizer;
+ 
++    /** Single source of truth for classifying an owner's email domain. */
++    @Autowired
++    protected EmailDomainClassifier emailDomainClassifier;
++
++    /** A city holding more than this many owners is over its soft capacity (the hard per-city
++     *  limit, rejected on create, is 50). */
++    private static final long CITY_SOFT_CAPACITY = 40;
++
+     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+     @Mapping(target = "salutation", expression = "java(salutation(owner))")
+     @Mapping(target = "displayName",
+@@ -56,8 +65,35 @@ public abstract class OwnerMapper {
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
+     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
++    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
+     public abstract OwnerDto toOwnerDto(Owner owner);
+ 
++    /**
++     * The owner's risk flag: {@code true} when any of the three risk signals holds, {@code false}
++     * otherwise. The signals are that the owner is a possible duplicate (its stored
++     * {@code possibleDuplicate} is true), that its email domain is
++     * {@link EmailDomainClassifier#isDisposableAdjacent disposable-adjacent}, or that its city is
++     * {@link #cityOverSoftCapacity over its soft capacity}.
++     */
++    boolean riskFlag(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++            || emailDomainClassifier.isDisposableAdjacent(owner.getEmail())
++            || cityOverSoftCapacity(owner);
++    }
++
++    /**
++     * Whether the owner's city currently holds more than its soft capacity of
++     * {@value #CITY_SOFT_CAPACITY} owners. Cities are compared on their normalized identity, the
++     * same key the create endpoint's per-city capacity rule uses, so the same owners are counted.
++     */
++    boolean cityOverSoftCapacity(Owner owner) {
++        String cityKey = IdentityUtils.normalizeIdentity(owner.getCity());
++        long ownersInCity = clinicService.findAllOwners().stream()
++            .filter(existing -> IdentityUtils.normalizeIdentity(existing.getCity()).equals(cityKey))
++            .count();
++        return ownersInCity > CITY_SOFT_CAPACITY;
++    }
++
+     /**
+      * The owner's self link: '/api/owners/' followed by the owner's id, or null when the
+      * owner has no id assigned yet.
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/EmailDomainClassifier.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/EmailDomainClassifier.java
+index f15c82b0c..a98c1f050 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/EmailDomainClassifier.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/EmailDomainClassifier.java
+@@ -69,4 +69,39 @@ public class EmailDomainClassifier {
+         String domain = domainOf(email);
+         return domain != null && DISPOSABLE_EMAIL_DOMAINS.contains(domain);
+     }
++
++    /**
++     * Whether an email's {@link #domainOf domain} is <em>disposable-adjacent</em>: it shares its
++     * registrable domain label (the label immediately before the final top-level domain) with a
++     * known disposable domain, without necessarily being one of them. This catches the near
++     * neighbours of the disposable domains — the same provider under a different top-level domain
++     * (e.g. {@code mailinator.net}) or a subdomain of one (e.g. {@code inbox.mailinator.com}) —
++     * which the exact-match {@link #isDisposable disposable} check does not reject on create.
++     *
++     * @param email an email address, expected to carry a single '@'
++     * @return {@code true} if the email's domain shares a registrable label with a known disposable
++     *         domain, {@code false} otherwise (including when the email has no domain)
++     */
++    public boolean isDisposableAdjacent(String email) {
++        String label = registrableLabel(domainOf(email));
++        if (label == null) {
++            return false;
++        }
++        return DISPOSABLE_EMAIL_DOMAINS.stream()
++            .map(EmailDomainClassifier::registrableLabel)
++            .anyMatch(label::equals);
++    }
++
++    /**
++     * The registrable label of a domain: the dot-delimited component immediately before its final
++     * top-level domain (e.g. 'mailinator' for both 'mailinator.com' and 'inbox.mailinator.co.uk').
++     * Returns {@code null} when {@code domain} is {@code null} or has no such component.
++     */
++    private static String registrableLabel(String domain) {
++        if (domain == null) {
++            return null;
++        }
++        String[] parts = domain.split("\\.");
++        return parts.length < 2 ? null : parts[parts.length - 2];
++    }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bc3b491d8..2ffcb9ee2 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2358,6 +2358,18 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: >-
++                True when any of these hold: this owner is a possible duplicate
++                ('possibleDuplicate' is true), the owner's email domain is
++                disposable-adjacent (it shares its registrable domain label with
++                a known disposable domain — a different top-level domain or a
++                subdomain of one), or the owner's city currently holds more than
++                its soft capacity of 40 owners; otherwise false.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: >-
