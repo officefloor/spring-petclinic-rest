@@ -36,7 +36,6 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
@@ -55,6 +54,7 @@ import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.OwnerIdentity;
 import org.springframework.samples.petclinic.util.PostcodeValidator;
+import org.springframework.samples.petclinic.util.Soundex;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -177,8 +177,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeEmail(ownerFieldsDto);
         String householdId = householdIdFor(ownerFieldsDto);
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
-        rejectDuplicateIdentity(ownerFieldsDto, householdId);
-        rejectHouseholdDuplicate(ownerFieldsDto, householdId, sharesHousehold);
+        rejectDuplicateIdentity(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         rejectFutureRegistrationDate(ownerFieldsDto.getRegistrationDate());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
@@ -461,29 +460,25 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Rejects creating an owner whose derived identity collides with an existing owner. All owner
      * duplicate detection is now expressed through the single derived {@code identityKey}
-     * ({@code normalizedTelephone + '|' + email + '|' + householdId}, see {@link OwnerIdentity}),
-     * which replaces the previously separate telephone, email and household checks. Two owners denote
-     * the same person when their identities collide on the telephone - the identity's distinguishing
-     * component - so a create is rejected as a {@code 409 Conflict} when another owner already carries
-     * the same normalized telephone. Because the telephone is part of the identity, two members of the
-     * same household with different telephones have different identities and are both allowed; an email
-     * or a household on its own no longer makes a duplicate.
+     * ({@code sha256hex(normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName))}, see
+     * {@link OwnerIdentity}), which replaces the previously separate telephone, email and household
+     * checks. Two owners denote the same person when their whole identity keys are equal, so a create
+     * is rejected as a {@code 409 Conflict} when another (non-deleted) owner already carries the same
+     * key. Because the telephone is part of the key, two owners who share a last name and postcode but
+     * carry different telephones have different keys and are both allowed (they are instead recorded as
+     * a {@linkplain #findPossibleDuplicate possible duplicate}); an email or a household on its own no
+     * longer makes a duplicate.
      *
      * @param ownerFieldsDto the submitted owner fields, with telephone and email already normalized
      *                       ({@link #normalizeTelephone}, {@link #normalizeEmail})
-     * @param householdId    the household id derived for the owner being created (see
-     *                       {@link HouseholdNormalizer#toHouseholdId})
      * @throws DuplicateOwnerIdentityException if another owner already carries the same identity
      */
-    private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto, String householdId) {
+    private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto) {
         String identityKey = OwnerIdentity.identityKey(
-            ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
-        String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
+            ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), ownerFieldsDto.getLastName());
         boolean inUse = activeOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(Objects::nonNull)
-            .map(TelephoneNormalizer::toComparisonKey)
-            .anyMatch(telephoneKey::equals);
+            .map(OwnerIdentity::identityKey)
+            .anyMatch(identityKey::equals);
         if (inUse) {
             throw new DuplicateOwnerIdentityException(identityKey);
         }
@@ -604,47 +599,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner that would join an existing household as an indistinguishable
-     * near-duplicate without declaring itself a member. The household is keyed on (last name,
-     * postcode) through the derived {@code householdId} (see {@link HouseholdNormalizer#toHouseholdId}),
-     * so a second owner sharing an existing owner's last name and postcode denotes the same household.
-     * A genuinely distinct household member is told apart by its telephone: an owner whose normalized
-     * telephone differs from every existing member's is a legitimate additional member (recorded as a
-     * {@linkplain #findPossibleDuplicate possible duplicate}, not rejected). Only a create that shares
-     * both the household and an existing member's telephone is reported as a {@code 409 Conflict},
-     * unless it opts in with {@code sharesHousehold}, in which case it is accepted as a declared
-     * household member. Only owners already persisted (before this create) are considered.
-     *
-     * @param ownerFieldsDto  the submitted owner fields (telephone already normalized)
-     * @param householdId     the household id derived for the owner being created
-     * @param sharesHousehold whether the request opted in to sharing a household
-     * @throws DuplicateOwnerHouseholdException if an existing member shares the household and telephone
-     *                                          and the request did not opt in with {@code sharesHousehold}
-     */
-    private void rejectHouseholdDuplicate(OwnerFieldsDto ownerFieldsDto, String householdId,
-            boolean sharesHousehold) {
-        if (sharesHousehold || householdId == null) {
-            return;
-        }
-        String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
-        boolean indistinguishableMember = activeOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .filter(existing -> existing.getTelephone() != null)
-            .anyMatch(existing -> telephoneKey.equals(
-                TelephoneNormalizer.toComparisonKey(existing.getTelephone())));
-        if (indistinguishableMember) {
-            throw new DuplicateOwnerHouseholdException(householdId);
-        }
-    }
-
-    /**
      * Finds an existing owner that the owner being created soft-matches on, or {@code null} when there
      * is none. The create has already cleared the hard-duplicate identity check
-     * ({@link #rejectDuplicateIdentity}), so it is not an exact match of any existing owner; it is a
-     * <em>possible</em> duplicate when it nevertheless shares an existing owner's {@code lastName}
-     * (compared case-insensitively) and {@code postcode} while carrying a different normalized
-     * telephone. The oldest such owner (the earliest persisted) is returned so the flag points at the
-     * original record; owners with no postcode never match, since a shared postcode is required.
+     * ({@link #rejectDuplicateIdentity}), so its {@code identityKey} matches no existing owner; it is a
+     * <em>possible</em> duplicate when it nevertheless shares an existing owner's {@code postcode} and
+     * the {@linkplain Soundex#soundex Soundex} of its {@code lastName} while their identity keys still
+     * differ. Because the telephone is part of the identity key, two owners with the same last name and
+     * postcode but different telephones have differing keys and so soft-match here rather than colliding
+     * as a hard duplicate. The oldest such owner (the earliest persisted) is returned so the flag points
+     * at the original record; owners with no postcode never match, since a shared postcode is required.
      *
      * @param owner the owner being created, with telephone already normalized and lastName/postcode set
      * @return the id of the matching existing owner, or {@code null} when the owner is not a possible
@@ -655,12 +618,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (postcode == null) {
             return null;
         }
-        String telephoneKey = TelephoneNormalizer.toComparisonKey(owner.getTelephone());
+        String identityKey = OwnerIdentity.identityKey(owner);
+        String lastNameCode = Soundex.soundex(owner.getLastName());
         return activeOwners().stream()
-            .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .filter(existing -> !identityKey.equals(OwnerIdentity.identityKey(existing)))
+            .filter(existing -> lastNameCode.equals(Soundex.soundex(existing.getLastName())))
             .filter(existing -> postcode.equals(existing.getPostcode()))
-            .filter(existing -> existing.getTelephone() != null
-                && !telephoneKey.equals(TelephoneNormalizer.toComparisonKey(existing.getTelephone())))
             .map(Owner::getId)
             .filter(Objects::nonNull)
             .min(Integer::compareTo)
