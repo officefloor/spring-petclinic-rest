@@ -1,0 +1,119 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index dacd69366..e01a85c07 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerRegion;
+ import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
+ import org.springframework.samples.petclinic.rest.function.owner.LocalityTimezone;
+ import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
++import org.springframework.samples.petclinic.rest.function.owner.OwnerRisk;
+ import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
+ import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+@@ -22,7 +23,7 @@ import java.util.List;
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+-@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, OwnerRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class})
++@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, OwnerRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class, OwnerRisk.class})
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "selfLink",
+@@ -49,6 +50,8 @@ public interface OwnerMapper {
+             expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
+     @Mapping(target = "telephoneDisplay",
+             expression = "java(TelephoneDisplay.of(owner))")
++    @Mapping(target = "riskFlag",
++            expression = "java(OwnerRisk.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java
+new file mode 100644
+index 000000000..2e7da57de
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/OwnerRisk.java
+@@ -0,0 +1,61 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Derives an owner's {@code riskFlag} at read time. The flag is true when any of these hold:
++ * <ul>
++ *   <li>the owner is a possible duplicate ({@code possibleDuplicate} true — see
++ *       {@link AssignPossibleDuplicate});</li>
++ *   <li>the owner's email domain is <em>disposable-adjacent</em> — a variant of a known
++ *       disposable-email domain that shares one of its domain labels (e.g. {@code mailinator},
++ *       {@code tempmail}, {@code guerrillamail}) without being the exact blocked domain. The exact
++ *       blocked domains are rejected at create time by {@link ValidateOwnerEmailDomain}, so a stored
++ *       owner is flagged only for adjacent variants such as {@code mailinator.net} or
++ *       {@code sub.mailinator.com};</li>
++ *   <li>the owner's city is over its soft capacity ({@code capacityWarning} true — see
++ *       {@link AssignCapacityWarning}).</li>
++ * </ul>
++ * False otherwise. Purely derived from stored fields, so it is computed by the mapper rather than
++ * persisted.
++ */
++public final class OwnerRisk {
++
++    /** Domain labels of the disposable-email blocklist ({@code mailinator.com}, etc.). */
++    private static final Set<String> DISPOSABLE_LABELS = Set.of("mailinator", "tempmail", "guerrillamail");
++
++    private OwnerRisk() {
++    }
++
++    public static boolean of(Owner owner) {
++        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
++                || Boolean.TRUE.equals(owner.getCapacityWarning())
++                || isDisposableAdjacent(owner.getEmail());
++    }
++
++    /**
++     * True when the email's domain shares a label with a known disposable-email domain — an exact
++     * blocked domain, a variant TLD, or a subdomain of one.
++     */
++    public static boolean isDisposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).trim().toLowerCase();
++        if (domain.isEmpty()) {
++            return false;
++        }
++        for (String label : domain.split("\\.")) {
++            if (DISPOSABLE_LABELS.contains(label)) {
++                return true;
++            }
++        }
++        return false;
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index da8e016e6..fc6e0eb62 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2308,6 +2308,17 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: True when any of these hold at read time — the owner is a possible
++                duplicate ('possibleDuplicate' true), the owner's email domain is
++                disposable-adjacent (a variant of a known disposable-email domain, i.e. it shares
++                a domain label such as 'mailinator', 'tempmail' or 'guerrillamail' but is not the
++                exact blocked domain, which is rejected at create time), or the owner's city is
++                over its soft capacity ('capacityWarning' true). False otherwise.
++              type: boolean
++              example: false
++              readOnly: true
+             deleted:
+               title: Deleted
+               description: Whether this owner has been soft-deleted. A newly created owner is false.
