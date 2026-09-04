@@ -16,20 +16,19 @@
 package org.springframework.samples.petclinic.model;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Derives an owner's membership standing assigned on creation. {@code points} start at
  * {@code 0} and add {@code 2} for a present email, {@code 1} for a {@code namesakeCount}
  * of {@code 0}, {@code 2} for a household of at least three members and {@code 3} once the
- * owner's tenure exceeds {@code 365} days. Those points map to a {@code level} of
+ * owner's tenure exceeds one elapsed fiscal year. Those points map to a {@code level} of
  * {@code 1} ({@code 0-1}), {@code 2} ({@code 2-3}), {@code 3} ({@code 4-5}) or {@code 4}
  * ({@code 6} or more).
  */
 public final class MembershipLevel {
 
-    /** Days of tenure required before the tenure points are awarded. */
-    private static final long TENURE_POINTS_DAYS = 365;
+    /** Elapsed fiscal years of tenure required before the tenure points are awarded. */
+    private static final int TENURE_POINTS_YEARS = 1;
 
     private MembershipLevel() {
     }
@@ -78,6 +77,6 @@ public final class MembershipLevel {
 
     private static boolean exceedsTenure(LocalDate registrationDate) {
         return registrationDate != null
-            && ChronoUnit.DAYS.between(registrationDate, LocalDate.now()) > TENURE_POINTS_DAYS;
+            && FiscalYear.elapsed(registrationDate, LocalDate.now()) > TENURE_POINTS_YEARS;
     }
 }

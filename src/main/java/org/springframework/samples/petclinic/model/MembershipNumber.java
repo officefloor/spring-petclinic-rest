@@ -19,8 +19,8 @@ import java.time.LocalDate;
 
 /**
  * Builds an owner's {@code membershipNumber}, formatted {@code <customerCode>-M<YY>}:
- * the customer code followed by the last two digits of the registration date's year,
- * e.g. {@code SMI-0007-M26}.
+ * the customer code followed by the last two digits of the registration date's
+ * fiscal year (starting 1 July), e.g. {@code SMI-0007-M26}.
  */
 public final class MembershipNumber {
 
@@ -36,6 +36,6 @@ public final class MembershipNumber {
         if (customerCode == null || registrationDate == null) {
             return null;
         }
-        return String.format("%s-M%02d", customerCode, registrationDate.getYear() % 100);
+        return String.format("%s-M%02d", customerCode, FiscalYear.of(registrationDate) % 100);
     }
 }
