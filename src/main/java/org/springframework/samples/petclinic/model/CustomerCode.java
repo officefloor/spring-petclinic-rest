@@ -15,10 +15,13 @@
  */
 package org.springframework.samples.petclinic.model;
 
+import java.util.Collection;
+
 /**
- * Builds an owner's {@code customerCode}, formatted {@code <LAST3>-<NNNN>}: the
- * upper-cased first three letters of the last name, and a global 4-digit
- * zero-padded sequence one greater than the current number of owners.
+ * Builds an owner's {@code customerCode}, formatted {@code <CITY3>-<LAST3>-<NNNN>}:
+ * the upper-cased first three letters of the city and of the last name, and a
+ * per-city 4-digit zero-padded sequence one greater than the number of owners
+ * already in that city.
  */
 public final class CustomerCode {
 
@@ -26,12 +29,18 @@ public final class CustomerCode {
     }
 
     /**
-     * @param lastName      the owner's last name
-     * @param existingOwners the current number of owners (this one excluded)
-     * @return the formatted customer code, e.g. {@code SMI-0007}
+     * @param owner          the owner being coded (its city and last name are used)
+     * @param existingOwners the current owners (this one excluded)
+     * @return the formatted customer code, e.g. {@code SYD-SMI-0007}
      */
-    public static String of(String lastName, int existingOwners) {
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
-        return String.format("%s-%04d", last3, existingOwners + 1);
+    public static String of(Owner owner, Collection<Owner> existingOwners) {
+        long inCity = existingOwners.stream()
+            .filter(o -> o.getCity() != null && o.getCity().equalsIgnoreCase(owner.getCity()))
+            .count();
+        return String.format("%s-%s-%04d", prefix3(owner.getCity()), prefix3(owner.getLastName()), inCity + 1);
+    }
+
+    private static String prefix3(String value) {
+        return value.substring(0, Math.min(3, value.length())).toUpperCase();
     }
 }

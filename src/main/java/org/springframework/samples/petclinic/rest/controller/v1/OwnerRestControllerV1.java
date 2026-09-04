@@ -112,7 +112,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(owner.getFirstName())
                 && existing.getLastName().equalsIgnoreCase(owner.getLastName()))
             .count());
-        owner.setCustomerCode(CustomerCode.of(owner.getLastName(), owners.size()));
+        owner.setCustomerCode(CustomerCode.of(owner, owners));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
