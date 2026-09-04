@@ -7,11 +7,12 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * The duplicate check for creating owners, now keyed on the household. The household is
- * {@code (normalizedLastName, postcode)} expressed as a deterministic {@code householdId} (see
- * {@link OwnerIdentityKey#householdId(String, String)}), so owners sharing a last name and postcode
- * are the same household. A create request whose computed household id matches an existing owner's is
- * rejected with 409 via {@link DuplicateOwnerException}.
+ * The duplicate check for creating owners. A household — {@code (normalizedLastName, postcode)}
+ * expressed as a deterministic {@code householdId} (see {@link OwnerIdentityKey#householdId(String,
+ * String)}) — may legitimately have several members (their membership levels are capped relative to
+ * each other by {@link CapMembershipLevel}), so sharing a household is no longer a duplicate on its own.
+ * Only a <em>true</em> duplicate is rejected with 409 via {@link DuplicateOwnerException}: an existing
+ * non-deleted owner in the same household with the same (E.164) telephone — i.e. the same person.
  *
  * <p>Setting {@code sharesHousehold} true bypasses this block: the owner is then created as a declared
  * household member (and, being declared, is not flagged as a possible duplicate by
@@ -25,11 +26,14 @@ public class EnsureUniqueIdentity {
             return; // declared household member — bypass the household duplicate block
         }
         String householdId = OwnerIdentityKey.householdIdOf(request);
+        String telephone = E164Telephone.toE164OrNull(request.getTelephone());
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner no longer blocks a duplicate
             }
-            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))) {
+            if (householdId.equals(OwnerIdentityKey.householdIdOf(existing))
+                    && telephone != null
+                    && telephone.equals(E164Telephone.toE164OrNull(existing.getTelephone()))) {
                 throw new DuplicateOwnerException(householdId);
             }
         }
