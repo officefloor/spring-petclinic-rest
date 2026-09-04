@@ -21,8 +21,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -65,9 +63,6 @@ public class OwnerRegistrar {
     private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
         java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
 
-    /** Dedicated audit logger; emits an audit line on successful owner create. */
-    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
-
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -79,6 +74,8 @@ public class OwnerRegistrar {
     private final CityRegionResolver cityRegionResolver;
 
     private final HouseholdResolver householdResolver;
+
+    private final OwnerAuditor ownerAuditor;
 
     /**
      * Remembers, per {@code Idempotency-Key}, the id of the owner that key's create originally
@@ -95,13 +92,15 @@ public class OwnerRegistrar {
                           TelephoneNormalizer telephoneNormalizer,
                           AddressNormalizer addressNormalizer,
                           CityRegionResolver cityRegionResolver,
-                          HouseholdResolver householdResolver) {
+                          HouseholdResolver householdResolver,
+                          OwnerAuditor ownerAuditor) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.cityRegionResolver = cityRegionResolver;
         this.householdResolver = householdResolver;
+        this.ownerAuditor = ownerAuditor;
     }
 
     /**
@@ -233,9 +232,7 @@ public class OwnerRegistrar {
         if (key != null) {
             idempotencyKeys.put(key, owner.getId());
         }
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            ownerMapper.membershipLevel(owner), owner.getMembershipNumber());
+        ownerAuditor.ownerCreated(owner, ownerMapper.membershipLevel(owner));
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
