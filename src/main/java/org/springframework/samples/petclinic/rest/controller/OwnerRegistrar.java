@@ -42,8 +42,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  * <p>Keeping the whole create pipeline here means every rule that fires on create — the
  * registration-date and business-day handling, the per-day and per-city quotas, the
  * address/telephone/email/postcode normalization and validation, the household, duplicate
- * and soft-match identity rules, and the derived customer code, namesake count and
- * membership number — reads the one owner this class builds, in the one order it applies
+ * and soft-match identity rules, and the derived member id and namesake count — reads the
+ * one owner this class builds, in the one order it applies
  * them, so they can never drift apart. The controller is left holding only the endpoint's
  * HTTP boundary.
  */
@@ -218,9 +218,8 @@ public class OwnerRegistrar {
         // Approaching-capacity warning: the city already holds 40-49 owners (the hard limit is 50,
         // rejected above). ownersInCity counts the existing owners the candidate is joining.
         owner.setCapacityWarning(ownersInCity >= 40 && ownersInCity < 50);
-        owner.setCustomerCode(customerCode(owner));
+        owner.setMemberId(memberId(owner));
         owner.setNamesakeCount(namesakeCount(owner));
-        owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setBulkSignupWarning(ownersCreatedThatDay > 80);
         // Soft-match: the candidate has already cleared the hard-duplicate check, but its
         // identityKey may still differ from an existing owner's while their last names sound alike
@@ -335,22 +334,27 @@ public class OwnerRegistrar {
     }
 
     /**
-     * Build the customer code assigned to {@code owner} on create, formatted
-     * {@code '<REGION>-<HASH8>'}: REGION is the region code derived from the owner's postcode
-     * (falling back to the city) via {@link CityRegionResolver}, and HASH8 is the first eight
-     * upper-case hex characters of the SHA-256 digest of the normalized telephone concatenated
-     * with the last name (e.g. 'NSW-1A2B3C4D'). There is no per-city sequence.
+     * Build the member id assigned to {@code owner} on create, formatted
+     * {@code '<REGION><FY><HASH8><CHK>'}: REGION is the region code derived from the owner's
+     * postcode (falling back to the city) via {@link CityRegionResolver}, FY is the two-digit
+     * fiscal year of the (business-day-adjusted) registrationDate (the fiscal year starts on
+     * 1 July), HASH8 is the first eight upper-case hex characters of the SHA-256 digest of the
+     * normalized telephone concatenated with the last name (the same HASH8 used by the
+     * region-and-hash identity), and CHK is a single Luhn check digit computed over the digits
+     * of {@code '<REGION><FY><HASH8>'} (e.g. 'NSW261A2B3C4D5').
      *
-     * <p>When the computed code collides with an already-registered owner's customerCode it is
+     * <p>When the computed id collides with an already-registered owner's memberId it is
      * de-duplicated by appending {@code '-<n>'} with the smallest {@code n} of 2 or more that
-     * makes it unique (e.g. 'NSW-1A2B3C4D-2'), and the unique code is returned.
+     * makes it unique (e.g. 'NSW261A2B3C4D5-2'), and the unique id is returned.
      */
-    private String customerCode(Owner owner) {
+    private String memberId(Owner owner) {
         String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+        String fy = String.format("%02d", OwnerMapper.fiscalYear(owner.getRegistrationDate()) % 100);
         String hash8 = HashUtils.sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
-        String base = region + "-" + hash8;
+        String core = region + fy + hash8;
+        String base = core + OwnerMapper.luhn(core);
         java.util.Set<String> existing = this.clinicService.findAllOwners().stream()
-            .map(Owner::getCustomerCode)
+            .map(Owner::getMemberId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
         return disambiguate(base, existing);
@@ -411,16 +415,5 @@ public class OwnerRegistrar {
             case SATURDAY, SUNDAY -> true;
             default -> false;
         };
-    }
-
-    /**
-     * Build the membership number assigned on create, formatted
-     * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the fiscal year of the
-     * business-day-adjusted {@code registrationDate} (the fiscal year starts on 1 July), e.g.
-     * 'NSW-1A2B3C4D-M26'.
-     */
-    private static String membershipNumber(String customerCode, LocalDate registrationDate) {
-        String yy = String.format("%02d", OwnerMapper.fiscalYear(registrationDate) % 100);
-        return customerCode + "-M" + yy;
     }
 }

@@ -55,48 +55,44 @@ public class OwnerAuditor {
 
     /**
      * Record the audit trail for an owner that has just been created: emit the audit line naming
-     * the owner's id, customer code, registration date, membership level and membership number,
-     * followed by the immutable structured event carrying the same create. Called once, after the
-     * owner is persisted, with the owner in its final stored form.
+     * the owner's id, member id, registration date and membership level, followed by the immutable
+     * structured event carrying the same create. Called once, after the owner is persisted, with
+     * the owner in its final stored form.
      *
      * @param owner           the freshly persisted owner
      * @param membershipLevel the owner's derived membership level, as computed for this create
      */
     public void ownerCreated(Owner owner, int membershipLevel) {
-        AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
-            owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
-            membershipLevel, owner.getMembershipNumber());
+        AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+            owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         AUDIT.info(structuredEvent(owner, membershipLevel));
     }
 
     /**
      * Build the immutable structured owner-created event as a JSON object
-     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. {@code seq} is
+     * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}}. {@code seq} is
      * the next value of the monotonic {@link #sequence}, so every event carries a distinct, ordered
      * sequence number across creates.
      *
-     * <p>{@code customerCode} carries the owner's current primary identifier. Today that identifier
-     * is the customer code; when the customer code is unified into the member id the event's
-     * identifier follows automatically, because it is read from {@link #primaryIdentifier} rather
-     * than being spelled out here.
+     * <p>{@code memberId} carries the owner's primary identifier, read from
+     * {@link #primaryIdentifier} rather than being spelled out here.
      */
     private String structuredEvent(Owner owner, int membershipLevel) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("seq", sequence.incrementAndGet());
         event.put("ownerId", owner.getId());
-        event.put("customerCode", primaryIdentifier(owner));
+        event.put("memberId", primaryIdentifier(owner));
         event.put("membershipLevel", membershipLevel);
         event.put("event", "OWNER_CREATED");
         return MAPPER.writeValueAsString(event);
     }
 
     /**
-     * The owner's current primary identifier as it stands at this create. Today that is the
-     * customer code; this is the single point that decides which field is primary, so when the
-     * customer code is unified into the member id only this method changes and every emitted event
-     * carries the member id instead.
+     * The owner's primary identifier as it stands at this create: the unified member id. This is
+     * the single point that decides which field is primary, so every emitted event carries the
+     * member id.
      */
     private String primaryIdentifier(Owner owner) {
-        return owner.getCustomerCode();
+        return owner.getMemberId();
     }
 }
