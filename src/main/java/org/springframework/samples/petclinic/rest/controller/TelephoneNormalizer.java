@@ -26,22 +26,45 @@ import org.springframework.stereotype.Component;
  * telephones can never drift apart: an owner is a duplicate of another exactly when their
  * telephones normalise to the same value.
  *
- * <p>The current canonical form is the ten-digit national number with every non-digit
- * character removed; anything that does not reduce to ten digits has no canonical form.
+ * <p>The canonical form is E.164: a leading '+' followed by 8 to 15 digits. A number that
+ * already carries a leading '+' keeps its explicit country code; otherwise country code
+ * '+61' is assumed and a single leading '0' is dropped from the national digits. Spaces,
+ * dashes and brackets are stripped. Anything that cannot reduce to a '+' plus 8 to 15 digits
+ * has no canonical form.
  */
 @Component
 public class TelephoneNormalizer {
 
+    private static final String DEFAULT_COUNTRY_CODE = "61";
+
+    private static final int MIN_DIGITS = 8;
+
+    private static final int MAX_DIGITS = 15;
+
     /**
-     * Reduce a raw telephone to its canonical stored form.
+     * Reduce a raw telephone to its canonical E.164 stored form.
      *
      * @param rawTelephone the telephone as supplied by the client, possibly {@code null} or
      *                     containing spaces, dashes or brackets
-     * @return the canonical telephone, or {@code null} if {@code rawTelephone} cannot form a
-     *         valid telephone
+     * @return the canonical E.164 telephone (a '+' followed by 8 to 15 digits), or
+     *         {@code null} if {@code rawTelephone} cannot form a valid E.164 number
      */
     public String normalize(String rawTelephone) {
-        String digits = rawTelephone == null ? "" : rawTelephone.replaceAll("\\D", "");
-        return digits.length() == 10 ? digits : null;
+        if (rawTelephone == null) {
+            return null;
+        }
+        String trimmed = rawTelephone.trim();
+        boolean hasCountryCode = trimmed.startsWith("+");
+        String digits = trimmed.replaceAll("\\D", "");
+        if (!hasCountryCode) {
+            if (digits.startsWith("0")) {
+                digits = digits.substring(1);
+            }
+            digits = DEFAULT_COUNTRY_CODE + digits;
+        }
+        if (digits.length() < MIN_DIGITS || digits.length() > MAX_DIGITS) {
+            return null;
+        }
+        return "+" + digits;
     }
 }
