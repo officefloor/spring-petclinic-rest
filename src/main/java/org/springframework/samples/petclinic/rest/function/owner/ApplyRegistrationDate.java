@@ -6,14 +6,18 @@ import net.officefloor.plugin.variable.Val;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Defaults the owner's registration date to the server's current date when the create
- * request did not supply one. A date supplied in the body is left untouched.
+ * Sets the owner's registration date to a business day. The effective date is the one supplied in
+ * the create request, or the server's current date when none was supplied; if that date falls on a
+ * Saturday or Sunday it is rolled forward to the following Monday. Everything derived from the
+ * registration date (such as the membership number's year segment) sees this adjusted value.
  */
 public class ApplyRegistrationDate {
 
     public void service(@Val Owner owner) {
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
+        LocalDate effective = owner.getRegistrationDate();
+        if (effective == null) {
+            effective = LocalDate.now();
         }
+        owner.setRegistrationDate(BusinessDays.rollForward(effective));
     }
 }
