@@ -24,7 +24,7 @@ public final class Membership {
     public static void mark(OwnerDto dto, Owner owner, OwnerRepository ownerRepository) {
         int points = MembershipPoints.of(owner) + householdPoints(owner, ownerRepository);
         dto.setMembershipPoints(points);
-        dto.setMembershipLevel(MembershipLevel.of(points));
+        dto.setMembershipLevel(HouseholdCeiling.cap(owner, MembershipLevel.of(points), ownerRepository));
     }
 
     private static int householdPoints(Owner owner, OwnerRepository ownerRepository) {
