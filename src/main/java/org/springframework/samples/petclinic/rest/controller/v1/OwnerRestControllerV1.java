@@ -103,8 +103,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
-        if (owners.stream()
-                .anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))) {
+        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+        if (owners.stream().anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))
+                || (!sharesHousehold && owners.stream().anyMatch(existing -> sameHousehold(existing, owner)))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(CustomerCode.of(owner.getLastName(), owners.size()));
@@ -113,6 +114,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /** Two owners share a household when their last name and address match, compared
+     *  case-insensitively with runs of whitespace collapsed to a single space. */
+    private static boolean sameHousehold(Owner a, Owner b) {
+        return a.getLastName().equalsIgnoreCase(b.getLastName())
+            && a.getAddress().trim().replaceAll("\\s+", " ")
+                .equalsIgnoreCase(b.getAddress().trim().replaceAll("\\s+", " "));
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")
