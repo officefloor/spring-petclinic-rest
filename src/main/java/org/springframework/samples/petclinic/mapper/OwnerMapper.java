@@ -28,6 +28,7 @@ public interface OwnerMapper {
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKey.of(owner))")
+    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.CheckDigit.luhn(owner.getCustomerCode()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
