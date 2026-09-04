@@ -9,6 +9,7 @@ import org.springframework.samples.petclinic.rest.function.owner.AgeBand;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeCheckDigit;
 import org.springframework.samples.petclinic.rest.function.owner.CustomerCodeRegion;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
+import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
@@ -19,7 +20,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, CustomerCodeCheckDigit.class, CustomerCodeRegion.class, AgeBand.class})
+@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, CustomerCodeCheckDigit.class, CustomerCodeRegion.class, AgeBand.class, TelephoneDisplay.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -36,6 +37,8 @@ public interface OwnerMapper {
             expression = "java(CustomerCodeCheckDigit.of(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBand.of(owner))")
+    @Mapping(target = "telephoneDisplay",
+            expression = "java(TelephoneDisplay.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
