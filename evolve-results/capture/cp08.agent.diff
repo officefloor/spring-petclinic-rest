@@ -1,0 +1,78 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 64562b636..f887db47f 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -45,8 +45,7 @@ public class Owner extends Person {
+ 
+     @Column(name = "telephone")
+     @NotEmpty
+-    @Digits(fraction = 0, integer = 10)
+-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
++    @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
+     private String telephone;
+ 
+     @Column(name = "email")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java
+index 91b60eaab..500b70f72 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/EnsureUniqueTelephone.java
+@@ -7,8 +7,8 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.DuplicateTelephoneException;
+ 
+ /**
+- * Rejects a create request whose (already normalized) telephone matches any existing owner's
+- * normalized telephone, so a duplicate number is a 409 via {@link DuplicateTelephoneException}.
++ * Rejects a create request whose (already E.164-normalized) telephone equals any existing owner's
++ * stored E.164 telephone, so a duplicate number is a 409 via {@link DuplicateTelephoneException}.
+  */
+ public class EnsureUniqueTelephone {
+ 
+@@ -16,13 +16,9 @@ public class EnsureUniqueTelephone {
+             throws DuplicateTelephoneException {
+         String telephone = request.getTelephone();
+         for (Owner owner : ownerRepository.findAll()) {
+-            if (telephone.equals(normalize(owner.getTelephone()))) {
++            if (telephone.equals(owner.getTelephone())) {
+                 throw new DuplicateTelephoneException(telephone);
+             }
+         }
+     }
+-
+-    private static String normalize(String telephone) {
+-        return telephone == null ? null : telephone.replaceAll("\\D", "");
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeTelephone.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeTelephone.java
+index 052a44199..aef967056 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeTelephone.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/NormalizeTelephone.java
+@@ -7,17 +7,23 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.escalation.MissingFieldsException;
+ 
+ /**
+- * Strips every non-digit from the telephone and requires exactly 10 digits, storing the
+- * normalized value back on the request so it is persisted and returned as {@code telephone}.
+- * A non-conforming number is rejected with 400 via {@link MissingFieldsException}.
++ * Rewrites the telephone into E.164 form: keep a leading {@code '+'} and country code when
++ * present, otherwise assume {@code '+61'} and drop a single leading {@code '0'} from the national
++ * digits, stripping spaces, dashes and brackets. The result must carry 8 to 15 digits after the
++ * {@code '+'}; the normalized value is stored back on the request so it is persisted and returned
++ * as {@code telephone}. A non-conforming number is rejected with 400 via {@link MissingFieldsException}.
+  */
+ public class NormalizeTelephone {
+ 
+     public void service(@Val OwnerFieldsDto request) throws MissingFieldsException {
+-        String digits = request.getTelephone().replaceAll("\\D", "");
+-        if (digits.length() != 10) {
++        String raw = request.getTelephone().trim();
++        String digits = raw.replaceAll("\\D", "");
++        if (!raw.startsWith("+")) {
++            digits = "61" + (digits.startsWith("0") ? digits.substring(1) : digits);
++        }
++        if (digits.length() < 8 || digits.length() > 15) {
+             throw new MissingFieldsException(List.of("telephone"));
+         }
+-        request.setTelephone(digits);
++        request.setTelephone("+" + digits);
+     }
+ }
