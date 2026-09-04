@@ -1,7 +1,6 @@
 package org.springframework.samples.petclinic.util;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.samples.petclinic.model.Owner;
 
@@ -9,7 +8,8 @@ import org.springframework.samples.petclinic.model.Owner;
  * Computes an owner's membership standing as a points total and the level it maps to.
  * Points start at 0 and accrue: +2 for a present email, +1 when the owner has no
  * namesakes, +2 for a household of three or more (see {@link GoldTier}), and +3 for
- * tenure over 365 days. Levels map from points: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6+).
+ * tenure spanning more than one elapsed fiscal year (see {@link FiscalYear}). Levels
+ * map from points: 1 (0-1), 2 (2-3), 3 (4-5), 4 (6+).
  */
 public final class Membership {
 
@@ -28,7 +28,7 @@ public final class Membership {
         if (Boolean.TRUE.equals(owner.getHouseholdGold())) {
             points += 2;
         }
-        if (ChronoUnit.DAYS.between(owner.getRegistrationDate(), LocalDate.now()) > 365) {
+        if (FiscalYear.of(LocalDate.now()) - FiscalYear.of(owner.getRegistrationDate()) > 1) {
             points += 3;
         }
         return points;
