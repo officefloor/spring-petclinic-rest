@@ -1,0 +1,43 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index acbc301a0..fcc731070 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -23,7 +23,7 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.of(owner.getCustomerCode()))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+-    @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + ((owner.getEmail() != null && !owner.getEmail().isBlank()) ? 1 : 0) + ((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) ? 1 : 0)))")
++    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.OwnerIdentity.identityKey(owner))")
+     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+@@ -51,6 +51,29 @@ public interface OwnerMapper {
+         return OwnerDto.AgeBandEnum.SENIOR;
+     }
+ 
++    /**
++     * Computes the owner's {@code membershipLevel}. Starts at 1; adds 1 when a non-blank email is
++     * present; adds 1 when {@code namesakeCount} is 0; adds 1 when tenure exceeds 365 days (measured
++     * from {@code registrationDate} to today). The result is capped at 4. Level 4 therefore requires
++     * tenure of more than 365 days, so a newly created owner — whose tenure is zero — never exceeds
++     * level 3.
++     */
++    default int membershipLevel(Owner owner) {
++        int level = 1;
++        if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
++            level++;
++        }
++        if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
++            level++;
++        }
++        java.time.LocalDate registrationDate = owner.getRegistrationDate();
++        if (registrationDate != null
++                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365) {
++            level++;
++        }
++        return Math.min(4, level);
++    }
++
+     Owner toOwner(OwnerDto ownerDto);
+ 
+     @Mapping(target = "id", ignore = true)
