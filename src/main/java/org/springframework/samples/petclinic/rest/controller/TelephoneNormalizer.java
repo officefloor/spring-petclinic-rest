@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.Map;
+
 import org.springframework.stereotype.Component;
 
 /**
@@ -42,6 +44,14 @@ public class TelephoneNormalizer {
     private static final int MAX_DIGITS = 15;
 
     /**
+     * Country code (the digits after the '+') to the exact number of national digits an
+     * E.164 telephone for that country must carry. Australia ('+61') requires 9 national
+     * digits and the North American Numbering Plan ('+1') requires 10. A country code not
+     * listed here carries no per-country length constraint beyond the generic E.164 range.
+     */
+    private static final Map<String, Integer> NATIONAL_NUMBER_LENGTHS = Map.of("61", 9, "1", 10);
+
+    /**
      * Reduce a raw telephone to its canonical E.164 stored form.
      *
      * @param rawTelephone the telephone as supplied by the client, possibly {@code null} or
@@ -66,5 +76,30 @@ public class TelephoneNormalizer {
             return null;
         }
         return "+" + digits;
+    }
+
+    /**
+     * Whether a canonical E.164 telephone carries the national-number length its country
+     * code requires. Country code '+61' requires 9 national digits and '+1' requires 10;
+     * the national number is the digits that follow the country code. A number whose
+     * country code has no pinned length is not constrained beyond the generic E.164 range.
+     *
+     * @param e164Telephone a canonical E.164 telephone (a '+' followed by digits), as
+     *                      produced by {@link #normalize(String)}
+     * @return {@code true} if the national-number length matches the country code (or the
+     *         country code has no pinned length), {@code false} otherwise
+     */
+    public boolean hasValidNationalNumberLength(String e164Telephone) {
+        if (e164Telephone == null || !e164Telephone.startsWith("+")) {
+            return false;
+        }
+        String digits = e164Telephone.substring(1);
+        for (Map.Entry<String, Integer> entry : NATIONAL_NUMBER_LENGTHS.entrySet()) {
+            String countryCode = entry.getKey();
+            if (digits.startsWith(countryCode)) {
+                return digits.length() - countryCode.length() == entry.getValue();
+            }
+        }
+        return true;
     }
 }

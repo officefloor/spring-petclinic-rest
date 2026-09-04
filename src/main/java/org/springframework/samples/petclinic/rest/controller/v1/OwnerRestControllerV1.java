@@ -149,6 +149,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephone == null) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
+        if (!telephoneNormalizer.hasValidNationalNumberLength(telephone)) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
         owner.setTelephone(telephone);
         String email = owner.getEmail();
         if (email != null) {
