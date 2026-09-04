@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 97b2bb858..9f3e64363 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -79,6 +79,9 @@ public class Owner extends Person {
+     @Column(name = "household_gold")
+     private Boolean householdGold;
+ 
++    @Column(name = "deleted")
++    private boolean deleted;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -198,6 +201,14 @@ public class Owner extends Person {
+         this.householdGold = householdGold;
+     }
+ 
++    public boolean isDeleted() {
++        return this.deleted;
++    }
++
++    public void setDeleted(boolean deleted) {
++        this.deleted = deleted;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
+index c2b7b086b..0323328f5 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DuplicateHouseholdException.java
+@@ -42,6 +42,9 @@ public class DuplicateHouseholdException extends RuntimeException {
+         }
+         String household = Household.idFor(candidate);
+         for (Owner owner : existingOwners) {
++            if (owner.isDeleted()) {
++                continue;
++            }
+             if (household.equals(Household.idFor(owner))) {
+                 throw new DuplicateHouseholdException(candidate.getLastName(), candidate.getPostcode());
+             }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index dd264d9d3..051fa96de 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -161,7 +161,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owner == null) {
+             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+         }
+-        this.clinicService.deleteOwner(owner);
++        owner.setDeleted(true);
++        this.clinicService.saveOwner(owner);
+         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+     }
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+index f88d2c1c2..0499402ff 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+@@ -45,6 +45,9 @@ public final class IdentityKey {
+     public static void rejectIfDuplicate(Owner candidate, Collection<Owner> existingOwners) {
+         String key = of(candidate);
+         for (Owner owner : existingOwners) {
++            if (owner.isDeleted()) {
++                continue;
++            }
+             if (key.equals(of(owner))) {
+                 throw new DuplicateTelephoneException(key);
+             }
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 7568dfd9e..86278d1e5 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -53,7 +53,8 @@ CREATE TABLE owners (
+   namesake_count INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER,
+-  household_gold BOOLEAN
++  household_gold BOOLEAN,
++  deleted BOOLEAN DEFAULT FALSE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d182413e7..c51ef95b4 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2298,6 +2298,15 @@ components:
+               format: int32
+               readOnly: true
+               example: 7
++            deleted:
++              title: Deleted
++              description: >-
++                True when the owner has been soft-deleted via DELETE /api/owners/{id}.
++                The record is retained and still readable; a newly created owner is false.
++              type: boolean
++              default: false
++              readOnly: true
++              example: false
+           required:
+             - pets
+     OwnerPage:
