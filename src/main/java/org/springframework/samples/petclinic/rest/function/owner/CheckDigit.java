@@ -1,18 +1,15 @@
 package org.springframework.samples.petclinic.rest.function.owner;
 
-import org.springframework.samples.petclinic.model.Owner;
-
 /**
- * Derives an owner's {@code checkDigit} = a single Luhn check digit (0-9) computed over the
- * digits contained in the owner's customerCode. Non-digit characters are ignored.
+ * Computes a single Luhn check digit (0-9) over the digits contained in {@code code}.
+ * Non-digit characters are ignored. Used for the {@code CHK} segment of the memberId.
  */
 public final class CheckDigit {
 
     private CheckDigit() {
     }
 
-    public static int of(Owner owner) {
-        String code = owner.getCustomerCode();
+    public static int of(String code) {
         int sum = 0;
         boolean dbl = true;
         for (int i = code.length() - 1; i >= 0; i--) {

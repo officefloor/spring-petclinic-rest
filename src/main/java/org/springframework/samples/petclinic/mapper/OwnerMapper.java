@@ -19,17 +19,16 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.rest.function.owner.FiscalYear.of(owner.getRegistrationDate()) % 100))")
+    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
     @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.rest.function.owner.FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "membershipPoints", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner))")
     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.rest.function.owner.MembershipLevel.of(org.springframework.samples.petclinic.rest.function.owner.MembershipPoints.of(owner)))")
-    @Mapping(target = "locality", expression = "java(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')))")
+    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode()))")
     @Mapping(target = "ownerSegment", expression = "java(org.springframework.samples.petclinic.rest.function.owner.OwnerSegment.of(owner))")
-    @Mapping(target = "timezone", expression = "java(java.util.Map.of(\"NSW\", \"Australia/Sydney\", \"VIC\", \"Australia/Melbourne\", \"QLD\", \"Australia/Brisbane\").get(owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-'))))")
+    @Mapping(target = "timezone", expression = "java(java.util.Map.of(\"NSW\", \"Australia/Sydney\", \"VIC\", \"Australia/Melbourne\", \"QLD\", \"Australia/Brisbane\").get(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode())))")
     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? \"EMAIL\" : \"PHONE\")")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay.of(owner))")
     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.rest.function.owner.IdentityKey.of(owner))")
-    @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.rest.function.owner.CheckDigit.of(owner))")
     @Mapping(target = "ageBand", expression = "java(org.springframework.samples.petclinic.rest.function.owner.AgeBand.of(owner))")
     @Mapping(target = "selfLink", expression = "java(\"/api/owners/\" + owner.getId())")
     OwnerDto toOwnerDto(Owner owner);

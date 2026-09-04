@@ -9,16 +9,19 @@ import org.springframework.samples.petclinic.model.Locality;
 import org.springframework.samples.petclinic.model.Owner;
 
 /**
- * Assigns the owner's {@code customerCode} as {@code <REGION>-<HASH8>}: REGION is the
- * region code for the owner (postcode-derived, city as fallback) and HASH8 is the first
- * eight upper-case hex characters of SHA-256 over (normalized telephone + last name). No
- * sequence number is used, so the identity is stable and city-count independent.
+ * Assigns the owner's unified {@code memberId} as {@code <REGION><FY><HASH8><CHK>}: REGION is
+ * the region code for the owner (postcode-derived, city as fallback), FY the 2-digit fiscal
+ * year of registration, HASH8 the first eight upper-case hex characters of SHA-256 over
+ * (normalized telephone + last name) and CHK a single Luhn check digit over the preceding
+ * digits. No sequence number is used, so the identity is stable and city-count independent.
  */
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
-        owner.setCustomerCode(region + "-" + hash8(owner.getTelephone() + owner.getLastName()));
+        String fy = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
+        String base = region + fy + hash8(owner.getTelephone() + owner.getLastName());
+        owner.setCustomerCode(base + CheckDigit.of(base));
     }
 
     private static String hash8(String value) {
