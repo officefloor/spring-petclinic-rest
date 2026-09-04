@@ -16,10 +16,17 @@
 
 package org.springframework.samples.petclinic.rest.controller;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Owns the owner-create audit concern: the single place that records the audit trail for a
@@ -36,10 +43,21 @@ public class OwnerAuditor {
     /** Dedicated audit logger; emits the audit trail on successful owner create. */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
+    /** Serializes the structured owner-created event to a compact JSON object. */
+    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+
+    /**
+     * Monotonically increasing sequence stamped onto each structured owner-created event. The
+     * auditor is a singleton, so this counter runs across every create for the life of the
+     * application, giving the emitted events a strict, gap-free order.
+     */
+    private final AtomicLong sequence = new AtomicLong();
+
     /**
      * Record the audit trail for an owner that has just been created: emit the audit line naming
-     * the owner's id, customer code, registration date, membership level and membership number.
-     * Called once, after the owner is persisted, with the owner in its final stored form.
+     * the owner's id, customer code, registration date, membership level and membership number,
+     * followed by the immutable structured event carrying the same create. Called once, after the
+     * owner is persisted, with the owner in its final stored form.
      *
      * @param owner           the freshly persisted owner
      * @param membershipLevel the owner's derived membership level, as computed for this create
@@ -48,5 +66,37 @@ public class OwnerAuditor {
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
             membershipLevel, owner.getMembershipNumber());
+        AUDIT.info(structuredEvent(owner, membershipLevel));
+    }
+
+    /**
+     * Build the immutable structured owner-created event as a JSON object
+     * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. {@code seq} is
+     * the next value of the monotonic {@link #sequence}, so every event carries a distinct, ordered
+     * sequence number across creates.
+     *
+     * <p>{@code customerCode} carries the owner's current primary identifier. Today that identifier
+     * is the customer code; when the customer code is unified into the member id the event's
+     * identifier follows automatically, because it is read from {@link #primaryIdentifier} rather
+     * than being spelled out here.
+     */
+    private String structuredEvent(Owner owner, int membershipLevel) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("seq", sequence.incrementAndGet());
+        event.put("ownerId", owner.getId());
+        event.put("customerCode", primaryIdentifier(owner));
+        event.put("membershipLevel", membershipLevel);
+        event.put("event", "OWNER_CREATED");
+        return MAPPER.writeValueAsString(event);
+    }
+
+    /**
+     * The owner's current primary identifier as it stands at this create. Today that is the
+     * customer code; this is the single point that decides which field is primary, so when the
+     * customer code is unified into the member id only this method changes and every emitted event
+     * carries the member id instead.
+     */
+    private String primaryIdentifier(Owner owner) {
+        return owner.getCustomerCode();
     }
 }
