@@ -1,0 +1,122 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..db48ff5e6
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerCreatedEvent.java
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.rest.controller.v1;
++
++import tools.jackson.databind.ObjectMapper;
++import tools.jackson.databind.json.JsonMapper;
++import tools.jackson.databind.node.ObjectNode;
++
++/**
++ * Immutable structured audit event emitted (alongside the human-readable audit line) on each
++ * successful owner create. It serializes to the JSON object
++ * {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}.
++ *
++ * <p>{@code seq} is a monotonically increasing integer across creates, letting a consumer order and
++ * de-duplicate events. {@code customerCode} carries the owner's <em>current</em> primary identifier:
++ * today an owner is keyed by its {@code customerCode}, and when that identifier is later unified into
++ * the {@code memberId} the event simply carries the memberId in its place (the controller derives the
++ * value through a single accessor, {@code primaryIdentifier}, so only that one place changes).
++ *
++ * <p>The event is a record, so it is immutable once constructed: its fields cannot be mutated after
++ * the create that produced it, which is the guarantee an audit trail depends on.
++ */
++public record OwnerCreatedEvent(long seq, Integer ownerId, String customerCode, Integer membershipLevel) {
++
++    /** Fixed discriminator identifying this kind of audit event. */
++    static final String EVENT_TYPE = "OWNER_CREATED";
++
++    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
++
++    /**
++     * Renders this event as its canonical JSON representation, with fields in the documented order
++     * {@code {seq, ownerId, customerCode, membershipLevel, event}}. This is the exact string published
++     * to the {@code AUDIT} logger.
++     *
++     * @return the event as a single-line JSON object
++     */
++    public String toJson() {
++        ObjectNode node = MAPPER.createObjectNode();
++        node.put("seq", this.seq);
++        node.put("ownerId", this.ownerId);
++        node.put("customerCode", this.customerCode);
++        node.put("membershipLevel", this.membershipLevel);
++        node.put("event", EVENT_TYPE);
++        return MAPPER.writeValueAsString(node);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index bebc4b31c..729ca750a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -24,6 +24,7 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.OptionalInt;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
+ 
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -81,6 +82,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
+      */
+     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+ 
++    /**
++     * Source of the {@code seq} carried by each {@link OwnerCreatedEvent}: a monotonically increasing
++     * counter bumped once per successful create, so every emitted event carries a strictly larger
++     * sequence number than the create before it.
++     */
++    private static final AtomicLong EVENT_SEQ = new AtomicLong();
++
+     /**
+      * Maximum number of owners a single city may hold. A create whose city already contains this many
+      * owners is rejected with a {@code 409 Conflict} (see {@link #rejectCityAtCapacity}).
+@@ -200,6 +208,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}",
+             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
+             ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
++        OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
++            owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
++        AUDIT.info(event.toJson());
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+@@ -304,6 +315,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+     }
+ 
++    /**
++     * The owner's current primary identifier, as carried on the {@link OwnerCreatedEvent} audit event.
++     * Today an owner is keyed by its {@code customerCode}; when that identifier is later unified into
++     * the {@code memberId}, this single accessor changes to return the memberId and the emitted event
++     * carries it in place of the customer code, with no other call site affected.
++     *
++     * @param owner the freshly created owner, already stamped with its {@code customerCode}
++     * @return the owner's current primary identifier
++     */
++    private String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
+     /**
+      * Reads the optional {@code Idempotency-Key} header from the current request. The generated
+      * {@code addOwner} signature carries only the request body, so the header is pulled from the
