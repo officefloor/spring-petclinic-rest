@@ -19,7 +19,9 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -56,6 +58,14 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /**
+     * Syntactic validation for an owner email: a non-empty local part, an '@', and a dotted domain
+     * whose top-level label is at least two letters. Deliberately conservative so plainly malformed
+     * input (e.g. a value without an '@') is rejected.
+     */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     private final ClinicService clinicService;
 
@@ -106,6 +116,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectBlankOwnerFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
+        normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         this.clinicService.saveOwner(owner);
@@ -127,6 +138,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
         currentOwner.setTelephone(ownerFieldsDto.getTelephone());
+        normalizeEmail(ownerFieldsDto);
+        currentOwner.setEmail(ownerFieldsDto.getEmail());
         this.clinicService.saveOwner(currentOwner);
         return new ResponseEntity<>(ownerMapper.toOwnerDto(currentOwner), HttpStatus.NO_CONTENT);
     }
@@ -252,6 +265,27 @@ public class OwnerRestControllerV1 implements OwnersApi {
             throw new InvalidOwnerFieldsException(List.of("telephone"));
         }
         ownerFieldsDto.setTelephone(digits);
+    }
+
+    /**
+     * Normalizes an optionally-supplied {@code email}. When absent (null) or blank the field is left
+     * untouched (email is optional). When present it is trimmed and, after validating that it is a
+     * syntactically valid address, written back lower-cased so it is the value stored and returned.
+     * Any present-but-invalid address is rejected with a {@code 400 Bad Request}.
+     *
+     * @param ownerFieldsDto the submitted owner fields
+     * @throws InvalidOwnerFieldsException if the email is present but not a syntactically valid address
+     */
+    private void normalizeEmail(OwnerFieldsDto ownerFieldsDto) {
+        String email = ownerFieldsDto.getEmail();
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        email = email.trim();
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new InvalidOwnerFieldsException(List.of("email"));
+        }
+        ownerFieldsDto.setEmail(email.toLowerCase(Locale.ROOT));
     }
 
     /**
