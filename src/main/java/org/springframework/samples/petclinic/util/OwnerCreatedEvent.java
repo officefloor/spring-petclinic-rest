@@ -31,5 +31,7 @@ public final class OwnerCreatedEvent {
         LoggerFactory.getLogger("AUDIT").info(
             "{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
             SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel);
+        LoggerFactory.getLogger("NOTIFY").info(
+            "welcome owner id={} memberId={}", owner.getId(), primaryIdentifier(owner));
     }
 }
