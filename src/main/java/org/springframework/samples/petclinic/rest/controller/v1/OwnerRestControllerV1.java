@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.rest.controller.v1;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -103,6 +104,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         Collection<Owner> owners = this.clinicService.findAllOwners();
+        if (owners.stream().filter(existing -> LocalDate.now().equals(existing.getRegistrationDate())).count() >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         if (owners.stream().anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))
                 || (!sharesHousehold && owners.stream().anyMatch(existing -> sameHousehold(existing, owner)))
