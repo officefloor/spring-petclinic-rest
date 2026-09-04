@@ -1,0 +1,90 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+index 4e08374fd..55e55115a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwner.java
+@@ -16,6 +16,7 @@ public class RespondWithOwner {
+         dto.setCapacityWarning(CapacityWarning.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
+         Membership.mark(dto, owner, ownerRepository);
++        RiskFlag.mark(dto, owner);
+         response.send(dto);
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+index 86407f9f4..c28df610a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RespondWithOwnerCreated.java
+@@ -19,6 +19,7 @@ public class RespondWithOwnerCreated {
+         dto.setCapacityWarning(CapacityWarning.warned(owner, ownerRepository));
+         PossibleDuplicate.mark(dto, owner, ownerRepository);
+         Membership.mark(dto, owner, ownerRepository);
++        RiskFlag.mark(dto, owner);
+         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+new file mode 100644
+index 000000000..1cc4e656e
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/RiskFlag.java
+@@ -0,0 +1,43 @@
++package org.springframework.samples.petclinic.rest.function.owner;
++
++import java.util.Locale;
++import java.util.Set;
++
++import org.springframework.samples.petclinic.model.Owner;
++import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++
++/**
++ * Response-time risk rule: an owner is flagged {@code riskFlag} when any of three signals hold — it
++ * is a {@link PossibleDuplicate}, its email domain is disposable-adjacent, or its city is over soft
++ * capacity (the {@link CapacityWarning} band). Reads the two flags the responder already derived, so
++ * it mirrors the values reported for {@link PossibleDuplicate} and {@link CapacityWarning}.
++ */
++public final class RiskFlag {
++
++    /** Second-level labels of known disposable mail services; a domain sharing one is "adjacent". */
++    private static final Set<String> DISPOSABLE_LABELS =
++            Set.of("mailinator", "tempmail", "guerrillamail", "trashmail", "throwawaymail", "10minutemail");
++
++    private RiskFlag() {
++    }
++
++    public static void mark(OwnerDto dto, Owner owner) {
++        boolean duplicate = Boolean.TRUE.equals(dto.getPossibleDuplicate());
++        boolean overCapacity = Boolean.TRUE.equals(dto.getCapacityWarning());
++        dto.setRiskFlag(duplicate || overCapacity || disposableAdjacent(owner.getEmail()));
++    }
++
++    private static boolean disposableAdjacent(String email) {
++        if (email == null || email.isBlank()) {
++            return false;
++        }
++        int at = email.indexOf('@');
++        if (at < 0) {
++            return false;
++        }
++        String domain = email.substring(at + 1).toLowerCase(Locale.ROOT);
++        int dot = domain.indexOf('.');
++        String label = dot < 0 ? domain : domain.substring(0, dot);
++        return DISPOSABLE_LABELS.contains(label);
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 2e7f1e5f4..62ee655b3 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2198,6 +2198,12 @@ components:
+               type: boolean
+               example: false
+               readOnly: true
++            riskFlag:
++              title: Risk flag
++              description: "True when any of these hold: the owner is a possible duplicate, the email domain is disposable-adjacent, or the city is over its soft capacity; otherwise false."
++              type: boolean
++              example: false
++              readOnly: true
+             possibleDuplicate:
+               title: Possible duplicate
+               description: "True when another owner shares this owner's last name and postcode but has a different telephone, otherwise false."
