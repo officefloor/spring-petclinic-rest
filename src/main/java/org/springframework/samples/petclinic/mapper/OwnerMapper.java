@@ -22,6 +22,7 @@ public interface OwnerMapper {
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+    @Mapping(target = "membershipTier", expression = "java(MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
