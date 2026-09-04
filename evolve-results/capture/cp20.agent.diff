@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 3c9a420a7..9f5cc4450 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -35,10 +35,12 @@ public interface OwnerMapper {
+     @Mapping(target = "registrationDate", source = "registrationDate", qualifiedByName = "defaultRegistrationDate")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+-    /** Default a missing registration date to the server's current date. */
++    /** Default a missing registration date to the server's current date, then roll
++     *  the effective date forward onto a business day. */
+     @Named("defaultRegistrationDate")
+     default LocalDate defaultRegistrationDate(LocalDate registrationDate) {
+-        return registrationDate == null ? LocalDate.now() : registrationDate;
++        return org.springframework.samples.petclinic.util.BusinessDay.rollForward(
++            registrationDate == null ? LocalDate.now() : registrationDate);
+     }
+ 
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitException.java b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitException.java
+index f9192c7ca..684fd0568 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitException.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/advice/DailyOwnerLimitException.java
+@@ -39,7 +39,7 @@ public class DailyOwnerLimitException extends RuntimeException {
+      * whose registration date is today.
+      */
+     public static void rejectIfAtLimit(Collection<Owner> existingOwners) {
+-        LocalDate today = LocalDate.now();
++        LocalDate today = org.springframework.samples.petclinic.util.BusinessDay.rollForward(LocalDate.now());
+         long count = existingOwners.stream()
+             .filter(owner -> today.equals(owner.getRegistrationDate()))
+             .count();
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+new file mode 100644
+index 000000000..4d1d40ca2
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/BusinessDay.java
+@@ -0,0 +1,26 @@
++package org.springframework.samples.petclinic.util;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Rolls a date forward onto a business day: a Saturday or Sunday advances to the
++ * following Monday, while a weekday is returned unchanged.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    /** {@code date} unchanged when it is a weekday, otherwise the following Monday. */
++    public static LocalDate rollForward(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY) {
++            return date.plusDays(2);
++        }
++        if (day == DayOfWeek.SUNDAY) {
++            return date.plusDays(1);
++        }
++        return date;
++    }
++}
