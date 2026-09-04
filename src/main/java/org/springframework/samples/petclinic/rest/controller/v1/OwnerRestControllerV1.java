@@ -35,6 +35,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
 import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
@@ -159,6 +160,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         long registeredThatDay = countRegisteredOn(registrationDate);
         rejectDailyRegistrationLimitReached(registrationDate, registeredThatDay);
         normalizeEmail(ownerFieldsDto);
+        rejectDuplicateEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
@@ -374,6 +376,32 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .anyMatch(comparisonKey::equals);
         if (inUse) {
             throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+        }
+    }
+
+    /**
+     * Rejects creating an owner whose lower-cased email is already used by any other owner. Both the
+     * submitted email and every existing owner's stored email are compared case-insensitively (on
+     * their lower-cased form), so equality is judged on that form alone. A match is reported as a
+     * {@code 409 Conflict}. An absent (null or blank) email is not subject to this rule, email being
+     * optional.
+     *
+     * @param normalizedEmail the submitted email, already trimmed and lower-cased by
+     *                        {@link #normalizeEmail}, or null/blank when no email was supplied
+     * @throws DuplicateOwnerEmailException if another owner already uses the same email
+     */
+    private void rejectDuplicateEmail(String normalizedEmail) {
+        if (normalizedEmail == null || normalizedEmail.isBlank()) {
+            return;
+        }
+        String comparisonKey = normalizedEmail.toLowerCase(Locale.ROOT);
+        boolean inUse = this.clinicService.findAllOwners().stream()
+            .map(Owner::getEmail)
+            .filter(Objects::nonNull)
+            .map(email -> email.toLowerCase(Locale.ROOT))
+            .anyMatch(comparisonKey::equals);
+        if (inUse) {
+            throw new DuplicateOwnerEmailException(normalizedEmail);
         }
     }
 
