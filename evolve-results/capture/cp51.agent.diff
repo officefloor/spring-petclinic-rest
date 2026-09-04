@@ -1,0 +1,91 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 0e276d784..16cd7d998 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -18,6 +18,7 @@ import java.time.Month;
+ import java.time.Period;
+ import java.util.Collection;
+ import java.util.List;
++import java.util.OptionalInt;
+ 
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+@@ -220,10 +221,37 @@ public abstract class OwnerMapper {
+ 
+     /**
+      * The owner's numeric membership level from 1 to 4, derived from {@link #membershipPoints}
+-     * via {@link #levelForPoints}.
++     * via {@link #levelForPoints} and then held to the household level-ceiling by
++     * {@link #cappedByHousehold}.
+      */
+     public int membershipLevel(Owner owner) {
+-        return levelForPoints(membershipPoints(owner));
++        return cappedByHousehold(owner, levelForPoints(membershipPoints(owner)));
++    }
++
++    /**
++     * Hold {@code level} to the household level-ceiling: an owner's membershipLevel may not exceed
++     * one above the current maximum membershipLevel among the household members that already
++     * existed when this owner registered — the other, non-deleted owners sharing its householdId
++     * that were created earlier (a strictly lower id, ids being monotonic). When no such earlier
++     * household member exists no ceiling applies and {@code level} is returned unchanged.
++     *
++     * @param owner the owner whose own level is being capped
++     * @param level the owner's uncapped membership level
++     * @return the level, capped at one above the earlier household members' maximum
++     */
++    private int cappedByHousehold(Owner owner, int level) {
++        Integer id = owner.getId();
++        String householdId = owner.getHouseholdId();
++        if (id == null || householdId == null) {
++            return level;
++        }
++        OptionalInt maxExisting = clinicService.findAllOwners().stream()
++            .filter(existing -> !existing.isDeleted())
++            .filter(existing -> existing.getId() != null && existing.getId() < id)
++            .filter(existing -> householdId.equals(existing.getHouseholdId()))
++            .mapToInt(this::membershipLevel)
++            .max();
++        return maxExisting.isEmpty() ? level : Math.min(level, maxExisting.getAsInt() + 1);
+     }
+ 
+     /**
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRegistrar.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRegistrar.java
+index bea231035..5ccddee99 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRegistrar.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/OwnerRegistrar.java
+@@ -201,15 +201,11 @@ public class OwnerRegistrar {
+         // checks so both the household-duplicate rule and the identity-key rule key off the
+         // same computed id.
+         owner.setHouseholdId(householdResolver.householdId(owner));
+-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+         boolean householdMember = householdResolver.householdExists(owner);
+-        // Because the household is keyed on (lastName, postcode), a second owner sharing an
+-        // existing owner's household is a household duplicate and is rejected with 409. The
+-        // 'sharesHousehold' flag only bypasses this block, declaring a deliberate member; it
+-        // no longer creates the link, which the deterministic id now does on its own.
+-        if (householdMember && !sharesHousehold) {
+-            return new ResponseEntity<>(HttpStatus.CONFLICT);
+-        }
++        // A second owner sharing an existing owner's household (same normalized last name and
++        // postcode) is a legitimate additional member, not a rejection: it is admitted and its
++        // membershipLevel is instead held to the household level-ceiling when the DTO is derived.
++        // A true duplicate is still caught below by the identity-key rule.
+         if (isDuplicateOwner(owner)) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+@@ -227,10 +223,10 @@ public class OwnerRegistrar {
+         // Soft-match: the candidate has already cleared the hard-duplicate check, but it may
+         // still share an existing owner's last name and postcode while carrying a different
+         // telephone. When it does, it is created but flagged as a possible duplicate of that
+-        // existing owner; otherwise the flag is false and no reference is recorded. A declared
+-        // household member (created via 'sharesHousehold') is not a suspected duplicate, so it
+-        // is never flagged.
+-        Integer possibleDuplicateOf = (sharesHousehold && householdMember) ? null : possibleDuplicateOf(owner);
++        // existing owner; otherwise the flag is false and no reference is recorded. A member of
++        // an existing household is a deliberate additional member, not a suspected duplicate, so
++        // it is never flagged.
++        Integer possibleDuplicateOf = householdMember ? null : possibleDuplicateOf(owner);
+         owner.setPossibleDuplicate(possibleDuplicateOf != null);
+         owner.setPossibleDuplicateOf(possibleDuplicateOf);
+         this.clinicService.saveOwner(owner);
