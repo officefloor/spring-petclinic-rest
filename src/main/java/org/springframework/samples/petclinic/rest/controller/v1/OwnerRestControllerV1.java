@@ -159,23 +159,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
             if (!EMAIL_PATTERN.matcher(email).matches()) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
-            String emailKey = email.toLowerCase(Locale.ROOT);
-            owner.setEmail(emailKey);
-            boolean emailInUse = this.clinicService.findAllOwners().stream()
-                .map(Owner::getEmail)
-                .filter(Objects::nonNull)
-                .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
-                .anyMatch(emailKey::equals);
-            if (emailInUse) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
+            owner.setEmail(email.toLowerCase(Locale.ROOT));
         }
-        boolean telephoneInUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getTelephone)
-            .filter(Objects::nonNull)
-            .map(telephoneNormalizer::normalize)
-            .anyMatch(telephone::equals);
-        if (telephoneInUse) {
+        // The owner's telephone, email and household id are now all in their canonical,
+        // stored form; establish the household id here so the duplicate check that follows
+        // sees a fully-normalized owner to compare against the existing ones.
+        String lastNameKey = normalizeIdentity(owner.getLastName());
+        String addressKey = addressNormalizer.normalize(owner.getAddress());
+        owner.setHouseholdId(householdId(lastNameKey, addressKey));
+        if (isDuplicateOwner(owner, Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold()))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         String cityKey = normalizeIdentity(owner.getCity());
@@ -185,17 +177,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (ownersInCity >= 50) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
-        String lastNameKey = normalizeIdentity(owner.getLastName());
-        String addressKey = addressNormalizer.normalize(owner.getAddress());
-        if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            boolean householdDuplicate = this.clinicService.findAllOwners().stream()
-                .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
-                    && addressNormalizer.normalize(existing.getAddress()).equals(addressKey));
-            if (householdDuplicate) {
-                return new ResponseEntity<>(HttpStatus.CONFLICT);
-            }
-        }
-        owner.setHouseholdId(householdId(lastNameKey, addressKey));
         owner.setCustomerCode(nextCustomerCode(owner.getCity(), owner.getLastName()));
         int namesakeCount = (int) this.clinicService.findAllOwners().stream()
             .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName())
@@ -212,6 +193,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
+    }
+
+    /**
+     * Whether {@code candidate} collides with an already-registered owner under any of the
+     * duplicate rules enforced on create. This is the single point at which a new owner is
+     * rejected as a duplicate (HTTP 409): the candidate clashes when it reuses an existing
+     * owner's email, reuses an existing owner's telephone, or — unless it is explicitly
+     * flagged as sharing a household — repeats an existing owner's household (same normalized
+     * last name and address).
+     *
+     * <p>Every comparison is made on the canonical form of the field. The candidate arrives
+     * with its telephone and email already normalized and its household id already derived,
+     * and each existing owner's value is reduced the same way before comparison, so a match
+     * means the two owners are genuinely the same on that field.
+     *
+     * @param candidate       the fully-normalized owner about to be created
+     * @param sharesHousehold whether the caller flagged this owner as intentionally sharing an
+     *                        existing household, which waives the household duplicate rule
+     * @return {@code true} if an existing owner already occupies the candidate's identity
+     */
+    private boolean isDuplicateOwner(Owner candidate, boolean sharesHousehold) {
+        Collection<Owner> existingOwners = this.clinicService.findAllOwners();
+        String email = candidate.getEmail();
+        if (email != null) {
+            boolean emailInUse = existingOwners.stream()
+                .map(Owner::getEmail)
+                .filter(Objects::nonNull)
+                .map(existing -> existing.trim().toLowerCase(Locale.ROOT))
+                .anyMatch(email::equals);
+            if (emailInUse) {
+                return true;
+            }
+        }
+        String telephone = candidate.getTelephone();
+        boolean telephoneInUse = existingOwners.stream()
+            .map(Owner::getTelephone)
+            .filter(Objects::nonNull)
+            .map(telephoneNormalizer::normalize)
+            .anyMatch(telephone::equals);
+        if (telephoneInUse) {
+            return true;
+        }
+        if (!sharesHousehold) {
+            String lastNameKey = normalizeIdentity(candidate.getLastName());
+            String addressKey = addressNormalizer.normalize(candidate.getAddress());
+            boolean householdDuplicate = existingOwners.stream()
+                .anyMatch(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
+                    && addressNormalizer.normalize(existing.getAddress()).equals(addressKey));
+            if (householdDuplicate) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
