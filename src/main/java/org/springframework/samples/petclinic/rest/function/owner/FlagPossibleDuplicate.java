@@ -69,8 +69,12 @@ public class FlagPossibleDuplicate {
         if (!owner.getPostcode().equals(existing.getPostcode())) {
             return false;
         }
-        return !OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName())
-                .equals(OwnerIdentity.key(existing.getTelephone(), existing.getEmail(),
-                        existing.getLastName()));
+        return !identityKeyOf(owner).equals(identityKeyOf(existing));
+    }
+
+    /** The owner's whole {@code identityKey} — the one derivation the soft match compares (see
+     * {@link OwnerIdentity#key}). */
+    private static String identityKeyOf(Owner owner) {
+        return OwnerIdentity.key(owner.getTelephone(), owner.getEmail(), owner.getLastName());
     }
 }

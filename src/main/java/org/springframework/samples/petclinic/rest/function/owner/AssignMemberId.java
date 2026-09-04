@@ -31,10 +31,7 @@ public class AssignMemberId {
      * Fully determined by the owner, so equal owners produce the same base.
      */
     private static String baseId(Owner owner) {
-        String region = OwnerRegion.fromPostcode(owner.getPostcode());
-        if (region == null) {
-            region = "UNKNOWN";
-        }
+        String region = OwnerRegion.identifierRegionCode(owner.getPostcode());
         String fiscalYearCode = OwnerMembership.fiscalYearCode(owner.getRegistrationDate());
         String hash8 = OwnerIdentity.customerHash(owner.getTelephone(), owner.getLastName());
         return MemberId.of(region, fiscalYearCode, hash8);

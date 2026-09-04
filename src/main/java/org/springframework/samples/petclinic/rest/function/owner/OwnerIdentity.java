@@ -75,7 +75,8 @@ public final class OwnerIdentity {
      * (lastName, postcode). A null postcode is treated as the empty string.
      */
     public static String deriveHouseholdId(String normalizedLastName, String postcode) {
-        return sha256Hex(normalizedLastName + '|' + (postcode == null ? "" : postcode), 12);
+        String input = normalizedLastName + '|' + (postcode == null ? "" : postcode);
+        return sha256Hex(input, 12);
     }
 
     /**
@@ -94,7 +95,8 @@ public final class OwnerIdentity {
      * owner's {@code memberId} ({@code <REGION><FY><HASH8><CHK>}).
      */
     public static String customerHash(String telephone, String lastName) {
-        return sha256Hex(canonicalTelephone(telephone) + (lastName == null ? "" : lastName), 8);
+        String input = canonicalTelephone(telephone) + (lastName == null ? "" : lastName);
+        return sha256Hex(input, 8);
     }
 
     /**

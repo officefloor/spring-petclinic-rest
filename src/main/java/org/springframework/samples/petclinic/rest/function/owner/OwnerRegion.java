@@ -7,9 +7,10 @@ import java.util.Map;
  * region is a short code (NSW, VIC, QLD) fixed by two lookup tables: the inclusive 4-digit postcode
  * range per region, and the city-to-region fallback used when the postcode yields nothing.
  *
- * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null}) and is the source
- * of the REGION prefix of an owner's {@code memberId}; {@link #regionOf} reads that prefix back out of
- * a {@code memberId}, which is how a whole owner resolves to a locality.
+ * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null});
+ * {@link #identifierRegionCode} is the one derivation the identifiers embed — the REGION prefix of an
+ * owner's {@code memberId} — folding an absent region to {@code UNKNOWN}; {@link #regionOf} reads that
+ * prefix back out of a {@code memberId}, which is how a whole owner resolves to a locality.
  */
 public final class OwnerRegion {
 
@@ -65,6 +66,18 @@ public final class OwnerRegion {
             }
         }
         return null;
+    }
+
+    /**
+     * The region code the identifiers embed — the REGION segment of an owner's {@code memberId},
+     * derived from the postcode: the plain region ({@link #fromPostcode}) when the postcode maps to a
+     * known region, else {@code UNKNOWN}. This is the single source for the region that goes <em>into</em>
+     * an identifier, kept distinct from the user-facing locality that {@link #regionOf} reads back
+     * <em>out</em> of an assigned id.
+     */
+    public static String identifierRegionCode(String postcode) {
+        String region = fromPostcode(postcode);
+        return region == null ? "UNKNOWN" : region;
     }
 
     /**
