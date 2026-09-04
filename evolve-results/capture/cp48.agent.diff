@@ -1,0 +1,153 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 675b4e32f..6a1a853b2 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -24,7 +24,8 @@ public interface OwnerMapper {
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+     @Mapping(target = "timezone", expression = "java(timezone(owner))")
+     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.of(owner.getCustomerCode()))")
+-    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
++    @Mapping(target = "fiscalYear", expression = "java(org.springframework.samples.petclinic.util.FiscalYear.label(owner.getRegistrationDate()))")
++    @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", org.springframework.samples.petclinic.util.FiscalYear.yearOf(owner.getRegistrationDate()) % 100))")
+     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
+     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
+     @Mapping(target = "contactPreference", expression = "java((owner.getEmail() != null && !owner.getEmail().isBlank()) ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
+@@ -75,7 +76,8 @@ public interface OwnerMapper {
+     /**
+      * Computes the owner's {@code membershipPoints}. Starts at 0; adds 2 when a non-blank email is
+      * present; adds 1 when {@code namesakeCount} is 0; adds 2 for a household of 3 or more; adds 3
+-     * when tenure exceeds 365 days (measured from {@code registrationDate} to today).
++     * when at least one fiscal year has elapsed since {@code registrationDate} (measured from
++     * {@code registrationDate} to today, counting 1-July boundaries crossed).
+      */
+     default int membershipPoints(Owner owner) {
+         int points = 0;
+@@ -90,7 +92,8 @@ public interface OwnerMapper {
+         }
+         java.time.LocalDate registrationDate = owner.getRegistrationDate();
+         if (registrationDate != null
+-                && java.time.temporal.ChronoUnit.DAYS.between(registrationDate, java.time.LocalDate.now()) > 365) {
++                && org.springframework.samples.petclinic.util.FiscalYear.elapsed(
++                        registrationDate, java.time.LocalDate.now()) >= 1) {
+             points += 3;
+         }
+         return points;
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+new file mode 100644
+index 000000000..d049b0a28
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/FiscalYear.java
+@@ -0,0 +1,70 @@
++/*
++ * Copyright 2016-2017 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.springframework.samples.petclinic.util;
++
++import java.time.LocalDate;
++import java.time.Month;
++
++/**
++ * Derivation of the fiscal year a date falls in. Kept separate from the owner controller and the
++ * {@code Owner} model so the rule lives in one place, as a pure function with no web or persistence
++ * dependencies. Mirrors {@link BusinessDayAdjuster}, whose business-day-adjusted date this is
++ * derived from.
++ *
++ * <p>The fiscal year starts on 1 July and is identified by the calendar year in which it ends: a
++ * date on or after 1 July belongs to the fiscal year of {@code year + 1}, and a date before 1 July
++ * belongs to the fiscal year of {@code year}. So 2026-09-04 falls in fiscal year 2027 and 2026-03-04
++ * falls in fiscal year 2026. The {@linkplain #label label} form is {@code FY} followed by the last
++ * two digits of that year, e.g. {@code FY27}.
++ */
++public abstract class FiscalYear {
++
++    /**
++     * The fiscal year (as a full calendar year) that {@code date} falls in. The fiscal year starts
++     * on 1 July and is named for the calendar year in which it ends.
++     *
++     * @param date the date (must not be null)
++     * @return the fiscal year, e.g. {@code 2027} for 2026-09-04
++     */
++    public static int yearOf(LocalDate date) {
++        return date.getMonthValue() >= Month.JULY.getValue() ? date.getYear() + 1 : date.getYear();
++    }
++
++    /**
++     * The {@code FY<YY>} label of the fiscal year {@code date} falls in, where {@code YY} is the last
++     * two digits of the fiscal year, zero-padded.
++     *
++     * @param date the date (must not be null)
++     * @return the fiscal year label, e.g. {@code FY27} for 2026-09-04
++     */
++    public static String label(LocalDate date) {
++        return String.format("FY%02d", yearOf(date) % 100);
++    }
++
++    /**
++     * The number of fiscal years elapsed between two dates, i.e. the number of 1-July boundaries
++     * crossed from {@code from} to {@code to}.
++     *
++     * @param from the earlier date (must not be null)
++     * @param to   the later date (must not be null)
++     * @return {@code yearOf(to) - yearOf(from)}
++     */
++    public static int elapsed(LocalDate from, LocalDate to) {
++        return yearOf(to) - yearOf(from);
++    }
++
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index bd7f06d7a..881b05219 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2211,13 +2211,24 @@ components:
+               maximum: 9
+               example: 4
+               readOnly: true
++            fiscalYear:
++              title: Fiscal year
++              description: >-
++                The fiscal year the owner's business-day-adjusted registrationDate falls in,
++                formatted 'FY<YY>'. The fiscal year starts on 1 July and is named for the calendar
++                year in which it ends, so a registrationDate on or after 1 July belongs to the next
++                calendar year's fiscal year; YY is the last two digits of that year.
++              type: string
++              example: 'FY27'
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: >-
+                 The owner's membership number, formatted '<customerCode>-M<YY>' where
+-                YY is the last two digits of the registrationDate year.
++                YY is the last two digits of the fiscal year of the business-day-adjusted
++                registrationDate (see 'fiscalYear').
+               type: string
+-              example: 'SMI-0007-M26'
++              example: 'SMI-0007-M27'
+               readOnly: true
+             householdId:
+               title: Household ID
+@@ -2257,8 +2268,9 @@ components:
+               description: >-
+                 The owner's membership points, computed on creation. Starts at 0;
+                 add 2 when an email is present; add 1 when namesakeCount is 0; add 2 for
+-                a household of 3 or more; add 3 for tenure over 365 days (measured from
+-                registrationDate to today).
++                a household of 3 or more; add 3 when at least one fiscal year has elapsed
++                since registrationDate (measured from registrationDate to today, counting
++                1-July boundaries crossed).
+               type: integer
+               format: int32
+               minimum: 0
