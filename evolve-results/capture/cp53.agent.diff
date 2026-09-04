@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 7c34917e5..0a28ef570 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -130,6 +130,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+         ownerDto.setMembershipLevel(org.springframework.samples.petclinic.util.LevelCeiling.cap(ownerDto.getMembershipLevel(), owner, this.clinicService.findAllOwners()));
+         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={} membershipLevel={} membershipNumber={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), ownerDto.getMembershipLevel(), ownerDto.getMembershipNumber());
++        org.springframework.samples.petclinic.util.OwnerCreatedEvent.emit(owner, ownerDto.getMembershipLevel());
+         ownerDto.setBulkSignupWarning(bulkSignupWarning);
+         headers.setLocation(UriComponentsBuilder.newInstance()
+             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java b/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java
+new file mode 100644
+index 000000000..ec2c7e602
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/OwnerCreatedEvent.java
+@@ -0,0 +1,35 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.slf4j.LoggerFactory;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Emits the immutable {@code OWNER_CREATED} structured event to the {@code AUDIT} logger,
++ * carrying a monotonically increasing {@code seq}, the owner id, the owner's current
++ * primary identifier and the membership level.
++ *
++ * <p>The primary identifier is resolved via {@link #primaryIdentifier(Owner)}: today the
++ * owner's {@code customerCode}, and whatever replaces it later (e.g. the memberId).
++ */
++public final class OwnerCreatedEvent {
++
++    private static final AtomicLong SEQ = new AtomicLong();
++
++    private OwnerCreatedEvent() {
++    }
++
++    /** The owner's current primary identifier. */
++    public static String primaryIdentifier(Owner owner) {
++        return owner.getCustomerCode();
++    }
++
++    /** Emits {@code {seq, ownerId, customerCode, membershipLevel, event:'OWNER_CREATED'}}. */
++    public static void emit(Owner owner, Object membershipLevel) {
++        LoggerFactory.getLogger("AUDIT").info(
++            "{\"seq\":{},\"ownerId\":{},\"customerCode\":\"{}\",\"membershipLevel\":\"{}\",\"event\":\"OWNER_CREATED\"}",
++            SEQ.incrementAndGet(), owner.getId(), primaryIdentifier(owner), membershipLevel);
++    }
++}
