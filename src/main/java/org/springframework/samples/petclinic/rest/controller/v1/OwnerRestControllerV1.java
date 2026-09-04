@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.samples.petclinic.mapper.OwnerMapper;
 import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.mapper.VisitMapper;
+import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
@@ -103,8 +104,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
+        LocalDate registrationDate = BusinessDay.adjust(
+            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
+        owner.setRegistrationDate(registrationDate);
         Collection<Owner> owners = this.clinicService.findAllOwners();
-        if (owners.stream().filter(existing -> LocalDate.now().equals(existing.getRegistrationDate())).count() >= 100) {
+        if (owners.stream().filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
