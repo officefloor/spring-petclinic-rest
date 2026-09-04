@@ -1,0 +1,180 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index e2aacc73f..8627a8588 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -75,6 +75,9 @@ public class Owner extends Person {
+     @Column(name = "household_size")
+     private Integer householdSize;
+ 
++    @Column(name = "membership_points")
++    private Integer membershipPoints;
++
+     @Column(name = "membership_level")
+     private Integer membershipLevel;
+ 
+@@ -186,6 +189,14 @@ public class Owner extends Person {
+         this.householdSize = householdSize;
+     }
+ 
++    public Integer getMembershipPoints() {
++        return this.membershipPoints;
++    }
++
++    public void setMembershipPoints(Integer membershipPoints) {
++        this.membershipPoints = membershipPoints;
++    }
++
+     public Integer getMembershipLevel() {
+         return this.membershipLevel;
+     }
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+index ce5fb4d4d..24667f20d 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignMembershipLevel.java
+@@ -7,32 +7,48 @@ import net.officefloor.plugin.variable.Val;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Assigns, on the owner being created, the numeric membership level. The level starts at one, gains a
+- * point when an email is present and a further point when the owner has no pre-existing namesakes
+- * ({@code namesakeCount} of zero); these pre-tenure factors are capped at three. Level four requires
+- * a tenure of more than 365 days, measured from the owner's {@code registrationDate}. A newly created
+- * owner has zero tenure, so a new owner never exceeds level three. Runs after
+- * {@link NormalizeOwnerEmail} and {@link AssignNamesakeCount} so both inputs are settled, and before
+- * {@link SaveOwner} persists the value.
++ * Assigns, on the owner being created, the membership points and the numeric membership level derived
++ * from them. Points start at zero and gain: 2 when an email is present, 1 when the owner has no
++ * pre-existing namesakes ({@code namesakeCount} of zero), 2 for a household of three or more, and 3 for
++ * a tenure of more than 365 days measured from the owner's {@code registrationDate}. The points map to a
++ * level: 1 for 0-1 points, 2 for 2-3, 3 for 4-5 and 4 for 6 or more. Runs after
++ * {@link NormalizeOwnerEmail}, {@link AssignNamesakeCount} and {@link AssignHouseholdSize} so all inputs
++ * are settled, and before {@link SaveOwner} persists the values.
+  */
+ public class AssignMembershipLevel {
+ 
+-    /** A tenure strictly greater than this many days qualifies for level four. */
+-    private static final long LEVEL_FOUR_TENURE_DAYS = 365;
++    /** A tenure strictly greater than this many days scores the tenure points. */
++    private static final long TENURE_POINTS_DAYS = 365;
+ 
+     public void service(@Val Owner owner) {
+-        int level = 1;
++        int points = 0;
+         if (owner.getEmail() != null && !owner.getEmail().isEmpty()) {
+-            level++;
++            points += 2;
+         }
+         if (owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0) {
+-            level++;
++            points += 1;
+         }
+-        level = Math.min(level, 3);
+-        if (tenureDays(owner) > LEVEL_FOUR_TENURE_DAYS) {
+-            level = 4;
++        if (owner.getHouseholdSize() != null && owner.getHouseholdSize() >= 3) {
++            points += 2;
+         }
+-        owner.setMembershipLevel(level);
++        if (tenureDays(owner) > TENURE_POINTS_DAYS) {
++            points += 3;
++        }
++        owner.setMembershipPoints(points);
++        owner.setMembershipLevel(levelOf(points));
++    }
++
++    private static int levelOf(int points) {
++        if (points <= 1) {
++            return 1;
++        }
++        if (points <= 3) {
++            return 2;
++        }
++        if (points <= 5) {
++            return 3;
++        }
++        return 4;
+     }
+ 
+     private static long tenureDays(Owner owner) {
+diff --git a/src/main/resources/db/h2/schema.sql b/src/main/resources/db/h2/schema.sql
+index f88e86414..475a0329a 100644
+--- a/src/main/resources/db/h2/schema.sql
++++ b/src/main/resources/db/h2/schema.sql
+@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_points INTEGER,
+   membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 4786c7591..1093bdcba 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -52,6 +52,7 @@ CREATE TABLE owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INTEGER,
++  membership_points INTEGER,
+   membership_level INTEGER,
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INTEGER
+diff --git a/src/main/resources/db/mysql/schema.sql b/src/main/resources/db/mysql/schema.sql
+index c1e6a2890..473d49670 100644
+--- a/src/main/resources/db/mysql/schema.sql
++++ b/src/main/resources/db/mysql/schema.sql
+@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owners (
+   membership_number VARCHAR(30),
+   bulk_signup_warning BOOLEAN,
+   household_size INT(4),
++  membership_points INT(4),
+   membership_level INT(4),
+   possible_duplicate BOOLEAN,
+   possible_duplicate_of INT(4),
+diff --git a/src/main/resources/db/postgres/schema.sql b/src/main/resources/db/postgres/schema.sql
+index fab74985d..dff22ee5c 100644
+--- a/src/main/resources/db/postgres/schema.sql
++++ b/src/main/resources/db/postgres/schema.sql
+@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owners (
+                                       membership_number TEXT,
+                                       bulk_signup_warning BOOLEAN,
+                                       household_size INT,
++                                      membership_points INT,
+                                       membership_level INT,
+                                       possible_duplicate BOOLEAN,
+                                       possible_duplicate_of INT
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 6aeeab929..b09547150 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2165,16 +2165,25 @@ components:
+               type: string
+               example: 'NSW-1A2B3C4D-M26'
+               readOnly: true
++            membershipPoints:
++              title: Membership points
++              description: The owner's membership points, assigned at creation. Starts at 0, and gains
++                2 when an email is present, 1 when namesakeCount is 0, 2 for a household of 3 or more,
++                and 3 for a tenure of more than 365 days.
++              type: integer
++              format: int32
++              minimum: 0
++              example: 3
++              readOnly: true
+             membershipLevel:
+               title: Membership level
+-              description: The owner's numeric membership level, assigned at creation. Starts at 1,
+-                gains 1 when an email is present and 1 more when namesakeCount is 0, and is capped at 3.
+-                Level 4 is reserved for tenure.
++              description: The owner's numeric membership level, derived at creation from membershipPoints
++                as 1 (0-1 points), 2 (2-3), 3 (4-5) and 4 (6 or more).
+               type: integer
+               format: int32
+               minimum: 1
+               maximum: 4
+-              example: 3
++              example: 2
+               readOnly: true
+             locality:
+               title: Locality
