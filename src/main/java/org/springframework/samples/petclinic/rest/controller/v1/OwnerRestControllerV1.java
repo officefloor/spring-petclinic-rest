@@ -96,6 +96,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
      */
     private static final int MAX_OWNERS_PER_DAY = 100;
 
+    /**
+     * The number of owners that must already carry a given day's {@code registrationDate} before a
+     * create made that day is flagged with {@code bulkSignupWarning}. Once more than this many owners
+     * have already been created for the day, the new owner's {@code bulkSignupWarning} is {@code true}.
+     */
+    private static final int BULK_SIGNUP_WARNING_THRESHOLD = 80;
+
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -149,13 +156,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateHousehold(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
-        rejectDailyRegistrationLimitReached(registrationDate);
+        long registeredThatDay = countRegisteredOn(registrationDate);
+        rejectDailyRegistrationLimitReached(registrationDate, registeredThatDay);
         normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
         owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
+        owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
@@ -442,19 +451,33 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * equals the adjusted registration date; a day at (or over) that limit is reported as a {@code 429
      * Too Many Requests}.
      *
-     * @param registrationDate the create's effective registration date, already rolled onto a business
-     *                         day by {@link #effectiveRegistrationDate}
+     * @param registrationDate   the create's effective registration date, already rolled onto a
+     *                           business day by {@link #effectiveRegistrationDate}
+     * @param registeredThatDay  the number of owners already persisted (before this create) whose
+     *                           {@code registrationDate} equals {@code registrationDate}
      * @throws OwnerDailyRegistrationLimitException if that day has already reached the maximum number of
      *                                              owner registrations
      */
-    private void rejectDailyRegistrationLimitReached(LocalDate registrationDate) {
-        long registeredThatDay = this.clinicService.findAllOwners().stream()
-            .map(Owner::getRegistrationDate)
-            .filter(registrationDate::equals)
-            .count();
+    private void rejectDailyRegistrationLimitReached(LocalDate registrationDate, long registeredThatDay) {
         if (registeredThatDay >= MAX_OWNERS_PER_DAY) {
             throw new OwnerDailyRegistrationLimitException(registrationDate);
         }
+    }
+
+    /**
+     * Counts the owners already persisted (before this create) whose stored {@code registrationDate}
+     * equals the given day. This is the shared per-day accumulation both the daily create-limit and the
+     * bulk-signup warning are judged on.
+     *
+     * @param registrationDate the create's effective registration date, already rolled onto a business
+     *                         day by {@link #effectiveRegistrationDate}
+     * @return the number of existing owners registered on that day
+     */
+    private long countRegisteredOn(LocalDate registrationDate) {
+        return this.clinicService.findAllOwners().stream()
+            .map(Owner::getRegistrationDate)
+            .filter(registrationDate::equals)
+            .count();
     }
 
     private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
