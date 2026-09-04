@@ -1,0 +1,75 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+new file mode 100644
+index 000000000..b2beb9ea0
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/LocalityLookup.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.mapper;
++
++import java.util.Map;
++
++/**
++ * Derives an owner's canonical region ('locality') from its city using a fixed
++ * city-to-region table. Cities absent from the table resolve to 'UNKNOWN'.
++ */
++public final class LocalityLookup {
++
++    private static final String UNKNOWN = "UNKNOWN";
++
++    private static final Map<String, String> CITY_REGION = Map.of(
++            "Sydney", "NSW",
++            "Melbourne", "VIC",
++            "Brisbane", "QLD");
++
++    private LocalityLookup() {
++    }
++
++    /** The canonical region for {@code city}, or 'UNKNOWN' when it is not in the table. */
++    public static String regionOf(String city) {
++        if (city == null) {
++            return UNKNOWN;
++        }
++        return CITY_REGION.getOrDefault(city, UNKNOWN);
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 5231ba835..f55b66139 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -15,7 +15,7 @@ import java.util.List;
+ /**
+  * Maps Owner & OwnerDto using Mapstruct
+  */
+-@Mapper(uses = PetMapper.class)
++@Mapper(uses = PetMapper.class, imports = LocalityLookup.class)
+ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName",
+@@ -24,6 +24,8 @@ public interface OwnerMapper {
+             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
+     @Mapping(target = "membershipTier",
+             expression = "java((owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0 && owner.getEmail() != null && !owner.getEmail().isEmpty()) ? \"SILVER\" : \"BRONZE\")")
++    @Mapping(target = "locality",
++            expression = "java(LocalityLookup.regionOf(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+     Owner toOwner(OwnerDto ownerDto);
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index d6d21ba85..f2cf79351 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2125,6 +2125,14 @@ components:
+               type: string
+               example: 'SILVER'
+               readOnly: true
++            locality:
++              title: Locality
++              description: The canonical region derived from the owner's city using a fixed
++                city-to-region table (Sydney -> NSW, Melbourne -> VIC, Brisbane -> QLD).
++                'UNKNOWN' when the city is not in the table.
++              type: string
++              example: 'NSW'
++              readOnly: true
+             pets:
+               title: Pets
+               description: The pets owned by this individual including any booked vet visits.
