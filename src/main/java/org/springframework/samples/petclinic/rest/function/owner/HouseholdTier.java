@@ -7,7 +7,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Decides whether an owner's household qualifies for the {@code GOLD} membership tier:
  * true once three or more owners share this owner's householdId (same last name and
- * address). Otherwise the {@code SILVER}/{@code BRONZE} rules in
+ * postcode). Otherwise the {@code SILVER}/{@code BRONZE} rules in
  * {@link org.springframework.samples.petclinic.mapper.MembershipTier} apply.
  */
 public final class HouseholdTier {
@@ -18,9 +18,9 @@ public final class HouseholdTier {
     }
 
     public static boolean isGold(Owner owner, OwnerRepository ownerRepository) {
-        String householdId = HouseholdId.of(owner.getLastName(), owner.getAddress());
+        String householdId = HouseholdId.of(owner.getLastName(), owner.getPostcode());
         long members = ownerRepository.findAll().stream()
-                .filter(o -> householdId.equals(HouseholdId.of(o.getLastName(), o.getAddress())))
+                .filter(o -> householdId.equals(HouseholdId.of(o.getLastName(), o.getPostcode())))
                 .count();
         return members >= GOLD_THRESHOLD;
     }
