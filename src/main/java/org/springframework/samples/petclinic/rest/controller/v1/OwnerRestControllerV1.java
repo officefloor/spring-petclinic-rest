@@ -181,7 +181,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (currentOwner == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+        normalizeAddress(ownerFieldsDto);
         currentOwner.setAddress(addressFor(ownerFieldsDto));
+        currentOwner.setAddressLine1(ownerFieldsDto.getAddressLine1());
+        currentOwner.setAddressLine2(ownerFieldsDto.getAddressLine2());
         currentOwner.setCity(ownerFieldsDto.getCity());
         currentOwner.setFirstName(ownerFieldsDto.getFirstName());
         currentOwner.setLastName(ownerFieldsDto.getLastName());
@@ -284,7 +287,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         List<String> missing = new ArrayList<>();
         addIfBlank(missing, "firstName", ownerFieldsDto.getFirstName());
         addIfBlank(missing, "lastName", ownerFieldsDto.getLastName());
-        addIfBlank(missing, "address", ownerFieldsDto.getAddress());
+        if (isBlank(ownerFieldsDto.getAddressLine1()) && isBlank(ownerFieldsDto.getAddress())) {
+            missing.add("address");
+        }
         addIfBlank(missing, "city", ownerFieldsDto.getCity());
         addIfBlank(missing, "telephone", ownerFieldsDto.getTelephone());
         if (!missing.isEmpty()) {
@@ -311,23 +316,59 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     private void addIfBlank(List<String> missing, String fieldName, String value) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             missing.add(fieldName);
         }
     }
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     /**
-     * Normalizes the submitted {@code address} on create to its canonical form (see
+     * Normalizes the submitted address on create to its canonical form (see
      * {@link AddressNormalizer#normalize}) and writes it back onto the request so it is the value
      * stored and returned, and the form every later address comparison (the required-field check,
-     * household duplicate detection and the shared household id) is judged on. A null address is left
-     * untouched so {@link #rejectBlankOwnerFields} still reports it as missing; a value that is blank
+     * household duplicate detection and the shared household id) is judged on. The structured fields
+     * are preferred: {@code addressLine1} and the optional {@code addressLine2} are each normalized in
+     * place, and the flat {@code address} is set to the {@linkplain #composedAddress composed} value
+     * derived from them when a structured {@code addressLine1} is present, falling back to the
+     * normalized flat {@code address} otherwise. Any absent field is left absent so
+     * {@link #rejectBlankOwnerFields} still reports a wholly missing address; a value that is blank
      * after normalization likewise reduces to the empty string and is rejected there.
      *
      * @param ownerFieldsDto the submitted owner fields
      */
     private void normalizeAddress(OwnerFieldsDto ownerFieldsDto) {
-        ownerFieldsDto.setAddress(AddressNormalizer.normalizeOrNull(ownerFieldsDto.getAddress()));
+        String addressLine1 = AddressNormalizer.normalizeOrNull(ownerFieldsDto.getAddressLine1());
+        String addressLine2 = AddressNormalizer.normalizeOrNull(ownerFieldsDto.getAddressLine2());
+        String flatAddress = AddressNormalizer.normalizeOrNull(ownerFieldsDto.getAddress());
+        ownerFieldsDto.setAddressLine1(addressLine1);
+        ownerFieldsDto.setAddressLine2(addressLine2);
+        ownerFieldsDto.setAddress(composedAddress(addressLine1, addressLine2, flatAddress));
+    }
+
+    /**
+     * Composes the flat {@code address} an owner should carry from its (already normalized) address
+     * fields, preferring the structured form. When a non-blank {@code addressLine1} is present the
+     * composed address is {@code addressLine1}, with a single space and {@code addressLine2} appended
+     * when {@code addressLine2} is present; otherwise the flat {@code address} is used unchanged. This
+     * is the single value every later reader of the address (the required-field check, household
+     * duplicate detection and the shared household id) is judged on.
+     *
+     * @param addressLine1 the normalized first address line, or {@code null}/blank when absent
+     * @param addressLine2 the normalized second address line, or {@code null}/blank when absent
+     * @param flatAddress  the normalized flat address, or {@code null}/blank when absent
+     * @return the composed flat address, or {@code null} when no address form was supplied
+     */
+    private String composedAddress(String addressLine1, String addressLine2, String flatAddress) {
+        if (isBlank(addressLine1)) {
+            return flatAddress;
+        }
+        if (isBlank(addressLine2)) {
+            return addressLine1;
+        }
+        return addressLine1 + " " + addressLine2;
     }
 
     /**
