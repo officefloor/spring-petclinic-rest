@@ -40,6 +40,7 @@ import org.springframework.samples.petclinic.rest.dto.PetFieldsDto;
 import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.samples.petclinic.util.BulkSignup;
 import org.springframework.samples.petclinic.util.CustomerCode;
 import org.springframework.samples.petclinic.util.Namesakes;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -108,6 +109,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         DailyOwnerLimitException.rejectIfAtLimit(this.clinicService.findAllOwners());
+        boolean bulkSignupWarning = BulkSignup.isWarning(this.clinicService.findAllOwners());
         CityAtCapacityException.rejectIfAtCapacity(owner.getCity(), this.clinicService.findAllOwners());
         DuplicateTelephoneException.rejectIfDuplicate(owner.getTelephone(), this.clinicService.findAllOwners());
         DuplicateHouseholdException.rejectIfDuplicate(owner,
@@ -117,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         this.clinicService.saveOwner(owner);
         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(bulkSignupWarning);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
