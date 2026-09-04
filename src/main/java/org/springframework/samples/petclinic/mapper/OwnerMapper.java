@@ -55,6 +55,7 @@ public abstract class OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "checkDigit", expression = "java(checkDigit(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
+    @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -185,6 +186,19 @@ public abstract class OwnerMapper {
             }
         }
         return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+    }
+
+    /**
+     * The owner's segment, formatted '&lt;TIER&gt;_&lt;AREA&gt;'. TIER is 'PREMIUM' when the owner's
+     * {@link #membershipLevel(Owner) membershipLevel} is 3 or more, otherwise 'STANDARD'. AREA is
+     * 'METRO' when the owner's {@link #locality(Owner) locality} is a known region (NSW, VIC or QLD),
+     * otherwise 'REGIONAL'.
+     */
+    OwnerDto.OwnerSegmentEnum ownerSegment(Owner owner) {
+        String tier = membershipLevel(owner) >= 3 ? "PREMIUM" : "STANDARD";
+        boolean knownRegion = cityRegionResolver.timezoneForRegion(locality(owner)) != null;
+        String area = knownRegion ? "METRO" : "REGIONAL";
+        return OwnerDto.OwnerSegmentEnum.fromValue(tier + "_" + area);
     }
 
     /**
