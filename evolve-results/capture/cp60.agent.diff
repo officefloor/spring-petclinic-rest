@@ -1,0 +1,157 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java
+index 5d9c25700..4dfbf0b66 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/HouseholdId.java
+@@ -17,7 +17,7 @@ public final class HouseholdId {
+     }
+ 
+     public static String of(String lastName, String postcode) {
+-        String key = normalize(lastName) + "|" + normalize(postcode);
++        String key = "V2|" + normalize(lastName) + "|" + normalize(postcode);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+             StringBuilder sb = new StringBuilder();
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKey.java
+index 83f2a2b6f..1dcbbb337 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/IdentityKey.java
+@@ -17,7 +17,7 @@ public final class IdentityKey {
+     }
+ 
+     public static String of(String telephone, String email, String lastName) {
+-        String key = (telephone == null ? "" : telephone) + "|"
++        String key = "V2|" + (telephone == null ? "" : telephone) + "|"
+                 + (email == null ? "" : email.toLowerCase()) + "|" + Soundex.of(lastName);
+         try {
+             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipDecorator.java b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipDecorator.java
+index ca0dc2762..7c152f818 100644
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/MembershipDecorator.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/MembershipDecorator.java
+@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.repository.OwnerRepository;
+ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
++import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
+ import org.springframework.samples.petclinic.rest.function.owner.HouseholdTier;
+ import org.springframework.stereotype.Component;
+ 
+@@ -29,5 +30,10 @@ public class MembershipDecorator {
+         dto.setMembershipPoints(points);
+         dto.setMembershipLevel(HouseholdCap.cap(owner, MembershipLevel.of(points), ownerRepository));
+         dto.setOwnerSegment(OwnerSegment.of(dto.getMembershipLevel(), dto.getLocality()));
++        dto.setApiVersion(2);
++        dto.setIdentity(new OwnerIdentityDto()
++                .memberId(owner.getCustomerCode())
++                .householdId(HouseholdId.of(owner.getLastName(), owner.getPostcode()))
++                .identityKey(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName())));
+     }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index e6825eda8..269a68f57 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -22,9 +22,6 @@ public interface OwnerMapper {
+     @Mapping(target = "salutation", expression = "java(owner.getTitle() == null || owner.getTitle().isBlank() ? owner.getLastName() : owner.getTitle() + \" \" + owner.getLastName())")
+     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
+     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
+-    @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
+-    @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
+-    @Mapping(target = "memberId", expression = "java(owner.getCustomerCode())")
+     @Mapping(target = "membershipLevel", ignore = true)
+     @Mapping(target = "membershipPoints", ignore = true)
+     @Mapping(target = "locality", expression = "java(Locality.of(owner.getPostcode(), owner.getCity()))")
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+index a6ed5d715..a2375fcc2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/AssignCustomerCode.java
+@@ -20,7 +20,7 @@ import org.springframework.samples.petclinic.model.Owner;
+ public class AssignCustomerCode {
+ 
+     public void service(@Val Owner owner) {
+-        String region = Locality.of(owner.getPostcode(), owner.getCity());
++        String region = "V2" + Locality.of(owner.getPostcode(), owner.getCity());
+         String fiscalYear = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
+         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
+         String base = region + fiscalYear + hash8;
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
+index 6c96b7c0d..41f2d3a93 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/function/owner/SaveOwner.java
+@@ -27,7 +27,7 @@ public class SaveOwner {
+         audit.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
+                 owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
+         audit.info(String.format(
+-                "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
++                "{\"seq\":%d,\"schemaVersion\":2,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+                 EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel));
+         notify.info("welcome owner id={} memberId={}", owner.getId(), memberId);
+     }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index ad0b97c66..f9ad47bae 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2084,6 +2084,30 @@ components:
+         - lastName
+         - city
+         - telephone
++    OwnerIdentity:
++      title: Owner identity
++      description: The owner's version-2 identifiers, grouped together.
++      type: object
++      properties:
++        memberId:
++          title: Member ID
++          description: Unified member identifier assigned at creation, formatted '<REGION><FY><HASH8><CHK>' - the version-2 region code, the two-digit fiscal year of the registrationDate, the first 8 upper-case hex characters of the SHA-256 of the normalized telephone concatenated with the last name, and a single Luhn check digit over the digits of the preceding segments.
++          type: string
++          example: 'V2NSW26ABCDEF120'
++          readOnly: true
++        householdId:
++          title: Household ID
++          description: Stable version-2 identifier shared by owners at the same household (same last name and postcode).
++          type: string
++          example: 'H-3f9a2b7c1e5d'
++          readOnly: true
++        identityKey:
++          title: Identity key
++          description: Consolidated version-2 duplicate-detection key. Two owners are duplicates only when their whole identity keys match, so members of one household with different telephones are both allowed.
++          type: string
++          example: 'a1b2c3d4e5f6'
++          readOnly: true
++      readOnly: true
+     Owner:
+       title: Owner
+       description: A pet owner.
+@@ -2123,24 +2147,15 @@ components:
+               type: string
+               example: 'G.F.'
+               readOnly: true
+-            memberId:
+-              title: Member ID
+-              description: Unified member identifier assigned at creation, formatted '<REGION><FY><HASH8><CHK>' - the region code, the two-digit fiscal year of the registrationDate, the first 8 upper-case hex characters of the SHA-256 of the normalized telephone concatenated with the last name, and a single Luhn check digit over the digits of the preceding segments.
+-              type: string
+-              example: 'NSW26ABCDEF120'
+-              readOnly: true
+-            householdId:
+-              title: Household ID
+-              description: Stable identifier shared by owners at the same household (same last name and address).
+-              type: string
+-              example: 'H-3f9a2b7c1e5d'
+-              readOnly: true
+-            identityKey:
+-              title: Identity key
+-              description: Consolidated duplicate-detection key, 'normalizedTelephone|email' (email empty when absent). Two owners are duplicates only when their whole identity keys match, so members of one household with different telephones are both allowed.
+-              type: string
+-              example: '+61412345678|jo@example.test'
++            apiVersion:
++              title: API version
++              description: The version of the owner identity contract. Currently 2.
++              type: integer
++              format: int32
++              example: 2
+               readOnly: true
++            identity:
++              $ref: '#/components/schemas/OwnerIdentity'
+             membershipPoints:
+               title: Membership points
+               description: The owner's membership points - 2 when an email is on file, 1 when the owner had no namesakes at creation, 2 for a household of three or more, and 3 when tenure exceeds 365 days.
