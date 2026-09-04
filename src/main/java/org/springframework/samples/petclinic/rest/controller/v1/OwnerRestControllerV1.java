@@ -33,9 +33,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerEmailException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerHouseholdException;
-import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerTelephoneException;
+import org.springframework.samples.petclinic.rest.advice.DuplicateOwnerIdentityException;
 import org.springframework.samples.petclinic.rest.advice.InvalidOwnerFieldsException;
 import org.springframework.samples.petclinic.rest.advice.OwnerCityAtCapacityException;
 import org.springframework.samples.petclinic.rest.advice.OwnerDailyRegistrationLimitException;
@@ -51,6 +49,7 @@ import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
+import org.springframework.samples.petclinic.util.OwnerIdentity;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -144,18 +143,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
         normalizeAddress(ownerFieldsDto);
         rejectBlankOwnerFields(ownerFieldsDto);
         normalizeTelephone(ownerFieldsDto);
-        rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
-        rejectDuplicateHousehold(ownerFieldsDto);
+        normalizeEmail(ownerFieldsDto);
+        String householdId = HouseholdNormalizer.toHouseholdId(
+            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
+        rejectDuplicateIdentity(ownerFieldsDto, householdId);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
         LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
         long registeredThatDay = countRegisteredOn(registrationDate);
         rejectDailyRegistrationLimitReached(registrationDate, registeredThatDay);
-        normalizeEmail(ownerFieldsDto);
-        rejectDuplicateEmail(ownerFieldsDto.getEmail());
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
         owner.setRegistrationDate(registrationDate);
-        owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
+        owner.setHouseholdId(householdId);
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         owner.setBulkSignupWarning(registeredThatDay > BULK_SIGNUP_WARNING_THRESHOLD);
         owner.setHouseholdSize(countHouseholdMembers(owner.getHouseholdId()) + 1);
@@ -347,66 +346,36 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner whose normalized telephone is already used by any other owner.
-     * Both the submitted telephone and every existing owner's stored telephone are reduced to their
-     * {@linkplain TelephoneNormalizer#toComparisonKey comparison key} before comparison, so equality
-     * is judged on that key alone. A match is reported as a {@code 409 Conflict}.
+     * Rejects creating an owner whose derived identity collides with an existing owner. All owner
+     * duplicate detection is now expressed through the single derived {@code identityKey}
+     * ({@code normalizedTelephone + '|' + email + '|' + householdId}, see {@link OwnerIdentity}),
+     * which replaces the previously separate telephone, email and household checks. Two owners denote
+     * the same person when their identities collide on the telephone - the identity's distinguishing
+     * component - so a create is rejected as a {@code 409 Conflict} when another owner already carries
+     * the same normalized telephone. Because the telephone is part of the identity, two members of the
+     * same household with different telephones have different identities and are both allowed; an email
+     * or a household on its own no longer makes a duplicate.
      *
-     * @param normalizedTelephone the submitted telephone, already reduced to its canonical form by
-     *                            {@link #normalizeTelephone}
-     * @throws DuplicateOwnerTelephoneException if another owner already uses the same telephone
+     * @param ownerFieldsDto the submitted owner fields, with telephone and email already normalized
+     *                       ({@link #normalizeTelephone}, {@link #normalizeEmail})
+     * @param householdId    the household id derived for the owner being created (see
+     *                       {@link HouseholdNormalizer#toHouseholdId})
+     * @throws DuplicateOwnerIdentityException if another owner already carries the same identity
      */
-    private void rejectDuplicateTelephone(String normalizedTelephone) {
-        String comparisonKey = TelephoneNormalizer.toComparisonKey(normalizedTelephone);
+    private void rejectDuplicateIdentity(OwnerFieldsDto ownerFieldsDto, String householdId) {
+        String identityKey = OwnerIdentity.identityKey(
+            ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
+        String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
         boolean inUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
             .map(TelephoneNormalizer::toComparisonKey)
-            .anyMatch(comparisonKey::equals);
+            .anyMatch(telephoneKey::equals);
         if (inUse) {
-            throw new DuplicateOwnerTelephoneException(normalizedTelephone);
+            throw new DuplicateOwnerIdentityException(identityKey);
         }
     }
 
-    /**
-     * Rejects creating an owner whose lower-cased email is already used by any other owner. Both the
-     * submitted email and every existing owner's stored email are reduced to their
-     * {@linkplain EmailNormalizer#toComparisonKey comparison key} before comparison, so equality is
-     * judged on that key alone. A match is reported as a {@code 409 Conflict}. An absent (null or
-     * blank) email is not subject to this rule, email being optional.
-     *
-     * @param normalizedEmail the submitted email, already trimmed and lower-cased by
-     *                        {@link #normalizeEmail}, or null/blank when no email was supplied
-     * @throws DuplicateOwnerEmailException if another owner already uses the same email
-     */
-    private void rejectDuplicateEmail(String normalizedEmail) {
-        if (normalizedEmail == null || normalizedEmail.isBlank()) {
-            return;
-        }
-        String comparisonKey = EmailNormalizer.toComparisonKey(normalizedEmail);
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .map(Owner::getEmail)
-            .filter(Objects::nonNull)
-            .map(EmailNormalizer::toComparisonKey)
-            .anyMatch(comparisonKey::equals);
-        if (inUse) {
-            throw new DuplicateOwnerEmailException(normalizedEmail);
-        }
-    }
-
-    /**
-     * Rejects creating an owner who shares a household with any existing owner, unless the request
-     * opts in with {@code sharesHousehold} set to {@code true}. Two owners share a household when they
-     * have the same {@code lastName} and {@code address}, compared case-insensitively and with runs of
-     * whitespace collapsed (see {@link HouseholdNormalizer}); the submitted fields and every existing
-     * owner's stored fields are reduced to their {@linkplain HouseholdNormalizer#toComparisonKey
-     * comparison key} before comparison. A match is reported as a {@code 409 Conflict}.
-     *
-     * @param ownerFieldsDto the submitted owner fields (its {@code lastName} and {@code address} are
-     *                       non-blank here, {@link #rejectBlankOwnerFields} having already run)
-     * @throws DuplicateOwnerHouseholdException if another owner already shares the household and the
-     *                                          request did not opt in with {@code sharesHousehold}
-     */
     /**
      * Counts the existing owners (before this create) whose {@code firstName} and {@code lastName}
      * both match the submitted values, compared case-insensitively. The count reflects only owners
@@ -516,20 +485,5 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .map(Owner::getRegistrationDate)
             .filter(registrationDate::equals)
             .count();
-    }
-
-    private void rejectDuplicateHousehold(OwnerFieldsDto ownerFieldsDto) {
-        if (Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
-            return;
-        }
-        String comparisonKey = HouseholdNormalizer.toComparisonKey(
-            ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
-        boolean inUse = this.clinicService.findAllOwners().stream()
-            .filter(owner -> owner.getLastName() != null && owner.getAddress() != null)
-            .map(owner -> HouseholdNormalizer.toComparisonKey(owner.getLastName(), owner.getAddress()))
-            .anyMatch(comparisonKey::equals);
-        if (inUse) {
-            throw new DuplicateOwnerHouseholdException(ownerFieldsDto.getLastName(), ownerFieldsDto.getAddress());
-        }
     }
 }
