@@ -1,0 +1,161 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+index 0499402ff..bdac2c95e 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/IdentityKey.java
+@@ -16,6 +16,9 @@
+ 
+ package org.springframework.samples.petclinic.util;
+ 
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
+ import java.util.Collection;
+ import java.util.Locale;
+ 
+@@ -23,9 +26,10 @@ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.rest.advice.DuplicateTelephoneException;
+ 
+ /**
+- * Derives an owner's {@code identityKey}: {@code normalizedTelephone|email|householdId}.
+- * All duplicate detection is consolidated here: two owners are the same registration only
+- * when their WHOLE identity keys are equal, and a new owner is rejected only on a full match.
++ * Derives an owner's {@code identityKey}: the SHA-256 hex of
++ * {@code normalizedTelephone|lowerEmail|soundex(lastName)}. All duplicate detection is
++ * consolidated here: two owners are the same registration only when their identity keys are
++ * equal, and a new owner is rejected only on a full match.
+  */
+ public final class IdentityKey {
+ 
+@@ -33,12 +37,27 @@ public final class IdentityKey {
+     }
+ 
+     /**
+-     * {@code normalizedTelephone + '|' + (email or empty) + '|' + householdId}. An owner carries no
+-     * shared-household membership in its stored state, so the household component is empty and two
+-     * owners differ in identity only through their telephone and email.
++     * The lower-case SHA-256 hex over
++     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}.
+      */
+     public static String of(Owner owner) {
+-        return telephone(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|";
++        String raw = telephone(owner.getTelephone()) + "|" + email(owner.getEmail()) + "|"
++                + Soundex.of(owner.getLastName());
++        return sha256Hex(raw);
++    }
++
++    private static String sha256Hex(String value) {
++        try {
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
++            StringBuilder sb = new StringBuilder(64);
++            for (byte b : digest) {
++                sb.append(String.format("%02x", b));
++            }
++            return sb.toString();
++        }
++        catch (NoSuchAlgorithmException e) {
++            throw new IllegalStateException(e);
++        }
+     }
+ 
+     /** Reject with 409 when {@code candidate}'s whole identity key equals an existing owner's. */
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java
+index 4a02fe7c1..37483a2c2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java
+@@ -5,18 +5,20 @@ import java.util.Collection;
+ import org.springframework.samples.petclinic.model.Owner;
+ 
+ /**
+- * Soft duplicate detection. A new owner that is not a hard duplicate but shares an existing
+- * owner's last name and postcode while having a different telephone is a <em>possible</em>
+- * duplicate; the matching owner's id is recorded on the candidate.
++ * Soft duplicate detection. A new owner that is not a hard duplicate but whose
++ * {@code soundex(lastName)} and postcode match an existing owner (so only their differing
++ * identity keys keep them apart) is a <em>possible</em> duplicate; the matching owner's id is
++ * recorded on the candidate.
+  */
+ public final class PossibleDuplicate {
+ 
+     private PossibleDuplicate() {
+     }
+ 
+-    /** Record on {@code candidate} whether it possibly duplicates an existing owner (same last
+-     *  name and postcode, different telephone) and, if so, that owner's id. A declared household
+-     *  member ({@code sharesHousehold}) is never a suspected duplicate. */
++    /** Record on {@code candidate} whether it possibly duplicates an existing owner (matching
++     *  {@code soundex(lastName)} and postcode but a different identity key) and, if so, that
++     *  owner's id. A declared household member ({@code sharesHousehold}) is never a suspected
++     *  duplicate. */
+     public static void assign(Owner candidate, boolean sharesHousehold, Collection<Owner> existing) {
+         Integer match = sharesHousehold ? null : matchId(candidate, existing);
+         candidate.setPossibleDuplicate(match != null);
+@@ -24,18 +26,16 @@ public final class PossibleDuplicate {
+     }
+ 
+     private static Integer matchId(Owner candidate, Collection<Owner> existing) {
++        String key = IdentityKey.of(candidate);
++        String soundex = Soundex.of(candidate.getLastName());
+         for (Owner other : existing) {
+             if (candidate.getPostcode() != null
+                 && candidate.getPostcode().equals(other.getPostcode())
+-                && candidate.getLastName().equalsIgnoreCase(other.getLastName())
+-                && !digits(candidate.getTelephone()).equals(digits(other.getTelephone()))) {
++                && soundex.equals(Soundex.of(other.getLastName()))
++                && !key.equals(IdentityKey.of(other))) {
+                 return other.getId();
+             }
+         }
+         return null;
+     }
+-
+-    private static String digits(String telephone) {
+-        return telephone == null ? "" : telephone.replaceAll("\\D", "");
+-    }
+ }
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Soundex.java b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+new file mode 100644
+index 000000000..7ad7a50be
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/Soundex.java
+@@ -0,0 +1,41 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Locale;
++
++/**
++ * American Soundex encoding of a name: its first letter followed by up to three digits
++ * that phonetically code the remaining consonants. Deterministic, so names that sound
++ * alike resolve to the same code. Blank or letterless input yields {@code "0000"}.
++ */
++public final class Soundex {
++
++    /** Soundex digit for each letter A..Z; '0' marks vowels and non-coded letters. */
++    private static final String CODES = "01230120022455012623010202";
++
++    private Soundex() {
++    }
++
++    public static String of(String name) {
++        String letters = (name == null ? "" : name).toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
++        if (letters.isEmpty()) {
++            return "0000";
++        }
++        StringBuilder sb = new StringBuilder().append(letters.charAt(0));
++        char prev = codeOf(letters.charAt(0));
++        for (int i = 1; i < letters.length() && sb.length() < 4; i++) {
++            char code = codeOf(letters.charAt(i));
++            if (code != '0' && code != prev) {
++                sb.append(code);
++            }
++            prev = code;
++        }
++        while (sb.length() < 4) {
++            sb.append('0');
++        }
++        return sb.toString();
++    }
++
++    private static char codeOf(char letter) {
++        return CODES.charAt(letter - 'A');
++    }
++}
