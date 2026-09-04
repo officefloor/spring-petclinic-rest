@@ -98,10 +98,19 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The canonical region derived from the owner via {@link CityRegionResolver}, preferring the
-     * postcode over the city, or 'UNKNOWN' when neither yields a known region.
+     * The owner's locality: the REGION component of the customerCode identity (the part before
+     * the first '-' of {@code '<REGION>-<HASH8>'}). When no customerCode has been assigned this
+     * falls back to the canonical region derived from the owner via {@link CityRegionResolver},
+     * preferring the postcode over the city, or 'UNKNOWN' when neither yields a known region.
      */
     String locality(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode != null) {
+            int dash = customerCode.indexOf('-');
+            if (dash >= 0) {
+                return customerCode.substring(0, dash);
+            }
+        }
         return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
     }
 

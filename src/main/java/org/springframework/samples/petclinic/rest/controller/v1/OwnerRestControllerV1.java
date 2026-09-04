@@ -298,21 +298,15 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Build the customer code assigned to {@code owner} on create, formatted
-     * {@code '<CITY3>-<LAST3>-<NNNN>'}: CITY3 is the upper-cased first three letters of the
-     * owner's city, LAST3 is the upper-cased first three letters of the owner's last name and
-     * NNNN is a per-city 4-digit zero-padded sequence equal to one more than the number of
-     * owners already in that city (e.g. 'LON-SMI-0007').
+     * {@code '<REGION>-<HASH8>'}: REGION is the region code derived from the owner's postcode
+     * (falling back to the city) via {@link CityRegionResolver}, and HASH8 is the first eight
+     * upper-case hex characters of the SHA-256 digest of the normalized telephone concatenated
+     * with the last name (e.g. 'NSW-1A2B3C4D'). There is no per-city sequence.
      */
     private String customerCode(Owner owner) {
-        String city = owner.getCity();
-        String lastName = owner.getLastName();
-        String city3 = city.substring(0, Math.min(3, city.length())).toUpperCase(Locale.ROOT);
-        String last3 = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase(Locale.ROOT);
-        String cityKey = normalizeIdentity(city);
-        int sequence = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
-            .count() + 1;
-        return String.format("%s-%s-%04d", city3, last3, sequence);
+        String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+        String hash8 = sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
+        return region + "-" + hash8;
     }
 
     /**
@@ -330,7 +324,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
     /**
      * Build the membership number assigned on create, formatted
      * {@code '<customerCode>-M<YY>'} where YY is the last two digits of the
-     * {@code registrationDate} year (e.g. 'LON-SMI-0007-M26').
+     * {@code registrationDate} year (e.g. 'NSW-1A2B3C4D-M26').
      */
     private static String membershipNumber(String customerCode, LocalDate registrationDate) {
         String yy = String.format("%02d", registrationDate.getYear() % 100);
