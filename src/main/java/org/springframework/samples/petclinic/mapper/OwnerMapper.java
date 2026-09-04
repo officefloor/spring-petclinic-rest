@@ -101,10 +101,20 @@ public interface OwnerMapper {
     }
 
     /**
+     * Reports the owner's {@code membershipLevel}. Uses the level stored on the owner when present
+     * (as stamped on creation), otherwise falls back to the level {@linkplain #derivedMembershipLevel
+     * derived} from its {@code membershipPoints}.
+     */
+    default int membershipLevel(Owner owner) {
+        Integer stored = owner.getMembershipLevel();
+        return stored != null ? stored : derivedMembershipLevel(owner);
+    }
+
+    /**
      * Derives the owner's {@code membershipLevel} from {@code membershipPoints}: 1 for 0-1 points,
      * 2 for 2-3 points, 3 for 4-5 points and 4 for 6 or more points.
      */
-    default int membershipLevel(Owner owner) {
+    default int derivedMembershipLevel(Owner owner) {
         int points = membershipPoints(owner);
         if (points <= 1) {
             return 1;
