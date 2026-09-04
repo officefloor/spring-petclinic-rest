@@ -1,0 +1,38 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+index 0b42f48ef..7aa4de403 100644
+--- a/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
++++ b/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java
+@@ -233,21 +233,25 @@ public class ClinicServiceImpl implements ClinicService {
+     @Transactional
+     public void saveOwner(Owner owner) throws DataAccessException {
+         if (owner.isNew() && owner.getCustomerCode() == null) {
+-            owner.setCustomerCode(generateCustomerCode(owner.getLastName()));
++            owner.setCustomerCode(generateCustomerCode(owner.getCity(), owner.getLastName()));
+         }
+         ownerRepository.save(owner);
+ 
+     }
+ 
+     /**
+-     * Build a customer code formatted '<LAST3>-<NNNN>', where LAST3 is the upper-cased first
+-     * three letters of the given last name and NNNN is a global 4-digit zero-padded sequence
+-     * equal to one more than the current number of owners (e.g. 'SMI-0007').
++     * Build a customer code formatted '<CITY3>-<LAST3>-<NNNN>', where CITY3 is the upper-cased
++     * first three letters of the city, LAST3 the upper-cased first three letters of the last name
++     * and NNNN a per-city 4-digit zero-padded sequence equal to one more than the number of owners
++     * already in that city (e.g. 'SYD-SMI-0007').
+      */
+-    private String generateCustomerCode(String lastName) {
+-        String prefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
+-        long sequence = ownerRepository.findAll().size() + 1L;
+-        return String.format("%s-%04d", prefix, sequence);
++    private String generateCustomerCode(String city, String lastName) {
++        String cityPrefix = city.substring(0, Math.min(3, city.length())).toUpperCase();
++        String lastPrefix = lastName.substring(0, Math.min(3, lastName.length())).toUpperCase();
++        long sequence = ownerRepository.findAll().stream()
++            .filter(o -> o.getCity() != null && o.getCity().equalsIgnoreCase(city))
++            .count() + 1L;
++        return String.format("%s-%s-%04d", cityPrefix, lastPrefix, sequence);
+     }
+ 
+     @Override
