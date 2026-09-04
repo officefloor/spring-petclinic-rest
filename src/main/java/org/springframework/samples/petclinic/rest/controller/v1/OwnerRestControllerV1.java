@@ -20,9 +20,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +49,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
 import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
+import org.springframework.samples.petclinic.util.EmailNormalizer;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -75,14 +74,6 @@ public class OwnerRestControllerV1 implements OwnersApi {
      * carrying the new owner's id, customer code and registration date.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
-
-    /**
-     * Syntactic validation for an owner email: a non-empty local part, an '@', and a dotted domain
-     * whose top-level label is at least two letters. Deliberately conservative so plainly malformed
-     * input (e.g. a value without an '@') is rejected.
-     */
-    private static final Pattern EMAIL_PATTERN =
-        Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     /**
      * Maximum number of owners a single city may hold. A create whose city already contains this many
@@ -338,9 +329,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Normalizes an optionally-supplied {@code email}. When absent (null) or blank the field is left
-     * untouched (email is optional). When present it is trimmed and, after validating that it is a
-     * syntactically valid address, written back lower-cased so it is the value stored and returned.
-     * Any present-but-invalid address is rejected with a {@code 400 Bad Request}.
+     * untouched (email is optional). When present it is reduced to its canonical form (see
+     * {@link EmailNormalizer#normalize}) and written back so it is the value stored and returned. Any
+     * present-but-invalid address is rejected with a {@code 400 Bad Request}.
      *
      * @param ownerFieldsDto the submitted owner fields
      * @throws InvalidOwnerFieldsException if the email is present but not a syntactically valid address
@@ -350,11 +341,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (email == null || email.isBlank()) {
             return;
         }
-        email = email.trim();
-        if (!EMAIL_PATTERN.matcher(email).matches()) {
-            throw new InvalidOwnerFieldsException(List.of("email"));
-        }
-        ownerFieldsDto.setEmail(email.toLowerCase(Locale.ROOT));
+        String normalized = EmailNormalizer.normalize(email)
+            .orElseThrow(() -> new InvalidOwnerFieldsException(List.of("email")));
+        ownerFieldsDto.setEmail(normalized);
     }
 
     /**
@@ -381,10 +370,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
 
     /**
      * Rejects creating an owner whose lower-cased email is already used by any other owner. Both the
-     * submitted email and every existing owner's stored email are compared case-insensitively (on
-     * their lower-cased form), so equality is judged on that form alone. A match is reported as a
-     * {@code 409 Conflict}. An absent (null or blank) email is not subject to this rule, email being
-     * optional.
+     * submitted email and every existing owner's stored email are reduced to their
+     * {@linkplain EmailNormalizer#toComparisonKey comparison key} before comparison, so equality is
+     * judged on that key alone. A match is reported as a {@code 409 Conflict}. An absent (null or
+     * blank) email is not subject to this rule, email being optional.
      *
      * @param normalizedEmail the submitted email, already trimmed and lower-cased by
      *                        {@link #normalizeEmail}, or null/blank when no email was supplied
@@ -394,11 +383,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (normalizedEmail == null || normalizedEmail.isBlank()) {
             return;
         }
-        String comparisonKey = normalizedEmail.toLowerCase(Locale.ROOT);
+        String comparisonKey = EmailNormalizer.toComparisonKey(normalizedEmail);
         boolean inUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getEmail)
             .filter(Objects::nonNull)
-            .map(email -> email.toLowerCase(Locale.ROOT))
+            .map(EmailNormalizer::toComparisonKey)
             .anyMatch(comparisonKey::equals);
         if (inUse) {
             throw new DuplicateOwnerEmailException(normalizedEmail);
