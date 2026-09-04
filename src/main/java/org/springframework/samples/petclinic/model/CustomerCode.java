@@ -37,7 +37,22 @@ public final class CustomerCode {
      */
     public static String of(Owner owner, Collection<Owner> existingOwners) {
         String region = Locality.of(owner.getCity(), owner.getPostcode());
-        return region + "-" + hash8(owner.getTelephone() + owner.getLastName());
+        String base = region + "-" + hash8(owner.getTelephone() + owner.getLastName());
+        return deduplicate(base, existingOwners);
+    }
+
+    /** Appends {@code -<n>} with the smallest {@code n >= 2} that avoids any existing
+     *  owner's customer code, or returns {@code base} unchanged when already unique. */
+    private static String deduplicate(String base, Collection<Owner> existingOwners) {
+        java.util.Set<String> taken = new java.util.HashSet<>();
+        for (Owner existing : existingOwners) {
+            taken.add(existing.getCustomerCode());
+        }
+        String unique = base;
+        for (int n = 2; taken.contains(unique); n++) {
+            unique = base + "-" + n;
+        }
+        return unique;
     }
 
     /** The {@code <REGION>} component of a customer code, or {@code "UNKNOWN"} when absent. */
