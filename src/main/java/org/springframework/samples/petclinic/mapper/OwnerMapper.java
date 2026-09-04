@@ -21,6 +21,7 @@ public interface OwnerMapper {
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
+    @Mapping(target = "timezone", expression = "java(timezone(owner))")
     @Mapping(target = "checkDigit", expression = "java(org.springframework.samples.petclinic.util.LuhnCheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
     @Mapping(target = "membershipPoints", expression = "java(membershipPoints(owner))")
@@ -30,6 +31,24 @@ public interface OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(org.springframework.samples.petclinic.util.TelephoneNormalizer.toDisplay(owner.getTelephone()))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * Derives the owner's IANA {@code timezone} from its locality (region) via a fixed
+     * region-to-timezone table: {@code NSW -> Australia/Sydney}, {@code VIC -> Australia/Melbourne}
+     * and {@code QLD -> Australia/Brisbane}. Returns {@code null} for a region not in the table.
+     */
+    default String timezone(Owner owner) {
+        String region = org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode());
+        if (region == null) {
+            return null;
+        }
+        return switch (region) {
+            case "NSW" -> "Australia/Sydney";
+            case "VIC" -> "Australia/Melbourne";
+            case "QLD" -> "Australia/Brisbane";
+            default -> null;
+        };
+    }
 
     /**
      * Derives the owner's {@code ageBand} from its {@code birthDate}, measured against its
