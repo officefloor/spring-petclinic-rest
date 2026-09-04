@@ -18,7 +18,9 @@ package org.springframework.samples.petclinic.rest.controller.v1;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -53,6 +55,11 @@ import jakarta.transaction.Transactional;
 @CrossOrigin(exposedHeaders = "errors, content-type")
 @RequestMapping("/api")
 public class OwnerRestControllerV1 implements OwnersApi {
+
+    /** Minimal syntactic check for an email address: a non-empty local part, a single
+     *  '@', and a dotted domain, none containing whitespace or a second '@'. */
+    private static final Pattern EMAIL_PATTERN =
+        Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final ClinicService clinicService;
 
@@ -107,6 +114,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         owner.setTelephone(telephone);
+        String email = owner.getEmail();
+        if (email != null) {
+            email = email.trim();
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+            owner.setEmail(email.toLowerCase(Locale.ROOT));
+        }
         boolean telephoneInUse = this.clinicService.findAllOwners().stream()
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
