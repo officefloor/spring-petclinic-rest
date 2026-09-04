@@ -11,7 +11,7 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidEmailExcepti
  * be a syntactically valid address whose domain is not on the disposable-domain blocklist, and is
  * stored/returned lower-cased.
  */
-final class OwnerEmail {
+public final class OwnerEmail {
 
     /**
      * A pragmatic syntactic check: a non-empty local part, a single {@code @}, and a domain carrying at
@@ -48,5 +48,38 @@ final class OwnerEmail {
             throw new DisposableEmailException(email);
         }
         return normalized;
+    }
+
+    /**
+     * Whether the address's domain is <em>disposable-adjacent</em>: it shares its registrable base
+     * name (the second-level label, e.g. {@code mailinator} in {@code mailinator.com}) with a known
+     * disposable-email provider, yet is not itself on the {@link #BLOCKED_DOMAINS blocklist} — for
+     * instance {@code mailinator.net} (same brand, different TLD) or {@code sub.tempmail.com} (a
+     * subdomain of a blocked domain). An address whose exact domain is blocked never reaches storage
+     * (it is a 400 at create), so this recognises the near-misses that slip past that gate.
+     *
+     * @param email a stored/normalized email, or {@code null}/blank when absent.
+     * @return true when present and disposable-adjacent; false when absent or unrelated.
+     */
+    public static boolean isDisposableAdjacent(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        int at = email.lastIndexOf('@');
+        if (at < 0) {
+            return false;
+        }
+        String domain = email.substring(at + 1).trim().toLowerCase();
+        if (domain.isEmpty() || BLOCKED_DOMAINS.contains(domain)) {
+            return false;
+        }
+        Set<String> labels = new java.util.HashSet<>(java.util.Arrays.asList(domain.split("\\.")));
+        for (String blocked : BLOCKED_DOMAINS) {
+            String base = blocked.substring(0, blocked.indexOf('.'));
+            if (labels.contains(base)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

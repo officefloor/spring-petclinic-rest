@@ -35,7 +35,21 @@ public interface OwnerMapper {
     @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
+    @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
     OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's {@code riskFlag}: true when any of these hold — the owner is a possible duplicate
+     * ({@code possibleDuplicate} true), the email domain is disposable-adjacent (see
+     * {@link org.springframework.samples.petclinic.rest.function.owner.OwnerEmail#isDisposableAdjacent}),
+     * or the city is over its soft capacity ({@code capacityWarning} true); otherwise false.
+     */
+    default boolean riskFlag(Owner owner) {
+        return Boolean.TRUE.equals(owner.getPossibleDuplicate())
+                || Boolean.TRUE.equals(owner.getCapacityWarning())
+                || org.springframework.samples.petclinic.rest.function.owner.OwnerEmail
+                        .isDisposableAdjacent(owner.getEmail());
+    }
 
     /**
      * The owner's canonical URL, formatted {@code '/api/owners/<id>'} where id is the owner's id.
