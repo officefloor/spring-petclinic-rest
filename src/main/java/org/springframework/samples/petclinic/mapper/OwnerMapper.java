@@ -21,14 +21,14 @@ import java.util.Map;
 @Mapper(uses = PetMapper.class)
 public abstract class OwnerMapper {
 
-    /** Used to count the members of an owner's household when deriving the membership tier. */
+    /** Used to count the members of an owner's household when deriving derived fields. */
     @Autowired
     protected ClinicService clinicService;
 
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
     @Mapping(target = "initials", expression = "java(initials(owner))")
-    @Mapping(target = "membershipTier", expression = "java(membershipTier(owner))")
+    @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
 
@@ -47,31 +47,21 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's membership tier: 'GOLD' when the owner's household (owners sharing the
-     * same householdId) has 3 or more members; otherwise 'SILVER' when namesakeCount is 0
-     * and an email address is present, and 'BRONZE' in all remaining cases.
+     * The owner's numeric membership level from 1 to 3: starting at 1, plus 1 when an
+     * email address is present, plus 1 when namesakeCount is 0, capped at 3 (level 4 is
+     * reserved for tenure).
      */
-    String membershipTier(Owner owner) {
-        if (householdSize(owner) >= 3) {
-            return "GOLD";
+    public int membershipLevel(Owner owner) {
+        int level = 1;
+        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
+        if (hasEmail) {
+            level++;
         }
         boolean uniqueName = owner.getNamesakeCount() != null && owner.getNamesakeCount() == 0;
-        boolean hasEmail = owner.getEmail() != null && !owner.getEmail().isBlank();
-        return uniqueName && hasEmail ? "SILVER" : "BRONZE";
-    }
-
-    /**
-     * The number of owners belonging to the same household as {@code owner}, i.e. those
-     * sharing its {@code householdId}. Returns 0 when the owner has no householdId.
-     */
-    private long householdSize(Owner owner) {
-        String householdId = owner.getHouseholdId();
-        if (householdId == null) {
-            return 0;
+        if (uniqueName) {
+            level++;
         }
-        return clinicService.findAllOwners().stream()
-            .filter(existing -> householdId.equals(existing.getHouseholdId()))
-            .count();
+        return Math.min(level, 3);
     }
 
     /**
