@@ -5,7 +5,8 @@ import org.springframework.samples.petclinic.model.Owner;
 
 /**
  * Assigns the owner's deterministic {@code householdId}: the first 12 hex characters of SHA-256 over
- * the normalized last name and postcode (see {@link HouseholdId#derive(String, String)}).
+ * the version-2 region code, the normalized last name and postcode (see
+ * {@link HouseholdId#derive(String, String, String)}).
  * Every owner receives one, so owners sharing a last name and postcode automatically share the id —
  * there is no explicit linking and no dependency on {@code sharesHousehold} (that flag now only
  * bypasses the identity duplicate block in {@link EnsureUniqueIdentity}).

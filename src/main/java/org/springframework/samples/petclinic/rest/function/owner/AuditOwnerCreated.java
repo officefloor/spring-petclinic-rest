@@ -15,8 +15,8 @@ import tools.jackson.databind.ObjectMapper;
  * <ol>
  * <li>the human-readable audit line, carrying the newly assigned owner id together
  * with its {@code memberId}, {@code registrationDate} and {@code membershipLevel}; and</li>
- * <li>an immutable structured event —
- * {@code {seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} — where
+ * <li>an immutable structured event (schema version 2) —
+ * {@code {schemaVersion:2, seq, ownerId, memberId, membershipLevel, event:'OWNER_CREATED'}} — where
  * {@code seq} is a monotonically increasing integer across creates.</li>
  * </ol>
  * Runs after the owner has been saved so the id is set.
@@ -47,15 +47,18 @@ public class AuditOwnerCreated {
         return owner.getMemberId();
     }
 
+    /** The audit event schema version emitted for created owners. */
+    private static final int SCHEMA_VERSION = 2;
+
     /**
-     * Immutable structured audit event for a created owner. Field order matches the
-     * documented shape {@code {seq, ownerId, memberId, membershipLevel, event}}; the
-     * {@code event} marker is fixed at {@code OWNER_CREATED}.
+     * Immutable structured audit event for a created owner (schema version 2). Field order matches the
+     * documented shape {@code {schemaVersion, seq, ownerId, memberId, membershipLevel, event}}; the
+     * {@code schemaVersion} is fixed at {@code 2} and the {@code event} marker at {@code OWNER_CREATED}.
      */
-    public record OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel,
-            String event) {
+    public record OwnerCreatedEvent(int schemaVersion, long seq, Integer ownerId, String memberId,
+            Integer membershipLevel, String event) {
         public OwnerCreatedEvent(long seq, Integer ownerId, String memberId, Integer membershipLevel) {
-            this(seq, ownerId, memberId, membershipLevel, "OWNER_CREATED");
+            this(SCHEMA_VERSION, seq, ownerId, memberId, membershipLevel, "OWNER_CREATED");
         }
     }
 }

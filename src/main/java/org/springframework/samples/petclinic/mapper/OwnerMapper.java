@@ -15,6 +15,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
 
 import java.util.Collection;
@@ -40,8 +41,10 @@ public interface OwnerMapper {
             expression = "java(LocalityTimezone.of(owner))")
     @Mapping(target = "contactPreference",
             expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
-    @Mapping(target = "identityKey",
-            expression = "java(OwnerIdentityKey.of(owner))")
+    @Mapping(target = "apiVersion",
+            expression = "java(2)")
+    @Mapping(target = "identity",
+            expression = "java(toIdentity(owner))")
     @Mapping(target = "ageBand",
             expression = "java(AgeBand.of(owner))")
     @Mapping(target = "ownerSegment",
@@ -55,6 +58,19 @@ public interface OwnerMapper {
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
+
+    /**
+     * The owner's version-2 identity object grouping its derived identifiers. The identityKey is
+     * recomputed at read time; the memberId and householdId are read from the stored owner (both
+     * assigned at creation with the version-2 region code, see {@link OwnerIdentityKey}).
+     */
+    default OwnerIdentityDto toIdentity(Owner owner) {
+        OwnerIdentityDto identity = new OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setIdentityKey(OwnerIdentityKey.of(owner));
+        identity.setHouseholdId(owner.getHouseholdId());
+        return identity;
+    }
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)

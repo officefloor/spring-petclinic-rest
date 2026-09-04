@@ -13,7 +13,8 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 /**
  * Assigns the owner's {@code memberId}, formatted {@code <REGION><FY><HASH8><CHK>} where:
  * <ul>
- * <li>REGION is the region derived from the owner's postcode (see {@link OwnerRegion}),</li>
+ * <li>REGION is the version-2 region code — the postcode-derived region carrying the fixed 'V2'
+ * version tag, e.g. {@code V2NSW} (see {@link OwnerRegion#identityRegion(Owner)}),</li>
  * <li>FY is the two-digit fiscal year (1 July basis) of the {@code registrationDate} (see
  * {@link FiscalYear}),</li>
  * <li>HASH8 is the first eight upper-case hex characters of SHA-256 over the concatenation of the
@@ -22,7 +23,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * <li>CHK is a single Luhn check digit computed over the decimal digits of
  * {@code <REGION><FY><HASH8>}.</li>
  * </ul>
- * For example {@code NSW271A2B3C4D6}. There is no sequence number, so the id is stable for a given
+ * For example {@code V2NSW271A2B3C4D6}. There is no sequence number, so the id is stable for a given
  * region, fiscal year, telephone and last name and does not depend on how many owners already exist.
  * Runs after the customer's registration date has been assigned.
  *
@@ -33,7 +34,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 public class AssignMemberId {
 
     public void service(@Val Owner owner, OwnerRepository ownerRepository) {
-        String region = OwnerRegion.of(owner);
+        String region = OwnerRegion.identityRegion(owner);
         String fy = String.format("%02d", FiscalYear.endingYear(owner.getRegistrationDate()) % 100);
         String body = region + fy + hash8(owner);
         String memberId = body + luhn(body);
