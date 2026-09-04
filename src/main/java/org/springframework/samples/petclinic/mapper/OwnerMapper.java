@@ -31,7 +31,22 @@ public abstract class OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(membershipLevel(owner))")
     @Mapping(target = "locality", expression = "java(locality(owner))")
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
+    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's derived identity key: the normalized telephone, the email (or an empty
+     * string when absent) and the householdId joined by '|'. This single key is the sole
+     * basis for duplicate detection on create — two owners are duplicates only when their
+     * whole identityKey matches, so members of one household with different telephones
+     * (and hence different keys) are all permitted.
+     */
+    public static String identityKey(Owner owner) {
+        String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
+        String email = owner.getEmail() == null ? "" : owner.getEmail();
+        String householdId = owner.getHouseholdId() == null ? "" : owner.getHouseholdId();
+        return telephone + "|" + email + "|" + householdId;
+    }
 
     /**
      * The owner's preferred contact channel: 'EMAIL' when an email address is
