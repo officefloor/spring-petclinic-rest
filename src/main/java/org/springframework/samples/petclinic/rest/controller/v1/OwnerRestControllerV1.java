@@ -152,6 +152,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (telephoneInUse) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        String cityKey = normalizeIdentity(owner.getCity());
+        long ownersInCity = this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
+            .count();
+        if (ownersInCity >= 50) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         String lastNameKey = normalizeIdentity(owner.getLastName());
         String addressKey = addressNormalizer.normalize(owner.getAddress());
         if (!Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
