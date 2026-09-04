@@ -23,6 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getAddress()))")
     @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail()))")
     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
+    @Mapping(target = "checkDigit", expression = "java(CheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "membershipLevel", expression = "java(MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality", expression = "java(Locality.of(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner.getEmail()))")
