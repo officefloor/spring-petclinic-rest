@@ -52,6 +52,9 @@ public class Owner extends Person {
     @Column(name = "email")
     private String email;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "registration_date", columnDefinition = "DATE")
     private LocalDate registrationDate;
 
@@ -144,6 +147,14 @@ public class Owner extends Person {
 
     public void setAddress(String address) {
         this.address = AddressNormalizer.normalize(address);
+    }
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
     }
 
     public String getCity() {
