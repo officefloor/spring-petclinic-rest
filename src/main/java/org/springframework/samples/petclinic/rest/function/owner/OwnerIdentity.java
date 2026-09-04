@@ -21,6 +21,15 @@ import org.springframework.samples.petclinic.rest.escalation.InvalidTelephoneExc
  */
 public final class OwnerIdentity {
 
+    /**
+     * The fixed version-2 tag mixed into every derived identifier — the {@code identityKey}, the
+     * {@code householdId} and (through its region code) the {@code memberId}. Mixing it into the hashed
+     * inputs re-derives each identifier under version 2, so every value differs from its version-1 form
+     * and no version-1 value is produced again. It deliberately does NOT touch the user-facing
+     * {@code locality}/{@code timezone} or the owner segment's derived region (see {@link OwnerRegion}).
+     */
+    public static final String VERSION_TAG = "V2";
+
     private OwnerIdentity() {
     }
 
@@ -33,8 +42,8 @@ public final class OwnerIdentity {
      * and the last name folds through Soundex so it matches phonetically.
      */
     public static String key(String telephone, String email, String lastName) {
-        String input = canonicalTelephone(telephone) + '|' + normalizedEmail(email) + '|'
-                + soundex(lastName);
+        String input = VERSION_TAG + '|' + canonicalTelephone(telephone) + '|' + normalizedEmail(email)
+                + '|' + soundex(lastName);
         return sha256HexLower(input);
     }
 
@@ -70,12 +79,13 @@ public final class OwnerIdentity {
 
     /**
      * The deterministic household id: the first 12 hex characters of SHA-256 over
-     * {@code normalizedLastName + '|' + postcode}. Owners with the same normalized lastName and
-     * postcode therefore resolve to the same value automatically, so the household is keyed on
-     * (lastName, postcode). A null postcode is treated as the empty string.
+     * {@code VERSION_TAG + '|' + normalizedLastName + '|' + postcode}. Owners with the same normalized
+     * lastName and postcode therefore resolve to the same value automatically, so the household is keyed
+     * on (lastName, postcode). A null postcode is treated as the empty string. The version-2 tag is
+     * mixed in, so the value differs from its version-1 form.
      */
     public static String deriveHouseholdId(String normalizedLastName, String postcode) {
-        String input = normalizedLastName + '|' + (postcode == null ? "" : postcode);
+        String input = VERSION_TAG + '|' + normalizedLastName + '|' + (postcode == null ? "" : postcode);
         return sha256Hex(input, 12);
     }
 

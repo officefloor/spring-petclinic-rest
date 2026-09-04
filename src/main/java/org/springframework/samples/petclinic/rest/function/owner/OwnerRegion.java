@@ -8,9 +8,10 @@ import java.util.Map;
  * range per region, and the city-to-region fallback used when the postcode yields nothing.
  *
  * <p>{@link #fromPostcode} answers the region for a postcode alone (or {@code null});
- * {@link #identifierRegionCode} is the one derivation the identifiers embed — the REGION prefix of an
- * owner's {@code memberId} — folding an absent region to {@code UNKNOWN}; {@link #regionOf} reads that
- * prefix back out of a {@code memberId}, which is how a whole owner resolves to a locality.
+ * {@link #identifierRegionCode} is the one derivation the identifiers embed — the version-tagged REGION
+ * segment of an owner's {@code memberId} (e.g. {@code NSWV2}) — folding an absent region to
+ * {@code UNKNOWN}; {@link #regionOf} reads the <em>plain</em> region back out of a {@code memberId}
+ * (stripping the version tag), which is how a whole owner resolves to a locality.
  */
 public final class OwnerRegion {
 
@@ -69,30 +70,33 @@ public final class OwnerRegion {
     }
 
     /**
-     * The region code the identifiers embed — the REGION segment of an owner's {@code memberId},
-     * derived from the postcode: the plain region ({@link #fromPostcode}) when the postcode maps to a
-     * known region, else {@code UNKNOWN}. This is the single source for the region that goes <em>into</em>
-     * an identifier, kept distinct from the user-facing locality that {@link #regionOf} reads back
-     * <em>out</em> of an assigned id.
+     * The version-2 region code the identifiers embed — the REGION segment of an owner's
+     * {@code memberId}, derived from the postcode: the plain region ({@link #fromPostcode}) when the
+     * postcode maps to a known region, else {@code UNKNOWN}, with the fixed {@link OwnerIdentity#VERSION_TAG}
+     * appended (e.g. {@code NSWV2}, {@code UNKNOWNV2}). This is the single source for the region that goes
+     * <em>into</em> an identifier; mixing in the version tag re-derives the memberId under version 2 so
+     * it differs from its version-1 form. It is kept distinct from the user-facing locality that
+     * {@link #regionOf} reads back <em>out</em> of an assigned id as the plain region (no version tag).
      */
     public static String identifierRegionCode(String postcode) {
         String region = fromPostcode(postcode);
-        return region == null ? "UNKNOWN" : region;
+        return (region == null ? "UNKNOWN" : region) + OwnerIdentity.VERSION_TAG;
     }
 
     /**
-     * The REGION prefix of a {@code memberId} ({@code <REGION><FY><HASH8><CHK>}) — the owner's locality.
-     * Now that identity is region-and-hash, the locality is read straight off the assigned memberId
-     * rather than recomputed, so it always matches the id. {@code UNKNOWN} when the id is absent or has
-     * no known region prefix.
+     * The <em>plain</em> region of a {@code memberId} ({@code <REGIONV2><FY><HASH8><CHK>}) — the owner's
+     * locality. The version tag carried by the memberId's region segment (e.g. {@code NSWV2}) is
+     * stripped, so the locality is the plain region (e.g. {@code NSW}) read straight off the assigned
+     * memberId and always matches the id. {@code UNKNOWN} when the id is absent or has no known region
+     * segment.
      */
     public static String regionOf(String memberId) {
         return MemberId.regionOf(memberId);
     }
 
     /**
-     * The IANA timezone name for the owner's region, resolved from the REGION prefix of the
-     * {@code memberId} through the fixed region-to-timezone table (NSW -> Australia/Sydney,
+     * The IANA timezone name for the owner's plain region, resolved from the (version-tagged) region
+     * segment of the {@code memberId} through the fixed region-to-timezone table (NSW -> Australia/Sydney,
      * VIC -> Australia/Melbourne, QLD -> Australia/Brisbane). {@code null} when the region is
      * absent or unknown.
      */

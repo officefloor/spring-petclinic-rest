@@ -32,7 +32,8 @@ public interface OwnerMapper {
     @Mapping(target = "contactPreference", expression = "java(contactPreference(owner))")
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "ownerSegment", expression = "java(ownerSegment(owner))")
-    @Mapping(target = "identityKey", expression = "java(identityKey(owner))")
+    @Mapping(target = "apiVersion", expression = "java(2)")
+    @Mapping(target = "identity", expression = "java(identity(owner))")
     @Mapping(target = "telephoneDisplay", expression = "java(telephoneDisplay(owner))")
     @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "riskFlag", expression = "java(riskFlag(owner))")
@@ -91,9 +92,23 @@ public interface OwnerMapper {
     }
 
     /**
+     * The owner's version-2 identity block, grouping the {@code memberId}, {@code householdId} and
+     * {@code identityKey} under one nested object. The memberId and householdId are the stored
+     * version-2 identifiers; the identityKey is derived here (see {@link #identityKey(Owner)}).
+     */
+    default org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity(Owner owner) {
+        org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto identity =
+                new org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto();
+        identity.setMemberId(owner.getMemberId());
+        identity.setHouseholdId(owner.getHouseholdId());
+        identity.setIdentityKey(identityKey(owner));
+        return identity;
+    }
+
+    /**
      * The owner's derived {@code identityKey} = SHA-256 hex over
-     * {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, the single key all
-     * duplicate detection is expressed through.
+     * {@code 'V2' + '|' + normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}, the single
+     * key all duplicate detection is expressed through (version-2 derived).
      */
     default String identityKey(Owner owner) {
         return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity.key(
