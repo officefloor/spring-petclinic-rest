@@ -16,6 +16,7 @@
 
 package org.springframework.samples.petclinic.model;
 
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -30,7 +31,20 @@ public final class E164 {
 
     private static final Pattern EIGHT_TO_FIFTEEN_DIGITS = Pattern.compile("\\d{8,15}");
 
+    /** Country calling code -> required national-number length. */
+    private static final Map<String, Integer> NATIONAL_LENGTHS = Map.of("61", 9, "1", 10);
+
     private E164() {
+    }
+
+    /** True unless the digits carry a known country code with the wrong national-number length. */
+    private static boolean nationalLengthValid(String digits) {
+        for (Map.Entry<String, Integer> country : NATIONAL_LENGTHS.entrySet()) {
+            if (digits.startsWith(country.getKey())) {
+                return digits.length() - country.getKey().length() == country.getValue();
+            }
+        }
+        return true;
     }
 
     public static String toE164(String raw) {
@@ -46,7 +60,7 @@ public final class E164 {
             }
             digits = "61" + digits;
         }
-        if (!EIGHT_TO_FIFTEEN_DIGITS.matcher(digits).matches()) {
+        if (!EIGHT_TO_FIFTEEN_DIGITS.matcher(digits).matches() || !nationalLengthValid(digits)) {
             throw new InvalidTelephoneException(raw);
         }
         return "+" + digits;
