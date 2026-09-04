@@ -11,9 +11,7 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
  * before {@link SaveOwner} persists the new owner; so the count is the existing members carrying the
  * id plus one for the owner being created.
  *
- * <p>An owner with no {@code householdId} (no shared household) has a household size of one. The stored
- * value lets {@link org.springframework.samples.petclinic.mapper.OwnerMapper} derive the {@code GOLD}
- * membership tier for households of three or more members.
+ * <p>An owner with no {@code householdId} (no shared household) has a household size of one.
  */
 public class AssignHouseholdSize {
 

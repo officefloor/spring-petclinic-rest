@@ -69,6 +69,9 @@ public class Owner extends Person {
     @Column(name = "household_size")
     private Integer householdSize;
 
+    @Column(name = "membership_level")
+    private Integer membershipLevel;
+
     @Column(name = "bulk_signup_warning")
     private Boolean bulkSignupWarning;
 
@@ -153,6 +156,14 @@ public class Owner extends Person {
 
     public void setHouseholdSize(Integer householdSize) {
         this.householdSize = householdSize;
+    }
+
+    public Integer getMembershipLevel() {
+        return this.membershipLevel;
+    }
+
+    public void setMembershipLevel(Integer membershipLevel) {
+        this.membershipLevel = membershipLevel;
     }
 
     public Boolean getBulkSignupWarning() {
