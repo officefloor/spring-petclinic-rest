@@ -38,6 +38,9 @@ public class AssignPossibleDuplicate {
         String telephone = E164Telephone.toE164OrNull(owner.getTelephone());
 
         for (Owner existing : ownerRepository.findAll()) {
+            if (existing.isDeleted()) {
+                continue; // a soft-deleted owner is ignored by the identity check
+            }
             if (!postcode.equals(normalizePostcode(existing.getPostcode()))) {
                 continue;
             }
