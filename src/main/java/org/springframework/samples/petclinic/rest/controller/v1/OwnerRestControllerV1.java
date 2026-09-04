@@ -205,11 +205,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
         owner.setCustomerCode(customerCode(owner));
-        int namesakeCount = (int) this.clinicService.findAllOwners().stream()
-            .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName())
-                && owner.getLastName().equalsIgnoreCase(existing.getLastName()))
-            .count();
-        owner.setNamesakeCount(namesakeCount);
+        owner.setNamesakeCount(namesakeCount(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setBulkSignupWarning(ownersCreatedThatDay > 80);
         this.clinicService.saveOwner(owner);
@@ -311,6 +307,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         String region = cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
         String hash8 = sha256HexPrefix(owner.getTelephone() + owner.getLastName(), 8);
         return region + "-" + hash8;
+    }
+
+    /**
+     * The number of existing owners that share {@code owner}'s firstName and lastName,
+     * compared case-insensitively. The candidate is not yet stored at the point this is
+     * assigned, so it does not count itself. This is the value stored as the owner's
+     * namesakeCount on create.
+     */
+    private int namesakeCount(Owner owner) {
+        return (int) this.clinicService.findAllOwners().stream()
+            .filter(existing -> owner.getFirstName().equalsIgnoreCase(existing.getFirstName())
+                && owner.getLastName().equalsIgnoreCase(existing.getLastName()))
+            .count();
     }
 
     /**
