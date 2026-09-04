@@ -41,7 +41,7 @@ public final class MemberId {
      * @return the formatted member id, e.g. {@code NSW261A2B3C4D5}
      */
     public static String of(Owner owner, Collection<Owner> existingOwners) {
-        String region = Locality.of(owner.getCity(), owner.getPostcode());
+        String region = Locality.of(owner.getCity(), owner.getPostcode()) + "V2";
         String base = region + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100)
             + hash8(owner.getTelephone() + owner.getLastName());
         return deduplicate(base + CheckDigit.of(base), existingOwners);

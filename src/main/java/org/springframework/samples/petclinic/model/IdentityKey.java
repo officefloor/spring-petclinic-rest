@@ -34,7 +34,7 @@ public final class IdentityKey {
 
     /** SHA-256 hex over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. */
     public static String of(String telephone, String email, String lastName) {
-        String key = (telephone == null ? "" : telephone) + "|"
+        String key = "V2|" + (telephone == null ? "" : telephone) + "|"
             + (email == null ? "" : email.toLowerCase()) + "|"
             + soundex(lastName);
         try {

@@ -41,11 +41,12 @@ public class OwnerAuditListener {
     void onCreate(Owner owner) {
         int membershipLevel = MembershipLevel.of(MembershipLevel.points(owner.getNamesakeCount(),
             owner.getEmail(), owner.getHouseholdMemberCount(), owner.getRegistrationDate()));
+        String ownerSegment = OwnerSegment.of(membershipLevel, Locality.of(owner.getCity(), owner.getPostcode()));
         AUDIT.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getMemberId(), owner.getRegistrationDate(), membershipLevel);
         AUDIT.info("{}", String.format(
-            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
-            SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), membershipLevel));
+            "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"ownerSegment\":\"%s\",\"schemaVersion\":2,\"event\":\"OWNER_CREATED\"}",
+            SEQ.incrementAndGet(), owner.getId(), owner.getMemberId(), membershipLevel, ownerSegment));
         NOTIFY.info("welcome ownerId={} memberId={}", owner.getId(), owner.getMemberId());
     }
 }
