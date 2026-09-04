@@ -432,6 +432,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             ownerFieldsDto.getTelephone(), ownerFieldsDto.getEmail(), householdId);
         String telephoneKey = TelephoneNormalizer.toComparisonKey(ownerFieldsDto.getTelephone());
         boolean inUse = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .map(Owner::getTelephone)
             .filter(Objects::nonNull)
             .map(TelephoneNormalizer::toComparisonKey)
@@ -524,6 +525,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
             return;
         }
         boolean householdExists = this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .map(Owner::getHouseholdId)
             .anyMatch(householdId::equals);
         if (householdExists) {
@@ -551,6 +553,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         String telephoneKey = TelephoneNormalizer.toComparisonKey(owner.getTelephone());
         return this.clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
             .filter(existing -> owner.getLastName().equalsIgnoreCase(existing.getLastName()))
             .filter(existing -> postcode.equals(existing.getPostcode()))
             .filter(existing -> existing.getTelephone() != null

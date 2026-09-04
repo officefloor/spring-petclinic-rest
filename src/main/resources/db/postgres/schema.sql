@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS owners (
                                       possible_duplicate BOOLEAN,
                                       possible_duplicate_of INTEGER,
                                       birth_date DATE,
-                                      title TEXT
+                                      title TEXT,
+                                      deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX ON owners (last_name);
 

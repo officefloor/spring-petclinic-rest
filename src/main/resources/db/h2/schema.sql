@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS owners (
   possible_duplicate BOOLEAN,
   possible_duplicate_of INTEGER,
   birth_date DATE,
-  title VARCHAR(10)
+  title VARCHAR(10),
+  deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX idx_owners_last_name ON owners(last_name);
