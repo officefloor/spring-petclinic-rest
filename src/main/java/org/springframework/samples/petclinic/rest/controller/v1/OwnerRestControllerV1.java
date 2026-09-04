@@ -83,6 +83,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Dedicated notification logger. A single line is emitted here on each successful owner create,
+     * enqueuing the new owner's welcome notification. The line carries the owner's id and its unified
+     * {@code memberId}.
+     */
+    private static final Logger NOTIFY = LoggerFactory.getLogger("NOTIFY");
+
+    /**
      * Source of the {@code seq} carried by each {@link OwnerCreatedEvent}: a monotonically increasing
      * counter bumped once per successful create, so every emitted event carries a strictly larger
      * sequence number than the create before it.
@@ -216,6 +223,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
         }
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         emitOwnerCreatedAudit(owner, ownerDto);
+        enqueueWelcomeNotification(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
@@ -339,6 +347,19 @@ public class OwnerRestControllerV1 implements OwnersApi {
         OwnerCreatedEvent event = new OwnerCreatedEvent(EVENT_SEQ.incrementAndGet(),
             owner.getId(), primaryIdentifier(owner), ownerDto.getMembershipLevel());
         AUDIT.info(event.toJson());
+    }
+
+    /**
+     * Enqueues the freshly created owner's welcome notification by emitting a single line to the
+     * dedicated {@code NOTIFY} logger. The line carries the owner's id and its unified
+     * {@code memberId} (routed through {@link #primaryIdentifier}), the two values a downstream
+     * consumer needs to address the welcome to the new member.
+     *
+     * @param owner the freshly created and persisted owner, already stamped with its {@code memberId}
+     */
+    private void enqueueWelcomeNotification(Owner owner) {
+        NOTIFY.info("welcome notification queued ownerId={} memberId={}",
+            owner.getId(), primaryIdentifier(owner));
     }
 
     /**
