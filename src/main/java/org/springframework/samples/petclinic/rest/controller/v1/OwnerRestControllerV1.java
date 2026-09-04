@@ -126,12 +126,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
-        LocalDate today = LocalDate.now();
-        long ownersCreatedToday = this.clinicService.findAllOwners().stream()
+        owner.setRegistrationDate(toBusinessDay(owner.getRegistrationDate()));
+        LocalDate registrationDate = owner.getRegistrationDate();
+        long ownersCreatedThatDay = this.clinicService.findAllOwners().stream()
             .map(Owner::getRegistrationDate)
-            .filter(today::equals)
+            .filter(registrationDate::equals)
             .count();
-        if (ownersCreatedToday >= 100) {
+        if (ownersCreatedThatDay >= 100) {
             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
         }
         String address = addressNormalizer.normalize(owner.getAddress());
@@ -242,6 +243,18 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> normalizeIdentity(existing.getCity()).equals(cityKey))
             .count() + 1;
         return String.format("%s-%s-%04d", city3, last3, sequence);
+    }
+
+    /**
+     * Roll a registration date forward to the next business day: a Saturday or Sunday
+     * advances to the following Monday, and a weekday is returned unchanged.
+     */
+    private static LocalDate toBusinessDay(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> date.plusDays(2);
+            case SUNDAY -> date.plusDays(1);
+            default -> date;
+        };
     }
 
     /**
