@@ -58,11 +58,6 @@ public class OwnerRegistrar {
     /** A postcode, when supplied, must be exactly four digits before its region range is checked. */
     private static final Pattern POSTCODE_PATTERN = Pattern.compile("^[0-9]{4}$");
 
-    /** Disposable email domains that are rejected: an owner whose email domain matches one of
-     *  these (case-insensitively) is refused with 400. */
-    private static final java.util.Set<String> DISPOSABLE_EMAIL_DOMAINS =
-        java.util.Set.of("mailinator.com", "tempmail.com", "guerrillamail.com");
-
     private final ClinicService clinicService;
 
     private final OwnerMapper ownerMapper;
@@ -72,6 +67,8 @@ public class OwnerRegistrar {
     private final AddressNormalizer addressNormalizer;
 
     private final CityRegionResolver cityRegionResolver;
+
+    private final EmailDomainClassifier emailDomainClassifier;
 
     private final HouseholdResolver householdResolver;
 
@@ -94,6 +91,7 @@ public class OwnerRegistrar {
                           TelephoneNormalizer telephoneNormalizer,
                           AddressNormalizer addressNormalizer,
                           CityRegionResolver cityRegionResolver,
+                          EmailDomainClassifier emailDomainClassifier,
                           HouseholdResolver householdResolver,
                           OwnerAuditor ownerAuditor,
                           WelcomeNotifier welcomeNotifier) {
@@ -102,6 +100,7 @@ public class OwnerRegistrar {
         this.telephoneNormalizer = telephoneNormalizer;
         this.addressNormalizer = addressNormalizer;
         this.cityRegionResolver = cityRegionResolver;
+        this.emailDomainClassifier = emailDomainClassifier;
         this.householdResolver = householdResolver;
         this.ownerAuditor = ownerAuditor;
         this.welcomeNotifier = welcomeNotifier;
@@ -182,8 +181,7 @@ public class OwnerRegistrar {
             if (!EMAIL_PATTERN.matcher(email).matches()) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
-            String domain = email.substring(email.indexOf('@') + 1).toLowerCase(Locale.ROOT);
-            if (DISPOSABLE_EMAIL_DOMAINS.contains(domain)) {
+            if (emailDomainClassifier.isDisposable(email)) {
                 return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
             }
             owner.setEmail(email.toLowerCase(Locale.ROOT));
