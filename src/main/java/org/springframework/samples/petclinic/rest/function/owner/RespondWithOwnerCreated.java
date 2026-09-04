@@ -19,6 +19,7 @@ public class RespondWithOwnerCreated {
         dto.setCapacityWarning(CapacityWarning.warned(owner, ownerRepository));
         PossibleDuplicate.mark(dto, owner, ownerRepository);
         Membership.mark(dto, owner, ownerRepository);
+        RiskFlag.mark(dto, owner);
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }
 }
