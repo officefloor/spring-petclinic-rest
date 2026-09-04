@@ -1,0 +1,83 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 4572e35e2..03f29a673 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -20,7 +20,7 @@ public interface OwnerMapper {
+ 
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getInitials())")
+-    @Mapping(target = "membershipTier", expression = "java(owner.getHouseholdMemberCount() != null && owner.getHouseholdMemberCount() >= 3 ? \"GOLD\" : org.springframework.samples.petclinic.model.MembershipTier.of(owner.getNamesakeCount(), owner.getEmail()))")
++    @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
+     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity()))")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/MembershipTier.java b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+similarity index 55%
+rename from src/main/java/org/springframework/samples/petclinic/model/MembershipTier.java
+rename to src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+index 019f66d53..c50eef4d6 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/MembershipTier.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/MembershipLevel.java
+@@ -16,22 +16,29 @@
+ package org.springframework.samples.petclinic.model;
+ 
+ /**
+- * Derives an owner's {@code membershipTier}: {@code SILVER} for a unique namesake
+- * ({@code namesakeCount} of 0) that has an email present, otherwise {@code BRONZE}.
++ * Derives an owner's numeric {@code membershipLevel} assigned on creation: starts at
++ * {@code 1}, adds {@code 1} when an email is present, adds {@code 1} when
++ * {@code namesakeCount} is {@code 0}, and is capped at {@code 3} (level {@code 4} is
++ * reserved for tenure).
+  */
+-public final class MembershipTier {
++public final class MembershipLevel {
+ 
+-    private MembershipTier() {
++    private MembershipLevel() {
+     }
+ 
+     /**
+      * @param namesakeCount number of pre-existing namesakes when the owner was created
+      * @param email         the owner's email, if any
+-     * @return {@code "SILVER"} when {@code namesakeCount} is 0 and {@code email} is present,
+-     *         otherwise {@code "BRONZE"}
++     * @return the membership level from {@code 1} to {@code 3}
+      */
+-    public static String of(Integer namesakeCount, String email) {
+-        boolean silver = Integer.valueOf(0).equals(namesakeCount) && email != null && !email.isBlank();
+-        return silver ? "SILVER" : "BRONZE";
++    public static int of(Integer namesakeCount, String email) {
++        int level = 1;
++        if (email != null && !email.isBlank()) {
++            level++;
++        }
++        if (Integer.valueOf(0).equals(namesakeCount)) {
++            level++;
++        }
++        return Math.min(level, 3);
+     }
+ }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index c784be40b..b6262ca35 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2118,11 +2118,14 @@ components:
+               minimum: 0
+               example: 1
+               readOnly: true
+-            membershipTier:
+-              title: Membership tier
+-              description: "'SILVER' when the owner is a unique namesake (namesakeCount 0) with an email present, otherwise 'BRONZE'."
+-              type: string
+-              example: 'SILVER'
++            membershipLevel:
++              title: Membership level
++              description: "Numeric membership level assigned on creation: starts at 1, adds 1 when an email is present, adds 1 when namesakeCount is 0, capped at 3 (level 4 is reserved for tenure)."
++              type: integer
++              format: int32
++              minimum: 1
++              maximum: 3
++              example: 3
+               readOnly: true
+             locality:
+               title: Locality
