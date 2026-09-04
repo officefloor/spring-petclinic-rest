@@ -1,0 +1,101 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 307d0f55f..0796c5bb5 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
+ import org.springframework.samples.petclinic.rest.dto.OwnerPageDto;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ 
+@@ -28,6 +29,7 @@ public interface OwnerMapper {
+     @Mapping(target = "id", ignore = true)
+     @Mapping(target = "pets", ignore = true)
+     @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
++    @Mapping(target = "registrationDate", source = "registrationDate", qualifiedByName = "defaultRegistrationDate")
+     Owner toOwner(OwnerFieldsDto ownerDto);
+ 
+     /** Normalize a telephone to its digits only; validation guarantees exactly 10. */
+@@ -36,6 +38,12 @@ public interface OwnerMapper {
+         return telephone == null ? null : telephone.replaceAll("\\D", "");
+     }
+ 
++    /** Default a missing registration date to the server's current date. */
++    @Named("defaultRegistrationDate")
++    default LocalDate defaultRegistrationDate(LocalDate registrationDate) {
++        return registrationDate == null ? LocalDate.now() : registrationDate;
++    }
++
+     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
+ 
+     Collection<Owner> toOwners(Collection<OwnerDto> ownerDtos);
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index cb8287eae..7640af204 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotEmpty;
+ import jakarta.validation.constraints.Pattern;
+ 
++import java.time.LocalDate;
+ import java.util.*;
+ 
+ /**
+@@ -52,6 +53,9 @@ public class Owner extends Person {
+     @Column(name = "email")
+     private String email;
+ 
++    @Column(name = "registration_date")
++    private LocalDate registrationDate;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -87,6 +91,14 @@ public class Owner extends Person {
+         this.telephone = telephone;
+     }
+ 
++    public LocalDate getRegistrationDate() {
++        return this.registrationDate;
++    }
++
++    public void setRegistrationDate(LocalDate registrationDate) {
++        this.registrationDate = registrationDate;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 005b04d18..4a767727f 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -42,7 +42,8 @@ CREATE TABLE owners (
+   address    VARCHAR(255),
+   city       VARCHAR(80),
+   telephone  VARCHAR(20),
+-  email      VARCHAR(255)
++  email      VARCHAR(255),
++  registration_date DATE
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0e509a0c8..8c71ffc2f 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2040,6 +2040,12 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++        registrationDate:
++          title: Registration date
++          description: The date the owner was registered. Defaults to the server's current date when omitted.
++          type: string
++          format: date
++          example: '2020-06-15'
+       required:
+         - firstName
+         - lastName
