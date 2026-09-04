@@ -27,6 +27,7 @@ public interface OwnerMapper {
     @Mapping(target = "membershipLevel", expression = "java(MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
     @Mapping(target = "locality", expression = "java(owner.getCustomerCode() != null ? owner.getCustomerCode().substring(0, owner.getCustomerCode().indexOf('-')) : Locality.of(owner.getPostcode(), owner.getCity()))")
     @Mapping(target = "contactPreference", expression = "java(ContactPreference.of(owner.getEmail()))")
+    @Mapping(target = "ageBand", expression = "java(AgeBand.of(owner.getBirthDate(), owner.getRegistrationDate()))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
