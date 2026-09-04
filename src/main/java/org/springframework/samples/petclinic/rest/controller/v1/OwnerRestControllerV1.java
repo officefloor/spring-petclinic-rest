@@ -29,6 +29,7 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
+import org.springframework.samples.petclinic.model.PossibleDuplicate;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -121,6 +122,9 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .count());
         owner.setHouseholdMemberCount(1 + (int) owners.stream().filter(existing -> sameHousehold(existing, owner)).count());
         owner.setCustomerCode(CustomerCode.of(owner, owners));
+        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(owners.stream()
