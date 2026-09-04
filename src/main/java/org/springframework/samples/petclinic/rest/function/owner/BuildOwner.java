@@ -15,9 +15,8 @@ public class BuildOwner {
 
     public void service(@Valid @Val OwnerFieldsDto request, OwnerMapper ownerMapper, Out<Owner> built) {
         Owner owner = ownerMapper.toOwner(request);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        LocalDate date = owner.getRegistrationDate() == null ? LocalDate.now() : owner.getRegistrationDate();
+        owner.setRegistrationDate(BusinessDay.onOrAfter(date));
         built.set(owner);
     }
 }
