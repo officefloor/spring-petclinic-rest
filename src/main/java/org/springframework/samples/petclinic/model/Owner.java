@@ -48,6 +48,9 @@ public class Owner extends Person {
     @Pattern(regexp = "^\\+[0-9]{8,15}$", message = "Phone number must be E.164, e.g. +61412345678")
     private String telephone;
 
+    @Column(name = "postcode")
+    private String postcode;
+
     @Column(name = "email")
     private String email;
 
@@ -62,6 +65,14 @@ public class Owner extends Person {
 
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
     private Set<Pet> pets;
+
+    public String getPostcode() {
+        return this.postcode;
+    }
+
+    public void setPostcode(String postcode) {
+        this.postcode = postcode;
+    }
 
     public String getEmail() {
         return this.email;
