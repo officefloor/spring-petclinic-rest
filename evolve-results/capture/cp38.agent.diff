@@ -1,0 +1,74 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmail.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmail.java
+new file mode 100644
+index 000000000..b3f928bef
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmail.java
+@@ -0,0 +1,22 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import jakarta.validation.Constraint;
++import jakarta.validation.Payload;
++import java.lang.annotation.*;
++
++/**
++ * Rejects an email whose domain is on the disposable-domain blocklist
++ * (mailinator.com, tempmail.com, guerrillamail.com). A blank or absent email is accepted.
++ */
++@Target({ ElementType.FIELD })
++@Retention(RetentionPolicy.RUNTIME)
++@Constraint(validatedBy = NonDisposableEmailValidator.class)
++@Documented
++public @interface NonDisposableEmail {
++
++    String message() default "Email domain is not allowed";
++
++    Class<?>[] groups() default {};
++
++    Class<? extends Payload>[] payload() default {};
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmailValidator.java b/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmailValidator.java
+new file mode 100644
+index 000000000..2e2559a06
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/rest/validation/NonDisposableEmailValidator.java
+@@ -0,0 +1,28 @@
++package org.springframework.samples.petclinic.rest.validation;
++
++import java.util.Set;
++
++import jakarta.validation.ConstraintValidator;
++import jakarta.validation.ConstraintValidatorContext;
++
++/**
++ * Rejects an email whose domain is a known disposable-mail provider. A blank or absent email,
++ * or one with no domain part, is left to the field-level format constraint and accepted here.
++ */
++public class NonDisposableEmailValidator implements ConstraintValidator<NonDisposableEmail, String> {
++
++    private static final Set<String> BLOCKED = Set.of(
++        "mailinator.com", "tempmail.com", "guerrillamail.com");
++
++    @Override
++    public boolean isValid(String email, ConstraintValidatorContext context) {
++        if (email == null || email.isBlank()) {
++            return true;
++        }
++        int at = email.lastIndexOf('@');
++        if (at < 0) {
++            return true;
++        }
++        return !BLOCKED.contains(email.substring(at + 1).toLowerCase());
++    }
++}
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 0ca2cff02..c4951bbb0 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2042,6 +2042,7 @@ components:
+           format: email
+           maxLength: 255
+           example: george.franklin@example.com
++          x-field-extra-annotation: "@org.springframework.samples.petclinic.rest.validation.NonDisposableEmail"
+         postcode:
+           title: Postcode
+           description: Optional 4-digit postcode; when present it must be valid for the city's region.
