@@ -37,6 +37,7 @@ public abstract class OwnerMapper {
     @Autowired
     protected TelephoneNormalizer telephoneNormalizer;
 
+    @Mapping(target = "selfLink", expression = "java(selfLink(owner))")
     @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "displayName",
         expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
@@ -52,6 +53,14 @@ public abstract class OwnerMapper {
     @Mapping(target = "ageBand", expression = "java(ageBand(owner))")
     @Mapping(target = "fiscalYear", expression = "java(fiscalYear(owner))")
     public abstract OwnerDto toOwnerDto(Owner owner);
+
+    /**
+     * The owner's self link: '/api/owners/' followed by the owner's id, or null when the
+     * owner has no id assigned yet.
+     */
+    String selfLink(Owner owner) {
+        return owner.getId() == null ? null : "/api/owners/" + owner.getId();
+    }
 
     /**
      * The fiscal year (starting 1 July) that {@code date} falls in, identified by the
