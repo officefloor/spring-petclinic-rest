@@ -29,6 +29,16 @@ public final class OwnerMembership {
     }
 
     /**
+     * The two-digit fiscal-year code for {@code date}: the {@link #fiscalYearOf(LocalDate) fiscal year}
+     * it falls in taken mod 100 and zero-padded to two digits (e.g. {@code 27}). This is the shared
+     * fiscal-year segment behind the mapper's {@code fiscalYear} ({@code FY27}) and
+     * {@code membershipNumber} ({@code ...-M27}).
+     */
+    public static String fiscalYearCode(LocalDate date) {
+        return String.format("%02d", fiscalYearOf(date) % 100);
+    }
+
+    /**
      * The owner's membership points. Starts at 0; add 2 when an email is present; add 1 when the owner's
      * name was unique on creation (namesakeCount is 0); add 2 for a household of 3 or more members; add 3
      * for tenure of one or more elapsed fiscal years (the current fiscal year differs from the fiscal

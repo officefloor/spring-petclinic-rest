@@ -98,6 +98,32 @@ public final class OwnerIdentity {
     }
 
     /**
+     * The Luhn check digit (0-9) over the decimal digits contained in {@code source}; any non-digit
+     * character is skipped. This is the check-digit primitive an owner's code carries — computed today
+     * over the {@code customerCode}.
+     */
+    public static int luhnCheckDigit(String source) {
+        int sum = 0;
+        boolean dbl = true;
+        for (int i = source.length() - 1; i >= 0; i--) {
+            char c = source.charAt(i);
+            if (c < '0' || c > '9') {
+                continue;
+            }
+            int d = c - '0';
+            if (dbl) {
+                d *= 2;
+                if (d > 9) {
+                    d -= 9;
+                }
+            }
+            sum += d;
+            dbl = !dbl;
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * The full SHA-256 over the UTF-8 bytes of {@code input} as 64 lower-case hex characters — the
      * encoding of the owner's {@code identityKey}.
      */

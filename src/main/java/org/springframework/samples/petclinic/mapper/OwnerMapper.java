@@ -149,32 +149,16 @@ public interface OwnerMapper {
     }
 
     /**
-     * A single Luhn check digit (0-9) computed over the digits of the owner's {@code customerCode}.
+     * A single Luhn check digit (0-9) computed over the digits of the owner's {@code customerCode};
+     * see {@link org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity#luhnCheckDigit}.
      * Null when the customer code is absent.
      */
     default Integer checkDigit(Owner owner) {
         if (owner.getCustomerCode() == null) {
             return null;
         }
-        String code = owner.getCustomerCode();
-        int sum = 0;
-        boolean dbl = true;
-        for (int i = code.length() - 1; i >= 0; i--) {
-            char c = code.charAt(i);
-            if (c < '0' || c > '9') {
-                continue;
-            }
-            int d = c - '0';
-            if (dbl) {
-                d *= 2;
-                if (d > 9) {
-                    d -= 9;
-                }
-            }
-            sum += d;
-            dbl = !dbl;
-        }
-        return (10 - (sum % 10)) % 10;
+        return org.springframework.samples.petclinic.rest.function.owner.OwnerIdentity
+                .luhnCheckDigit(owner.getCustomerCode());
     }
 
     /**
@@ -186,9 +170,8 @@ public interface OwnerMapper {
         if (owner.getRegistrationDate() == null) {
             return null;
         }
-        return String.format("FY%02d",
-                org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
-                        .fiscalYearOf(owner.getRegistrationDate()) % 100);
+        return "FY" + org.springframework.samples.petclinic.rest.function.owner.OwnerMembership
+                .fiscalYearCode(owner.getRegistrationDate());
     }
 
     /**
