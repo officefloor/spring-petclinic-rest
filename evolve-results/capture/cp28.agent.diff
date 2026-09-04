@@ -1,0 +1,53 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 76875ebe7..410736276 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -97,6 +97,15 @@ public class Owner extends Person {
+         this.customerCode = customerCode;
+     }
+ 
++    /** Derived duplicate-detection key: normalized telephone, email (or empty) and household id
++     *  joined with {@code '|'}. Two owners are duplicates only when their whole key matches, so a
++     *  shared telephone alone (with matching email) is a collision regardless of household. */
++    @Transient
++    public String getIdentityKey() {
++        return (this.telephone == null ? "" : this.telephone) + "|"
++            + (this.email == null ? "" : this.email) + "|";
++    }
++
+     /** Membership number formatted {@code <customerCode>-M<YY>}, e.g. {@code SMI-0007-M26}. */
+     @Transient
+     public String getMembershipNumber() {
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index 8b4d45c96..e480d3db0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -111,10 +111,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         if (owners.stream().filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
+-        if (owners.stream().anyMatch(existing -> existing.getTelephone().equals(owner.getTelephone()))
+-                || (!sharesHousehold && owners.stream().anyMatch(existing -> sameHousehold(existing, owner)))
+-                || (owner.getEmail() != null && owners.stream().anyMatch(existing -> owner.getEmail().equalsIgnoreCase(existing.getEmail())))
++        if (owners.stream().anyMatch(existing -> existing.getIdentityKey().equals(owner.getIdentityKey()))
+                 || owners.stream().filter(existing -> existing.getCity().equalsIgnoreCase(owner.getCity())).count() >= 50) {
+             return new ResponseEntity<>(HttpStatus.CONFLICT);
+         }
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index cab0caa13..4e608693d 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2105,6 +2105,12 @@ components:
+               type: string
+               example: '3F2A9C1B7D4E'
+               readOnly: true
++            identityKey:
++              title: Identity key
++              description: Derived duplicate-detection key joining the normalized telephone, the email (or empty) and the household id with '|'. Two owners are duplicates only when their whole identity key matches.
++              type: string
++              example: '+61412345678|george.franklin@example.com|3F2A9C1B7D4E'
++              readOnly: true
+             membershipNumber:
+               title: Membership number
+               description: Assigned identifier formatted '<customerCode>-M<YY>' from the customer code and the registration date's year.
