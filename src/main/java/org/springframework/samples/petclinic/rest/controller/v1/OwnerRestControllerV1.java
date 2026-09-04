@@ -47,6 +47,7 @@ import org.springframework.samples.petclinic.rest.dto.VisitDto;
 import org.springframework.samples.petclinic.rest.dto.VisitFieldsDto;
 import org.springframework.samples.petclinic.service.ClinicService;
 import org.springframework.samples.petclinic.util.AddressNormalizer;
+import org.springframework.samples.petclinic.util.BusinessDayAdjuster;
 import org.springframework.samples.petclinic.util.HouseholdNormalizer;
 import org.springframework.samples.petclinic.util.TelephoneNormalizer;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -139,13 +140,12 @@ public class OwnerRestControllerV1 implements OwnersApi {
         rejectDuplicateTelephone(ownerFieldsDto.getTelephone());
         rejectDuplicateHousehold(ownerFieldsDto);
         rejectCityAtCapacity(ownerFieldsDto.getCity());
-        rejectDailyRegistrationLimitReached();
+        LocalDate registrationDate = effectiveRegistrationDate(ownerFieldsDto.getRegistrationDate());
+        rejectDailyRegistrationLimitReached(registrationDate);
         normalizeEmail(ownerFieldsDto);
         HttpHeaders headers = new HttpHeaders();
         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
-        if (owner.getRegistrationDate() == null) {
-            owner.setRegistrationDate(LocalDate.now());
-        }
+        owner.setRegistrationDate(registrationDate);
         owner.setHouseholdId(HouseholdNormalizer.toHouseholdId(owner.getLastName(), owner.getAddress()));
         owner.setNamesakeCount(countNamesakes(owner.getFirstName(), owner.getLastName()));
         this.clinicService.saveOwner(owner);
@@ -408,22 +408,42 @@ public class OwnerRestControllerV1 implements OwnersApi {
     }
 
     /**
-     * Rejects creating an owner once {@link #MAX_OWNERS_PER_DAY} or more owners have already been
-     * created today, judged by their stored {@code registrationDate}. Only owners already persisted
-     * (before this create) are counted, and only those whose {@code registrationDate} equals today's
-     * date; a day at (or over) that limit is reported as a {@code 429 Too Many Requests}.
+     * Resolves the effective registration date for a create, rolled onto a business day. The
+     * supplied date is used when present, otherwise the server's current date; either way the result
+     * is rolled forward to the next Monday when it falls on a Saturday or Sunday (see
+     * {@link BusinessDayAdjuster#toBusinessDay}). Every value derived from the registration date - the
+     * stored {@code registrationDate}, the membership number's year segment and the daily
+     * create-limit's per-day count - is judged on this adjusted date.
      *
-     * @throws OwnerDailyRegistrationLimitException if today has already reached the maximum number of
+     * @param suppliedRegistrationDate the registration date from the request, or {@code null} to
+     *                                 default to the server's current date
+     * @return the effective registration date, guaranteed to fall on a business day
+     */
+    private LocalDate effectiveRegistrationDate(LocalDate suppliedRegistrationDate) {
+        LocalDate registrationDate =
+            suppliedRegistrationDate != null ? suppliedRegistrationDate : LocalDate.now();
+        return BusinessDayAdjuster.toBusinessDay(registrationDate);
+    }
+
+    /**
+     * Rejects creating an owner once {@link #MAX_OWNERS_PER_DAY} or more owners have already been
+     * created for the given business day, judged by their stored {@code registrationDate}. Only owners
+     * already persisted (before this create) are counted, and only those whose {@code registrationDate}
+     * equals the adjusted registration date; a day at (or over) that limit is reported as a {@code 429
+     * Too Many Requests}.
+     *
+     * @param registrationDate the create's effective registration date, already rolled onto a business
+     *                         day by {@link #effectiveRegistrationDate}
+     * @throws OwnerDailyRegistrationLimitException if that day has already reached the maximum number of
      *                                              owner registrations
      */
-    private void rejectDailyRegistrationLimitReached() {
-        LocalDate today = LocalDate.now();
-        long registeredToday = this.clinicService.findAllOwners().stream()
+    private void rejectDailyRegistrationLimitReached(LocalDate registrationDate) {
+        long registeredThatDay = this.clinicService.findAllOwners().stream()
             .map(Owner::getRegistrationDate)
-            .filter(today::equals)
+            .filter(registrationDate::equals)
             .count();
-        if (registeredToday >= MAX_OWNERS_PER_DAY) {
-            throw new OwnerDailyRegistrationLimitException(today);
+        if (registeredThatDay >= MAX_OWNERS_PER_DAY) {
+            throw new OwnerDailyRegistrationLimitException(registrationDate);
         }
     }
 
