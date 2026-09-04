@@ -18,12 +18,12 @@ public class RejectDuplicateOwnerIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerTelephoneException {
-        String key = IdentityKey.of(request.getTelephone(), request.getEmail());
+        String key = IdentityKey.of(request.getTelephone(), request.getEmail(), request.getLastName());
         for (Owner existing : ownerRepository.findAll()) {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            if (key.equals(IdentityKey.of(existing.getTelephone(), existing.getEmail()))) {
+            if (key.equals(IdentityKey.of(existing.getTelephone(), existing.getEmail(), existing.getLastName()))) {
                 throw new DuplicateOwnerTelephoneException(request.getTelephone());
             }
         }

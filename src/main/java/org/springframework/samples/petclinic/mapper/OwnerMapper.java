@@ -23,7 +23,7 @@ public interface OwnerMapper {
     @Mapping(target = "telephoneDisplay", expression = "java(TelephoneDisplay.of(owner.getTelephone()))")
     @Mapping(target = "initials", expression = "java(owner.getFirstName().substring(0, 1).toUpperCase() + \".\" + owner.getLastName().substring(0, 1).toUpperCase() + \".\")")
     @Mapping(target = "householdId", expression = "java(HouseholdId.of(owner.getLastName(), owner.getPostcode()))")
-    @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail()))")
+    @Mapping(target = "identityKey", expression = "java(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName()))")
     @Mapping(target = "membershipNumber", expression = "java(MembershipNumber.of(owner.getCustomerCode(), owner.getRegistrationDate()))")
     @Mapping(target = "checkDigit", expression = "java(CheckDigit.of(owner.getCustomerCode()))")
     @Mapping(target = "membershipLevel", ignore = true)
