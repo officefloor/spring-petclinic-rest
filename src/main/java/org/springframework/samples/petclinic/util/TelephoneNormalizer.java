@@ -118,4 +118,44 @@ public abstract class TelephoneNormalizer {
         return normalize(telephone).orElseGet(() -> telephone.replaceAll(SEPARATORS, ""));
     }
 
+    /**
+     * Format a stored E.164 telephone for human display: the country code, a single space, then the
+     * national (subscriber) digits grouped in threes (e.g. {@code +61412345678} becomes
+     * {@code +61 412 345 678}). The country code is taken from the recognised prefixes in
+     * {@link #NATIONAL_LENGTH_BY_COUNTRY_CODE}; a value whose country code is not recognised, or that
+     * is not a valid E.164 number, is returned unchanged so the raw form is never lost.
+     *
+     * @param telephone a stored, canonical E.164 telephone (non-null)
+     * @return the human-readable telephone
+     */
+    public static String toDisplay(String telephone) {
+        Optional<String> normalized = normalize(telephone);
+        if (normalized.isEmpty()) {
+            return telephone;
+        }
+        String digits = normalized.get().substring(1);
+        for (String countryCode : NATIONAL_LENGTH_BY_COUNTRY_CODE.keySet()) {
+            if (digits.startsWith(countryCode)) {
+                String national = digits.substring(countryCode.length());
+                return "+" + countryCode + " " + groupInThrees(national);
+            }
+        }
+        return telephone;
+    }
+
+    /**
+     * Group a run of digits into space-separated groups of three, counting from the left; a trailing
+     * group of one or two digits is kept as-is (e.g. {@code 412345678} becomes {@code 412 345 678}).
+     */
+    private static String groupInThrees(String digits) {
+        StringBuilder grouped = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            if (i > 0 && i % 3 == 0) {
+                grouped.append(' ');
+            }
+            grouped.append(digits.charAt(i));
+        }
+        return grouped.toString();
+    }
+
 }
