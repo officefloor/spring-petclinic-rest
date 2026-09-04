@@ -108,6 +108,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
                 || (!sharesHousehold && owners.stream().anyMatch(existing -> sameHousehold(existing, owner)))) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
+        owner.setNamesakeCount((int) owners.stream()
+            .filter(existing -> existing.getFirstName().equalsIgnoreCase(owner.getFirstName())
+                && existing.getLastName().equalsIgnoreCase(owner.getLastName()))
+            .count());
         owner.setCustomerCode(CustomerCode.of(owner.getLastName(), owners.size()));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
