@@ -20,7 +20,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignCustomerCode {
 
     public void service(@Val Owner owner) {
-        String region = Locality.of(owner.getPostcode(), owner.getCity());
+        String region = "V2" + Locality.of(owner.getPostcode(), owner.getCity());
         String fiscalYear = String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100);
         String hash8 = hash8(owner.getTelephone() + owner.getLastName());
         String base = region + fiscalYear + hash8;

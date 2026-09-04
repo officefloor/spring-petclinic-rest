@@ -27,7 +27,7 @@ public class SaveOwner {
         audit.info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
                 owner.getId(), memberId, owner.getRegistrationDate(), membershipLevel);
         audit.info(String.format(
-                "{\"seq\":%d,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
+                "{\"seq\":%d,\"schemaVersion\":2,\"ownerId\":%d,\"memberId\":\"%s\",\"membershipLevel\":%d,\"event\":\"OWNER_CREATED\"}",
                 EVENT_SEQ.incrementAndGet(), owner.getId(), memberId, membershipLevel));
         notify.info("welcome owner id={} memberId={}", owner.getId(), memberId);
     }

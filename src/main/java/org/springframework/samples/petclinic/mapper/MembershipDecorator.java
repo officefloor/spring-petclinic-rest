@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.samples.petclinic.model.Owner;
 import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
+import org.springframework.samples.petclinic.rest.dto.OwnerIdentityDto;
 import org.springframework.samples.petclinic.rest.function.owner.HouseholdTier;
 import org.springframework.stereotype.Component;
 
@@ -29,5 +30,10 @@ public class MembershipDecorator {
         dto.setMembershipPoints(points);
         dto.setMembershipLevel(HouseholdCap.cap(owner, MembershipLevel.of(points), ownerRepository));
         dto.setOwnerSegment(OwnerSegment.of(dto.getMembershipLevel(), dto.getLocality()));
+        dto.setApiVersion(2);
+        dto.setIdentity(new OwnerIdentityDto()
+                .memberId(owner.getCustomerCode())
+                .householdId(HouseholdId.of(owner.getLastName(), owner.getPostcode()))
+                .identityKey(IdentityKey.of(owner.getTelephone(), owner.getEmail(), owner.getLastName())));
     }
 }

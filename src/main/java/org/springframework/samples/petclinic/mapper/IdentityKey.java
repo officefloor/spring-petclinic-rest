@@ -17,7 +17,7 @@ public final class IdentityKey {
     }
 
     public static String of(String telephone, String email, String lastName) {
-        String key = (telephone == null ? "" : telephone) + "|"
+        String key = "V2|" + (telephone == null ? "" : telephone) + "|"
                 + (email == null ? "" : email.toLowerCase()) + "|" + Soundex.of(lastName);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
