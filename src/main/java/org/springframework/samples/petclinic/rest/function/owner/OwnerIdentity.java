@@ -36,6 +36,16 @@ public final class OwnerIdentity {
     }
 
     /**
+     * The identityKey for the raw parts of a create request or an existing owner — the one derivation
+     * the duplicate check applies to both sides of a comparison, so a request and an existing owner are
+     * keyed identically. Derives the household component from the lastName and postcode (see
+     * {@link #householdIdOf}) and defers to {@link #key}.
+     */
+    public static String keyOf(String telephone, String email, String lastName, String postcode) {
+        return key(telephone, email, householdIdOf(lastName, postcode));
+    }
+
+    /**
      * The E.164 form used for comparison. A value that is already E.164 is returned unchanged; a value
      * that predates E.164 storage is normalized on the fly, falling back to its bare digits if it
      * cannot form valid E.164.
@@ -96,20 +106,26 @@ public final class OwnerIdentity {
 
     /**
      * The first {@code hexChars} upper-case hex characters of SHA-256 over the UTF-8 bytes of
-     * {@code input} — the shared primitive behind every hash-derived identity part.
+     * {@code input} — the shared encoding behind every hash-derived identity part.
      */
     static String sha256Hex(String input, int hexChars) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hexChars);
-            for (byte b : digest) {
-                sb.append(String.format("%02X", b));
-                if (sb.length() >= hexChars) {
-                    break;
-                }
+        StringBuilder sb = new StringBuilder(hexChars);
+        for (byte b : sha256(input)) {
+            sb.append(String.format("%02X", b));
+            if (sb.length() >= hexChars) {
+                break;
             }
-            return sb.substring(0, hexChars);
+        }
+        return sb.substring(0, hexChars);
+    }
+
+    /**
+     * The SHA-256 digest of the UTF-8 bytes of {@code input} — the shared primitive every hash-derived
+     * identity part is encoded from.
+     */
+    static byte[] sha256(String input) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
         }
         catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 not available", ex);

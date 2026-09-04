@@ -30,13 +30,10 @@ public class FlagPossibleDuplicate {
             return;
         }
 
-        String postcode = owner.getPostcode();
         // A soft match keys on a shared postcode; an owner with no postcode cannot share one.
-        if (postcode == null || postcode.isBlank()) {
+        if (owner.getPostcode() == null || owner.getPostcode().isBlank()) {
             return;
         }
-        String lastName = OwnerIdentity.normalizeName(owner.getLastName());
-        String telephone = OwnerIdentity.canonicalTelephone(owner.getTelephone());
 
         Owner match = null;
         for (Owner existing : ownerRepository.findAll()) {
@@ -44,14 +41,8 @@ public class FlagPossibleDuplicate {
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            if (!lastName.equals(OwnerIdentity.normalizeName(existing.getLastName()))) {
+            if (!isPossibleDuplicate(owner, existing)) {
                 continue;
-            }
-            if (!postcode.equals(existing.getPostcode())) {
-                continue;
-            }
-            if (telephone.equals(OwnerIdentity.canonicalTelephone(existing.getTelephone()))) {
-                continue; // same telephone is not the "different telephone" soft match
             }
             if (match == null || existing.getId() < match.getId()) {
                 match = existing;
@@ -62,5 +53,22 @@ public class FlagPossibleDuplicate {
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(match.getId());
         }
+    }
+
+    /**
+     * Whether {@code existing} is a soft duplicate of the new {@code owner}: it shares the normalized
+     * lastName and the postcode but carries a different telephone. A shared telephone is not the
+     * "different telephone" soft match.
+     */
+    private static boolean isPossibleDuplicate(Owner owner, Owner existing) {
+        if (!OwnerIdentity.normalizeName(owner.getLastName())
+                .equals(OwnerIdentity.normalizeName(existing.getLastName()))) {
+            return false;
+        }
+        if (!owner.getPostcode().equals(existing.getPostcode())) {
+            return false;
+        }
+        return !OwnerIdentity.canonicalTelephone(owner.getTelephone())
+                .equals(OwnerIdentity.canonicalTelephone(existing.getTelephone()));
     }
 }

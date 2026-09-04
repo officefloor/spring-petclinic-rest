@@ -26,17 +26,15 @@ public class EnsureIdentityUnique {
             return;
         }
 
-        String householdId = OwnerIdentity.householdIdOf(request.getLastName(), request.getPostcode());
-        String identityKey = OwnerIdentity.key(request.getTelephone(), request.getEmail(), householdId);
+        String identityKey = OwnerIdentity.keyOf(request.getTelephone(), request.getEmail(),
+                request.getLastName(), request.getPostcode());
         for (Owner existing : ownerRepository.findAll()) {
             // A soft-deleted owner no longer blocks a create.
             if (Boolean.TRUE.equals(existing.getDeleted())) {
                 continue;
             }
-            String existingHousehold = OwnerIdentity.householdIdOf(
+            String existingKey = OwnerIdentity.keyOf(existing.getTelephone(), existing.getEmail(),
                     existing.getLastName(), existing.getPostcode());
-            String existingKey = OwnerIdentity.key(
-                    existing.getTelephone(), existing.getEmail(), existingHousehold);
             if (identityKey.equals(existingKey)) {
                 throw new DuplicateIdentityException(identityKey);
             }
