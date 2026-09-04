@@ -33,8 +33,9 @@ public class RespondWithOwnerCreated {
         LoggerFactory.getLogger("AUDIT").info("owner created id={} memberId={} registrationDate={} membershipLevel={}",
                 owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(), membershipLevel);
         LoggerFactory.getLogger("AUDIT").info(
-                "{\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"event\":\"OWNER_CREATED\"}",
-                SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), membershipLevel);
+                "{\"schemaVersion\":2,\"seq\":{},\"ownerId\":{},\"memberId\":\"{}\",\"membershipLevel\":{},\"ownerSegment\":\"{}\",\"event\":\"OWNER_CREATED\"}",
+                SEQ.incrementAndGet(), owner.getId(), owner.getCustomerCode(), membershipLevel,
+                OwnerSegment.of(membershipLevel, owner));
         LoggerFactory.getLogger("NOTIFY").info("welcome owner id={} memberId={}", owner.getId(), owner.getCustomerCode());
         response.send(ResponseEntity.created(URI.create("/api/owners/" + owner.getId())).body(dto));
     }

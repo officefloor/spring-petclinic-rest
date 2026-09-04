@@ -19,7 +19,7 @@ import org.springframework.samples.petclinic.model.Owner;
 public class AssignOwnerCustomerCode {
 
     public void service(@Val Owner owner) {
-        String base = Locality.of(owner)
+        String base = (Locality.of(owner) + "V2")
                 + String.format("%02d", FiscalYear.of(owner.getRegistrationDate()) % 100)
                 + hash8(owner.getTelephone() + owner.getLastName());
         owner.setCustomerCode(base + CheckDigit.of(base));

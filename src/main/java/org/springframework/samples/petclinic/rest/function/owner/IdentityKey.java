@@ -21,7 +21,7 @@ public final class IdentityKey {
     public static String of(Owner owner) {
         String telephone = owner.getTelephone() == null ? "" : owner.getTelephone();
         String email = owner.getEmail() == null ? "" : owner.getEmail().toLowerCase(Locale.ROOT);
-        String seed = telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
+        String seed = "V2|" + telephone + "|" + email + "|" + Soundex.of(owner.getLastName());
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(seed.getBytes(StandardCharsets.UTF_8));
