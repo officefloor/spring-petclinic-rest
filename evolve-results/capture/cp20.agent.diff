@@ -1,0 +1,69 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+new file mode 100644
+index 000000000..a66c8bffa
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/model/BusinessDay.java
+@@ -0,0 +1,38 @@
++/*
++ * Copyright 2002-2013 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.springframework.samples.petclinic.model;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++
++/**
++ * Rolls a registration date forward onto a business day: a Saturday or Sunday
++ * becomes the following Monday; a weekday is returned unchanged.
++ */
++public final class BusinessDay {
++
++    private BusinessDay() {
++    }
++
++    /** Return {@code date} if it falls on a weekday, otherwise the next Monday. */
++    public static LocalDate adjust(LocalDate date) {
++        DayOfWeek day = date.getDayOfWeek();
++        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
++            return date.plusDays(8 - day.getValue());
++        }
++        return date;
++    }
++}
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index b1a9b3647..63733cac2 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
+ import org.springframework.samples.petclinic.mapper.OwnerMapper;
+ import org.springframework.samples.petclinic.mapper.PetMapper;
+ import org.springframework.samples.petclinic.mapper.VisitMapper;
++import org.springframework.samples.petclinic.model.BusinessDay;
+ import org.springframework.samples.petclinic.model.CustomerCode;
+ import org.springframework.samples.petclinic.model.Owner;
+ import org.springframework.samples.petclinic.model.Pet;
+@@ -103,8 +104,11 @@ public class OwnerRestControllerV1 implements OwnersApi {
+     public ResponseEntity<OwnerDto> addOwner(OwnerFieldsDto ownerFieldsDto) {
+         HttpHeaders headers = new HttpHeaders();
+         Owner owner = ownerMapper.toOwner(ownerFieldsDto);
++        LocalDate registrationDate = BusinessDay.adjust(
++            owner.getRegistrationDate() != null ? owner.getRegistrationDate() : LocalDate.now());
++        owner.setRegistrationDate(registrationDate);
+         Collection<Owner> owners = this.clinicService.findAllOwners();
+-        if (owners.stream().filter(existing -> LocalDate.now().equals(existing.getRegistrationDate())).count() >= 100) {
++        if (owners.stream().filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() >= 100) {
+             return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+         }
+         boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
