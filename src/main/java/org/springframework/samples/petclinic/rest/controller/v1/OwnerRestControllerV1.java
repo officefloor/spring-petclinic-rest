@@ -124,6 +124,8 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setCustomerCode(CustomerCode.of(owner, owners));
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+        ownerDto.setBulkSignupWarning(owners.stream()
+            .filter(existing -> registrationDate.equals(existing.getRegistrationDate())).count() > 80);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
