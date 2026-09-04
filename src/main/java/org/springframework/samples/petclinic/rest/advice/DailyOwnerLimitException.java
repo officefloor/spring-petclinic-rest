@@ -39,7 +39,7 @@ public class DailyOwnerLimitException extends RuntimeException {
      * whose registration date is today.
      */
     public static void rejectIfAtLimit(Collection<Owner> existingOwners) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = org.springframework.samples.petclinic.util.BusinessDay.rollForward(LocalDate.now());
         long count = existingOwners.stream()
             .filter(owner -> today.equals(owner.getRegistrationDate()))
             .count();

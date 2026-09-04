@@ -35,10 +35,12 @@ public interface OwnerMapper {
     @Mapping(target = "registrationDate", source = "registrationDate", qualifiedByName = "defaultRegistrationDate")
     Owner toOwner(OwnerFieldsDto ownerDto);
 
-    /** Default a missing registration date to the server's current date. */
+    /** Default a missing registration date to the server's current date, then roll
+     *  the effective date forward onto a business day. */
     @Named("defaultRegistrationDate")
     default LocalDate defaultRegistrationDate(LocalDate registrationDate) {
-        return registrationDate == null ? LocalDate.now() : registrationDate;
+        return org.springframework.samples.petclinic.util.BusinessDay.rollForward(
+            registrationDate == null ? LocalDate.now() : registrationDate);
     }
 
     List<OwnerDto> toOwnerDtoCollection(Collection<Owner> ownerCollection);
