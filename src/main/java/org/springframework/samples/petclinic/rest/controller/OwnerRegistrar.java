@@ -77,6 +77,8 @@ public class OwnerRegistrar {
 
     private final OwnerAuditor ownerAuditor;
 
+    private final WelcomeNotifier welcomeNotifier;
+
     /**
      * Remembers, per {@code Idempotency-Key}, the id of the owner that key's create originally
      * produced, so a later create carrying the same key returns that same owner instead of
@@ -93,7 +95,8 @@ public class OwnerRegistrar {
                           AddressNormalizer addressNormalizer,
                           CityRegionResolver cityRegionResolver,
                           HouseholdResolver householdResolver,
-                          OwnerAuditor ownerAuditor) {
+                          OwnerAuditor ownerAuditor,
+                          WelcomeNotifier welcomeNotifier) {
         this.clinicService = clinicService;
         this.ownerMapper = ownerMapper;
         this.telephoneNormalizer = telephoneNormalizer;
@@ -101,6 +104,7 @@ public class OwnerRegistrar {
         this.cityRegionResolver = cityRegionResolver;
         this.householdResolver = householdResolver;
         this.ownerAuditor = ownerAuditor;
+        this.welcomeNotifier = welcomeNotifier;
     }
 
     /**
@@ -235,6 +239,7 @@ public class OwnerRegistrar {
             idempotencyKeys.put(key, owner.getId());
         }
         ownerAuditor.ownerCreated(owner, ownerMapper.membershipLevel(owner));
+        welcomeNotifier.welcome(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         headers.setLocation(UriComponentsBuilder.newInstance()
             .path("/api/owners/{id}").buildAndExpand(owner.getId()).toUri());
