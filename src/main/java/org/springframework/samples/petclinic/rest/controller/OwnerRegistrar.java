@@ -353,6 +353,16 @@ public class OwnerRegistrar {
             .map(Owner::getCustomerCode)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
+        return disambiguate(base, existing);
+    }
+
+    /**
+     * Make {@code base} unique among the {@code existing} identity codes: return it unchanged when
+     * it is free, otherwise append {@code '-<n>'} with the smallest {@code n} of 2 or more that is
+     * not already taken (e.g. 'NSW-1A2B3C4D-2'). This is the single de-duplication step an assigned
+     * identity code passes through, so a collision is broken the one way wherever a code is built.
+     */
+    private static String disambiguate(String base, java.util.Set<String> existing) {
         if (!existing.contains(base)) {
             return base;
         }

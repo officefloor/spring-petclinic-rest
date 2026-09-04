@@ -125,8 +125,13 @@ public abstract class OwnerMapper {
      * The Luhn check digit (0-9) over the digits contained in {@code s}: from the rightmost
      * digit leftward, every second digit is doubled (the rightmost first) with digits over 9
      * reduced by 9, and the check digit makes the total a multiple of ten.
+     *
+     * <p>This is the single Luhn derivation behind the application's identity values; like
+     * {@link #fiscalYear(LocalDate)} and {@link #identityKey(Owner)} it is exposed so the check
+     * digit is computed the one way wherever an identifier is assembled, including outside this
+     * package.
      */
-    static int luhn(String s) {
+    public static int luhn(String s) {
         int sum = 0;
         boolean doubling = true;
         for (int i = s.length() - 1; i >= 0; i--) {
@@ -172,20 +177,29 @@ public abstract class OwnerMapper {
     }
 
     /**
-     * The owner's locality: the REGION component of the customerCode identity (the part before
-     * the first '-' of {@code '<REGION>-<HASH8>'}). When no customerCode has been assigned this
-     * falls back to the canonical region derived from the owner via {@link CityRegionResolver},
-     * preferring the postcode over the city, or 'UNKNOWN' when neither yields a known region.
+     * The REGION segment carried by the owner's assigned identity code: the part before the first
+     * '-' of the {@code '<REGION>-<HASH8>'} customerCode. Returns null when no customerCode has been
+     * assigned, or when it carries no region segment. This is the single place that reads the region
+     * back out of the stored identifier, so every rule keyed on that region reads it the one way.
+     */
+    private String identityRegion(Owner owner) {
+        String customerCode = owner.getCustomerCode();
+        if (customerCode == null) {
+            return null;
+        }
+        int dash = customerCode.indexOf('-');
+        return dash >= 0 ? customerCode.substring(0, dash) : null;
+    }
+
+    /**
+     * The owner's locality: the REGION segment of its assigned identity code (see
+     * {@link #identityRegion}). When no code has been assigned this falls back to the canonical
+     * region derived from the owner via {@link CityRegionResolver}, preferring the postcode over the
+     * city, or 'UNKNOWN' when neither yields a known region.
      */
     String locality(Owner owner) {
-        String customerCode = owner.getCustomerCode();
-        if (customerCode != null) {
-            int dash = customerCode.indexOf('-');
-            if (dash >= 0) {
-                return customerCode.substring(0, dash);
-            }
-        }
-        return cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
+        String region = identityRegion(owner);
+        return region != null ? region : cityRegionResolver.regionFor(owner.getCity(), owner.getPostcode());
     }
 
     /**
