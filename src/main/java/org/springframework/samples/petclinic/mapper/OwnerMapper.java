@@ -19,6 +19,7 @@ import java.util.List;
 public interface OwnerMapper {
 
     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+    @Mapping(target = "salutation", expression = "java(salutation(owner))")
     @Mapping(target = "initials", expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.CustomerCode.region(owner.getCustomerCode()))")
     @Mapping(target = "timezone", expression = "java(timezone(owner))")
@@ -111,6 +112,19 @@ public interface OwnerMapper {
             return 3;
         }
         return 4;
+    }
+
+    /**
+     * Composes the owner's {@code salutation} from its honorific {@code title} and {@code lastName}:
+     * {@code title + ' ' + lastName} when a non-blank title is present, or just the {@code lastName}
+     * when no title is given.
+     */
+    default String salutation(Owner owner) {
+        String title = owner.getTitle();
+        if (title == null || title.isBlank()) {
+            return owner.getLastName();
+        }
+        return title + " " + owner.getLastName();
     }
 
     Owner toOwner(OwnerDto ownerDto);
