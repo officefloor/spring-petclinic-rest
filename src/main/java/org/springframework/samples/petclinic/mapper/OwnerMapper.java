@@ -10,6 +10,7 @@ import org.springframework.samples.petclinic.rest.function.owner.OwnerRegion;
 import org.springframework.samples.petclinic.rest.function.owner.FiscalYear;
 import org.springframework.samples.petclinic.rest.function.owner.LocalityTimezone;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerIdentityKey;
+import org.springframework.samples.petclinic.rest.function.owner.OwnerRisk;
 import org.springframework.samples.petclinic.rest.function.owner.OwnerSegment;
 import org.springframework.samples.petclinic.rest.function.owner.TelephoneDisplay;
 import org.springframework.samples.petclinic.rest.dto.OwnerDto;
@@ -22,7 +23,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, OwnerRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class})
+@Mapper(uses = PetMapper.class, imports = {OwnerDto.class, OwnerIdentityKey.class, OwnerRegion.class, LocalityTimezone.class, AgeBand.class, FiscalYear.class, TelephoneDisplay.class, OwnerSegment.class, OwnerRisk.class})
 public interface OwnerMapper {
 
     @Mapping(target = "selfLink",
@@ -49,6 +50,8 @@ public interface OwnerMapper {
             expression = "java(FiscalYear.label(owner.getRegistrationDate()))")
     @Mapping(target = "telephoneDisplay",
             expression = "java(TelephoneDisplay.of(owner))")
+    @Mapping(target = "riskFlag",
+            expression = "java(OwnerRisk.of(owner))")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
