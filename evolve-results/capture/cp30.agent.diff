@@ -1,0 +1,60 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 421822d94..91f7fba5f 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -25,7 +25,7 @@ public interface OwnerMapper {
+     @Mapping(target = "householdId", expression = "java(org.springframework.samples.petclinic.util.Household.idFor(owner.getLastName(), owner.getAddress()))")
+     @Mapping(target = "membershipNumber", expression = "java(owner.getCustomerCode() + \"-M\" + String.format(\"%02d\", owner.getRegistrationDate().getYear() % 100))")
+     @Mapping(target = "membershipLevel", expression = "java(Math.min(3, 1 + (owner.getEmail() != null ? 1 : 0) + (Integer.valueOf(0).equals(owner.getNamesakeCount()) ? 1 : 0)))")
+-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.util.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null ? \"EMAIL\" : \"PHONE\")")
+     @Mapping(target = "identityKey", expression = "java(org.springframework.samples.petclinic.util.IdentityKey.of(owner))")
+     OwnerDto toOwnerDto(Owner owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/Locality.java b/src/main/java/org/springframework/samples/petclinic/util/Locality.java
+index 853bb5ae1..e837d61b0 100644
+--- a/src/main/java/org/springframework/samples/petclinic/util/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/util/Locality.java
+@@ -3,15 +3,20 @@ package org.springframework.samples.petclinic.util;
+ import java.util.Map;
+ 
+ /**
+- * Derives an owner's {@code locality}: the canonical region for the owner's city,
+- * from a fixed city-to-region table. Any city not in the table resolves to
+- * {@code "UNKNOWN"}.
++ * Derives an owner's {@code locality}: the canonical region. The postcode is preferred,
++ * looked up by range (NSW 2000-2099, VIC 3000-3099, QLD 4000-4099); when it is absent or
++ * in no known range the fixed city-to-region table is used instead. Anything unresolved
++ * resolves to {@code "UNKNOWN"}.
+  */
+ public final class Locality {
+ 
+     private static final Map<String, String> CITY_REGION =
+         Map.of("Sydney", "NSW", "Melbourne", "VIC", "Brisbane", "QLD");
+ 
++    /** Postcode "hundreds" band (postcode / 100) -> region. */
++    private static final Map<Integer, String> BAND_REGION =
++        Map.of(20, "NSW", 30, "VIC", 40, "QLD");
++
+     private Locality() {
+     }
+ 
+@@ -19,4 +24,18 @@ public final class Locality {
+     public static String of(String city) {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
++
++    /** The region for {@code postcode} (preferred), falling back to {@code city}. */
++    public static String of(String city, String postcode) {
++        String region = byPostcode(postcode);
++        return region != null ? region : of(city);
++    }
++
++    /** The region whose range contains {@code postcode}, or {@code null} when none does. */
++    private static String byPostcode(String postcode) {
++        if (postcode == null) {
++            return null;
++        }
++        return BAND_REGION.get(Integer.parseInt(postcode) / 100);
++    }
+ }
