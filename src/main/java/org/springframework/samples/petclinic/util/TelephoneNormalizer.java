@@ -23,39 +23,59 @@ import java.util.Optional;
  * and the {@code Owner} model so the rules for shaping and comparing a telephone live in one place,
  * as pure functions with no web or persistence dependencies.
  *
- * <p>A submitted telephone is reduced to the canonical form that is stored and returned by removing
- * every non-digit character; the result is accepted only when it is exactly ten digits. Two
- * telephones denote the same number when their {@linkplain #toComparisonKey(String) comparison keys}
- * are equal.
+ * <p>A submitted telephone is reduced to its canonical <a href="https://en.wikipedia.org/wiki/E.164">E.164</a>
+ * form, which is the value stored and returned. Spaces, dashes and brackets are stripped; a leading
+ * {@code '+'} and its country code are kept when present, otherwise the country code {@code '+61'} is
+ * assumed and a single leading {@code '0'} is dropped from the national digits. The result is accepted
+ * only when 8 to 15 digits follow the {@code '+'}. Two telephones denote the same number when their
+ * {@linkplain #toComparisonKey(String) comparison keys} — their E.164 forms — are equal.
  */
 public abstract class TelephoneNormalizer {
 
+    /** Characters stripped from a submitted telephone: spaces, dashes and brackets. */
+    private static final String SEPARATORS = "[\\s()\\[\\]-]";
+
+    private static final int MIN_E164_DIGITS = 8;
+
+    private static final int MAX_E164_DIGITS = 15;
+
     /**
-     * Reduce a submitted telephone to the canonical form to be stored and returned: every non-digit
-     * character is removed, and the result is accepted only when exactly ten digits remain.
+     * Reduce a submitted telephone to its canonical E.164 form, which is the value to be stored and
+     * returned. Spaces, dashes and brackets are removed; when the number carries a leading {@code '+'}
+     * its country code is kept, otherwise country code {@code 61} is assumed and a single leading
+     * {@code '0'} is dropped from the national digits. The result is accepted only when 8 to 15 digits
+     * follow the {@code '+'}.
      *
      * @param rawTelephone the submitted telephone (non-null)
-     * @return the canonical telephone, or {@link Optional#empty()} if {@code rawTelephone} does not
-     *         reduce to a valid telephone
+     * @return the canonical E.164 telephone (e.g. {@code +61412345678}), or {@link Optional#empty()}
+     *         if {@code rawTelephone} cannot form a valid E.164 number
      */
     public static Optional<String> normalize(String rawTelephone) {
-        String digits = rawTelephone.replaceAll("\\D", "");
-        if (digits.length() != 10) {
+        String cleaned = rawTelephone.replaceAll(SEPARATORS, "");
+        String digits;
+        if (cleaned.startsWith("+")) {
+            digits = cleaned.substring(1);
+        }
+        else {
+            String national = cleaned.startsWith("0") ? cleaned.substring(1) : cleaned;
+            digits = "61" + national;
+        }
+        if (!digits.matches("\\d+") || digits.length() < MIN_E164_DIGITS || digits.length() > MAX_E164_DIGITS) {
             return Optional.empty();
         }
-        return Optional.of(digits);
+        return Optional.of("+" + digits);
     }
 
     /**
-     * The key used to decide whether two telephones denote the same number. Every non-digit
-     * character is stripped so that telephones stored in different textual shapes still compare
-     * equal on their digits alone.
+     * The key used to decide whether two telephones denote the same number: the telephone's canonical
+     * E.164 form, so telephones stored in different textual shapes still compare equal. A value that
+     * does not form a valid E.164 number (e.g. legacy data) falls back to its separator-stripped form.
      *
      * @param telephone a stored or already-normalized telephone (non-null)
      * @return the comparison key
      */
     public static String toComparisonKey(String telephone) {
-        return telephone.replaceAll("\\D", "");
+        return normalize(telephone).orElseGet(() -> telephone.replaceAll(SEPARATORS, ""));
     }
 
 }
