@@ -201,15 +201,11 @@ public class OwnerRegistrar {
         // checks so both the household-duplicate rule and the identity-key rule key off the
         // same computed id.
         owner.setHouseholdId(householdResolver.householdId(owner));
-        boolean sharesHousehold = Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold());
         boolean householdMember = householdResolver.householdExists(owner);
-        // Because the household is keyed on (lastName, postcode), a second owner sharing an
-        // existing owner's household is a household duplicate and is rejected with 409. The
-        // 'sharesHousehold' flag only bypasses this block, declaring a deliberate member; it
-        // no longer creates the link, which the deterministic id now does on its own.
-        if (householdMember && !sharesHousehold) {
-            return new ResponseEntity<>(HttpStatus.CONFLICT);
-        }
+        // A second owner sharing an existing owner's household (same normalized last name and
+        // postcode) is a legitimate additional member, not a rejection: it is admitted and its
+        // membershipLevel is instead held to the household level-ceiling when the DTO is derived.
+        // A true duplicate is still caught below by the identity-key rule.
         if (isDuplicateOwner(owner)) {
             return new ResponseEntity<>(HttpStatus.CONFLICT);
         }
@@ -227,10 +223,10 @@ public class OwnerRegistrar {
         // Soft-match: the candidate has already cleared the hard-duplicate check, but it may
         // still share an existing owner's last name and postcode while carrying a different
         // telephone. When it does, it is created but flagged as a possible duplicate of that
-        // existing owner; otherwise the flag is false and no reference is recorded. A declared
-        // household member (created via 'sharesHousehold') is not a suspected duplicate, so it
-        // is never flagged.
-        Integer possibleDuplicateOf = (sharesHousehold && householdMember) ? null : possibleDuplicateOf(owner);
+        // existing owner; otherwise the flag is false and no reference is recorded. A member of
+        // an existing household is a deliberate additional member, not a suspected duplicate, so
+        // it is never flagged.
+        Integer possibleDuplicateOf = householdMember ? null : possibleDuplicateOf(owner);
         owner.setPossibleDuplicate(possibleDuplicateOf != null);
         owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);

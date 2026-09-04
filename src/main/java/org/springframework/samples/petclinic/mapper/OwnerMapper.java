@@ -18,6 +18,7 @@ import java.time.Month;
 import java.time.Period;
 import java.util.Collection;
 import java.util.List;
+import java.util.OptionalInt;
 
 /**
  * Maps Owner & OwnerDto using Mapstruct
@@ -220,10 +221,37 @@ public abstract class OwnerMapper {
 
     /**
      * The owner's numeric membership level from 1 to 4, derived from {@link #membershipPoints}
-     * via {@link #levelForPoints}.
+     * via {@link #levelForPoints} and then held to the household level-ceiling by
+     * {@link #cappedByHousehold}.
      */
     public int membershipLevel(Owner owner) {
-        return levelForPoints(membershipPoints(owner));
+        return cappedByHousehold(owner, levelForPoints(membershipPoints(owner)));
+    }
+
+    /**
+     * Hold {@code level} to the household level-ceiling: an owner's membershipLevel may not exceed
+     * one above the current maximum membershipLevel among the household members that already
+     * existed when this owner registered — the other, non-deleted owners sharing its householdId
+     * that were created earlier (a strictly lower id, ids being monotonic). When no such earlier
+     * household member exists no ceiling applies and {@code level} is returned unchanged.
+     *
+     * @param owner the owner whose own level is being capped
+     * @param level the owner's uncapped membership level
+     * @return the level, capped at one above the earlier household members' maximum
+     */
+    private int cappedByHousehold(Owner owner, int level) {
+        Integer id = owner.getId();
+        String householdId = owner.getHouseholdId();
+        if (id == null || householdId == null) {
+            return level;
+        }
+        OptionalInt maxExisting = clinicService.findAllOwners().stream()
+            .filter(existing -> !existing.isDeleted())
+            .filter(existing -> existing.getId() != null && existing.getId() < id)
+            .filter(existing -> householdId.equals(existing.getHouseholdId()))
+            .mapToInt(this::membershipLevel)
+            .max();
+        return maxExisting.isEmpty() ? level : Math.min(level, maxExisting.getAsInt() + 1);
     }
 
     /**
