@@ -13,7 +13,6 @@ public class RespondWithOwner {
             ObjectResponse<OwnerDto> response) {
         OwnerDto dto = ownerMapper.toOwnerDto(owner);
         dto.setBulkSignupWarning(BulkSignup.warned(owner, ownerRepository));
-        HouseholdTier.applyTo(dto, owner, ownerRepository);
         response.send(dto);
     }
 }
