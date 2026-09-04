@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Maps Owner & OwnerDto using Mapstruct
  */
-@Mapper(uses = PetMapper.class, imports = LocalityLookup.class)
+@Mapper(uses = PetMapper.class, imports = {LocalityLookup.class, OwnerDto.class})
 public interface OwnerMapper {
 
     @Mapping(target = "displayName",
@@ -24,6 +24,8 @@ public interface OwnerMapper {
             expression = "java(Character.toUpperCase(owner.getFirstName().charAt(0)) + \".\" + Character.toUpperCase(owner.getLastName().charAt(0)) + \".\")")
     @Mapping(target = "locality",
             expression = "java(LocalityLookup.regionOf(owner.getCity()))")
+    @Mapping(target = "contactPreference",
+            expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? OwnerDto.ContactPreferenceEnum.EMAIL : OwnerDto.ContactPreferenceEnum.PHONE)")
     OwnerDto toOwnerDto(Owner owner);
 
     Owner toOwner(OwnerDto ownerDto);
