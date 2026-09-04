@@ -126,6 +126,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
         if (owner.getRegistrationDate() == null) {
             owner.setRegistrationDate(LocalDate.now());
         }
+        LocalDate today = LocalDate.now();
+        long ownersCreatedToday = this.clinicService.findAllOwners().stream()
+            .map(Owner::getRegistrationDate)
+            .filter(today::equals)
+            .count();
+        if (ownersCreatedToday >= 100) {
+            return new ResponseEntity<>(HttpStatus.TOO_MANY_REQUESTS);
+        }
         String address = addressNormalizer.normalize(owner.getAddress());
         if (address.isBlank()) {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
