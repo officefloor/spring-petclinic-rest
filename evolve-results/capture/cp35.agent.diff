@@ -1,0 +1,150 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Owner.java b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+index 7ab615e24..b4719e19a 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Owner.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Owner.java
+@@ -65,6 +65,12 @@ public class Owner extends Person {
+     @Column(name = "namesake_count")
+     private Integer namesakeCount;
+ 
++    @Column(name = "possible_duplicate")
++    private Boolean possibleDuplicate;
++
++    @Column(name = "possible_duplicate_of")
++    private Integer possibleDuplicateOf;
++
+     @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner", fetch = FetchType.EAGER)
+     private Set<Pet> pets;
+ 
+@@ -140,6 +146,22 @@ public class Owner extends Person {
+         this.namesakeCount = namesakeCount;
+     }
+ 
++    public Boolean getPossibleDuplicate() {
++        return this.possibleDuplicate;
++    }
++
++    public void setPossibleDuplicate(Boolean possibleDuplicate) {
++        this.possibleDuplicate = possibleDuplicate;
++    }
++
++    public Integer getPossibleDuplicateOf() {
++        return this.possibleDuplicateOf;
++    }
++
++    public void setPossibleDuplicateOf(Integer possibleDuplicateOf) {
++        this.possibleDuplicateOf = possibleDuplicateOf;
++    }
++
+     protected Set<Pet> getPetsInternal() {
+         if (this.pets == null) {
+             this.pets = new HashSet<>();
+diff --git a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+index f223a96f4..862391796 100644
+--- a/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
++++ b/src/main/java/org/springframework/samples/petclinic/rest/controller/v1/OwnerRestControllerV1.java
+@@ -42,6 +42,7 @@ import org.springframework.samples.petclinic.util.BulkSignup;
+ import org.springframework.samples.petclinic.util.CustomerCode;
+ import org.springframework.samples.petclinic.util.IdentityKey;
+ import org.springframework.samples.petclinic.util.Namesakes;
++import org.springframework.samples.petclinic.util.PossibleDuplicate;
+ import org.springframework.samples.petclinic.util.Postcode;
+ import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.web.bind.annotation.CrossOrigin;
+@@ -118,6 +119,7 @@ public class OwnerRestControllerV1 implements OwnersApi {
+         IdentityKey.rejectIfDuplicate(owner, this.clinicService.findAllOwners());
+         owner.setCustomerCode(CustomerCode.assign(owner));
+         owner.setNamesakeCount(Namesakes.count(owner, this.clinicService.findAllOwners()));
++        PossibleDuplicate.assign(owner, this.clinicService.findAllOwners());
+         this.clinicService.saveOwner(owner);
+         org.slf4j.LoggerFactory.getLogger("AUDIT").info("owner id={} customerCode={} registrationDate={}", owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate());
+         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
+diff --git a/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java b/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java
+new file mode 100644
+index 000000000..ec2fe1c3d
+--- /dev/null
++++ b/src/main/java/org/springframework/samples/petclinic/util/PossibleDuplicate.java
+@@ -0,0 +1,40 @@
++package org.springframework.samples.petclinic.util;
++
++import java.util.Collection;
++
++import org.springframework.samples.petclinic.model.Owner;
++
++/**
++ * Soft duplicate detection. A new owner that is not a hard duplicate but shares an existing
++ * owner's last name and postcode while having a different telephone is a <em>possible</em>
++ * duplicate; the matching owner's id is recorded on the candidate.
++ */
++public final class PossibleDuplicate {
++
++    private PossibleDuplicate() {
++    }
++
++    /** Record on {@code candidate} whether it possibly duplicates an existing owner (same last
++     *  name and postcode, different telephone) and, if so, that owner's id. */
++    public static void assign(Owner candidate, Collection<Owner> existing) {
++        Integer match = matchId(candidate, existing);
++        candidate.setPossibleDuplicate(match != null);
++        candidate.setPossibleDuplicateOf(match);
++    }
++
++    private static Integer matchId(Owner candidate, Collection<Owner> existing) {
++        for (Owner other : existing) {
++            if (candidate.getPostcode() != null
++                && candidate.getPostcode().equals(other.getPostcode())
++                && candidate.getLastName().equalsIgnoreCase(other.getLastName())
++                && !digits(candidate.getTelephone()).equals(digits(other.getTelephone()))) {
++                return other.getId();
++            }
++        }
++        return null;
++    }
++
++    private static String digits(String telephone) {
++        return telephone == null ? "" : telephone.replaceAll("\\D", "");
++    }
++}
+diff --git a/src/main/resources/db/hsqldb/schema.sql b/src/main/resources/db/hsqldb/schema.sql
+index 9f9cd16a1..0e2d8017a 100644
+--- a/src/main/resources/db/hsqldb/schema.sql
++++ b/src/main/resources/db/hsqldb/schema.sql
+@@ -47,7 +47,9 @@ CREATE TABLE owners (
+   birth_date DATE,
+   registration_date DATE,
+   customer_code VARCHAR(20),
+-  namesake_count INTEGER
++  namesake_count INTEGER,
++  possible_duplicate BOOLEAN,
++  possible_duplicate_of INTEGER
+ );
+ CREATE INDEX owners_last_name ON owners (last_name);
+ 
+diff --git a/src/main/resources/openapi.yml b/src/main/resources/openapi.yml
+index 9d5cc7907..b6cfa227b 100755
+--- a/src/main/resources/openapi.yml
++++ b/src/main/resources/openapi.yml
+@@ -2217,6 +2217,24 @@ components:
+               maximum: 9
+               readOnly: true
+               example: 7
++            possibleDuplicate:
++              title: Possible duplicate
++              description: >-
++                True when this owner, although not a hard duplicate, shares an existing owner's
++                last name and postcode while having a different telephone.
++              type: boolean
++              default: false
++              readOnly: true
++              example: false
++            possibleDuplicateOf:
++              title: Possible duplicate of
++              description: >-
++                The id of the existing owner this owner possibly duplicates (same last name and
++                postcode, different telephone), or absent when there is no such match.
++              type: integer
++              format: int32
++              readOnly: true
++              example: 7
+           required:
+             - pets
+     OwnerPage:
