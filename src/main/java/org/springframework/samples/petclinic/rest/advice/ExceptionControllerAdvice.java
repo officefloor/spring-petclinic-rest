@@ -28,6 +28,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.samples.petclinic.model.InvalidTelephoneException;
 import org.springframework.samples.petclinic.rest.controller.BindingErrorsResponse;
 import org.springframework.samples.petclinic.rest.dto.ValidationMessageDto;
 import org.springframework.security.access.AccessDeniedException;
@@ -130,6 +131,14 @@ public class ExceptionControllerAdvice {
      * @param request {@link HttpServletRequest} object referring to the current request.
      * @return A {@link ResponseEntity} containing the error information and a 409 Conflict status
      */
+    @ExceptionHandler(InvalidTelephoneException.class)
+    @ResponseBody
+    public ResponseEntity<ProblemDetail> handleInvalidTelephoneException(InvalidTelephoneException e, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        ProblemDetail detail = this.detailBuild(e, status, request.getRequestURL(), e.getMessage());
+        return ResponseEntity.status(status).body(detail);
+    }
+
     @ExceptionHandler(DuplicateTelephoneException.class)
     @ResponseBody
     public ResponseEntity<ProblemDetail> handleDuplicateTelephoneException(DuplicateTelephoneException e, HttpServletRequest request) {

@@ -18,9 +18,7 @@ package org.springframework.samples.petclinic.model;
 import org.springframework.core.style.ToStringCreator;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -46,8 +44,6 @@ public class Owner extends Person {
 
     @Column(name = "telephone")
     @NotEmpty
-    @Digits(fraction = 0, integer = 10)
-    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String telephone;
 
     @Column(name = "email")
@@ -88,7 +84,7 @@ public class Owner extends Person {
     }
 
     public void setTelephone(String telephone) {
-        this.telephone = telephone;
+        this.telephone = E164.toE164(telephone);
     }
 
     public LocalDate getRegistrationDate() {

@@ -28,15 +28,8 @@ public interface OwnerMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "pets", ignore = true)
-    @Mapping(target = "telephone", source = "telephone", qualifiedByName = "normalizeTelephone")
     @Mapping(target = "registrationDate", source = "registrationDate", qualifiedByName = "defaultRegistrationDate")
     Owner toOwner(OwnerFieldsDto ownerDto);
-
-    /** Normalize a telephone to its digits only; validation guarantees exactly 10. */
-    @Named("normalizeTelephone")
-    default String normalizeTelephone(String telephone) {
-        return telephone == null ? null : telephone.replaceAll("\\D", "");
-    }
 
     /** Default a missing registration date to the server's current date. */
     @Named("defaultRegistrationDate")
