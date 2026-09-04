@@ -208,6 +208,13 @@ public class OwnerRestControllerV1 implements OwnersApi {
         owner.setNamesakeCount(namesakeCount(owner));
         owner.setMembershipNumber(membershipNumber(owner.getCustomerCode(), owner.getRegistrationDate()));
         owner.setBulkSignupWarning(ownersCreatedThatDay > 80);
+        // Soft-match: the candidate has already cleared the hard-duplicate check, but it may
+        // still share an existing owner's last name and postcode while carrying a different
+        // telephone. When it does, it is created but flagged as a possible duplicate of that
+        // existing owner; otherwise the flag is false and no reference is recorded.
+        Integer possibleDuplicateOf = possibleDuplicateOf(owner);
+        owner.setPossibleDuplicate(possibleDuplicateOf != null);
+        owner.setPossibleDuplicateOf(possibleDuplicateOf);
         this.clinicService.saveOwner(owner);
         AUDIT.info("owner created id={} customerCode={} registrationDate={} membershipLevel={}",
             owner.getId(), owner.getCustomerCode(), owner.getRegistrationDate(),
@@ -240,6 +247,34 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return this.clinicService.findAllOwners().stream()
             .map(OwnerMapper::identityKey)
             .anyMatch(identityKey::equals);
+    }
+
+    /**
+     * The id of the existing owner the fully-normalized {@code candidate} soft-matches, or
+     * {@code null} when there is none. A soft match is an owner that is not a hard duplicate
+     * (its whole identityKey differs) yet shares the candidate's normalized last name and its
+     * postcode while carrying a different telephone — a likely re-registration of the same
+     * person under a new number. Both must supply a postcode for a match to be possible; when
+     * several existing owners qualify the lowest id is returned so the result is deterministic.
+     *
+     * @param candidate the fully-normalized owner about to be created
+     * @return the matching existing owner's id, or {@code null} if the candidate is no soft match
+     */
+    private Integer possibleDuplicateOf(Owner candidate) {
+        String postcode = candidate.getPostcode();
+        if (postcode == null) {
+            return null;
+        }
+        String lastNameKey = normalizeIdentity(candidate.getLastName());
+        return this.clinicService.findAllOwners().stream()
+            .filter(existing -> normalizeIdentity(existing.getLastName()).equals(lastNameKey)
+                && postcode.equals(existing.getPostcode())
+                && !postcode.isBlank()
+                && !java.util.Objects.equals(candidate.getTelephone(), existing.getTelephone()))
+            .map(Owner::getId)
+            .filter(java.util.Objects::nonNull)
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**

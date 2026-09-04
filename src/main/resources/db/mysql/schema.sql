@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS owners (
   membership_number VARCHAR(30),
   bulk_signup_warning BIT(1),
   postcode VARCHAR(10),
+  possible_duplicate BIT(1),
+  possible_duplicate_of INT,
   INDEX(last_name)
 ) engine=InnoDB;
 
