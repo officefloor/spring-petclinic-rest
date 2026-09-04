@@ -1,0 +1,61 @@
+diff --git a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+index 2d3ef7694..4b1f5f963 100755
+--- a/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
++++ b/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java
+@@ -21,7 +21,7 @@ public interface OwnerMapper {
+     @Mapping(target = "displayName", expression = "java(owner.getLastName() + \", \" + owner.getFirstName())")
+     @Mapping(target = "initials", expression = "java(owner.getInitials())")
+     @Mapping(target = "membershipLevel", expression = "java(org.springframework.samples.petclinic.model.MembershipLevel.of(owner.getNamesakeCount(), owner.getEmail()))")
+-    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity()))")
++    @Mapping(target = "locality", expression = "java(org.springframework.samples.petclinic.model.Locality.of(owner.getCity(), owner.getPostcode()))")
+     @Mapping(target = "contactPreference", expression = "java(owner.getEmail() != null && !owner.getEmail().isBlank() ? \"EMAIL\" : \"PHONE\")")
+     OwnerDto toOwnerDto(Owner owner);
+ 
+diff --git a/src/main/java/org/springframework/samples/petclinic/model/Locality.java b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+index 7d97f183b..5c1e99268 100644
+--- a/src/main/java/org/springframework/samples/petclinic/model/Locality.java
++++ b/src/main/java/org/springframework/samples/petclinic/model/Locality.java
+@@ -28,6 +28,12 @@ public final class Locality {
+         "Melbourne", "VIC",
+         "Brisbane", "QLD");
+ 
++    /** Region -> inclusive 4-digit postcode range {low, high}. */
++    private static final Map<String, int[]> REGION_POSTCODES = Map.of(
++        "NSW", new int[] {2000, 2099},
++        "VIC", new int[] {3000, 3099},
++        "QLD", new int[] {4000, 4099});
++
+     private Locality() {
+     }
+ 
+@@ -39,4 +45,30 @@ public final class Locality {
+     public static String of(String city) {
+         return CITY_REGION.getOrDefault(city, "UNKNOWN");
+     }
++
++    /**
++     * Prefers the postcode: resolves the region by postcode range first (NSW
++     * 2000-2099, VIC 3000-3099, QLD 4000-4099), and only falls back to the
++     * city-to-region table when the postcode is absent or in no known range.
++     *
++     * @param city     the owner's city
++     * @param postcode the owner's postcode, may be {@code null}
++     * @return the canonical region, or {@code "UNKNOWN"} when neither resolves
++     */
++    public static String of(String city, String postcode) {
++        String region = byPostcode(postcode);
++        return region != null ? region : of(city);
++    }
++
++    private static String byPostcode(String postcode) {
++        if (postcode == null || !postcode.matches("\\d{4}")) {
++            return null;
++        }
++        int value = Integer.parseInt(postcode);
++        return REGION_POSTCODES.entrySet().stream()
++            .filter(e -> value >= e.getValue()[0] && value <= e.getValue()[1])
++            .map(Map.Entry::getKey)
++            .findFirst()
++            .orElse(null);
++    }
+ }
