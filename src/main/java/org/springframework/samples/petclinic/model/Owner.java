@@ -107,10 +107,10 @@ public class Owner extends Person {
         return this.customerCode;
     }
 
-    /** Stable identifier shared by owners of the same household (matching last name and address). */
+    /** Stable identifier shared by owners of the same household (matching last name and postcode). */
     @Transient
     public String getHouseholdId() {
-        return HouseholdId.of(getLastName(), this.address);
+        return HouseholdId.of(getLastName(), this.postcode);
     }
 
     public void setCustomerCode(String customerCode) {

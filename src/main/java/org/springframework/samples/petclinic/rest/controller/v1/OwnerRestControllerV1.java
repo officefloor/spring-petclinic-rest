@@ -29,7 +29,6 @@ import org.springframework.samples.petclinic.mapper.VisitMapper;
 import org.springframework.samples.petclinic.model.BusinessDay;
 import org.springframework.samples.petclinic.model.CustomerCode;
 import org.springframework.samples.petclinic.model.Owner;
-import org.springframework.samples.petclinic.model.PossibleDuplicate;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.model.Visit;
 import org.springframework.samples.petclinic.rest.api.OwnersApi;
@@ -120,11 +119,14 @@ public class OwnerRestControllerV1 implements OwnersApi {
             .filter(existing -> existing.getFirstName().equalsIgnoreCase(owner.getFirstName())
                 && existing.getLastName().equalsIgnoreCase(owner.getLastName()))
             .count());
+        if (owners.stream().anyMatch(existing -> sameHousehold(existing, owner))
+                && !Boolean.TRUE.equals(ownerFieldsDto.getSharesHousehold())) {
+            return new ResponseEntity<>(HttpStatus.CONFLICT);
+        }
         owner.setHouseholdMemberCount(1 + (int) owners.stream().filter(existing -> sameHousehold(existing, owner)).count());
         owner.setCustomerCode(CustomerCode.of(owner, owners));
-        Integer possibleDuplicateOf = PossibleDuplicate.of(owner, owners);
-        owner.setPossibleDuplicate(possibleDuplicateOf != null);
-        owner.setPossibleDuplicateOf(possibleDuplicateOf);
+        owner.setPossibleDuplicate(false);
+        owner.setPossibleDuplicateOf(null);
         this.clinicService.saveOwner(owner);
         OwnerDto ownerDto = ownerMapper.toOwnerDto(owner);
         ownerDto.setBulkSignupWarning(owners.stream()
@@ -134,12 +136,10 @@ public class OwnerRestControllerV1 implements OwnersApi {
         return new ResponseEntity<>(ownerDto, headers, HttpStatus.CREATED);
     }
 
-    /** Two owners share a household when their last name and address match, compared
-     *  case-insensitively with runs of whitespace collapsed to a single space. */
+    /** Two owners share a household when they resolve to the same {@link Owner#getHouseholdId()}
+     *  (matching last name and postcode). */
     private static boolean sameHousehold(Owner a, Owner b) {
-        return a.getLastName().equalsIgnoreCase(b.getLastName())
-            && a.getAddress().trim().replaceAll("\\s+", " ")
-                .equalsIgnoreCase(b.getAddress().trim().replaceAll("\\s+", " "));
+        return a.getHouseholdId() != null && a.getHouseholdId().equals(b.getHouseholdId());
     }
 
     @PreAuthorize("hasRole(@roles.OWNER_ADMIN)")

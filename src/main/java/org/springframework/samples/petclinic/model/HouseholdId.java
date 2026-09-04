@@ -20,9 +20,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Derives a household's stable, shared identifier from the last name and address
- * that define it. Owners sharing a household (same last name and address, compared
- * case-insensitively with whitespace collapsed) resolve to the same value.
+ * Derives a household's stable, shared identifier from the last name and postcode
+ * that define it. Owners sharing a household (same last name and postcode) resolve to
+ * the same value, so the household key is deterministic rather than explicitly linked.
  */
 public final class HouseholdId {
 
@@ -30,15 +30,15 @@ public final class HouseholdId {
     }
 
     /**
-     * @param lastName the household's last name
-     * @param address  the household's postal address
+     * @param lastName the household's last name (normalized case-insensitively)
+     * @param postcode the household's postcode
      * @return a stable 12-character hex identifier, or {@code null} if either input is null
      */
-    public static String of(String lastName, String address) {
-        if (lastName == null || address == null) {
+    public static String of(String lastName, String postcode) {
+        if (lastName == null || postcode == null) {
             return null;
         }
-        String key = normalize(lastName) + "|" + normalize(address);
+        String key = normalize(lastName) + "|" + postcode;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
