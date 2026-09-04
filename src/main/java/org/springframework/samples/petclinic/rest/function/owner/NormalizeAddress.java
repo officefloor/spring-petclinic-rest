@@ -18,13 +18,32 @@ import org.springframework.samples.petclinic.rest.escalation.MissingFieldsExcept
 public class NormalizeAddress {
 
     public void service(@Val OwnerFieldsDto request) throws MissingFieldsException {
-        String normalized = request.getAddress().trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT)
+        String line1 = normalize(request.getAddressLine1());
+        if (line1 != null && !line1.isBlank()) {
+            request.setAddressLine1(line1);
+            String line2 = normalize(request.getAddressLine2());
+            String composed = line1;
+            if (line2 != null && !line2.isBlank()) {
+                request.setAddressLine2(line2);
+                composed = line1 + " " + line2;
+            }
+            request.setAddress(composed);
+            return;
+        }
+        String flat = normalize(request.getAddress());
+        if (flat == null || flat.isBlank()) {
+            throw new MissingFieldsException(List.of("address"));
+        }
+        request.setAddress(flat);
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT)
                 .replaceAll("\\bST\\b", "STREET")
                 .replaceAll("\\bRD\\b", "ROAD")
                 .replaceAll("\\bAVE\\b", "AVENUE");
-        if (normalized.isBlank()) {
-            throw new MissingFieldsException(List.of("address"));
-        }
-        request.setAddress(normalized);
     }
 }
