@@ -8,7 +8,7 @@ import org.springframework.samples.petclinic.model.Owner;
  * the normalized last name and postcode (see {@link HouseholdId#derive(String, String)}).
  * Every owner receives one, so owners sharing a last name and postcode automatically share the id —
  * there is no explicit linking and no dependency on {@code sharesHousehold} (that flag now only
- * bypasses the household duplicate block in {@link EnsureUniqueIdentity}).
+ * bypasses the identity duplicate block in {@link EnsureUniqueIdentity}).
  *
  * <p>Runs after {@link BuildOwner} within the create transaction and before {@link AssignHouseholdSize},
  * which counts the members sharing this computed id, and {@link SaveOwner}, which persists it.

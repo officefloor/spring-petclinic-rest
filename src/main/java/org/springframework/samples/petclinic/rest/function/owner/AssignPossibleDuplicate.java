@@ -6,13 +6,14 @@ import org.springframework.samples.petclinic.repository.OwnerRepository;
 import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 
 /**
- * Flags a soft (non-hard) duplicate on the owner being created. A household duplicate — the same
- * deterministic {@code householdId} (same last name and postcode) as an existing owner — is already
- * rejected with 409 by {@link EnsureUniqueIdentity} before this step runs, unless the request opted
- * into a shared household with {@code sharesHousehold}. This step then looks for an existing owner that
- * shares this owner's normalized last name and postcode but has a <em>different</em> telephone: such an
- * owner is still created, but is marked {@code possibleDuplicate = true} with {@code possibleDuplicateOf}
- * set to the matching owner's id. When no such owner exists, {@code possibleDuplicate} is {@code false}.
+ * Flags a soft (non-hard) duplicate on the owner being created. A hard duplicate — the same
+ * {@link OwnerIdentityKey} as an existing owner — is already rejected with 409 by
+ * {@link EnsureUniqueIdentity} before this step runs, unless the request opted into a shared household
+ * with {@code sharesHousehold}. This step then looks for an existing non-deleted owner whose
+ * {@code soundex(lastName)} and postcode match this owner's but whose identity key <em>differs</em>:
+ * such an owner is still created, but is marked {@code possibleDuplicate = true} with
+ * {@code possibleDuplicateOf} set to the matching owner's id. When no such owner exists,
+ * {@code possibleDuplicate} is {@code false}.
  *
  * <p>A declared household member (created with {@code sharesHousehold} true) is never a suspected
  * duplicate, so it is never flagged.
@@ -34,8 +35,8 @@ public class AssignPossibleDuplicate {
         if (postcode == null) {
             return; // no postcode means it cannot share a postcode with anyone
         }
-        String lastName = HouseholdId.normalizeName(owner.getLastName());
-        String telephone = E164Telephone.toE164OrNull(owner.getTelephone());
+        String soundex = Soundex.of(owner.getLastName());
+        String identityKey = OwnerIdentityKey.of(owner);
 
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
@@ -44,12 +45,11 @@ public class AssignPossibleDuplicate {
             if (!postcode.equals(normalizePostcode(existing.getPostcode()))) {
                 continue;
             }
-            if (!lastName.equals(HouseholdId.normalizeName(existing.getLastName()))) {
+            if (!soundex.equals(Soundex.of(existing.getLastName()))) {
                 continue;
             }
-            String existingTelephone = E164Telephone.toE164OrNull(existing.getTelephone());
-            if (telephone != null && telephone.equals(existingTelephone)) {
-                continue; // same telephone is a hard duplicate concern, not a soft match
+            if (identityKey.equals(OwnerIdentityKey.of(existing))) {
+                continue; // same identity key is a hard duplicate concern, not a soft match
             }
             owner.setPossibleDuplicate(true);
             owner.setPossibleDuplicateOf(existing.getId());

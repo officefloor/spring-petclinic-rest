@@ -7,34 +7,32 @@ import org.springframework.samples.petclinic.rest.dto.OwnerFieldsDto;
 import org.springframework.samples.petclinic.rest.escalation.DuplicateOwnerException;
 
 /**
- * The duplicate check for creating owners. A household — {@code (normalizedLastName, postcode)}
- * expressed as a deterministic {@code householdId} (see {@link HouseholdId#derive(String, String)}) —
- * may legitimately have several members (their membership levels are capped relative to
- * each other by {@link CapMembershipLevel}), so sharing a household is no longer a duplicate on its own.
- * Only a <em>true</em> duplicate is rejected with 409 via {@link DuplicateOwnerException}: an existing
- * non-deleted owner in the same household with the same (E.164) telephone — i.e. the same person.
+ * The duplicate check for creating owners, keyed on the single {@link OwnerIdentityKey} —
+ * SHA-256 over {@code normalizedTelephone + '|' + lowerEmail + '|' + soundex(lastName)}. A create is
+ * rejected with 409 via {@link DuplicateOwnerException} when its identity key equals that of an
+ * existing non-deleted owner: the same person (same telephone, email and sound-alike last name).
  *
- * <p>Setting {@code sharesHousehold} true bypasses this block: the owner is then created as a declared
- * household member (and, being declared, is not flagged as a possible duplicate by
- * {@link AssignPossibleDuplicate}). Runs before {@link BuildOwner}.
+ * <p>Because the telephone is part of the key, two owners with the same last name and postcode but
+ * different telephones are no longer a hard household duplicate here — they are created and flagged a
+ * soft match by {@link AssignPossibleDuplicate} instead. The email-domain blocklist runs earlier in the
+ * pipeline ({@link ValidateOwnerEmailDomain}), so a blocked email is a 400 before this check. Setting
+ * {@code sharesHousehold} true bypasses this block (and, being declared, the owner is not flagged as a
+ * possible duplicate). Runs before {@link BuildOwner}.
  */
 public class EnsureUniqueIdentity {
 
     public void service(@Val OwnerFieldsDto request, OwnerRepository ownerRepository)
             throws DuplicateOwnerException {
         if (Boolean.TRUE.equals(request.getSharesHousehold())) {
-            return; // declared household member — bypass the household duplicate block
+            return; // declared household member — bypass the duplicate block
         }
-        String householdId = HouseholdId.of(request);
-        String telephone = E164Telephone.toE164OrNull(request.getTelephone());
+        String identityKey = OwnerIdentityKey.of(request);
         for (Owner existing : ownerRepository.findAll()) {
             if (existing.isDeleted()) {
                 continue; // a soft-deleted owner no longer blocks a duplicate
             }
-            if (householdId.equals(HouseholdId.of(existing))
-                    && telephone != null
-                    && telephone.equals(E164Telephone.toE164OrNull(existing.getTelephone()))) {
-                throw new DuplicateOwnerException(householdId);
+            if (identityKey.equals(OwnerIdentityKey.of(existing))) {
+                throw new DuplicateOwnerException(identityKey);
             }
         }
     }
